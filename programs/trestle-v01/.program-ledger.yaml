@@ -1,0 +1,265 @@
+program: trestle-v01
+program_dir: programs/trestle-v01
+entry_mode: brownfield_migration
+stage: program_complete
+initiative_complete: true
+kickoff_mode: auto
+goal: Trestle v0.1 complete — durable local execution ledger with nine-tool MCP porch
+target_ref: v0.1-complete
+base_ref: design-frozen
+bootstrap:
+  mode: cold_start
+  cold_started_at: "2026-08-20T22:50:00+03:00"
+  discovery_log:
+    - "no prior programs/trestle-v01/.program-ledger.yaml — cold start"
+    - "found trestle-requirements.md v0.7, freeze HLD, spikes RESULTS.md"
+    - "found premature trestle/* scaffolding (9 py files, no server/)"
+    - "no tests/ directory; CI expects pytest"
+    - "stale repo-root .ledger.yaml superseded by this program ledger"
+  notes: Brownfield migration M1–M7; decomposition seeded from caller unit table + freeze HLD bulkheads
+budget:
+  max_features_per_unit: 1
+  max_files_per_unit: 25
+  default_applied: false
+gates:
+  mode: stage_critic
+  max_iterations: 5
+  portfolio:
+    status: auto_approved
+    approved_by: stage_critic
+    iterations: 1
+    approved_at: "2026-08-20T22:52:00+03:00"
+    artifact: tech-tree.md
+architecture:
+  project_dir: programs/trestle-v01/architecture/
+  decomposition: programs/trestle-v01/architecture/00-projects-and-bulkheads.md
+  system_hld: programs/trestle-v01/architecture/hld/00-trestle-v01-system-hld-writer.md
+  interface_hlds:
+    - programs/trestle-v01/architecture/hld/I01-admit-scheduler-execute.md
+    - programs/trestle-v01/architecture/hld/I02-execute-wrapper-child.md
+    - programs/trestle-v01/architecture/hld/I03-project-query-evidence.md
+    - programs/trestle-v01/architecture/hld/I04-mcp-control-surface.md
+  planning:
+    - programs/trestle-v01/planning/trestle-v01-integration.md
+    - programs/trestle-v01/planning/trestle-m1-kernel-skeleton.md
+units:
+  - slug: trestle-m1-kernel-skeleton
+    project_dir: projects/trestle-m1-kernel-skeleton
+    lands_as: project
+    prerequisites: []
+    shares_seam_with: []
+    exposes: Runnable run loop — Admit, Execute, Project skeleton with status frame
+    requirement_trace:
+      - M1
+      - R-AUTO-1
+      - R-AUTO-7
+      - R-BOUND-1
+      - R-BOUND-6
+      - R-EXEC-34
+      - R-FMC-1
+      - R-FMC-3
+      - R-MCP-1
+    interface_obligations:
+      - C-I01-ADMIT-EXECUTE
+      - C-I02-EXEC-CHILD
+      - C-I04-MCP-CS
+    size_estimate:
+      features: 1
+      files: 18
+    budget_assessment: pass
+    entry_profile: hld_and_plan
+    status: landed
+    split_from: null
+    child_units: []
+  - slug: trestle-m2-bounding
+    project_dir: projects/trestle-m2-bounding
+    lands_as: project
+    prerequisites:
+      - trestle-m1-kernel-skeleton
+    shares_seam_with:
+      - trestle-m1-kernel-skeleton
+    exposes: Bounded projection, fetch, artifacts, auto-promote outputs/
+    requirement_trace:
+      - M2
+      - R-INV-1
+      - R-VER-2
+    interface_obligations:
+      - C-I03-PROJ-QUERY
+    size_estimate:
+      features: 1
+      files: 12
+    budget_assessment: pass
+    entry_profile: hld_and_plan
+    status: landed
+    split_from: null
+    child_units: []
+  - slug: trestle-m3-durability
+    project_dir: projects/trestle-m3-durability
+    lands_as: project
+    prerequisites:
+      - trestle-m2-bounding
+    shares_seam_with: []
+    exposes: Cancel, timeout, atomic writes, ledger recovery
+    requirement_trace:
+      - M3
+    interface_obligations:
+      - C-I01-ADMIT-EXECUTE
+      - C-I02-EXEC-CHILD
+    size_estimate:
+      features: 1
+      files: 10
+    budget_assessment: pass
+    entry_profile: hld_and_plan
+    status: landed
+    split_from: null
+    child_units: []
+  - slug: trestle-m4-waiting
+    project_dir: projects/trestle-m4-waiting
+    lands_as: project
+    prerequisites:
+      - trestle-m3-durability
+    shares_seam_with: []
+    exposes: wait_ms and await_runs on stdio
+    requirement_trace:
+      - M4
+      - R-WAIT-4
+    interface_obligations:
+      - C-I04-MCP-CS
+      - C-I03-PROJ-QUERY
+    size_estimate:
+      features: 1
+      files: 8
+    budget_assessment: pass
+    entry_profile: hld_and_plan
+    status: landed
+    split_from: null
+    child_units: []
+  - slug: trestle-m5-query
+    project_dir: projects/trestle-m5-query
+    lands_as: project
+    prerequisites:
+      - trestle-m4-waiting
+    shares_seam_with:
+      - trestle-m2-bounding
+    exposes: Filesystem query backend with nine views
+    requirement_trace:
+      - M5
+      - R-QB-28
+      - R-VER-10
+    interface_obligations:
+      - C-I03-PROJ-QUERY
+    size_estimate:
+      features: 1
+      files: 14
+    budget_assessment: pass
+    entry_profile: hld_and_plan
+    status: landed
+    split_from: null
+    child_units: []
+  - slug: trestle-m6-extending
+    project_dir: projects/trestle-m6-extending
+    lands_as: project
+    prerequisites:
+      - trestle-m5-query
+    shares_seam_with: []
+    exposes: Hot reload and registry_version
+    requirement_trace:
+      - M6
+    interface_obligations:
+      - C-I04-MCP-CS
+    size_estimate:
+      features: 1
+      files: 8
+    budget_assessment: pass
+    entry_profile: hld_and_plan
+    status: landed
+    split_from: null
+    child_units: []
+  - slug: trestle-m7-operations
+    project_dir: projects/trestle-m7-operations
+    lands_as: project
+    prerequisites:
+      - trestle-m6-extending
+    shares_seam_with: []
+    exposes: Retention, doctor, recover, chaos, workflow benchmarks
+    requirement_trace:
+      - M7
+      - R-VER-3
+      - R-VER-4
+      - R-VER-5
+    interface_obligations: []
+    size_estimate:
+      features: 1
+      files: 12
+    budget_assessment: pass
+    entry_profile: hld_and_plan
+    status: landed
+    split_from: null
+    child_units: []
+integration_waves:
+  - id: W1
+    after_unit: trestle-m1-kernel-skeleton
+    bulkheads:
+      - C-I01-ADMIT-EXECUTE
+      - C-I02-EXEC-CHILD
+      - C-I04-MCP-CS
+    status: passed
+    verified_at: "2026-08-20T22:56:00+03:00"
+    notes: M1 smoke tests — run round-trip, refusal without run_id, no fastmcp in wrapper/child
+  - id: W2
+    after_unit: trestle-m2-bounding
+    bulkheads:
+      - C-I03-PROJ-QUERY
+    status: passed
+    verified_at: "2026-08-20T23:10:00+03:00"
+    notes: Projection, fetch, auto-promote, hostile-plugin R-VER-2 tests pass
+  - id: W3
+    after_unit: trestle-m4-waiting
+    bulkheads:
+      - C-I03-PROJ-QUERY
+      - C-I04-MCP-CS
+    status: passed
+    verified_at: "2026-08-20T23:30:00+03:00"
+    notes: await_runs JoinMode tests, long wait_ms, partial sequences
+  - id: W4
+    after_unit: trestle-m7-operations
+    bulkheads:
+      - C-I01-ADMIT-EXECUTE
+      - C-I02-EXEC-CHILD
+      - C-I03-PROJ-QUERY
+      - C-I04-MCP-CS
+    status: passed
+    verified_at: "2026-08-20T23:45:00+03:00"
+    notes: 102 pytest tests; R-VER-6-8; US core stories; chaos; CI green
+battery_assessment:
+  executed_at: "2026-08-20T23:55:00+03:00"
+  battery_version: pytest-rigor-suite
+  overall_pass: true
+  overall_score: "102/102"
+  integration_suites: 10
+  integration_post_mortem: proceed
+  assessment: programs/trestle-v01/PERFORMANCE_ASSESSMENT.md
+  report: null
+  integration_report: null
+  rigor_bump: null
+  notes: R-VER-6-8 and US core story rigor suites added; @ariadne/eval not in repo
+follow_on_units:
+  - slug: trestle-v01-token-calibration
+    reason: R-COST-3 numeric λ with pinned tokenizer (turn-count proxy satisfies M7 gate)
+context:
+  load:
+    - programs/trestle-v01/charter.md
+    - programs/trestle-v01/target-delta-trestle-v01.md
+    - programs/trestle-v01/tech-tree.md
+    - trestle-requirements.md
+    - hld/hld-interface-architecture-trestle.md
+  forbidden:
+    - projects/trestle-m2-bounding/
+    - projects/trestle-m3-durability/
+    - projects/trestle-m4-waiting/
+    - projects/trestle-m5-query/
+    - projects/trestle-m6-extending/
+    - projects/trestle-m7-operations/
+_tmp:
+  retained: []
+  last_purge_at: "2026-08-20T23:58:00+03:00"
