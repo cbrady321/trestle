@@ -5,7 +5,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .DS_Store
-.ledger.yaml
-.loop-state.yaml
+/.ledger.yaml
+/.loop-state.yaml
 spikes/out/
 _tmp/

@@ -1,0 +1,11 @@
+initiative: trestle-v01
+project_dir: projects/trestle-m7-operations
+stage: complete
+unit: trestle-m7-operations
+milestone: M7
+completed_at: "2026-08-20T23:59:00+03:00"
+notes: >-
+  Pin-aware retention/GC with config.toml defaults; trestle doctor reporting
+  health, epoch, registry_version, run counts, and drain; recover integrates
+  idempotency rebuild and GC; admission refresh on run(); idempotency store;
+  chaos matrix and workflow benchmark tests; CLI pin/unpin.

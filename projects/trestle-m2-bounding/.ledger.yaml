@@ -1,0 +1,10 @@
+initiative: trestle-v01
+project_dir: projects/trestle-m2-bounding
+stage: complete
+unit: trestle-m2-bounding
+milestone: M2
+completed_at: "2026-08-20T23:15:00+03:00"
+notes: >-
+  Projection via result.index + pread; capture limits with limits_exceeded
+  markers; artifacts and pin/unpin persistence; fetch handle-addressed slices;
+  auto-promote work/outputs/; R-VER-2 hostile-plugin responsiveness test.

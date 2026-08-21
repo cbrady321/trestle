@@ -1,0 +1,11 @@
+initiative: trestle-v01
+project_dir: projects/trestle-m3-durability
+stage: complete
+unit: trestle-m3-durability
+milestone: M3
+completed_at: "2026-08-20T23:30:00+03:00"
+notes: >-
+  Cancel via RunRegistry process-group signals and cancel.flag; RunSpec timeout_s
+  enforced with timed_out terminal; atomic writes on wrapper report/console and
+  child result artifacts; startup recovery from ledger.ndjson with idempotent
+  second pass; trestle recover CLI; M3 durability test suite.

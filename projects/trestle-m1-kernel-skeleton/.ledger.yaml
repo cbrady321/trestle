@@ -1,0 +1,10 @@
+initiative: trestle-v01
+project_dir: projects/trestle-m1-kernel-skeleton
+stage: complete
+unit: trestle-m1-kernel-skeleton
+milestone: M1
+completed_at: "2026-08-20T22:55:00+03:00"
+notes: >-
+  Runnable run loop with Admit, Execute, Project skeleton; spawn-per-run
+  wrapper+child; nine MCP tools registered; ndjson ledger authority; status
+  frame on success; M1 smoke tests passing.

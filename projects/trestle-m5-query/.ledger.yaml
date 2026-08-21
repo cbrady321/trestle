@@ -1,0 +1,12 @@
+initiative: trestle-v01
+project_dir: projects/trestle-m5-query
+stage: complete
+unit: trestle-m5-query
+milestone: M5
+completed_at: "2026-08-20T23:55:00+03:00"
+notes: >-
+  Filesystem query backend with nine v0.1 views (run, last_error, run_tail,
+  run_events, recent_runs, recent_failures, run_provenance, run_artifacts,
+  artifact_refs); BoundedView pagination with opaque cursors; backend/as_of on
+  envelopes; R-QB-28 not_finalized for run_tail/run_events on running runs;
+  R-VER-10 conformance checks; Project.query wired to FilesystemQueryBackend.
