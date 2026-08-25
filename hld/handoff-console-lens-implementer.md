@@ -1,7 +1,7 @@
 # Agent Handoff — Trestle Console (Porch MVP)
 
 > **CANCELLED (2026-08-25).** Do not implement Porch or web Console.  
-> **Active handoff:** write [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md) per [`plan-daytona-clean-room-scope.md`](plan-daytona-clean-room-scope.md) §0.
+> **Superseded:** Phase C agent MCP playbook shipped — [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md).
 
 **Prerequisite:** ~~worthiness verification~~ — obsolete for Porch track.
 

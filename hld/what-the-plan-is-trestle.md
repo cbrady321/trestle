@@ -7,6 +7,8 @@
 |----------|------|
 | [`trestle-requirements.md`](../trestle-requirements.md) | What must be true |
 | [`hld-interface-architecture-trestle.md`](hld-interface-architecture-trestle.md) | Freeze HLD: three ports, nine tools, envelopes |
+| [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md) | Agent MCP playbook (Phase C — attach, retrieval, smoke) |
+| [`hld/plan-daytona-clean-room-scope.md`](plan-daytona-clean-room-scope.md) | Console access scope plan (Phase C complete) |
 | [`hld-tty-overlay-trestle.md`](hld-tty-overlay-trestle.md) | TTY overlay HLD (additive only) |
 | [`interface-design-tty-class-trestle.md`](interface-design-tty-class-trestle.md) | TTY consumer contract |
 

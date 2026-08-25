@@ -43,7 +43,7 @@ Status: **Phase C complete** (agent MCP assess + playbook + verify). **Porch is 
 | Surface | What | Who | How (now) |
 |---------|------|-----|-----------|
 | **`console/*` evidence** | Wrapper stdout/stderr on disk per run (R-LIM-7). | **Agents** | **Nine MCP tools** after `evidence_finalized`: `query(run_tail)`, `fetch` (grep/tail/range), `last_error`; TTY terminus = `fetch(art_…)`. |
-| **OperatorContract (CLI)** | Richer than MCP today (`doctor`, `query`, fetch windows). | **Humans** | `trestle` CLI — already exists. |
+| **OperatorContract (CLI)** | Ops diagnostics and retention (`doctor`, `pin`, `unpin`, `recover`). | **Humans** | `trestle` CLI — v0.1; **`query` / `fetch` are MCP-only** (not CLI subcommands yet). |
 | **Sessions / telemetry UI** | Human inspection of run history, bounded telemetry — **not** a log dashboard. | **Humans (future)** | **Not scoped.** Likely sessions + telemetry vocabulary; **no porch naming.** Spec TBD when requirements exist. |
 
 **Owner requirements (2026-08-25):**
@@ -76,7 +76,7 @@ Agents use **`trestle serve` MCP only** (no HTTP BFF):
 
 ## Goals & Non-Goals
 
-**This-node goal:** **Assess** then ship **agent MCP usability** (document + verify nine-tool retrieval). **Defer** human sessions/telemetry UI to a future spec — **no porch naming.**
+**This-node goal (complete):** **Assessed and shipped** agent MCP usability (document + verify nine-tool retrieval). **Defer** human sessions/telemetry UI to a future spec — **no porch naming.**
 
 **Non-goals:** Porch HTTP; `console/porch/`; `console/web/`; ninth MCP tool; log dashboard; live tail; sandbox/toolbox; vendor source; relitigating Daytona.
 
@@ -99,7 +99,7 @@ Agents use **`trestle serve` MCP only** (no HTTP BFF):
 
 **First:** determine the best way for agents to use `trestle serve` MCP in real hosts (Cursor, Claude Desktop, etc.) — wiring, onboarding, workflow, and friction — without reopening the nine-tool freeze unless assessment proves a gap.
 
-**Then:** agents reach run **`console/*` evidence** through that path — `query` + `fetch` after finalize, bounded slices, retrieval-first. Operators use **CLI** today (`trestle query`, `trestle fetch`, `doctor`). A future **sessions / telemetry** human surface is out of scope here and will **not** use the name porch.
+**Then:** agents reach run **`console/*` evidence** through that path — `query` + `fetch` after finalize, bounded slices, retrieval-first. Operators use **`trestle doctor` / `pin` / `recover`** on the CLI today; **`query` / `fetch` require MCP** (`trestle serve`). A future **sessions / telemetry** human surface is out of scope here and will **not** use the name porch.
 
 ### 0.2 Read order
 
@@ -137,12 +137,10 @@ Run at least one **real agent session** (or scripted MCP client) against `trestl
 
 ```bash
 pip install -e ".[dev]"
-pytest -q
-trestle serve   # MCP — agent path
-
-# CLI operator path (already shipped)
-trestle query recent_runs
-trestle query run_tail --run-id <handle>   # after finalize
+pytest -q                                    # 104 tests incl. MCP stdio smoke
+python scripts/smoke_agent_mcp.py            # ControlSurface golden path
+trestle serve                                # MCP — agent path (query/fetch via tools)
+trestle doctor                               # CLI operator path
 ```
 
 ### 0.5 Done-when (Phase C)
@@ -152,6 +150,7 @@ trestle query run_tail --run-id <handle>   # after finalize
 - [x] README links agent MCP path per assessment.
 - [x] No `console/` tree added.
 - [x] Kernel diff docs-only (or test fixes if assessment finds real gaps).
+- [x] 104 pytest tests pass; MCP blocking-run contract locked in `tests/test_mcp_stdio_smoke.py`.
 
 ---
 

@@ -1,7 +1,7 @@
 # Console port worthiness verification
 
 > **OBSOLETE (2026-08-25).** Porch/web **Proceed to implement** verdicts are void. Owner: Porch OUT; human inspection = future **sessions/telemetry** (not porch).  
-> **Active scope:** [`plan-daytona-clean-room-scope.md`](plan-daytona-clean-room-scope.md) §0 — agent MCP console documentation.
+> **Phase C complete:** [`plan-daytona-clean-room-scope.md`](plan-daytona-clean-room-scope.md) §0 — agent MCP playbook shipped.
 
 Status: **C0 complete (historical)** — gate for cancelled Porch implement track.
 
@@ -15,7 +15,7 @@ Bound parent goals (cite path + heading):
 
 ## Verdict summary (void — Porch cancelled)
 
-- **Proceed to implement:** **None** — entire Porch/web list below is **cancelled**. See plan §0 for active work.
+- **Proceed to implement:** **None** — entire Porch/web list below is **cancelled**. Phase C agent MCP docs complete — see plan §0.5.
 
 - ~~**Proceed to implement:**~~ (historical)
   - `console/openapi.yaml` (Porch contract SSOT; steps 1–8 in plan §0.5)

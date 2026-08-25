@@ -189,17 +189,17 @@ Admission refusals correctly omit `run_id`. Messages are short and machine-reada
 
 ## Friction inventory & remediation ranking
 
-| # | Friction | Severity | Remediation | Freeze? |
+| # | Friction | Severity | Remediation | Freeze? | Status |
 |---|----------|----------|-------------|---------|
-| F1 | No host wiring in repo | High | Docs + `.cursor/mcp.json` example | No |
-| F2 | Empty plugin dir on first run | High | Docs bootstrap + example plugin | No |
-| F3 | View names not on `tools/list` | Medium | Playbook view table | No |
-| F4 | `run_tail` vs `fetch` confusion | Medium | Playbook retrieval tree | No |
-| F5 | `run` blocks entire call | Medium–High | Document; defer non-blocking `run` | **Only if owner requires** |
-| F6 | `wait_ms` semantics misleading | Medium | Document actual behavior | **Only if owner requires** |
-| F7 | `not_finalized` rare via MCP | Low | Document for completeness | No |
-| F8 | FastMCP stderr banner | Low | Ignore / note in docs | No |
-| F9 | `plugin` vs `plugin_id` param names | Low | Playbook alias note | No |
+| F1 | No host wiring in repo | High | Docs + `.cursor/mcp.json` example | No | **Done** |
+| F2 | Empty plugin dir on first run | High | Docs bootstrap + example plugin | No | **Done** |
+| F3 | View names not on `tools/list` | Medium | Playbook view table | No | **Done** |
+| F4 | `run_tail` vs `fetch` confusion | Medium | Playbook retrieval tree | No | **Done** |
+| F5 | `run` blocks entire call | Medium–High | Document; defer non-blocking `run` | **Only if owner requires** | **Documented** |
+| F6 | `wait_ms` semantics misleading | Medium | Document actual behavior | **Only if owner requires** | **Documented + test** |
+| F7 | `not_finalized` rare via MCP | Low | Document for completeness | No | **Done** |
+| F8 | FastMCP stderr banner | Low | Ignore / note in docs | No | **Done** |
+| F9 | `plugin` vs `plugin_id` param names | Low | Playbook alias note | No | **Done** |
 
 **Remediation precedence (binding for C2):**
 
@@ -214,13 +214,14 @@ Admission refusals correctly omit `run_id`. Messages are short and machine-reada
 
 ## Recommendation
 
-### Primary path
+### Primary path (shipped)
 
 **Documentation-led agent onboarding** with validated stdio config:
 
-1. Publish `docs/agent-console-mcp.md` (C2) as the single agent SSOT.
-2. Add `.cursor/mcp.json` (or `docs/mcp/cursor.json`) with the snippet above.
-3. Add README paragraph linking the playbook and `pip install -e .` + plugin bootstrap.
+1. ~~Publish~~ **`docs/agent-console-mcp.md`** — agent SSOT ✓
+2. ~~Add~~ **`.cursor/mcp.json`** — host wiring template ✓
+3. ~~Add~~ **README** paragraph + plugin bootstrap ✓
+4. **`tests/test_mcp_stdio_smoke.py`** + **`scripts/smoke_agent_mcp.py`** — verification ✓
 
 Kernel behavior is **sufficient for v0.1 console retrieval** given honest documentation. The nine tools do not need changing.
 
@@ -229,7 +230,7 @@ Kernel behavior is **sufficient for v0.1 console retrieval** given honest docume
 | Alternate | When |
 |-----------|------|
 | Cursor skill summarizing retrieval tree | Team uses skills heavily |
-| CLI-only operators | Continue `trestle query` / `trestle fetch` / `trestle doctor` — out of agent path |
+| CLI-only operators | `trestle doctor` / `pin` / `recover` on CLI; **`query` / `fetch` via MCP** — out of agent path for humans who prefer terminal ops |
 | Non-blocking `run` (freeze unit) | Host tool timeouts or true parallel runs become blocking adoption |
 
 ### Out of scope (explicit)
@@ -288,13 +289,17 @@ The playbook should implement this outline verbatim in structure:
 
 Copy from `hld-interface-architecture-trestle.md` § Mis-invocation playbook (paths, live tail, plugin-as-tool, idempotency).
 
-### §5 — Smoke commands (CLI mirror)
+### §5 — Smoke verification
 
 ```bash
-trestle query recent_runs
-trestle query run_tail --run-id <handle>   # after finalize
-trestle fetch <handle>/result --window '{"kind":"jsonpath","expr":"$"}'
+pip install -e ".[dev]"
+pytest -q tests/test_mcp_stdio_smoke.py
+python scripts/smoke_agent_mcp.py
 ```
+
+Manual MCP: `trestle serve` → `list_plugins` → `run(echo)` → `fetch({run_id}/result, jsonpath $.message)`.
+
+**Note:** v0.1 CLI has no `query` / `fetch` subcommands — retrieval is MCP-only. Future CLI may add them (freeze allows richer CLI).
 
 ### §6 — Operator vs agent
 

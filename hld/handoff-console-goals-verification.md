@@ -1,6 +1,6 @@
 # Agent Handoff — Trestle Console port worthiness verification
 
-> **OBSOLETE (2026-08-25).** Porch/web track cancelled. See [`plan-daytona-clean-room-scope.md`](plan-daytona-clean-room-scope.md) §0 for active scope.
+> **OBSOLETE (2026-08-25).** Porch/web track cancelled. Phase C complete — see [`plan-daytona-clean-room-scope.md`](plan-daytona-clean-room-scope.md) §0.5.
 
 ## 1. Identity & Framing
 
