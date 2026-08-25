@@ -1,7 +1,7 @@
 # Spec — Trestle Console (Porch HTTP service)
 
 > **CANCELLED (2026-08-25).** Porch is OUT. Do not implement `console/porch/`, `/porch/v1`, or `console/web/`.  
-> **SSOT for active work:** [`plan-daytona-clean-room-scope.md`](plan-daytona-clean-room-scope.md) §0 — agent MCP console docs only.  
+> **Phase C complete:** agent MCP playbook shipped — [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md). See [`plan-daytona-clean-room-scope.md`](plan-daytona-clean-room-scope.md) §0.5.  
 > **Future human path:** sessions/telemetry inspection (name TBD) — not porch.
 
 Status: **superseded** — historical reference only.

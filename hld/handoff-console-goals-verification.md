@@ -1,6 +1,7 @@
 # Agent Handoff — Trestle Console port worthiness verification
 
-> **OBSOLETE (2026-08-25).** Porch/web track cancelled. Phase C complete — see [`plan-daytona-clean-room-scope.md`](plan-daytona-clean-room-scope.md) §0.5.
+> **OBSOLETE (2026-08-25).** Porch/web track cancelled. Phase C complete — see [`plan-daytona-clean-room-scope.md`](plan-daytona-clean-room-scope.md) §0.5.  
+> **Post-C status (2026-08-25):** worthiness artifact at [`console-port-worthiness-verification.md`](console-port-worthiness-verification.md); agent playbook at [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md); **104** pytest tests pass.
 
 ## 1. Identity & Framing
 
@@ -65,12 +66,12 @@ Cite `helper-goal-cascade`. Refresh from named SSOTs, not this chat.
 
 **Where the numbers stand**
 
-| Gate | Status |
+| Gate | Status (historical → current) |
 |------|--------|
-| Kernel pytest | 102/102 (local) |
-| Console code | **0** |
-| Worthiness verification artifact | **Not written — your deliverable** |
-| Phase C implement | **Gated on verification** |
+| Kernel pytest | ~~102/102~~ → **104/104** (incl. MCP stdio smoke) |
+| Console code | **0** (Porch cancelled) |
+| Worthiness verification artifact | **Done** — [`console-port-worthiness-verification.md`](console-port-worthiness-verification.md) |
+| Phase C agent MCP docs | **Done** — [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md) |
 
 ## 3. Open Threads
 

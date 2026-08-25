@@ -37,6 +37,6 @@ trestle recover
 ## Verify
 
 ```bash
-pytest -q
+pytest -q                    # 104 tests
 python scripts/smoke_agent_mcp.py
 ```

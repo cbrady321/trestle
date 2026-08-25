@@ -428,3 +428,30 @@ Former Porch implementer decisions (spawn vs attach, MCP transport) **do not app
 ## 10. Background — Daytona reference study (archived)
 
 Sections **1–5** record the public-doc study that concluded **§ Study conclusion**. **Do not re-open** vendor comparison. If a feature is not in **§0 Phase C**, it is out of scope.
+
+---
+
+## 11. Closure & next
+
+**Phase C is complete** (§0.5 done-when all `[x]`). Verify locally:
+
+```bash
+pip install -e ".[dev]"
+pytest -q                    # 104 passed
+python scripts/smoke_agent_mcp.py
+```
+
+### Do not reopen without owner sign-off
+
+| Item | Why blocked |
+|------|-------------|
+| Porch / `console/` / web UI | Owner cancelled 2026-08-25 |
+| Ninth MCP tool / live tail | Freeze + R-QB-28 |
+| Non-blocking `run` (F5/F6) | Freeze amendment — assessment Session C; playbook §3; `tests/test_mcp_stdio_smoke.py` |
+
+### Next program step (not started)
+
+**Phase D — sessions/telemetry UI** for human operators. Requires new requirements + spec. **No porch naming.** Retrieval-first like agents, not a log dashboard.
+
+**Agent SSOT:** [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md)  
+**Assessment:** [`hld/agent-mcp-usability-assessment.md`](agent-mcp-usability-assessment.md)
