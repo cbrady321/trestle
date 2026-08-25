@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -19,6 +20,14 @@ class ControlSurface:
     project: Project
     conductor: Conductor
     scheduler: Scheduler
+
+    def _drive_background(self, order: WorkOrder) -> None:
+        thread = threading.Thread(
+            target=self.conductor.drive,
+            args=(order,),
+            daemon=True,
+        )
+        thread.start()
 
     def run(
         self,
@@ -60,7 +69,7 @@ class ControlSurface:
             snapshot_id=snap.snapshot_id if snap else "",
             spec_hash=spec_hash,
         )
-        self.conductor.drive(order)
+        self._drive_background(order)
 
         if wait_ms == 0:
             view = self.project.status(result.run_id)

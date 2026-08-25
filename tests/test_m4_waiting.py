@@ -80,6 +80,18 @@ def test_run_wait_ms_slow_plugin_long_stdio_wait(waiting_kernel) -> None:
     assert elapsed_ms < 5000
 
 
+def test_run_wait_ms_timeout_returns_running_frame_via_run(waiting_kernel) -> None:
+    view = waiting_kernel.control.run(
+        plugin="slow",
+        args={"seconds": 30.0},
+        wait_ms=200,
+    )
+    assert isinstance(view, RunView)
+    assert view.state == "running"
+    assert view.summary is None
+    assert view.next is None
+
+
 def test_run_wait_ms_timeout_returns_running_frame(waiting_kernel) -> None:
     slow_id = _start_run(waiting_kernel, "slow", {"seconds": 30.0})
     time.sleep(0.2)

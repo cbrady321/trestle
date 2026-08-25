@@ -1,0 +1,8 @@
+initiative: trestle-console-access
+project_dir: projects/trestle-console-phase-e
+stage: in_progress
+unit: trestle-console-phase-e
+milestone: Phase E
+notes: >-
+  Phase E1 F5/F6 non-blocking ControlSurface.run shipped; requirements v0.8 +
+  HLD amendment; plan §11 Phase E; playbook §3 updated. Phase E2 push+CI pending.

@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| Status | Draft v0.7 |
-| Date | 2026-08-20 |
-| Supersedes | v0.6, v0.5, v0.4, v0.3, v0.2, v0.1 |
+| Status | Draft v0.8 |
+| Date | 2026-08-25 |
+| Supersedes | v0.7, v0.6, v0.5, v0.4, v0.3, v0.2, v0.1 |
 | Scope | system |
 | Mode | amend |
 | Node | trestle |
@@ -200,7 +200,9 @@ Task creation, when implemented, is **server-directed** after the client adverti
 - **R-SCOPE-5** Protocol claims **MUST** be validated against the pinned FastMCP release (R-VER-9). **Partial:** stdio and in-process calls work on FastMCP 3.4.7; `ListToolsResult` has `nextCursor` and **no `ttlMs`**; FastMCP Tasks extra is Docket-backed and out of bounds.
 - **R-SCOPE-6** Numeric figures are operational defaults unless marked as semantic invariants.
 
-Trestle's v0.1 transport is **stdio** (R-FMC-1). Notifications are an **optimization**, never a correctness mechanism (R-REG-2).
+Trestle's v0.1 **agent** transport is **stdio MCP** (R-FMC-1). Notifications are an **optimization**, never a correctness mechanism (R-REG-2).
+
+**Transport amendment (2026-08-25):** stdio MCP **MUST** remain the agent transport for v0.1 — Cursor `.cursor/mcp.json` wiring and Phase C deliverables depend on it. A **separate** optional HTTP operator API for human inspection (R-OPS-10) does **not** amend R-FMC-1. Optional streamable HTTP MCP alongside stdio (same nine tools, same admission) **MAY** be added only by a later named amendment after operator API scope is settled — never as a replacement for stdio without amending R-FMC-1/4 explicitly.
 
 ### 2.7 TTY-class local work (optional overlay)
 
@@ -649,6 +651,7 @@ Tools: `list_plugins`, `describe_plugin`, `run`, `await_runs`, `cancel`, `query`
 ## 14. Waiting
 
 - **R-WAIT-1–8** `wait_ms` default 2000; else `{run_id, state:running}`; `await_runs` modes all/any/first_failure; progress interval 15 s subject to client; timeout returns partial; status frames only; joins MUST NOT occupy a worker.
+- **R-WAIT-14** `ControlSurface.run` **MUST** admit, then start `Conductor.drive` on a **background worker thread** for new runs — **MUST NOT** block the caller on full plugin duration before honoring `wait_ms`. Composition: admit → background `drive()` → `Project.status` when `wait_ms` is 0, else `Project.await_one(run_id, wait_ms)`. Idempotent replay (`existing=True`) **MUST NOT** start a second drive. Joins (`await_runs`, `await_one`) **MUST NOT** occupy a wrapper worker (R-WAIT-1).
 - **R-WAIT-9** `await_runs` is a Trestle abstraction.
 - **R-WAIT-4** **v0.1 MUST NOT implement an MCP Tasks mapper.** FastMCP `task=True` / Docket is forbidden (R-FMC-8). Wait correctness is `wait_ms` on `run` and `await_runs` on stdio `tools/call`. M0 showed FastMCP 3.4.7 stdio `tools/call` works. A Trestle-owned mapper without Docket **MAY** be added only by a later named amendment after a **named** target client is measured unable to hold a multi-minute stdio call.
 - **R-WAIT-10–12** Idempotency key + TTL 3600; match plugin+snapshot+args_hash; conflict if reused with different values; args-hash dedup opt-in.
@@ -682,6 +685,7 @@ Tools: `list_plugins`, `describe_plugin`, `run`, `await_runs`, `cancel`, `query`
 - **R-ERR-1–6** Origin classes plugin/framework/execution/storage/admission; stable `code`; message <200 chars; `retryable` only when it changes recovery; tracebacks in events only; plugin codes namespaced.
 - **R-OPS-1–4** Retention defaults 180d metadata / 7d artifacts / 24h abandoned / 10 GB cap; GC respects reachability and pins; retain referenced snapshots; sweep orphans/tmp.
 - **R-OPS-5–9** `config.toml` with working defaults; `service.log` not stdout; `doctor` includes epoch and drain; CLI includes `pin`/`unpin`/`recover`; CLI verbosity exempt from §10.
+- **R-OPS-10** Optional **HTTP operator API** for human inspection (Phase D). **MAY** expose read-only endpoints mirroring ControlSurface `query` / `fetch` admission rules — not a ninth MCP tool, not live tail, not `run` from UI unless a future spec explicitly requires it. **MUST** be a Trestle-owned HTTP app (FastAPI or Starlette), **not** FastMCP `http_app()` (R-FMC-4). **MUST NOT** replace stdio MCP as the agent transport (R-FMC-1). Same verb **MUST NOT** have different admission rules across MCP, CLI, and operator HTTP (HLD grandparent constraint).
 
 ---
 
@@ -775,7 +779,7 @@ v0.6 closed §25 and added R-AUTO. v0.5 TTY overlay remains in force.
 - **R-FMC-1** Standalone stdio in the server process only.
 - **R-FMC-2** Trestle owns execution. **FastMCP's task executor MUST NOT become Trestle's executor.** Confirmed: `fastmcp[tasks]` → pydocket; handlers use Redis/Docket.
 - **R-FMC-3** Wrappers and children MUST NOT import FastMCP.
-- **R-FMC-4** MUST NOT mount via `http_app()`.
+- **R-FMC-4** MUST NOT mount MCP via FastMCP `http_app()`. A separate Trestle-owned operator HTTP app (R-OPS-10) is **not** an `http_app()` mount and does **not** amend this rule.
 - **R-FMC-5** Child `Context` wraps, does not subclass, FastMCP's.
 - **R-FMC-6** Pin FastMCP; re-run R-VER-9 on bump. Current spike pin: **3.4.7**.
 - **R-FMC-7** Starlette ≥ 1.0.1 (CVE-2026-48710).
@@ -798,7 +802,7 @@ trestle/
 
 Answers are binding for v0.1. Reopening any item is a named amendment, not a silent design choice.
 
-1. **Do target MCP clients hold a multi-minute stdio `tools/call`?** **v0.1 assumes yes for stdio hosts.** M0 showed FastMCP 3.4.7 stdio `tools/call` works. Wait correctness is `wait_ms` / `await_runs` (G6, G1). **Do not ship a Tasks mapper in v0.1** (R-WAIT-4). A named client measured unable to hold the call may justify a later Trestle-owned mapper without Docket — never FastMCP Docket (R-FMC-8).
+1. **Do target MCP clients hold a multi-minute stdio `tools/call`?** **v0.1 stdio MCP is retained for agents** (owner 2026-08-25). M0 showed FastMCP 3.4.7 stdio `tools/call` works. Wait correctness is non-blocking `wait_ms` / `await_runs` on stdio (G6, G1, R-WAIT-14) — agents **MUST NOT** block for full plugin duration when `wait_ms` times out. **Do not ship a Tasks mapper in v0.1** (R-WAIT-4). A named client measured unable to hold any stdio call may justify streamable HTTP MCP or a Trestle-owned Tasks mapper without Docket — never FastMCP Docket (R-FMC-8).
 
 2. **Will a later FastMCP pin grow `ttlMs` on `tools/list`?** Irrelevant to correctness. **`registry_version` is the publication fact** even if `ttlMs` appears (R-REG-6). `ttlMs` is an optimization hint only.
 

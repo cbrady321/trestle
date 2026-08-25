@@ -431,13 +431,34 @@ Sections **1–5** record the public-doc study that concluded **§ Study conclus
 
 ---
 
-## 11. Closure & next
+## 11. Closure & next — Phase E (async + operator API)
 
-**Phase C is complete** (§0.5 done-when all `[x]`). Verify locally:
+**Phase C is complete** (§0.5 done-when all `[x]`). **Owner sign-off (2026-08-25):**
+
+| Decision | Choice |
+|----------|--------|
+| Agent transport | **Retain stdio MCP** — do not replace with HTTP REST for agents |
+| Human surface | **FastAPI/Starlette operator API only** (Phase D) — read-only, not MCP replacement |
+| Priority | **F5/F6 first** → push + CI → Phase D spec → optional async conductor hardening |
+
+**Freeze amendments landed:** `trestle-requirements.md` v0.8 (R-WAIT-14, R-OPS-10, transport note); HLD `ControlSurface.run` composition + operator HTTP rules.
+
+### Phase E program (ordered)
+
+| Step | Status | Deliverable |
+|------|--------|-------------|
+| **E1 F5/F6** | **In progress** | Non-blocking `ControlSurface.run`; tests; playbook §3 |
+| **E2 Push + CI** | Pending | `git push origin master`; GitHub Actions green on Phase C + E1 |
+| **E3 Async kernel** | Optional | Async conductor/project; wrapper stays sync |
+| **E4 Phase D** | Not started | Requirements + spec (sessions/telemetry, retrieval-first, **no porch naming**) |
+| **E5 Operator API** | Blocked on E4 | FastAPI read-only endpoints mirroring MCP admission |
+| **E6 Transport** | Optional | Streamable HTTP MCP alongside stdio — only if spec'd |
+
+Verify locally:
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                    # 104 passed
+pytest -q
 python scripts/smoke_agent_mcp.py
 ```
 
@@ -447,11 +468,8 @@ python scripts/smoke_agent_mcp.py
 |------|-------------|
 | Porch / `console/` / web UI | Owner cancelled 2026-08-25 |
 | Ninth MCP tool / live tail | Freeze + R-QB-28 |
-| Non-blocking `run` (F5/F6) | Freeze amendment — assessment Session C; playbook §3; `tests/test_mcp_stdio_smoke.py` |
-
-### Next program step (not started)
-
-**Phase D — sessions/telemetry UI** for human operators. Requires new requirements + spec. **No porch naming.** Retrieval-first like agents, not a log dashboard.
+| Replace stdio MCP with HTTP for agents | R-FMC-1; breaks Phase C wiring |
+| FastMCP Docket/Tasks | R-FMC-8 |
 
 **Agent SSOT:** [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md)  
 **Assessment:** [`hld/agent-mcp-usability-assessment.md`](agent-mcp-usability-assessment.md)

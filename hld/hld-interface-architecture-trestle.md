@@ -35,7 +35,7 @@ Trestle is a **Kernel** (foundation) that keeps a durable execution ledger. Fast
 
 ## References
 
-- [Requirements (Draft v0.7)](../trestle-requirements.md)
+- [Requirements (Draft v0.8)](../trestle-requirements.md)
 - [Spike decisions](../spikes/RESULTS.md)
 - Exploration seeds (provisional; this HLD is authoritative): `_tmp/exploration-interface_design-cycle-1/H1-agent-envelope-hybrid.md`; `_tmp/exploration-interface_design-cycle-2/H1-catalog-envelope-first-failure.md` (H-dir-1: CatalogView + event-time `first_failure`)
 - Complementary (cite; do not fork bodies): [TTY-class oneshot overlay HLD](hld-tty-overlay-trestle.md); [TTY-class oneshot overlay contract](interface-design-tty-class-trestle.md)
@@ -60,7 +60,7 @@ Trestle is a **Kernel** (foundation) that keeps a durable execution ledger. Fast
 
 **Constraints**
 
-- MCP `2026-07-28` via FastMCP **stdio only** (pin 3.4.7). Wrappers and children must not import FastMCP.
+- MCP `2026-07-28` via FastMCP **stdio** for agents (pin 3.4.7). Wrappers and children must not import FastMCP. Optional Trestle-owned operator HTTP (read-only) is separate from MCP transport (R-OPS-10).
 - Ledger `ndjson` is recovery authority; `meta.json` is not.
 - Fetch never accepts filesystem paths.
 
@@ -69,7 +69,7 @@ Trestle is a **Kernel** (foundation) that keeps a durable execution ledger. Fast
 1. **The product is the Kernel, not FastMCP.** Colocating Kernel and adapter in one OS process is packaging (R-FMC-1). FastMCP must not hold `Run`, cache live execution, or become the executor (R-FMC-2, R-FMC-8).
 2. **Three Kernel ports, two adapter-facing.** ControlSurface (CLI + MCP) composes Admit and Project. Door calls Admit only. Execute’s only consumer is Conductor. If CLI or MCP calls Execute, the topology has already failed.
 3. **Public type families plus envelope sums.** `Handle`, `RequestOutcome`, `RunView`, `BoundedView`, `CatalogView`, `FetchSlice`; `AdmitResult` is a tagged union at the admit boundary. Bytes, paths, ledger records, and plugin objects are not public types. `BoundedView` is query pagination only; `CatalogView` is registry publication — they are not subtypes of each other.
-4. **`wait_ms` is ControlSurface policy that composes Project.** `ControlSurface.run` owns `wait_ms` (default 2000 per R-WAIT-1); `AdmitRequest` has no `wait_ms`. Composition: Admit then `Project.await_one`. Not FastMCP Tasks.
+4. **`wait_ms` is ControlSurface policy that composes Project.** `ControlSurface.run` owns `wait_ms` (default 2000 per R-WAIT-1); `AdmitRequest` has no `wait_ms`. Composition: Admit → background `Conductor.drive` for new runs → `Project.status` or `Project.await_one`. **MUST NOT** block on full plugin duration before honoring `wait_ms` (R-WAIT-14). Not FastMCP Tasks.
 5. **Catalog is a Project view**, not a fourth Kernel port. Registry publication is Kernel-private; `registry_version` is the freshness fact (FastMCP 3.4.7 has no `ttlMs`). `list_plugins` returns **`CatalogView`**, not `BoundedView`. MCP `tools/list.registry_version` **mirrors** `CatalogView.registry_version` on the same publication — drift is a **conformance failure**, not a second freshness channel.
 6. **CLI may be richer than MCP.** `query --sql`, `doctor`, `recover`, verbosity live on OperatorContract only. Same verb, different admission rules across transports is forbidden.
 7. **Freeze the agent aperture first.** ProjectionContract is Handle + RunView (DefaultAgentSuccess) + BoundedView + CatalogView + FetchSlice + fetch windows. Internals may churn behind it.
@@ -575,10 +575,11 @@ Three widths, one Kernel.
 | **ProjectionContract** | Handle, RunView (DefaultAgentSuccess), BoundedView, CatalogView, FetchSlice, fetch windows, `status_frame_version`, per-ViewName row shapes, PluginCatalogRow | **Yes** — agent floodgate |
 | **ControlSurface** | `run`, `await_runs`, `cancel`, `query(view, params)`, `fetch`, `pin`/`unpin`, catalog | Both transports honor; MCP may lag |
 | **OperatorContract** | ControlSurface **plus** CLI-only: `query --sql`, `doctor`, `recover`, verbosity | CLI may churn; `--sql` never on ControlSurface |
+| **Operator HTTP** (optional, R-OPS-10) | Read-only `query` / `fetch` mirroring ControlSurface admission | Trestle-owned FastAPI/Starlette; not FastMCP `http_app()`; not agent transport |
 
 `adapter_coverage`: explicit map MCP tool name → ControlSurface member. Missing row = authorized lag. Same verb, different admission = forbidden drift.
 
-#### `ControlSurface.run` composition (R-WAIT-1)
+#### `ControlSurface.run` composition (R-WAIT-1, R-WAIT-14)
 
 `wait_ms` lives **only** on `ControlSurface.run` (default 2000). Not on `AdmitRequest`. Not FastMCP Tasks.
 
@@ -586,9 +587,13 @@ Three widths, one Kernel.
 run(req, wait_ms=2000):
   result = Admit.admit(AdmitRequest without wait_ms)  → AdmitResult  # Kernel-internal tagged union
   if result.tag == "refused": return result.outcome     # admission.*; no run_id
+  if not result.existing:
+    start background thread: Conductor.drive(WorkOrder)   # MUST NOT block caller on full duration
   if wait_ms is None or wait_ms == 0: return Project.status(result.run_id)
   return Project.await_one(result.run_id, wait_ms)      # running frame on timeout
 ```
+
+**Concurrency:** `drive()` runs on a daemon background thread per new admit. Joins (`await_one`, `await_many`) poll ledger status — they **MUST NOT** occupy a wrapper worker. The server process may use threads for drive dispatch; wrapper remains single-threaded poll/select with no asyncio (R-EXEC-3).
 
 Returns: `RequestOutcome` (refused at admit) **or** `RunView` obeying DefaultAgentSuccess (status, optional wait, or running frame on timeout). Same grammar as `await_runs`.
 

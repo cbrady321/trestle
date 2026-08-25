@@ -87,8 +87,8 @@ def test_stdio_serve_golden_path(smoke_home: Path) -> None:
     asyncio.run(exercise())
 
 
-def test_stdio_run_blocks_until_terminal_despite_short_wait_ms(smoke_home: Path) -> None:
-    """Document F5/F6: MCP run blocks for full plugin duration (playbook §3)."""
+def test_stdio_run_returns_running_on_short_wait_ms(smoke_home: Path) -> None:
+    """F5/F6: MCP run honors wait_ms — short deadline returns running frame."""
 
     async def exercise() -> None:
         env = os.environ.copy()
@@ -110,8 +110,15 @@ def test_stdio_run_blocks_until_terminal_despite_short_wait_ms(smoke_home: Path)
             ).data
             elapsed_ms = (time.monotonic() - start) * 1000
 
-            assert run["state"] == "succeeded"
-            assert elapsed_ms >= 900
-            assert elapsed_ms < 5000
+            assert run["state"] == "running"
+            assert elapsed_ms < 500
+
+            joined = (
+                await client.call_tool(
+                    "await_runs",
+                    {"run_ids": [run["run_id"]], "mode": "all", "timeout_ms": 10_000},
+                )
+            ).data
+            assert joined[0]["state"] == "succeeded"
 
     asyncio.run(exercise())

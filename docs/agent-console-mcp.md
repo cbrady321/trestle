@@ -110,12 +110,15 @@ Do **not** call a plugin name as an MCP tool. Always `run(plugin="…")`.
 
 ## 3. Wait, blocking, and honesty
 
-### `run` blocks until the plugin finishes (v0.1)
+### `run` honors `wait_ms` (R-WAIT-1, R-WAIT-14)
 
-`ControlSurface.run` drives the wrapper child synchronously. The MCP `run` call **does not return** until the run reaches a terminal state, regardless of `wait_ms`. Plan for host tool timeouts on long jobs.
+`ControlSurface.run` admits, starts `Conductor.drive` on a **background thread**, then waits up to `wait_ms` via `Project.await_one`.
 
-- `wait_ms` on `run` does **not** mean “admit and return immediately.”
-- `await_runs` is for joining `run_id` values admitted in **another** session or after a future non-blocking admit — not a substitute for starting work.
+- `wait_ms=0` → immediate status frame (may be `queued` or `running`).
+- `wait_ms>0` on a slow plugin → returns a **`running` frame** when the deadline elapses; join with `await_runs`.
+- Terminal within `wait_ms` → terminal `RunView` in one call (same as before).
+
+Long jobs: use a short `wait_ms` to get `run_id` quickly, then `await_runs` with a longer `timeout_ms` — or set a large `wait_ms` if the host allows a long stdio `tools/call`.
 
 ### Evidence finalization (R-QB-28)
 
