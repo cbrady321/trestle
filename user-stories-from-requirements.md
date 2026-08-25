@@ -513,7 +513,7 @@ M0.6 is already accepted at requirements level: huge `result.json` must still yi
 - Actor: coding agent
 - Situation: a job that is TTY-class (not merely “a terminal run state”)
 - Motivation: G9 / R-REACH-1 — reach TTY-class local work without making it required core
-- Progress: either a published TTY-class capability completes a named oneshot through the existing nine tools, or unavailability is agent-visible with leave-Trestle guidance
+- Progress: either a published TTY-class capability completes a named oneshot through the existing ten tools, or unavailability is agent-visible with leave-Trestle guidance
 
 **Acceptance criteria**
 - [ ] The system either (a) lets the agent complete TTY-class oneshot local work through existing run / wait / query / fetch, same identity and evidence class as any other run, or (b) when the optional capability is not installed, presents a named, agent-visible exclusion that TTY-class work is unavailable and the agent must leave Trestle. Silence satisfies neither (R-REACH-1, R-TTY-5).

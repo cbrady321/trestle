@@ -1,6 +1,7 @@
 # Trestle — Agent Plugin Interface contract
 
 Scope: agent plugin lifecycle (APL-01–APL-08)  
+Status: **Complete** @ `2375e3e` (2026-08-25) — all stories shipped; on `origin/master`.  
 Node: trestle  
 Mode: complement  
 Authority: this file is the consumer contract for **how agents discover, supply, and invoke plugins**. [Interfaces Architecture](hld-interface-architecture-trestle.md) remains freeze for Kernel ports and envelope families. **Amendment `agent-plugin-publish`:** adds one fixed MCP tool `publish_plugin` (R-MCP-1 still holds — count does not grow with plugin count).
@@ -286,7 +287,7 @@ write plugins/foo.py
 
 ### Non-goals
 
-- MCP upload of source bytes.
+- Arbitrary binary upload outside `publish_plugin` `source` string (no separate upload tool).
 - Multi-file package as one plugin identity (v0.1).
 - Writable `evidence/` paths (R-STORE-3).
 

@@ -223,7 +223,7 @@ Admission refusals correctly omit `run_id`. Messages are short and machine-reada
 3. ~~Add~~ **README** paragraph + plugin bootstrap ✓
 4. **`tests/test_mcp_stdio_smoke.py`** + **`scripts/smoke_agent_mcp.py`** — verification ✓
 
-Kernel behavior is **sufficient for v0.1 console retrieval** given honest documentation. The nine tools do not need changing.
+Kernel behavior is **sufficient for v0.1 console retrieval** given honest documentation. The ten-tool porch does not need changing.
 
 ### Alternates (not primary)
 
@@ -235,11 +235,11 @@ Kernel behavior is **sufficient for v0.1 console retrieval** given honest docume
 
 ### Out of scope (explicit)
 
-- Tenth MCP tool or HTTP BFF / Porch adapter
+- Eleventh+ MCP tool, per-plugin tool growth, or HTTP BFF / Porch adapter for agents
 - `console/` web tree or human dashboard
 - Live `run_tail` on running runs (R-QB-28)
 - Per-plugin MCP tools or inlined schemas on `tools/list`
-- Changing nine tool names or admission rules
+- Changing ten-tool porch names or admission rules
 - Sandbox / remote execution patterns
 - Kernel changes for Phase C unless F5/F6 are escalated by owner
 
@@ -255,7 +255,7 @@ The playbook should implement this outline verbatim in structure:
 - `TRESTLE_HOME` default `~/.trestle`
 - Create `~/.trestle/plugins/`; add or copy a plugin file
 - Cursor / Claude Desktop JSON (from this assessment)
-- Verify: `trestle doctor`; host shows nine tools
+- Verify: `trestle init` or `trestle doctor`; host shows ten tools
 
 ### §1 — Golden workflow (≤5 turns)
 

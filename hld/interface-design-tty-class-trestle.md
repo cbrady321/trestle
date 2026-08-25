@@ -15,7 +15,7 @@ Upstream calls this document must serve. Plain language; no requirement IDs.
 
 ### What must be true upstream
 
-- An agent either completes terminal-sensitive oneshot work through the existing nine tools, or learns from the catalog and door that it must leave Trestle — never a silent hole.
+- An agent either completes terminal-sensitive oneshot work through the existing ten tools, or learns from the catalog and door that it must leave Trestle — never a silent hole.
 - Three mouths stay separate: catalog publishes class, admission decides readiness, Context files managed bytes; pulse is not publication and filing is not unreadiness.
 - Helpers stay inside the disposable child — not a port, not an MCP tool, not new agent grammar.
 
@@ -27,7 +27,7 @@ Upstream calls this document must serve. Plain language; no requirement IDs.
 
 ## Summary
 
-An MCP or CLI agent either completes TTY-class oneshot local work through the existing nine tools, or it can see from the public catalog and door that it must leave Trestle — never a silent hole, and never a new climate of tools, ports, or session ids. Publication lives on the catalog; pulse lives at admission; bytes live on Context. Freeze HLD amendment `tty-overlay-kinds` types `PluginCatalogRow.capability_class` and `RunView.limits_exceeded`. Amendment `tty-class-overlay` owns the TTY-class MUST-write rules for those members, plus one admission unreadiness code. Plugin authors keep the frozen Context members; they file console as ordinary evidence. Filing invariants keep helpers inside the child.
+An MCP or CLI agent either completes TTY-class oneshot local work through the existing ten tools, or it can see from the public catalog and door that it must leave Trestle — never a silent hole, and never a new climate of tools, ports, or session ids. Publication lives on the catalog; pulse lives at admission; bytes live on Context. Freeze HLD amendment `tty-overlay-kinds` types `PluginCatalogRow.capability_class` and `RunView.limits_exceeded`. Amendment `tty-class-overlay` owns the TTY-class MUST-write rules for those members, plus one admission unreadiness code. Plugin authors keep the frozen Context members; they file console as ordinary evidence. Filing invariants keep helpers inside the child.
 
 ---
 
@@ -234,7 +234,7 @@ Abstractions that cross the seam: freeze-typed `PluginCatalogRow.capability_clas
 
 | Predicted change | Lands where | Stays stable for consumers |
 |------------------|-------------|----------------------------|
-| Swap helper (same or new drain) | Child collaborator; maybe same class row | Class token, nine tools, ViewNames, Handle prefixes, Context members |
+| Swap helper (same or new drain) | Child collaborator; maybe same class row | Class token, ten tools, ViewNames, Handle prefixes, Context members |
 | Delete helper / plugin file | Default catalog loses the `tty-oneshot` row; `registry_version` ticks | Absence is observable; M1–M7 still complete; no new agent grammar |
 | Second TTY plugin | Second row, same `tty-oneshot` token, same sinks | No new Context member; unreadiness remains **the same one** code, not a code per helper |
 | Helper dies between list and run | `admission.tty_not_ready`, no `run_id` | Catalog may still show the class row (publication lag); Door is truth for this request |
@@ -242,7 +242,7 @@ Abstractions that cross the seam: freeze-typed `PluginCatalogRow.capability_clas
 | Ordinary command, no TTY | `ctx.run_cmd` | TTY plugin unpublished or unused; TTY-class is not the default route |
 | Interactive stdin / resize / live tail | Out of bounds until a named requirements amendment | Oneshot MUST NOT smuggle Control onto Project or Context |
 
-**Stable seam:** nine tools; nine query ViewRows; `valid` as source validation; Context protocol; DefaultAgentSuccess; named views; fetch windows.
+**Stable seam:** ten tools; nine query ViewRows; `valid` as source validation; Context protocol; DefaultAgentSuccess; named views; fetch windows.
 
 ---
 
@@ -271,7 +271,7 @@ Each claim traces to the contract above. Scenarios prove semantics, not helper i
 
 **Trajectory.** Agent walks `list_plugins` (`next_cursor` until `truncated` is false) and reads a valid row with `capability_class == "tty-oneshot"` (the field is present on every row; other rows may be `null`). Agent calls `run` with that plugin name, version, args, and optional idempotency key — the same nine-tool family as any other work. Admit is ready → Handle minted → oneshot completes → terminal `RunView` after durable `evidence_finalized`, DefaultAgentSuccess, same named views and fetch windows. Agent retrieves TTY console by `fetch` of attached `art_…`, not `query(run_tail)` and not wrapper pipes. Agent reads **`limits_exceeded`** on that frame (R-LIM-5): a list is required; empty list means Kernel checked zero gaps **after** the `tty_console` check ran; non-empty means counted gaps (`tty_console` merged with wrapper `stdout`/`stderr`) and ledger `completeness` **partial**. Author staged console with `artifact`, promoted with `attach`, honored `cancelled`/`deadline`, returned a small mapping. Drain wrote any `tty_console` R-LIM-3 markers into child-owned `work/` files Execute already watches; Context implementation promoted them (stub MUST be able to record). No new tool. No vendor session id on the wire. Helper buffer never presented as terminus.
 
-**Success.** Observer can point to a published TTY-class capability that completed through the existing nine tools, or (below) to typed exclusion.
+**Success.** Observer can point to a published TTY-class capability that completed through the existing ten tools, or (below) to typed exclusion.
 
 ### Likely misuse or failure
 
@@ -313,13 +313,13 @@ A plausible helper uses a lossy in-process buffer (wrap, truncated reads, encodi
 - **Adaptability.** Predicted variation (which helper, whether any helper, second TTY plugin) is added as rows and child collaborators. Callers are not edited. OCP at PluginSurface and at the single new admission code.
 - **Freedom.** Agents are not trapped into probing `run` to learn class absence, not trapped into treating one `CatalogView` page as the publication, not trapped into a vendor session grammar, not trapped into `invalid=True` as capability health, not trapped into treating omitted `capability_class` as no claim, not trapped into `query(run_tail)` as TTY terminus. Authors depend on Context, not a named helper. Pipe-only agents ignore the class **value** (`null`).
 - **Encapsulation.** Billboard reveals class, not how a terminal is provided. Door reveals unreadiness as a semantic refusal, not a boolean health flag. Session ids never leave the child. Helper buffers never become porch types. Gap counts leave the child only as Kernel `limits_exceeded` (R-LIM-3 `tty_console` in `work/` files Execute already watches; Context implementation promotes), never as author events or a new Context member. Ledger `completeness` partial is Kernel ledger, not a new agent porch.
-- **SRP / ISP / DIP / tightness.** Three mouths, three experts. `capability_class` always present; `null` = no claim. Consumers depend on envelope abstractions. Verification of the overlay is: class token present or `null` on every default-catalog row of the completed walk; unreadiness is that one code with no `run_id`; TTY terminus is attached `art_…` fetch; TTY gaps are `RunView.limits_exceeded` as a list after `tty_console` check (`None` = not checked; Kernel merges wrapper streams + `tty_console`; non-empty ⇒ ledger `completeness` partial); Context public member set unchanged; nine tools unchanged. Cost tracks those kinds, not helper size.
+- **SRP / ISP / DIP / tightness.** Three mouths, three experts. `capability_class` always present; `null` = no claim. Consumers depend on envelope abstractions. Verification of the overlay is: class token present or `null` on every default-catalog row of the completed walk; unreadiness is that one code with no `run_id`; TTY terminus is attached `art_…` fetch; TTY gaps are `RunView.limits_exceeded` as a list after `tty_console` check (`None` = not checked; Kernel merges wrapper streams + `tty_console`; non-empty ⇒ ledger `completeness` partial); Context public member set unchanged; ten tools unchanged. Cost tracks those kinds, not helper size.
 
 ---
 
 ## Grounding (traceability)
 
-G9, R-REACH-1, R-TTY-1 through R-TTY-9, R-INV-1, R-MCP-1, R-MCP-2, R-REG-5, R-CTX-2, R-FET-8, R-LIM-3, R-LIM-5, R-STORE-6, R-STORE-14, R-QB-27. Freeze: CatalogView / PluginCatalogRow, nine tools, Dual-error after admit, PluginSurface, Control port deferred. Amendment `tty-overlay-kinds` types `PluginCatalogRow.capability_class` and `RunView.limits_exceeded`; amendment `tty-class-overlay` owns TTY-class MUST-write and **one** `admission.tty_not_ready`. Requirements §25 question 10 (unreadiness channel) is closed in v0.6 as `admission.tty_not_ready`; class channel is freeze-typed `PluginCatalogRow.capability_class` always present (`null` = no claim) over the completed default-catalog walk; TTY terminus is attached `art_…` fetch (not `query(run_tail)`); gap/completeness channel is freeze-typed `RunView.limits_exceeded` (`None`/omit = not checked; empty list = checked zero **after** `tty_console` check; Kernel merges wrapper `stdout`/`stderr` + `tty_console`; non-empty TTY gaps ⇒ ledger `completeness` partial; agent porch stays `limits_exceeded`).
+G9, R-REACH-1, R-TTY-1 through R-TTY-9, R-INV-1, R-MCP-1, R-MCP-2, R-REG-5, R-CTX-2, R-FET-8, R-LIM-3, R-LIM-5, R-STORE-6, R-STORE-14, R-QB-27. Freeze: CatalogView / PluginCatalogRow, ten tools, Dual-error after admit, PluginSurface, Control port deferred. Amendment `tty-overlay-kinds` types `PluginCatalogRow.capability_class` and `RunView.limits_exceeded`; amendment `tty-class-overlay` owns TTY-class MUST-write and **one** `admission.tty_not_ready`. Requirements §25 question 10 (unreadiness channel) is closed in v0.6 as `admission.tty_not_ready`; class channel is freeze-typed `PluginCatalogRow.capability_class` always present (`null` = no claim) over the completed default-catalog walk; TTY terminus is attached `art_…` fetch (not `query(run_tail)`); gap/completeness channel is freeze-typed `RunView.limits_exceeded` (`None`/omit = not checked; empty list = checked zero **after** `tty_console` check; Kernel merges wrapper `stdout`/`stderr` + `tty_console`; non-empty TTY gaps ⇒ ledger `completeness` partial; agent porch stays `limits_exceeded`).
 
 Helpers named in adoption memos are means. This overlay’s MUST identity is TTY-oneshot class advertisement, Door unreadiness, Context filing, and Kernel `limits_exceeded` — substitutable behind those seams.
 

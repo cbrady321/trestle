@@ -1,13 +1,14 @@
 # What the plan is — Trestle
 
-**Status:** reader-facing synthesis (2026-08-20).  
+**Status:** reader-facing synthesis (2026-08-25).  
 **Authority:** requirements and frozen interface docs — not a replacement for them.
 
 | Document | Role |
 |----------|------|
 | [`trestle-requirements.md`](../trestle-requirements.md) | What must be true |
-| [`hld-interface-architecture-trestle.md`](hld-interface-architecture-trestle.md) | Freeze HLD: three ports, nine tools, envelopes |
+| [`hld-interface-architecture-trestle.md`](hld-interface-architecture-trestle.md) | Freeze HLD: three ports, ten tools, envelopes |
 | [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md) | Agent MCP playbook (Phase C — attach, retrieval, smoke) |
+| [`hld/interface-design-agent-plugin-interface.md`](interface-design-agent-plugin-interface.md) | Agent plugin lifecycle contract (APL-01–08) |
 | [`hld/plan-daytona-clean-room-scope.md`](plan-daytona-clean-room-scope.md) | Console access scope plan (Phase C complete) |
 | [`hld-tty-overlay-trestle.md`](hld-tty-overlay-trestle.md) | TTY overlay HLD (additive only) |
 | [`interface-design-tty-class-trestle.md`](interface-design-tty-class-trestle.md) | TTY consumer contract |
@@ -16,7 +17,7 @@
 
 ## Verdict
 
-The plan is sound: one durable ledger, nine small agent tools, and optional terminal work that either uses those same tools or clearly tells the agent to go elsewhere — without bloating what the host injects every turn.
+The plan is sound: one durable ledger, ten small agent tools, and optional terminal work that either uses those same tools or clearly tells the agent to go elsewhere — without bloating what the host injects every turn.
 
 Build the core milestones first; add TTY as a plugin publication, not a platform rewrite.
 
@@ -24,11 +25,11 @@ Build the core milestones first; add TTY as a plugin publication, not a platform
 
 ## What the plan is
 
-Trestle is a **local execution ledger** (the durable record of what ran) with a **thin MCP front door** (nine fixed tools the agent sees). The **foundation** (Kernel, wrapper, child runtime) **wraps scripts**; scripts never wrap the foundation. The ledger is truth; the run directory holds evidence; workers are disposable; the agent only sees bounded projections (summaries, handles, slices — not raw filesystem paths).
+Trestle is a **local execution ledger** (the durable record of what ran) with a **thin MCP front door** (ten fixed tools the agent sees). The **foundation** (Kernel, wrapper, child runtime) **wraps scripts**; scripts never wrap the foundation. The ledger is truth; the run directory holds evidence; workers are disposable; the agent only sees bounded projections (summaries, handles, slices — not raw filesystem paths).
 
 **Build order (milestones M0–M7):** protocol and spawn model first (mostly done), then skeleton → bounding → durability → waiting → query → hot reload → ops. Optional terminal capture is **not** a gate for M1–M7 — it can ship later as a plugin row.
 
-**North star (G1):** minimize tokens and turns per completed task. That drives the thin `tools/list` rule: plugin argument schemas stay off the porch; validation happens when you `run`, not in every tool definition. Script authors see PluginSurface only — not those nine tools from inside the plugin file.
+**North star (G1):** minimize tokens and turns per completed task. That drives the thin `tools/list` rule: plugin argument schemas stay off the porch; validation happens when you `run`, not in every tool definition. Script authors see PluginSurface only — not those ten porch tools from inside the plugin file.
 
 ---
 
@@ -39,8 +40,9 @@ Three layers, one authority:
 | Layer | Role |
 |-------|------|
 | **Requirements v0.7** | What must be true (including script/foundation seam, optional TTY-class oneshot, automatic child runtime) |
-| **Freeze HLD** (`hld-interface-architecture-trestle.md`) | The Kernel agreement: three ports, nine tools, envelopes |
-| **TTY overlay** (HLD + consumer contract) | Additive rules only — no fourth port, no tenth tool |
+| **Freeze HLD** (`hld-interface-architecture-trestle.md`) | The Kernel agreement: three ports, ten tools, envelopes |
+| **Agent plugin interface** (`interface-design-agent-plugin-interface.md`) | Discovery, supply (`publish_plugin`), multi-path config — fixed porch count |
+| **TTY overlay** (HLD + consumer contract) | Additive rules only — no fourth port; TTY does not add an eleventh tool |
 
 ### Three Kernel ports
 
@@ -52,13 +54,13 @@ The only ways the core talks outward:
 
 ### Agent surface
 
-Nine tools: `run`, `await_runs`, `cancel`, `query`, `fetch`, `pin`, `unpin`, `list_plugins`, `describe_plugin`. Not one tool per plugin.
+Ten tools: `run`, `await_runs`, `cancel`, `query`, `fetch`, `pin`, `unpin`, `list_plugins`, `describe_plugin`, `publish_plugin`. Not one tool per plugin.
 
 ### Key envelopes
 
 Opaque handles (`r_…`, `art_…`), refusals (`RequestOutcome`), run status (`RunView` with a small default success shape), paginated query (`BoundedView`), plugin list (`CatalogView`), byte slices (`FetchSlice`).
 
-### TTY overlay (same nine tools)
+### TTY overlay (same ten tools)
 
 Four ideas on top — still no new port or tool:
 
@@ -79,7 +81,7 @@ Four ideas on top — still no new port or tool:
 
 - **Clear product identity.** Ledger-first, MCP-second. FastMCP is an adapter, not the executor.
 - **Request vs run is explicit.** “Refused” never looks like a failed run — critical for agents.
-- **Context-budget discipline.** Nine stable tools, no schema inflation, bounded default payloads — aligned with G1/G4.
+- **Context-budget discipline.** Ten stable tools, no schema inflation, bounded default payloads — aligned with G1/G4.
 - **Plugin model is automatic for authors.** One Python file on the script side of the foundation; child cwd is `work/`; write keepers under `outputs/` and they attach themselves; prints, logs, and in-group subprocesses are captured without extra APIs. Scripts do not import Kernel or MCP.
 - **TTY extension is disciplined.** Use-not-absorb: optional class on the catalog, one unreadiness code, same handles/views/fetch. Ordinary pipe commands stay the default path.
 - **Security posture is coherent.** Untrusted bytes only cross as bounded projection (R-INV-1); fetch never takes paths.
@@ -108,8 +110,8 @@ flowchart TB
     Agent["Agent"]
   end
 
-  subgraph Porch["MCP porch — thin tools/list (9 tools, fixed size)"]
-    Tools["run · await_runs · cancel · query · fetch · pin · unpin · list_plugins · describe_plugin"]
+  subgraph Porch["MCP porch — thin tools/list (10 tools, fixed size)"]
+    Tools["run · await_runs · cancel · query · fetch · pin · unpin · list_plugins · describe_plugin · publish_plugin"]
   end
 
   subgraph Control["ControlSurface"]
@@ -212,4 +214,4 @@ Agent
 
 ## Bottom line
 
-You have a frozen core (three ports, nine thin tools, ledger truth) plus a small, optional terminal overlay that respects context limits and keeps helpers substitutable. Build the core milestones first; add TTY as a plugin publication, not a platform rewrite.
+You have a frozen core (three ports, ten thin tools, ledger truth) plus a small, optional terminal overlay that respects context limits and keeps helpers substitutable. Build the core milestones first; add TTY as a plugin publication, not a platform rewrite.

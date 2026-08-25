@@ -34,14 +34,14 @@ Upstream calls this document must serve. Plain language; no requirement IDs.
 
 ## Summary
 
-Agents either complete terminal-sensitive local work through the same nine tools they already use, or they can see from the public catalog and the door that they must leave Trestle — never a silent hole, and never a new climate of ports, tools, or vendor session ids. Publication of that optional class lives on the catalog; pulse lives at admission; console bytes file through existing Context sinks; counted gaps ride the status frame the agent already holds. Which program supplies a terminal is not a Kernel port: when the capability ships, means sit in a disposable child behind PluginSurface, the wrapper’s pump stays pipe-capture, and operators reap tagged orphans if a helper process outlives the child. Ordinary POSIX local work remains complete without that helper installed.
+Agents either complete terminal-sensitive local work through the same ten tools they already use, or they can see from the public catalog and the door that they must leave Trestle — never a silent hole, and never a new climate of ports, tools, or vendor session ids. Publication of that optional class lives on the catalog; pulse lives at admission; console bytes file through existing Context sinks; counted gaps ride the status frame the agent already holds. Which program supplies a terminal is not a Kernel port: when the capability ships, means sit in a disposable child behind PluginSurface, the wrapper’s pump stays pipe-capture, and operators reap tagged orphans if a helper process outlives the child. Ordinary POSIX local work remains complete without that helper installed.
 
 ---
 
 ## References
 
 - [Requirements (Draft v0.7)](../trestle-requirements.md) — G9, R-REACH-1, R-TTY-1–9; unreadiness channel `admission.tty_not_ready` (R-TTY-6); also R-INV-1, R-MCP-1, R-CTX-2, R-AUTO-1–7, R-BOUND-1–6, R-REG-5, R-LIM-5, Dual-error / request-versus-run
-- [Interfaces Architecture (freeze)](hld-interface-architecture-trestle.md) — three ports, ControlSurface, nine tools, Dual-error, Handle grammar, DefaultAgentSuccess, ViewRow freeze, PluginSurface members
+- [Interfaces Architecture (freeze)](hld-interface-architecture-trestle.md) — three ports, ControlSurface, ten tools, Dual-error, Handle grammar, DefaultAgentSuccess, ViewRow freeze, PluginSurface members
 - [TTY-class oneshot overlay contract](interface-design-tty-class-trestle.md) — settled consumer seam (class advertisement, one unreadiness code, Context filing, `limits_exceeded` bind)
 - Adoption memo (means, not Kernel identity): `memo-forge-adoption-trestle.md` — optional unnamed child-client helper; do not treat as a fourth port or MCP tool
 
@@ -72,7 +72,7 @@ Agents either complete terminal-sensitive local work through the same nine tools
 - Oneshot only. Interactive control and live tail stay behind named requirements entry conditions.
 - Pipes remain the default execution path (R-CTX-2). Wrapper capture of the child stays pipe-capture even when a TTY helper is present inside the child.
 - Untrusted helper bytes enter the MCP process only as bounded projection (R-INV-1). Helper session identifiers die in the child.
-- Deleting the means MUST leave nine tools, existing handle prefixes, and M1–M7 true.
+- Deleting the means MUST leave ten tools, existing handle prefixes, and M1–M7 true.
 - Kernel-private readiness at Admit MUST NOT execute, wait, or return summaries in order to learn unreadiness.
 - Freeze **thin `tools/list`**: this overlay MUST NOT enlarge MCP tool definitions (no plugin/TTY/Forge schema on `tools/list`, no inlined `run` args schema). Class lives on `CatalogView`; depth stays `describe_plugin` pull-for-one.
 
@@ -237,7 +237,7 @@ If an agent needed a new tool, a Control port, a catalog health cell, or a vendo
 |------------|-----------------------------------------------|
 | Reach or visible exclusion (R-REACH-1) | Class token on completed default-catalog walk **or** absence of that token; Door unreadiness when advertised but not ready; admitted TTY console via `fetch(art_…)`, not empty `run_tail` |
 | Optional, not M1 machinery (R-TTY-1) | Capability unpublished → M1–M7 still complete on pipe-capture; publication is a plugin row |
-| Same identity/evidence class (R-TTY-2) | Existing nine tools, Handle prefixes, ViewNames, fetch windows; DefaultAgentSuccess |
+| Same identity/evidence class (R-TTY-2) | Existing ten tools, Handle prefixes, ViewNames, fetch windows; DefaultAgentSuccess |
 | Counted gaps (R-TTY-3) | Drain writes R-LIM-3 (`stream`=`tty_console`) into child `work/` files Execute already watches, before `attach`; Context implementation promotes (runtime dependency, not a new member). Kernel merges wrapper `stdout`/`stderr` **and** `tty_console` into one `limits_exceeded` (R-STORE-6, one `limit_exceeded` promotion). Empty TTY-class terminal list only after that check — never pipe-only `None` coerced to `[]`. Non-empty merged TTY gap ⇒ `evidence_finalized` `completeness`=`partial`; agent porch stays `limits_exceeded`. Drain MUST NOT concatenate. Unmanaged `open()` around Context fails the overlay |
 | Refuse vs fail vs incomplete (R-TTY-4) | Tagged `Refused` at Admit; Dual-error terminal run after admit; agent completeness on `limits_exceeded`; ledger `completeness`=`partial` when that list has a TTY-class gap |
 | Absence visible (R-TTY-5) | No valid class row after full catalog walk |
@@ -406,7 +406,7 @@ flowchart TD
 
 Field tables, class-presence formula, unreadiness code, Context member signatures, and MCP overlay rows are normative in [TTY-class oneshot overlay contract](interface-design-tty-class-trestle.md). Do not maintain a second copy here.
 
-Freeze schemas (AdmitRequest, AdmitResult, RunView, CatalogView, FetchSlice, nine tools) remain in [Interfaces Architecture](hld-interface-architecture-trestle.md).
+Freeze schemas (AdmitRequest, AdmitResult, RunView, CatalogView, FetchSlice, ten tools) remain in [Interfaces Architecture](hld-interface-architecture-trestle.md).
 
 ---
 
@@ -465,9 +465,9 @@ Tagged-orphan reap is operator internals when a means ships, not a top-level exp
 
 | | |
 |--|--|
-| Inputs | Existing ControlSurface / nine tools; optional plugin row advertising `tty-oneshot` |
+| Inputs | Existing ControlSurface / ten tools; optional plugin row advertising `tty-oneshot` |
 | Outputs | `CatalogView` with always-present class field; `RequestOutcome` including `admission.tty_not_ready`; `RunView` with merged `limits_exceeded` on TTY-class terminals; attached console evidence (`art_…`) |
-| Success | Agent completes oneshot through nine tools **or** observes named exclusion; M1–M7 hold without the helper |
+| Success | Agent completes oneshot through ten tools **or** observes named exclusion; M1–M7 hold without the helper |
 | Constraints | No fourth port; no tenth tool; no Control port; no vendor in Kernel identity; topology not a Kernel port |
 
 **Boundaries.** Catalog publishes class (`null` = no claim). Admit decides this request. Child files bytes through Context and `work/` observations. Kernel observes both file owners and writes one gap list. Operator reaps orphans. Helper is a child collaborator.

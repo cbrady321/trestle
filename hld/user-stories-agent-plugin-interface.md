@@ -1,6 +1,7 @@
 # User Stories — Agent Plugin Interface
 
 **Initiative:** Make the plugin surface excellent for coding agents — discovery, supply, invocation, and recovery.  
+**Status:** **Complete** @ `2375e3e` (2026-08-25) — APL-01–08 shipped; on `origin/master`.  
 **Date:** 2026-08-25  
 **Stage:** user-story-stage (writer + critic, one cycle)  
 **Upstream:** [`trestle-requirements.md`](../trestle-requirements.md) G1, G3, R-MCP-1–3, R-REG-1–7; [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md); [`hld/agent-mcp-usability-assessment.md`](agent-mcp-usability-assessment.md)
@@ -26,23 +27,22 @@ Agents interact with plugins through a **fixed ten-tool porch**. Plugins are **n
 - Progress: I can name the next step — bootstrap plugins, fix host wiring, or proceed to discovery
 
 **Acceptance criteria**
-- [ ] Host wiring exposes exactly ten MCP tools (`run`, `await_runs`, `cancel`, `query`, `fetch`, `pin`, `unpin`, `list_plugins`, `describe_plugin`, `publish_plugin`) per freeze.
-- [ ] `list_plugins` returns `CatalogView` with `registry_version` and `items` (possibly empty).
-- [ ] Empty `items` is a **valid** catalog state — not a protocol error. Every `run` against an unknown name returns `admission.plugin_not_found` with **no** `run_id`.
-- [ ] Playbook documents bootstrap: create `$TRESTLE_HOME/plugins/`, copy or author at least one `.py` plugin, verify with `trestle doctor` or `list_plugins`.
-- [ ] `tools/list` payload stays under the G1 byte budget; plugin schemas are **not** inlined.
+- [x] Host wiring exposes exactly ten MCP tools (`run`, `await_runs`, `cancel`, `query`, `fetch`, `pin`, `unpin`, `list_plugins`, `describe_plugin`, `publish_plugin`) per freeze.
+- [x] `list_plugins` returns `CatalogView` with `registry_version` and `items` (possibly empty).
+- [x] Empty `items` is a **valid** catalog state — not a protocol error. Every `run` against an unknown name returns `admission.plugin_not_found` with **no** `run_id`.
+- [x] Playbook documents bootstrap: create `$TRESTLE_HOME/plugins/`, copy or author at least one `.py` plugin, verify with `trestle doctor` or `list_plugins`.
+- [x] `tools/list` payload stays under the G1 byte budget; plugin schemas are **not** inlined.
 
 **Non-goals**
 - Does not cover invoking work (APL-05).
 - Does not cover operator HTTP attach (`trestle ops serve`) — agents use MCP only.
-- Does not auto-seed plugins on first run (product gap; see Open Questions).
 
 **Why this framing works**
 Session A in the usability assessment showed empty `TRESTLE_HOME` looks like a broken server. This story makes “zero plugins” a diagnosable state with an explicit recovery path, not an ambiguous failure.
 
 **Remaining assumptions**
 - Agent host has `trestle` on PATH or an absolute `command` in MCP config.
-- Bootstrap is filesystem + optional `doctor`; there is no MCP `init` tool in v0.1.
+- Bootstrap is `trestle init` (CLI), filesystem drop-in, `publish_plugin`, or `doctor`; there is no MCP `init` tool.
 
 ---
 
@@ -57,11 +57,11 @@ Session A in the usability assessment showed empty `TRESTLE_HOME` looks like a b
 - Progress: I have a short list of callable names and can detect catalog freshness
 
 **Acceptance criteria**
-- [ ] `list_plugins` returns `CatalogView` rows: `name`, `version`, `description` (teaser), `valid`, `capability_class` (always present; `null` = no TTY claim).
-- [ ] `list_plugins` **must not** return `input_schema` (R-MCP-2).
-- [ ] Paginated catalog: when `truncated` is true, continue with `next_cursor` until `truncated` is false before concluding a capability is absent (TTY overlay rule).
-- [ ] `tools/list` carries `registry_version` in `_meta`, mirroring `CatalogView.registry_version` (R-REG-6).
-- [ ] Core MCP tool count remains ten regardless of plugin count (R-MCP-1).
+- [x] `list_plugins` returns `CatalogView` rows: `name`, `version`, `description` (teaser), `valid`, `capability_class` (always present; `null` = no TTY claim).
+- [x] `list_plugins` **must not** return `input_schema` (R-MCP-2).
+- [x] Paginated catalog: when `truncated` is true, continue with `next_cursor` until `truncated` is false before concluding a capability is absent (TTY overlay rule).
+- [x] `tools/list` carries `registry_version` in `_meta`, mirroring `CatalogView.registry_version` (R-REG-6).
+- [x] Core MCP tool count remains ten regardless of plugin count (R-MCP-1).
 
 **Non-goals**
 - Does not cover per-plugin MCP tools or dynamic `tools/list` growth.
@@ -87,11 +87,11 @@ The porch stays cheap; discovery is a separate job from learning args. Collapsin
 - Progress: I have `input_schema` (and version/snapshot metadata) for exactly one plugin
 
 **Acceptance criteria**
-- [ ] `describe_plugin(plugin_id=…)` returns `input_schema`, `name`, `version`, `snapshot_id`, `source_sha256`, budgets/timeouts when published.
-- [ ] Unknown `plugin_id` returns a refusal outcome — not an empty success.
-- [ ] Schema is derived from type hints per R-PLUG-1; agent does not hand-author JSON Schema for publication.
-- [ ] Param naming documented: `run` uses `plugin`; `describe_plugin` uses `plugin_id` — same string value.
-- [ ] Agent workflow ≤5 turns for typical success: `list_plugins` → optional `describe_plugin` → `run` → `fetch`/`query`.
+- [x] `describe_plugin(plugin_id=…)` returns `input_schema`, `name`, `version`, `snapshot_id`, `source_sha256`, budgets/timeouts when published.
+- [x] Unknown `plugin_id` returns a refusal outcome — not an empty success.
+- [x] Schema is derived from type hints per R-PLUG-1; agent does not hand-author JSON Schema for publication.
+- [x] Param naming documented: `run` uses `plugin`; `describe_plugin` uses `plugin_id` — same string value.
+- [x] Agent workflow ≤5 turns for typical success: `list_plugins` → optional `describe_plugin` → `run` → `fetch`/`query`.
 
 **Non-goals**
 - Does not inline schema into `tools/list` or `run`’s MCP `inputSchema`.
@@ -117,13 +117,13 @@ Pull-one is the designed balance between discoverability and G1. Agents that ski
 - Progress: new `name` appears in `list_plugins`; `run(plugin=name, …)` admits within R-REG-7 latency when deps exist
 
 **Acceptance criteria**
-- [ ] **Filesystem path:** agent writes a single `.py` file under a watched `plugins/` directory with `@trestle` entry point and PluginSurface-only imports (R-BOUND-2, R-PLUG-6).
-- [ ] **MCP path:** agent calls `publish_plugin(source=<full python>, name=<optional>)` → `PublishView` on success or `publication.*` refusal with no `run_id`.
-- [ ] Registry watches filesystem (debounced 250 ms) and refreshes after `publish_plugin`; validate → snapshot → publish → `registry_version` increments (R-REG-1, R-REG-2).
-- [ ] No server restart required; no per-plugin MCP tools added (R-MCP-1).
-- [ ] Write-to-callable &lt; 2 s when third-party deps already in Trestle’s Python env (R-REG-7, R-G3-1). Missing dep → validation/`import_failed` outcome, not silent publish.
-- [ ] Validation failure leaves previous version serving for that name (R-REG-5, R-PLUG-19).
-- [ ] After publish, agent verifies via `list_plugins` then `describe_plugin` then `run`.
+- [x] **Filesystem path:** agent writes a single `.py` file under a watched `plugins/` directory with `@trestle` entry point and PluginSurface-only imports (R-BOUND-2, R-PLUG-6).
+- [x] **MCP path:** agent calls `publish_plugin(source=<full python>, name=<optional>)` → `PublishView` on success or `publication.*` refusal with no `run_id`.
+- [x] Registry watches filesystem (debounced 250 ms) and refreshes after `publish_plugin`; validate → snapshot → publish → `registry_version` increments (R-REG-1, R-REG-2).
+- [x] No server restart required; no per-plugin MCP tools added (R-MCP-1).
+- [x] Write-to-callable &lt; 2 s when third-party deps already in Trestle’s Python env (R-REG-7, R-G3-1). Missing dep → validation/`import_failed` outcome, not silent publish.
+- [x] Validation failure leaves previous version serving for that name (R-REG-5, R-PLUG-19).
+- [x] After publish, agent verifies via `list_plugins` then `describe_plugin` then `run`.
 
 **Non-goals**
 - Does not cover Python package layouts (`src/`, `pyproject.toml` entry points) — v0.1 is flat `*.py` per directory (see APL-08).
@@ -151,11 +151,11 @@ This is the agent-facing “how they get there” story. US-07 states the same m
 - Progress: work is admitted or refused via `RequestOutcome`; admitted work returns `RunView` with `run_id`
 
 **Acceptance criteria**
-- [ ] Calling a plugin name as an MCP tool fails as unknown-tool at the protocol level.
-- [ ] Correct invocation: `run(plugin="<name>", args={…}, wait_ms=…, idempotency_key=optional)`.
-- [ ] `admission.plugin_not_found` includes no `run_id`; message is actionable (“pick from `list_plugins`”).
-- [ ] `admission.invalid_args` includes no `run_id`; agent may re-call after `describe_plugin`.
-- [ ] Admitted runs execute from immutable snapshot captured at admit time (US-09) — later file edits do not change in-flight runs.
+- [x] Calling a plugin name as an MCP tool fails as unknown-tool at the protocol level.
+- [x] Correct invocation: `run(plugin="<name>", args={…}, wait_ms=…, idempotency_key=optional)`.
+- [x] `admission.plugin_not_found` includes no `run_id`; message is actionable (“pick from `list_plugins`”).
+- [x] `admission.invalid_args` includes no `run_id`; agent may re-call after `describe_plugin`.
+- [x] Admitted runs execute from immutable snapshot captured at admit time (US-09) — later file edits do not change in-flight runs.
 
 **Non-goals**
 - Does not cover wait/join semantics (US-04).
@@ -181,11 +181,11 @@ Mis-invocation was a top friction item in the usability assessment. This story m
 - Progress: agent refreshes catalog only when `registry_version` changes
 
 **Acceptance criteria**
-- [ ] Every `list_plugins` response includes `registry_version`.
-- [ ] `tools/list` `_meta.registry_version` mirrors the same publication fact (R-REG-6).
-- [ ] File drop, fix, or removal that changes publication increments `registry_version`.
-- [ ] Validation-only failure that keeps previous version serving does not falsely imply new behavior for that name.
-- [ ] Agent playbook documents: after writing a plugin file, call `list_plugins` and check version bump before `run`.
+- [x] Every `list_plugins` response includes `registry_version`.
+- [x] `tools/list` `_meta.registry_version` mirrors the same publication fact (R-REG-6).
+- [x] File drop, fix, or removal that changes publication increments `registry_version`.
+- [x] Validation-only failure that keeps previous version serving does not falsely imply new behavior for that name.
+- [x] Agent playbook documents: after writing a plugin file, call `list_plugins` and check version bump before `run`.
 
 **Non-goals**
 - Does not guarantee push notifications — agent may poll `list_plugins` or compare `tools/list` meta.
@@ -210,12 +210,12 @@ Hot reload is a feature only if agents can detect it cheaply. Version mirroring 
 - Progress: agent chooses bootstrap, edit plugin, different name, or `query(last_error)` on a real `run_id`
 
 **Acceptance criteria**
-- [ ] Unknown name at `run` → `admission.plugin_not_found`, no `run_id`.
-- [ ] Known name, bad args → `admission.invalid_args`, no `run_id`.
-- [ ] Published name with `valid=false` in catalog → previous good snapshot still serves until fixed; `list_plugins` exposes `valid` (and `list_plugins(invalid=True)` when supported).
-- [ ] `describe_plugin` on missing name → refusal, not empty schema.
-- [ ] Post-admit failure → terminal `RunView` with `run_id`; use `query(last_error)` — not an admission code.
-- [ ] TTY unreadiness → `admission.tty_not_ready`, no `run_id` — distinct from `valid=false` (US-18).
+- [x] Unknown name at `run` → `admission.plugin_not_found`, no `run_id`.
+- [x] Known name, bad args → `admission.invalid_args`, no `run_id`.
+- [x] Published name with `valid=false` in catalog → previous good snapshot still serves until fixed; `list_plugins` exposes `valid` (and `list_plugins(invalid=True)` when supported).
+- [x] `describe_plugin` on missing name → refusal, not empty schema.
+- [x] Post-admit failure → terminal `RunView` with `run_id`; use `query(last_error)` — not an admission code.
+- [x] TTY unreadiness → `admission.tty_not_ready`, no `run_id` — distinct from `valid=false` (US-18).
 
 **Non-goals**
 - Does not add a catalog “health API” or daemon pulse fields.
@@ -240,11 +240,11 @@ Agents that conflate `plugin_not_found` with `failed` waste turns on fetch/query
 - Progress: plugins from all configured directories appear in one `list_plugins` catalog; agent uses same APL-02–05 flow
 
 **Acceptance criteria**
-- [ ] Server accepts **multiple** plugin directory paths in configuration (CLI flag, `config.toml`, or env — product choice).
-- [ ] Registry scans each configured directory for `*.py` entry points; unified catalog with stable `name` keys.
-- [ ] Name collision across directories has deterministic resolution or explicit validation error — not silent override.
-- [ ] `trestle doctor` (or equivalent) lists configured paths and plugin count per path.
-- [ ] Agent playbook documents how to set paths for Cursor MCP (`TRESTLE_HOME` + config) in project repos.
+- [x] Server accepts **multiple** plugin directory paths in configuration (CLI flag, `config.toml`, or env — product choice).
+- [x] Registry scans each configured directory for `*.py` entry points; unified catalog with stable `name` keys.
+- [x] Name collision across directories has deterministic resolution or explicit validation error — not silent override.
+- [x] `trestle doctor` (or equivalent) lists configured paths and plugin count per path.
+- [x] Agent playbook documents how to set paths for Cursor MCP (`TRESTLE_HOME` + config) in project repos.
 
 **Non-goals**
 - Does not require Python package discovery (`pyproject.toml` entry points, namespace packages) in v0.1.
@@ -253,10 +253,10 @@ Agents that conflate `plugin_not_found` with `failed` waste turns on fetch/query
 - **v0.1 status:** shipped — `--plugin-dir`, `config.toml [plugins].paths`, `TRESTLE_PLUGIN_DIRS`, doctor `plugin_search_paths`.
 
 **Why this framing works**
-The “point Trestle at my folder” job is real for local web-service deployments but is currently API-only. This story is independently testable once wiring lands and does not duplicate APL-04’s author job.
+The “point Trestle at my folder” job is real for local web-service deployments and project repos. Multi-path config ships via CLI, `config.toml`, and env without duplicating APL-04’s author job.
 
 **Remaining assumptions**
-- Symlinks into `plugins/` are an acceptable v0.1 workaround until APL-08 ships.
+- Symlinks into `plugins/` remain an acceptable v0.1 workaround for exotic layouts.
 - Package-layout plugins remain a future amendment.
 
 ---
