@@ -1,7 +1,7 @@
 # User Stories — Agent Plugin Interface
 
 **Initiative:** Make the plugin surface excellent for coding agents — discovery, supply, invocation, and recovery.  
-**Status:** **Complete** @ `2375e3e` (2026-08-25) — APL-01–08 shipped; on `origin/master`.  
+**Status:** **Complete** (2026-08-25) — APL-01–08 shipped; verified on `origin/master`.  
 **Date:** 2026-08-25  
 **Stage:** user-story-stage (writer + critic, one cycle)  
 **Upstream:** [`trestle-requirements.md`](../trestle-requirements.md) G1, G3, R-MCP-1–3, R-REG-1–7; [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md); [`hld/agent-mcp-usability-assessment.md`](agent-mcp-usability-assessment.md)
