@@ -1,27 +1,27 @@
 # Agent MCP usability assessment
 
-**Status:** C1 complete — C2 shipped (`docs/agent-console-mcp.md`).  
+**Status:** Phase C complete — C1 assessment + C2 playbook shipped (`docs/agent-console-mcp.md`).  
 **Date:** 2026-08-25  
-**Method:** Scripted FastMCP stdio client against `trestle serve` (two sessions: empty vs fixture plugin dir), plus `ControlSurface` direct calls and existing pytest corpus (102 passed).  
+**Method:** Scripted FastMCP stdio client against `trestle serve` (two sessions: empty vs fixture plugin dir), plus `ControlSurface` direct calls and existing pytest corpus (103 passed at ship).  
 **Scope:** How agents should use `trestle serve` in real hosts — wiring, workflow, friction — without reopening the nine-tool freeze unless a gap is proven.
 
 ---
 
 ## Executive summary
 
-**Recommendation:** Ship **docs-first** agent onboarding — a single playbook (`docs/agent-console-mcp.md`) with copy-paste host JSON, a retrieval decision tree, and the freeze mis-invocation table. Add a repo `.cursor/mcp.json` example and a one-paragraph README pointer. **No kernel or freeze changes** for Phase C.
+**Recommendation (executed):** **Docs-first** agent onboarding shipped — playbook, host JSON, retrieval decision tree, mis-invocation table, `.cursor/mcp.json`, README pointer, smoke tests. **No kernel or freeze changes** for Phase C. F5/F6 (non-blocking `run`) remain deferred pending owner freeze amendment.
 
 The nine-tool surface is **technically sound** and **G1-compliant** (2,365-byte `tools/list`, nine tools, schemas pulled via `describe_plugin`). The main gaps are **discoverability** (view names, retrieval paths, plugin install location) and **one behavioral mismatch** between freeze/HLD `wait_ms` semantics and the current blocking `run` implementation.
 
 | Dimension | Score (1–5) | Verdict |
 |-----------|-------------|---------|
-| Host attach | 2 | Works via stdio; zero in-repo wiring |
+| Host attach | 4 | Works via stdio; repo ships `.cursor/mcp.json` + playbook §0 |
 | Cold start / G1 | 5 | Nine tools, 2.4 KB definitions |
 | Run → wait → terminal | 3 | Happy path works; `wait_ms` non-blocking semantics not realized |
 | Console retrieval | 3 | `fetch`/`query` work; path choice not self-evident |
 | Refusals & honesty | 4 | Codes actionable; `not_finalized` hard to hit via MCP |
 | Plugin discovery | 4 | Pull model good; fresh home has no plugins |
-| **Overall** | **3.5** | **Docs + host snippet unblock C2; no freeze amendment** |
+| **Overall** | **4** | **C2 shipped; F5/F6 deferred (documented, not fixed)** |
 
 ---
 
@@ -61,14 +61,14 @@ wait_ms=500 on slow(seconds=2) → elapsed 2.34s, state=succeeded
 
 ## Dimension scores
 
-### 1. Host attach — **2/5**
+### 1. Host attach — **4/5** (post-C2)
 
 | Check | Result |
 |-------|--------|
 | Stdio spawn works | ✓ Scripted client connected and called all nine tools |
-| Repo `.cursor/mcp.json` | ✗ Missing |
-| `docs/` playbook | ✗ Missing (C2) |
-| README MCP pointer | ✗ `readme` is `trestle-requirements.md`; no serve wiring |
+| Repo `.cursor/mcp.json` | ✓ Shipped |
+| `docs/agent-console-mcp.md` playbook | ✓ Shipped |
+| README MCP pointer | ✓ Root `README.md` links playbook + wiring |
 | FastMCP startup banner on stderr | Present (cosmetic; did not break client) |
 
 **Working snippets (assessment-validated):**
@@ -314,7 +314,7 @@ trestle fetch <handle>/result --window '{"kind":"jsonpath","expr":"$"}'
 | Plugin bootstrap | §6 + playbook §0 |
 | Smoke verification | Session B + playbook §5 |
 
-**C2 is unblocked.** No freeze amendment required for playbook shipment.
+**C2 shipped.** Playbook, host snippet, README, example plugin, and MCP stdio smoke test in repo. F5/F6 documented in playbook §3; kernel unchanged unless owner requests freeze amendment.
 
 ---
 

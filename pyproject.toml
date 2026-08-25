@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "trestle"
 version = "0.1.0"
 description = "A durable local execution ledger with an MCP control surface"
-readme = "trestle-requirements.md"
+readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastmcp==3.4.7",

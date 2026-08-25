@@ -65,12 +65,12 @@ Agents use **`trestle serve` MCP only** (no HTTP BFF):
 | TTY-class output | `fetch` on `art_…` | Not `run_tail` for terminus |
 | Gaps / honesty | `RunView.limits_exceeded` | Counted suppressions |
 
-**Active work (Phase C):**
+**Phase C deliverables (complete):**
 
-1. **Assess** best way to make MCP usable by agents → `hld/agent-mcp-usability-assessment.md` (gates playbook).
-2. **Document** agent MCP console path → `docs/agent-console-mcp.md` (implements assessment recommendation).
-3. **Verify** existing kernel behavior matches freeze (tests, `trestle doctor`, sample `query`/`fetch` flows).
-4. **Do not** build Porch, `console/`, or web UI under this plan.
+1. **Assess** — `hld/agent-mcp-usability-assessment.md` ✓
+2. **Document** — `docs/agent-console-mcp.md` ✓
+3. **Verify** — pytest + `scripts/smoke_agent_mcp.py` ✓
+4. **Do not** build Porch, `console/`, or web UI under this plan ✓
 
 **Cancelled (do not implement):** [`spec-console-lens-mvp.md`](spec-console-lens-mvp.md), [`handoff-console-lens-implementer.md`](handoff-console-lens-implementer.md) Porch/web scope, [`console-port-worthiness-verification.md`](console-port-worthiness-verification.md) **Proceed to implement** Porch rows.
 
@@ -93,7 +93,7 @@ Agents use **`trestle serve` MCP only** (no HTTP BFF):
 
 ---
 
-## 0. Active work — agent MCP console (only)
+## 0. Phase C — agent MCP console (complete)
 
 ### 0.1 Mission
 
@@ -172,25 +172,25 @@ See git history or [`spec-console-lens-mvp.md`](spec-console-lens-mvp.md) for ar
 
 ## How the clean-room process works (archived — Porch track cancelled)
 
-Phase A study is **closed** (§ Study conclusion). Phase B Porch/web spec is **superseded** (owner 2026-08-25). **Active Phase C** = agent MCP console docs only. Human **sessions/telemetry** inspection is a **future** spec — not porch, not `console/`.
+Phase A study is **closed** (§ Study conclusion). Phase B Porch/web spec is **superseded** (owner 2026-08-25). **Phase C complete** — agent MCP console docs + verify. Human **sessions/telemetry** inspection is a **future** spec — not porch, not `console/`.
 
 The discipline below remains valid if a future human surface is specified; **do not implement** `console/porch/` or `console/web/` under this plan.
 
 ### Three phases (sequential gates)
 
 ```
-Phase A — Study (closed)       Phase B — Spec (cancelled)         Phase C — Active (narrowed)
+Phase A — Study (closed)       Phase B — Spec (cancelled)         Phase C — Complete
 ────────────────────────       ─────────────────────────          ───────────────────────────
 Public docs only               Porch + Console spec (obsolete)    C1 assess → C2 playbook + verify
 Verdict: almost nothing        superseded by owner decision       agent-mcp-usability-assessment.md
-to port from vendor                                               then docs/agent-console-mcp.md
+to port from vendor                                               docs/agent-console-mcp.md + smoke tests
 ```
 
 | Phase | Status | Deliverable |
 |-------|--------|-------------|
 | **A — Study** | Done | § Study conclusion |
 | **B — Spec (Porch/web)** | **Cancelled** | [`spec-console-lens-mvp.md`](spec-console-lens-mvp.md) — historical only |
-| **C — Agent MCP usability** | **Active** | Assessment memo + playbook + README; no `console/` tree |
+| **C — Agent MCP usability** | **Done** | Assessment memo + playbook + README + smoke tests; no `console/` tree |
 | **D — Sessions/telemetry UI** | **Not started** | Future requirements; name TBD (not porch) |
 
 ### The Chinese wall (non-negotiable)
@@ -367,12 +367,12 @@ Screens that survive the gates, each mapped to Trestle tools (spec will expand t
 
 ## 6. Work sequence (historical)
 
-Phases A–B complete. **Active:** C0 worthiness verification, then C1 implement (§0).
+Phases A–B complete. **Phase C complete** (§0.5 done-when all [x]). **Next:** Phase D sessions/telemetry UI — not started; requires new spec.
 
 1. ~~Accept ranking~~ — done.  
-2. ~~Console MVP spec~~ — done.  
-3. ~~**C0 Verify**~~ — [`console-port-worthiness-verification.md`](console-port-worthiness-verification.md) **done**.  
-4. **C1 Implement** — §0.5 after optional owner sign-off on Build subset.  
+2. ~~Console MVP spec~~ — cancelled (owner 2026-08-25).  
+3. ~~**C0 Verify**~~ — [`console-port-worthiness-verification.md`](console-port-worthiness-verification.md) obsolete (Porch cancelled).  
+4. ~~**C1 Assess + C2 Implement**~~ — §0.5 complete.  
 5. Trestle hygiene — optional parallel.
 
 ---
@@ -428,4 +428,4 @@ Former Porch implementer decisions (spawn vs attach, MCP transport) **do not app
 
 ## 10. Background — Daytona reference study (archived)
 
-Sections **1–5** record the public-doc study that concluded **§ Study conclusion**. **Do not re-open** vendor comparison. If a feature is not in **§0 Active work**, it is out of scope.
+Sections **1–5** record the public-doc study that concluded **§ Study conclusion**. **Do not re-open** vendor comparison. If a feature is not in **§0 Phase C**, it is out of scope.

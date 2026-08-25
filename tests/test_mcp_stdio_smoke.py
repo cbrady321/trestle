@@ -8,6 +8,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -82,5 +83,35 @@ def test_stdio_serve_golden_path(smoke_home: Path) -> None:
             refusal = (await client.call_tool("run", {"plugin": "missing", "args": {}})).data
             assert refusal["origin"] == "admission"
             assert "run_id" not in refusal
+
+    asyncio.run(exercise())
+
+
+def test_stdio_run_blocks_until_terminal_despite_short_wait_ms(smoke_home: Path) -> None:
+    """Document F5/F6: MCP run blocks for full plugin duration (playbook §3)."""
+
+    async def exercise() -> None:
+        env = os.environ.copy()
+        env["TRESTLE_HOME"] = str(smoke_home)
+
+        transport = StdioTransport(
+            command=sys.executable,
+            args=["-m", "trestle.cli", "serve"],
+            env=env,
+        )
+
+        async with Client(transport=transport) as client:
+            start = time.monotonic()
+            run = (
+                await client.call_tool(
+                    "run",
+                    {"plugin": "slow", "args": {"seconds": 1.0}, "wait_ms": 100},
+                )
+            ).data
+            elapsed_ms = (time.monotonic() - start) * 1000
+
+            assert run["state"] == "succeeded"
+            assert elapsed_ms >= 900
+            assert elapsed_ms < 5000
 
     asyncio.run(exercise())
