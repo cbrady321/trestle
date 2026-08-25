@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from trestle.common import codes
-from trestle.common.types import AdmitRequest, JoinMode, RequestOutcome, RunView, WorkOrder
+from trestle.common.types import AdmitRequest, JoinMode, PublishView, RequestOutcome, RunView, WorkOrder
 from trestle.server.admission import Admission
 from trestle.server.conductor import Conductor
 from trestle.server.project import Project
@@ -192,3 +192,11 @@ class ControlSurface:
         if isinstance(out, RequestOutcome):
             return out
         return out
+
+    def publish_plugin(
+        self,
+        source: str,
+        *,
+        name: str | None = None,
+    ) -> PublishView | RequestOutcome:
+        return self.project.publish_plugin(source, name=name)

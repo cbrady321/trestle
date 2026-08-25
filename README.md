@@ -13,7 +13,7 @@ trestle doctor
 
 ## Agents (MCP)
 
-Coding agents use **`trestle serve`** — nine frozen MCP tools (`run`, `query`, `fetch`, …) over bounded run evidence. Wire Cursor or Claude Desktop via [`.cursor/mcp.json`](.cursor/mcp.json) (or equivalent `mcpServers` entry with `command: trestle`, `args: ["serve"]`).
+Coding agents use **`trestle serve`** — ten frozen MCP tools (`run`, `query`, `fetch`, `publish_plugin`, …) over bounded run evidence. Wire Cursor or Claude Desktop via [`.cursor/mcp.json`](.cursor/mcp.json) (or equivalent `mcpServers` entry with `command: trestle`, `args: ["serve"]`).
 
 Optional streamable HTTP (alongside stdio): `trestle serve --transport streamable-http` → `http://127.0.0.1:18732/mcp`. See [`hld/spec-agent-mcp-streamable-http.md`](hld/spec-agent-mcp-streamable-http.md).
 
@@ -45,7 +45,7 @@ cd console/web && npm install && npm run dev
 ## Requirements and architecture
 
 - [`trestle-requirements.md`](trestle-requirements.md) — product requirements
-- [`hld/hld-interface-architecture-trestle.md`](hld/hld-interface-architecture-trestle.md) — nine-tool freeze
+- [`hld/hld-interface-architecture-trestle.md`](hld/hld-interface-architecture-trestle.md) — ten-tool freeze
 - [`hld/plan-daytona-clean-room-scope.md`](hld/plan-daytona-clean-room-scope.md) — initiative closure (§11)
 - [`docs/agent-console-mcp.md`](docs/agent-console-mcp.md) — agent playbook
 - [`docs/operator-sessions-telemetry.md`](docs/operator-sessions-telemetry.md) — operator playbook
@@ -53,7 +53,7 @@ cd console/web && npm install && npm run dev
 ## Verify
 
 ```bash
-pytest -q                         # 116 tests
+pytest -q                         # 126 tests
 python scripts/smoke_agent_mcp.py
 python scripts/smoke_operator_api.py
 pytest tests/test_mcp_http_smoke.py -q   # optional HTTP MCP transport

@@ -13,6 +13,23 @@ from trestle.common.ids import generate_snapshot_id
 from trestle.common.types import PluginSnapshot
 
 
+def discover_plugin_name_from_source(source: str) -> str | None:
+    tree = ast.parse(source)
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        for dec in node.decorator_list:
+            if isinstance(dec, ast.Name) and dec.id == "trestle":
+                return node.name
+            if (
+                isinstance(dec, ast.Call)
+                and isinstance(dec.func, ast.Name)
+                and dec.func.id == "trestle"
+            ):
+                return node.name
+    return None
+
+
 def discover_plugin_name(source_path: Path) -> str | None:
     tree = ast.parse(source_path.read_text(encoding="utf-8"))
     for node in tree.body:

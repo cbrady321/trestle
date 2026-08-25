@@ -144,7 +144,7 @@ def test_tools_list_stays_within_byte_budget(
     )
 
 
-def test_nine_tool_names_registered_in_server_module() -> None:
+def test_ten_tool_names_registered_in_server_module() -> None:
     import inspect
 
     source = inspect.getsource(run_server)
@@ -158,5 +158,6 @@ def test_nine_tool_names_registered_in_server_module() -> None:
         "unpin",
         "list_plugins",
         "describe_plugin",
+        "publish_plugin",
     ):
         assert f"def {name}(" in source

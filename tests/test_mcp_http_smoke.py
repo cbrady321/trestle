@@ -62,7 +62,7 @@ def test_streamable_http_serve_golden_path(smoke_home: Path) -> None:
                     transport = StreamableHttpTransport(url=url)
                     async with Client(transport=transport) as client:
                         tools = await client.list_tools()
-                        if len(tools) == 9:
+                        if len(tools) == 10:
                             break
                 except Exception:
                     await asyncio.sleep(0.1)
@@ -73,7 +73,7 @@ def test_streamable_http_serve_golden_path(smoke_home: Path) -> None:
             transport = StreamableHttpTransport(url=url)
             async with Client(transport=transport) as client:
                 tools = await client.list_tools()
-                assert len(tools) == 9
+                assert len(tools) == 10
                 payload = json.dumps(
                     [
                         {"name": t.name, "description": t.description, "inputSchema": t.inputSchema}

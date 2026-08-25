@@ -3,8 +3,8 @@
 Scope: system  
 Node: trestle-kernel  
 Mode: amend  
-Amendment: script-foundation-seam  
-Supersedes: none (this document remains the freeze working set; `tty-overlay-kinds` types remain; this amendment closes former open questions and binds automatic child runtime)
+Amendment: script-foundation-seam, agent-plugin-publish  
+Supersedes: none (this document remains the freeze working set; `tty-overlay-kinds` types remain; `agent-plugin-publish` adds fixed tenth tool `publish_plugin`; this amendment closes former open questions and binds automatic child runtime)
 
 **Implementation freeze remains in force.** This document is the agreement. Code under `trestle/` is scaffolding, not authority.
 
@@ -27,7 +27,7 @@ Upstream calls this document must serve. Plain language; no requirement IDs.
 
 ### This document's job
 
-- Freeze the Kernel agreement: three ports, nine tools, and envelope families agents and plugin authors rely on.
+- Freeze the Kernel agreement: three ports, ten tools, and envelope families agents and plugin authors rely on.
 
 ## Summary
 
@@ -73,8 +73,8 @@ Trestle is a **Kernel** (foundation) that keeps a durable execution ledger. Fast
 4. **`wait_ms` is ControlSurface policy that composes Project.** `ControlSurface.run` owns `wait_ms` (default 2000 per R-WAIT-1); `AdmitRequest` has no `wait_ms`. Composition: Admit → background `Conductor.drive` for new runs → `Project.status` or `Project.await_one`. **MUST NOT** block on full plugin duration before honoring `wait_ms` (R-WAIT-14). Not FastMCP Tasks.
 5. **Catalog is a Project view**, not a fourth Kernel port. Registry publication is Kernel-private; `registry_version` is the freshness fact (FastMCP 3.4.7 has no `ttlMs`). `list_plugins` returns **`CatalogView`**, not `BoundedView`. MCP `tools/list.registry_version` **mirrors** `CatalogView.registry_version` on the same publication — drift is a **conformance failure**, not a second freshness channel.
 6. **CLI may be richer than MCP.** `query --sql`, `doctor`, `recover`, verbosity live on OperatorContract only. Same verb, different admission rules across transports is forbidden.
-7. **Freeze the agent aperture first.** ProjectionContract is Handle + RunView (DefaultAgentSuccess) + BoundedView + CatalogView + FetchSlice + fetch windows. Internals may churn behind it.
-8. **Thin MCP definition (G1, R-MCP-1–3).** Hosts inject `tools/list` into the model every turn. The porch is nine **stable, small** tool definitions. Plugin JSON Schemas MUST NOT appear in `tools/list`, MUST NOT be inlined into `run`’s `inputSchema` (`args` stays an unstructured mapping; Admit validates after pick), and MUST NOT ride `list_plugins` (R-MCP-2). `describe_plugin` is pull-for-one (side-effect honesty, not a type dump). Tool count and definition bytes MUST NOT grow with plugin count, plugin schema width, or the TTY overlay. A porch that floods agent context has already failed this agreement.
+7. **Freeze the agent aperture first.** ProjectionContract is Handle + RunView (DefaultAgentSuccess) + BoundedView + CatalogView + PublishView + FetchSlice + fetch windows. Internals may churn behind it.
+8. **Thin MCP definition (G1, R-MCP-1–3).** Hosts inject `tools/list` into the model every turn. The porch is ten **stable, small** tool definitions. Plugin JSON Schemas MUST NOT appear in `tools/list`, MUST NOT be inlined into `run`’s `inputSchema` (`args` stays an unstructured mapping; Admit validates after pick), and MUST NOT ride `list_plugins` (R-MCP-2). `describe_plugin` is pull-for-one (side-effect honesty, not a type dump). `publish_plugin` is the fixed tenth tool for runtime catalog supply — not one tool per plugin. Tool count and definition bytes MUST NOT grow with plugin count, plugin schema width, or the TTY overlay. A porch that floods agent context has already failed this agreement.
 9. **Foundation wraps scripts (R-BOUND-1–6).** PluginSurface is the only script-facing contract. Kernel ports, FastMCP, and ledger are not importable from plugin source. The child process hosts a foundation runtime and a script as distinct modules. Automatic filing is foundation behavior on that wrap, not a script SDK.
 
 ## Shared Foundations
@@ -115,10 +115,10 @@ A **request** may die without creating a run. A **run** exists only after durabl
 
 ```python
 class RequestOutcome:
-    code: str           # admission.* or projection.* namespace
+    code: str           # admission.*, projection.*, or publication.* namespace
     message: str
     retryable: bool
-    origin: Literal["admission", "projection"]
+    origin: Literal["admission", "projection", "publication"]
 ```
 
 **Code namespaces** — collision across namespaces is a defect:
@@ -127,6 +127,7 @@ class RequestOutcome:
 |-----------|----------|----------------------|
 | `admission.*` | `plugin_not_found`, `invalid_args`, `queue_full`, `idempotency_key_conflict`, `service_draining`, `artifact_not_found`, `artifact_expired`, `artifact_missing`, `tty_not_ready` | A Handle was admitted |
 | `projection.*` | `invalid_handle`, `expired`, `missing`, `cursor_expired`, `abandoned`, `not_found`, `invalid_args`, `invalid_view`, `not_finalized`, `cancel_accepted`, `pin_accepted`, `unpin_accepted` | Admitting new work |
+| `publication.*` | `invalid_source`, `no_entrypoint`, `name_mismatch`, `source_too_large`, `validation_failed` | A run was admitted or a projection read succeeded |
 
 `rejected` is not a run state and not an outcome code — refusals are `RequestOutcome` with **no** `run_id`.
 
@@ -386,7 +387,7 @@ The Kernel port that hands bounded pictures. Exists so G1 is a grammar, not a ha
 | query | `query(view: ViewName, params: Mapping[str, object], cursor: Handle \| None) -> BoundedView \| RequestOutcome` | Named views only. No raw SQL on this port. Until durable `evidence_finalized` for the addressed run: only `run` and `recent_runs` succeed; other ViewNames → `projection.not_finalized` (`retryable=true`) (R-QB-28). |
 | fetch | `fetch(target: Handle, window: FetchWindow) -> FetchSlice \| RequestOutcome` | Never paths. Default last 50 lines where applicable. Scan budgets apply. Window kind not in the handle-provenance permitted set → `projection.invalid_args` (no coercion). |
 | pin / unpin | `pin(target: Handle) -> RequestOutcome` / `unpin(target: Handle) -> RequestOutcome` | Pin store, not ledger. Success → `projection.pin_accepted` / `projection.unpin_accepted`. Unpin of unpinned is success no-op (`projection.unpin_accepted`). |
-| catalog | `list_plugins(...) -> CatalogView \| RequestOutcome` / `describe_plugin(...) -> Mapping[str, object] \| RequestOutcome` | Registry publication as **CatalogView** (not BoundedView). Not a fourth Kernel port. |
+| catalog | `list_plugins(...) -> CatalogView \| RequestOutcome` / `describe_plugin(...) -> Mapping[str, object] \| RequestOutcome` / `publish_plugin(source, name?) -> PublishView \| RequestOutcome` | Registry publication as **CatalogView** (not BoundedView). `publish_plugin` writes to primary plugin dir then hot-reloads. Not a fourth Kernel port. |
 
 ```python
 JoinMode = Literal["all", "any", "first_failure"]
@@ -573,8 +574,8 @@ Three widths, one Kernel.
 
 | Contract | Width | Frozen? |
 |----------|-------|---------|
-| **ProjectionContract** | Handle, RunView (DefaultAgentSuccess), BoundedView, CatalogView, FetchSlice, fetch windows, `status_frame_version`, per-ViewName row shapes, PluginCatalogRow | **Yes** — agent floodgate |
-| **ControlSurface** | `run`, `await_runs`, `cancel`, `query(view, params)`, `fetch`, `pin`/`unpin`, catalog | Both transports honor; MCP may lag |
+| **ProjectionContract** | Handle, RunView (DefaultAgentSuccess), BoundedView, CatalogView, PublishView, FetchSlice, fetch windows, `status_frame_version`, per-ViewName row shapes, PluginCatalogRow | **Yes** — agent floodgate |
+| **ControlSurface** | `run`, `await_runs`, `cancel`, `query(view, params)`, `fetch`, `pin`/`unpin`, catalog (`list_plugins`, `describe_plugin`, `publish_plugin`) | Both transports honor; MCP may lag |
 | **OperatorContract** | ControlSurface **plus** CLI-only: `query --sql`, `doctor`, `recover`, verbosity | CLI may churn; `--sql` never on ControlSurface |
 | **Operator HTTP** (optional, R-OPS-10) | Read-only `query` / `fetch` mirroring ControlSurface admission | Trestle-owned FastAPI/Starlette; not FastMCP `http_app()`; not agent transport |
 
@@ -649,7 +650,7 @@ Throw early on traversal, missing artifact, hijacked logging (recorded, not nece
 
 ## MCP surface (ControlSurface projection)
 
-Excellence is agent behaviour under uncertainty (`helper-mcp-design` Performance Contract). Nine tools. Core count does not grow with plugins.
+Excellence is agent behaviour under uncertainty (`helper-mcp-design` Performance Contract). Ten tools. Core count does not grow with plugins.
 
 ### Thin `tools/list` (definition budget)
 
@@ -657,7 +658,7 @@ Excellence is agent behaviour under uncertainty (`helper-mcp-design` Performance
 
 | May appear on `tools/list` | MUST NOT appear on `tools/list` |
 |----------------------------|----------------------------------|
-| The nine ControlSurface tools, each with a **small** `inputSchema` that names Kernel fields (`plugin`, `version`, `args` as object, `wait_ms`, handles, view names) | Per-plugin JSON Schema, one tool per plugin, union-of-all-plugin-args, helper/Forge protocol, TTY/PTY fields |
+| The ten ControlSurface tools, each with a **small** `inputSchema` that names Kernel fields (`plugin`, `version`, `args` as object, `wait_ms`, handles, view names, `source` for publish) | Per-plugin JSON Schema, one tool per plugin, union-of-all-plugin-args, helper/Forge protocol, TTY/PTY fields |
 | Short side-effect descriptions (R-MCP-3) | Restated type trees; `list_plugins` payloads; `describe_plugin` bodies |
 | `registry_version` mirror (R-REG-6) | Plugin argument schemas as a second catalog |
 
@@ -667,7 +668,7 @@ Excellence is agent behaviour under uncertainty (`helper-mcp-design` Performance
 
 | Primitive | Control | Why |
 |-----------|---------|-----|
-| Tools: `run`, `await_runs`, `cancel`, `query`, `fetch`, `pin`, `unpin`, `list_plugins`, `describe_plugin` | Model-controlled | Side-effecting or computed actions |
+| Tools: `run`, `await_runs`, `cancel`, `query`, `fetch`, `pin`, `unpin`, `list_plugins`, `describe_plugin`, `publish_plugin` | Model-controlled | Side-effecting or computed actions |
 | Resources: view catalog (optional) | Application-driven | Read-only catalog of named views (R-MCP-9) |
 | Prompts | none in v0.1 | Not a substitute for tools |
 | Sampling | **MUST NOT** | R-SCOPE-3 |
@@ -685,6 +686,7 @@ Excellence is agent behaviour under uncertainty (`helper-mcp-design` Performance
 | `pin` / `unpin` | I change **retention**, not run state | handle | `projection.pin_accepted` / `projection.unpin_accepted` (`isError: false`) | unpin unpinned = `projection.unpin_accepted` | Not LedgerCommand |
 | `list_plugins` | I need **names**, not schemas | — | `CatalogView` (`registry_version` + `PluginCatalogRow` items). Porch `tools/list.registry_version` MUST equal this integer on the same publication. | Read-only | Not `describe_plugin`; not `BoundedView`; not schemas |
 | `describe_plugin` | I need **one plugin’s** description + side-effect honesty | name | description; no provenance over unmanaged effects | Read-only | Not a schema dump; not `run` |
+| `publish_plugin` | I need to **create or update** a plugin from Python source at runtime | `source` (full `.py` text); optional `name` to assert entry point | `PublishView` (`name`, `snapshot_id`, `registry_version`, `source_sha256`, `created`) | Writes primary plugin dir; updates bump `registry_version`; in-flight runs keep admit-time snapshot | Not one tool per plugin; not `run`; not filesystem path args; failures are `publication.*` (`origin: publication`) with no `run_id` |
 
 `run` + `wait_ms`: ControlSurface admits via Door (`Admit.admit`), then Lens (`Project.await_one`) until timeout or terminal. On timeout: **running** status frame (`summary=None`, `truncated=false`, `next`/`omitted` absent) — not a Task handle. MCP porch flattens to `RequestOutcome | RunView` (no `AdmitResult` tags). Agent must not learn `rejected` as a run state if Admit refused — that wire response has no `run_id` and uses `admission.*` codes only.
 
@@ -716,7 +718,7 @@ Mutators that agents retry (`run` with idempotency key, `pin`) must be idempoten
 
 ### Composition & safety
 
-Localhost, single user, plugin authorship is not a privilege boundary. Still: no FastMCP session as run store; no path fetch; no token passthrough (N/A remote). Annotations (`readOnlyHint` etc.) must match enforcement: `query`/`fetch`/`list_plugins`/`describe_plugin` read-only; `run`/`cancel`/`pin` are not.
+Localhost, single user, plugin authorship is not a privilege boundary. Still: no FastMCP session as run store; no path fetch; no token passthrough (N/A remote). Annotations (`readOnlyHint` etc.) must match enforcement: `query`/`fetch`/`list_plugins`/`describe_plugin` read-only; `run`/`cancel`/`pin`/`publish_plugin` are not.
 
 ### Scenario Proof Pack
 
@@ -753,7 +755,7 @@ Trajectory: `list_plugins` → `run`(wait_ms large enough) → `RunView.state=su
 
 | Server-controllable | Host assumption |
 |---------------------|-----------------|
-| **Thin** nine-tool `tools/list` (no per-plugin schemas) | Host injects `tools/list` into the model; a fat definition is a Trestle defect, not a host bug |
+| **Thin** ten-tool `tools/list` (no per-plugin schemas) | Host injects `tools/list` into the model; a fat definition is a Trestle defect, not a host bug |
 | Schemas of **Kernel** tool fields, `isError` taxonomy, Handle grammar, payload bounds | Host forwards `isError: true` content to the model |
 | `wait_ms` / `await_runs` duration | Client holds long stdio `tools/call`. **v0.1 does not ship a Tasks mapper** (R-WAIT-4). If a later named client cannot hold the call, a Trestle-owned mapper — never Docket — is a new amendment |
 | `registry_version` | Host refreshes `tools/list`; `tools/list_changed` is optimization. **Mirror:** `tools/list.registry_version` MUST equal `CatalogView.registry_version` on the same Kernel publication. Drift is a conformance failure, not an agent-visible second channel. |
@@ -791,7 +793,7 @@ Drain (R-EXEC-32): service state `draining` — not a run state. New Admit retur
 - **Encapsulation:** bytes, paths, ledger records, BLAS thread pools stay behind ports; refuse cannot masquerade as run (tagged `AdmitResult`). Failure join order uses durable terminal timestamps, not wrapper clocks.
 - **ISP:** `--sql` off ControlSurface; catalog not a fourth port; Context has no query/pin/scheduler. **Project SRP debt (accepted v0.1):** cancel/pin remain on Project/Lens facade; E2 Control port deferred — do not tick ISP false-positive; pictures-only consumers may justify Control split post-v0.1.
 - **DIP:** Door depends on Admit only. ControlSurface depends on Admit + Project abstractions, not Execute. **Script depends on PluginSurface, not Kernel** (R-BOUND-2). Child runtime may depend on Kernel; script source must not.
-- **Tightness:** verification of Admit is “tagged Refused or Admitted Handle”; it must not grow with wrapper internals. Verification of the MCP porch is “nine small Kernel tool definitions”; it must not grow with plugin schema width.
+- **Tightness:** verification of Admit is “tagged Refused or Admitted Handle”; it must not grow with wrapper internals. Verification of the MCP porch is “ten small Kernel tool definitions”; it must not grow with plugin schema width.
 
 ---
 
@@ -809,7 +811,7 @@ Also bound here (requirements §25): `registry_version` remains freshness even i
 
 ## Handoff (to decomposition / implementation)
 
-Preserve: three Kernel ports; **script/foundation seam** (PluginSurface only on the script side; R-BOUND-1–6); ControlSurface composes Admit+Project; Door = Admit only; envelope type families + tagged `AdmitResult`; Kernel-private Scheduler; LedgerCommand run-history-only; Context not a Kernel port (**automatic child runtime**: cwd=`work/`, `ctx.outputs` auto-promote, R-AUTO-1–7); FastMCP porch; ProjectionContract freeze (DefaultAgentSuccess + CatalogView + BoundedView with `backend`/`as_of`; R-QB-28); `wait_ms` on ControlSurface.run only; **no v0.1 Tasks mapper**; catalog = Project `CatalogView`; `first_failure` = event-time any-member; porch `registry_version` mirrors CatalogView; E2 Control port deferred; nine MCP tools; **thin `tools/list`** (plugin schemas not inlined; G1 / R-MCP-1–3).
+Preserve: three Kernel ports; **script/foundation seam** (PluginSurface only on the script side; R-BOUND-1–6); ControlSurface composes Admit+Project; Door = Admit only; envelope type families + tagged `AdmitResult`; Kernel-private Scheduler; LedgerCommand run-history-only; Context not a Kernel port (**automatic child runtime**: cwd=`work/`, `ctx.outputs` auto-promote, R-AUTO-1–7); FastMCP porch; ProjectionContract freeze (DefaultAgentSuccess + CatalogView + PublishView + BoundedView with `backend`/`as_of`; R-QB-28); `wait_ms` on ControlSurface.run only; **no v0.1 Tasks mapper**; catalog = Project `CatalogView`; `first_failure` = event-time any-member; porch `registry_version` mirrors CatalogView; E2 Control port deferred; ten MCP tools (`publish_plugin` is the fixed tenth; R-MCP-1 still holds); **thin `tools/list`** (plugin schemas not inlined; G1 / R-MCP-1–3).
 
 Overlay kinds (additive on freeze envelopes; not a tenth tool): `PluginCatalogRow.capability_class` (always present; `null` = no claim); `admission.tty_not_ready`; `RunView.limits_exceeded` (R-LIM-5 markers per R-LIM-3; overlay merge of wrapper + child). Semantics: [overlay HLD](hld-tty-overlay-trestle.md), [overlay contract](interface-design-tty-class-trestle.md).
 
@@ -825,3 +827,4 @@ Do not implement until this agreement is the working set. Existing `trestle/` sc
 - **2026-08-20 / `tty-overlay-kinds`** — `capability_class` always present (`null` = no claim, not omitted); `limits_exceeded` comments bind Kernel merge of wrapper `console/*` + child `work/` `tty_console` (R-STORE-6; empty TTY list only after that check; TTY terminus `fetch(art_…)`, not `query(run_tail)`). Overlay amendment remains `tty-class-overlay`.
 - **2026-08-20 / `tty-overlay-kinds`** — `limits_exceeded` None/omit = not checked (class stays CatalogView); Admit/`run` preconditions cite overlay `admission.tty_not_ready` without execute-to-learn; `LimitExceededMarker.stream` notes wrapper stdout/stderr vs overlay `tty_console`. Overlay HLD amendment remains `tty-class-overlay`; this freeze envelope-typing amendment remains `tty-overlay-kinds`.
 - **2026-08-20 / `tty-overlay-kinds`** — Typed overlay-bound members onto freeze envelopes: `RunView.limits_exceeded` (R-LIM-5 + R-LIM-3 marker), optional `PluginCatalogRow.capability_class` (CatalogView bump; nine ViewRows untouched), `admission.tty_not_ready` on the `admission.*` example list. Requirements reference v0.5. Pointers to complementary overlay HLD and interface-design artifact. Handoff preserve list plus overlay kinds. Architecture Reference unchanged: three ports, nine tools, E2 Control deferred, DefaultAgentSuccess grammar, `first_failure`, CatalogView vs BoundedView split.
+- **2026-08-25 / `agent-plugin-publish`** — Fixed tenth MCP tool `publish_plugin` (`source`, optional `name` → `PublishView` or `publication.*` `RequestOutcome`). `RequestOutcome.origin` gains `publication`. ProjectionContract gains `PublishView`. Writes to primary plugin dir; same hot-reload pipeline as filesystem drop-in (R-REG-1). R-MCP-1 still holds — count does not grow with plugin count. Complementary contract: [`interface-design-agent-plugin-interface.md`](interface-design-agent-plugin-interface.md).

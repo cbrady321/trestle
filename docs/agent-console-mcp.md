@@ -1,7 +1,7 @@
 # Agent console MCP playbook
 
 **Audience:** coding agents (Cursor, Claude Desktop, other MCP hosts) using `trestle serve`.  
-**SSOT for:** nine-tool workflow, console evidence retrieval, host wiring.  
+**SSOT for:** ten-tool workflow, console evidence retrieval, host wiring.  
 **Kernel freeze:** [`hld/hld-interface-architecture-trestle.md`](../hld/hld-interface-architecture-trestle.md) — do not invent tools or views.  
 **Assessment:** [`hld/agent-mcp-usability-assessment.md`](../hld/agent-mcp-usability-assessment.md).
 
@@ -64,7 +64,7 @@ Use the absolute path to the Python environment where `trestle` is installed if 
 ### Verify attach
 
 1. `trestle doctor` — `health: ok`, `plugins` ≥ 1 after bootstrap.
-2. Host shows **nine** MCP tools: `run`, `await_runs`, `cancel`, `query`, `fetch`, `pin`, `unpin`, `list_plugins`, `describe_plugin`.
+2. Host shows **ten** MCP tools: `run`, `await_runs`, `cancel`, `query`, `fetch`, `pin`, `unpin`, `list_plugins`, `describe_plugin`, `publish_plugin`.
 3. `tools/list` payload is small (~2.4 KB) — plugin schemas are **not** inlined (G1).
 
 FastMCP prints a startup banner on stderr; hosts should ignore it.
@@ -79,6 +79,7 @@ Typical successful path:
 |------|------|---------|
 | 1 | `list_plugins` | Discover plugin `name` values |
 | 2 | `describe_plugin` | Optional — `input_schema` when args are unknown (`plugin_id` = plugin name) |
+| 2b | `publish_plugin` | Optional — create or update a plugin from Python `source` at runtime |
 | 3 | `run` | `plugin`, `args`, `wait_ms` — see §3 for blocking behavior |
 | 4a | `fetch` | Success — read return value from `{run_id}/result` |
 | 4b | `query` | Failure — `view: last_error`, `params: {run_id}` |
@@ -100,7 +101,7 @@ Typical successful path:
 
 ---
 
-## 2. Nine tools (frozen)
+## 2. Ten tools (frozen porch)
 
 | Tool | Use when |
 |------|----------|
@@ -112,8 +113,41 @@ Typical successful path:
 | `pin` / `unpin` | Retention policy |
 | `list_plugins` | Catalog names only — no schemas |
 | `describe_plugin` | One plugin's schema and metadata |
+| `publish_plugin` | Create or update a plugin from Python source at runtime |
 
 Do **not** call a plugin name as an MCP tool. Always `run(plugin="…")`.
+
+### `publish_plugin` (runtime catalog updates)
+
+Publish or update a plugin without restarting the server. Writes source to the primary plugin directory, validates, snapshots, and bumps `registry_version`.
+
+```json
+{
+  "source": "from trestle.plugin.surface import Context, trestle\n\n@trestle\ndef my_tool(ctx: Context) -> dict[str, str]:\n    return {\"ok\": \"yes\"}\n",
+  "name": null
+}
+```
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `source` | yes | Full Python source; must contain one `@trestle` entry point |
+| `name` | no | If set, must match the `@trestle` function name |
+
+**Success** → `PublishView`: `name`, `snapshot_id`, `registry_version`, `source_sha256`, `created` (true if new file).
+
+**Failure** → `RequestOutcome` with `origin: "publication"` (no `run_id`):
+
+| Code | Meaning |
+|------|---------|
+| `publication.invalid_source` | Python syntax error |
+| `publication.no_entrypoint` | No `@trestle` function |
+| `publication.name_mismatch` | `name` param ≠ entry point |
+| `publication.source_too_large` | Source &gt; 512 KB |
+| `publication.validation_failed` | Snapshot failed; previous version kept if any |
+
+After publish: `list_plugins` → optional `describe_plugin` → `run(plugin=…)`.
+
+Filesystem drop-in (copy to `plugins/`) still works and uses the same hot-reload pipeline.
 
 ---
 
@@ -266,7 +300,7 @@ Manual MCP check: start `trestle serve`, call `list_plugins` → `run(echo)` →
 
 | Role | Surface | Notes |
 |------|---------|-------|
-| **Agent** | MCP nine tools (`trestle serve`) | Retrieval-first; bounded slices |
+| **Agent** | MCP ten tools (`trestle serve`) | Retrieval-first; bounded slices |
 | **Operator (CLI)** | `trestle doctor`, `pin`, `unpin`, `recover` | Retention and diagnostics |
 | **Operator (HTTP)** | `trestle ops serve` + `console/web/` | Read-only sessions/telemetry — see [`operator-sessions-telemetry.md`](operator-sessions-telemetry.md) |
 

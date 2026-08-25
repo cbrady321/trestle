@@ -14,7 +14,7 @@ class RequestOutcome:
     code: str
     message: str
     retryable: bool
-    origin: Literal["admission", "projection"]
+    origin: Literal["admission", "projection", "publication"]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -186,6 +186,24 @@ class PluginCatalogRow:
             "description": self.description,
             "valid": self.valid,
             "capability_class": self.capability_class,
+        }
+
+
+@dataclass
+class PublishView:
+    name: str
+    snapshot_id: str
+    registry_version: int
+    source_sha256: str
+    created: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "snapshot_id": self.snapshot_id,
+            "registry_version": self.registry_version,
+            "source_sha256": self.source_sha256,
+            "created": self.created,
         }
 
 

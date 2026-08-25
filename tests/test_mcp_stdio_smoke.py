@@ -47,7 +47,7 @@ def test_stdio_serve_golden_path(smoke_home: Path) -> None:
 
         async with Client(transport=transport) as client:
             tools = await client.list_tools()
-            assert len(tools) == 9
+            assert len(tools) == 10
             payload = json.dumps(
                 [
                     {"name": t.name, "description": t.description, "inputSchema": t.inputSchema}

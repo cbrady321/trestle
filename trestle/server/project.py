@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from trestle.common import codes
-from trestle.common.types import CatalogView, Handle, JoinMode, RequestOutcome, RunView
+from trestle.common.types import CatalogView, Handle, JoinMode, PublishView, RequestOutcome, RunView
 from trestle.query.fs import FilesystemQueryBackend
 from trestle.server.ledger import TERMINAL_KINDS, RunLedger, evidence_dir, ledger_path
 from trestle.server.pins import PinStore
@@ -208,6 +208,14 @@ class Project:
                 origin="projection",
             )
         return desc
+
+    def publish_plugin(
+        self,
+        source: str,
+        *,
+        name: str | None = None,
+    ) -> PublishView | RequestOutcome:
+        return self.registry.publish_source(source, name=name)
 
     def _ledger_for(self, run_id: Handle) -> RunLedger | None:
         runs_root = self.home / "runs"

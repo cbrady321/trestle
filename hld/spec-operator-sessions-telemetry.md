@@ -104,7 +104,7 @@ trestle/ops/
 - **Public:** `create_app(kernel)`, module functions above.
 - **Private:** envelope helpers; no re-export of ControlSurface to OpenAPI.
 
-CLI: `trestle ops serve [--host 127.0.0.1] [--port 18733] [--home PATH]`.
+CLI: `trestle ops serve [--port 18733] [--home PATH]` (binds `127.0.0.1` only).
 
 ## UI routes (retrieval-first)
 

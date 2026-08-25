@@ -1,6 +1,6 @@
 # Spec — Agent MCP streamable HTTP (E6)
 
-Status: **complete** — alongside stdio; same nine tools, same admission.  
+Status: **complete** — alongside stdio; same ten tools, same admission.  
 Date: 2026-08-25  
 Parent: [`trestle-requirements.md`](../trestle-requirements.md) transport amendment E6.
 
@@ -8,7 +8,7 @@ Parent: [`trestle-requirements.md`](../trestle-requirements.md) transport amendm
 
 - Optional **streamable HTTP** MCP transport for agents that cannot hold stdio.
 - **stdio remains default** — R-FMC-1 unchanged for v0.1 default wiring.
-- Same nine tools, identical admission — no ninth tool, no operator HTTP confusion.
+- Same ten tools, identical admission — no per-plugin tool growth, no operator HTTP confusion.
 
 ## Non-goals
 
@@ -21,11 +21,11 @@ Parent: [`trestle-requirements.md`](../trestle-requirements.md) transport amendm
 | Command | Transport | Bind |
 |---------|-----------|------|
 | `trestle serve` | stdio (default) | — |
-| `trestle serve --transport streamable-http` | streamable HTTP | `127.0.0.1:18732` default |
+| `trestle serve --transport streamable-http` | streamable HTTP | `127.0.0.1:{port}` fixed |
 
 Endpoint: `http://127.0.0.1:{port}/mcp` (FastMCP default path).
 
-**Loopback only** — non-loopback host rejected at CLI.
+**Loopback only** — bind address is fixed at `127.0.0.1`; no `--host` flag.
 
 ## Kernel
 

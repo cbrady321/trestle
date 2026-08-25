@@ -8,8 +8,12 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from trestle.common.types import CatalogView, PluginCatalogRow, PluginSnapshot
-from trestle.server.snapshots import discover_plugin_name, materialize_snapshot
+from trestle.common import codes
+from trestle.common.fsutil import atomic_write, sha256_bytes
+from trestle.common.types import CatalogView, PluginCatalogRow, PluginSnapshot, PublishView, RequestOutcome
+from trestle.server.snapshots import discover_plugin_name, discover_plugin_name_from_source, materialize_snapshot
+
+MAX_PUBLISH_SOURCE_BYTES = 512 * 1024
 
 
 @dataclass
@@ -153,3 +157,75 @@ class Registry:
             "timeout_s": snap.timeout_s,
             "input_schema": {"type": "object", "properties": {}},
         }
+
+    def writable_plugin_dir(self) -> Path:
+        if self.plugin_dirs:
+            return self.plugin_dirs[0]
+        return self.home / "plugins"
+
+    def publish_source(
+        self,
+        source: str,
+        *,
+        name: str | None = None,
+    ) -> PublishView | RequestOutcome:
+        encoded = source.encode("utf-8")
+        if len(encoded) > MAX_PUBLISH_SOURCE_BYTES:
+            return RequestOutcome(
+                code=codes.PUBLICATION_SOURCE_TOO_LARGE,
+                message=f"source exceeds {MAX_PUBLISH_SOURCE_BYTES} bytes",
+                retryable=False,
+                origin="publication",
+            )
+        try:
+            discovered = discover_plugin_name_from_source(source)
+        except SyntaxError as exc:
+            return RequestOutcome(
+                code=codes.PUBLICATION_INVALID_SOURCE,
+                message=str(exc)[:200],
+                retryable=False,
+                origin="publication",
+            )
+        if discovered is None:
+            return RequestOutcome(
+                code=codes.PUBLICATION_NO_ENTRYPOINT,
+                message="no @trestle entry point found",
+                retryable=False,
+                origin="publication",
+            )
+        if name is not None and name != discovered:
+            return RequestOutcome(
+                code=codes.PUBLICATION_NAME_MISMATCH,
+                message=f"name {name!r} does not match entry point {discovered!r}",
+                retryable=False,
+                origin="publication",
+            )
+        plugin_name = discovered
+        plugin_dir = self.writable_plugin_dir()
+        plugin_dir.mkdir(parents=True, exist_ok=True)
+        path = plugin_dir / f"{plugin_name}.py"
+        created = not path.exists()
+        previous = self.snapshots.get(plugin_name)
+        source_sha256 = sha256_bytes(encoded)
+        atomic_write(path, encoded)
+        self.refresh()
+        snap = self.get(plugin_name)
+        if snap is None or snap.source_sha256 != source_sha256:
+            had_previous = previous is not None
+            return RequestOutcome(
+                code=codes.PUBLICATION_VALIDATION_FAILED,
+                message=(
+                    "validation failed; previous snapshot still serving"
+                    if had_previous
+                    else "validation failed; not published"
+                ),
+                retryable=False,
+                origin="publication",
+            )
+        return PublishView(
+            name=plugin_name,
+            snapshot_id=snap.snapshot_id,
+            registry_version=self.registry_version,
+            source_sha256=snap.source_sha256,
+            created=created,
+        )

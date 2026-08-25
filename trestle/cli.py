@@ -22,18 +22,21 @@ def main(argv: list[str] | None = None) -> int:
         choices=["stdio", "streamable-http"],
         help="Agent MCP transport (default stdio)",
     )
-    serve.add_argument("--host", default="127.0.0.1", help="HTTP bind host (streamable-http only)")
     serve.add_argument(
         "--port",
         type=int,
         default=18732,
-        help="HTTP bind port (streamable-http only, default 18732)",
+        help="HTTP bind port on 127.0.0.1 (streamable-http only, default 18732)",
     )
     ops = sub.add_parser("ops", help="Operator HTTP surface")
     ops_sub = ops.add_subparsers(dest="ops_command", required=True)
     ops_serve = ops_sub.add_parser("serve", help="Start operator HTTP API (sessions/telemetry)")
-    ops_serve.add_argument("--host", default="127.0.0.1", help="Bind host (default 127.0.0.1)")
-    ops_serve.add_argument("--port", type=int, default=18733, help="Bind port (default 18733)")
+    ops_serve.add_argument(
+        "--port",
+        type=int,
+        default=18733,
+        help="Bind port on 127.0.0.1 (default 18733)",
+    )
     ops_serve.add_argument("--home", help="Override TRESTLE_HOME")
     doctor = sub.add_parser("doctor", help="Report service health and configuration")
     doctor.add_argument("--home", help="Override TRESTLE_HOME")
@@ -55,12 +58,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "serve":
         return run_server(
             transport=args.transport,
-            host=args.host,
             port=args.port,
         )
     if args.command == "ops" and args.ops_command == "serve":
         home = Path(args.home) if args.home else None
-        return run_ops_server(host=args.host, port=args.port, home=home)
+        return run_ops_server(port=args.port, home=home)
     if args.command == "doctor":
         return run_doctor(home=args.home, run_gc_pass=getattr(args, "gc", False))
     if args.command == "recover":

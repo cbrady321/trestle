@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from trestle.common.types import RequestOutcome, RunView
+from trestle.common.bind import LOOPBACK_HOST
+from trestle.common.types import RequestOutcome, RunView, PublishView
 from trestle.server.admission import Admission
 from trestle.server.conductor import Conductor
 from trestle.server.config import load_config
@@ -77,10 +78,12 @@ def create_kernel(
     return Kernel(home=trestle_home, control=control, registry=registry)
 
 
-def _wire_result(value: RequestOutcome | RunView | dict[str, Any]) -> dict[str, Any]:
+def _wire_result(value: RequestOutcome | RunView | PublishView | dict[str, Any]) -> dict[str, Any]:
     if isinstance(value, RequestOutcome):
         return value.to_dict()
     if isinstance(value, RunView):
+        return value.to_dict()
+    if isinstance(value, PublishView):
         return value.to_dict()
     return value
 
@@ -108,13 +111,9 @@ def attach_registry_version_mirror(mcp: Any, kernel: Kernel) -> None:
 def run_server(
     *,
     transport: str = "stdio",
-    host: str = "127.0.0.1",
     port: int = 18732,
 ) -> int:
     from fastmcp import FastMCP
-
-    if transport == "streamable-http" and host not in {"127.0.0.1", "localhost", "::1"}:
-        raise SystemExit("streamable-http MCP must bind loopback only")
 
     kernel = create_kernel()
     mcp = FastMCP("trestle")
@@ -200,6 +199,14 @@ def run_server(
             return result.to_dict()
         return result
 
+    @mcp.tool
+    def publish_plugin(
+        source: str,
+        name: str | None = None,
+    ) -> dict[str, Any]:
+        """Publish or update a plugin from Python source at runtime."""
+        return _wire_result(kernel.control.publish_plugin(source, name=name))
+
     def _handle_sigterm(_signum: int, _frame: object | None) -> None:
         kernel.control.scheduler.draining = True
 
@@ -208,7 +215,7 @@ def run_server(
     if transport == "stdio":
         mcp.run(transport="stdio")
     elif transport == "streamable-http":
-        mcp.run(transport="streamable-http", host=host, port=port)
+        mcp.run(transport="streamable-http", host=LOOPBACK_HOST, port=port)
     else:
         raise SystemExit(f"unsupported MCP transport: {transport}")
     return 0
