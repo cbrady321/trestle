@@ -141,7 +141,9 @@ Run at least one **real agent session** (or scripted MCP client) against `trestl
 pip install -e ".[dev]"
 pytest -q                                    # 109 tests incl. MCP stdio smoke + operator API
 python scripts/smoke_agent_mcp.py            # ControlSurface golden path
+python scripts/smoke_operator_api.py         # Operator API + optional web dist
 trestle serve                                # MCP — agent path (query/fetch via tools)
+trestle ops serve                            # Operator HTTP + built UI (localhost:18733)
 trestle doctor                               # CLI operator path
 ```
 
@@ -465,6 +467,7 @@ Verify locally:
 pip install -e ".[dev]"
 pytest -q
 python scripts/smoke_agent_mcp.py
+python scripts/smoke_operator_api.py
 trestle ops serve   # http://127.0.0.1:18733
 ```
 

@@ -10,8 +10,10 @@ verified:
   closure_doc_commit: c980547
   tests: 109
   smoke_agent_mcp: ok
-  verified_at: "2026-08-25T14:45:00+03:00"
+  smoke_operator_api: ok
+  verified_at: "2026-08-25T15:00:00+03:00"
 notes: >-
   Initiative complete: Phase C agent MCP + Phase E operator surface (F5/F6,
   trestle ops serve API, console/web UI). E3 async kernel and E6 HTTP MCP
   remain optional owner picks. Closure SSOT: hld/plan-daytona-clean-room-scope.md §11.
+  Operator playbook: docs/operator-sessions-telemetry.md.

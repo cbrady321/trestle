@@ -5,7 +5,7 @@
 **Kernel freeze:** [`hld/hld-interface-architecture-trestle.md`](../hld/hld-interface-architecture-trestle.md) — do not invent tools or views.  
 **Assessment:** [`hld/agent-mcp-usability-assessment.md`](../hld/agent-mcp-usability-assessment.md).
 
-Agents reach run evidence **only** through MCP (`trestle serve`). There is no HTTP BFF. Operators may use `trestle doctor`, `pin`, and `recover` on the CLI today; `query` / `fetch` on the CLI are not shipped in v0.1 — use the MCP tools below.
+Agents reach run evidence **only** through MCP (`trestle serve`). There is no HTTP BFF for agents. Operators use `trestle doctor`, `pin`, and `recover` on the CLI; bounded retrieval for humans is via **`trestle ops serve`** ([`operator-sessions-telemetry.md`](operator-sessions-telemetry.md)). `query` / `fetch` are not CLI subcommands in v0.1 — agents use MCP tools below.
 
 ---
 
@@ -257,10 +257,11 @@ Manual MCP check: start `trestle serve`, call `list_plugins` → `run(echo)` →
 
 | Role | Surface | Notes |
 |------|---------|-------|
-| **Agent** | MCP nine tools | Retrieval-first; bounded slices |
-| **Operator** | `trestle doctor`, `pin`, `unpin`, `recover` | Same admission rules; richer diagnostics |
+| **Agent** | MCP nine tools (`trestle serve`) | Retrieval-first; bounded slices |
+| **Operator (CLI)** | `trestle doctor`, `pin`, `unpin`, `recover` | Retention and diagnostics |
+| **Operator (HTTP)** | `trestle ops serve` + `console/web/` | Read-only sessions/telemetry — see [`operator-sessions-telemetry.md`](operator-sessions-telemetry.md) |
 
-Human **sessions / telemetry** UI is future work — not in v0.1.
+Agents reach evidence **only** through MCP. Operator HTTP mirrors the same `query` / `fetch` admission rules — it does not replace MCP or expose `run` from the browser.
 
 ---
 

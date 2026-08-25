@@ -19,7 +19,7 @@ Coding agents use **`trestle serve`** — nine frozen MCP tools (`run`, `query`,
 
 **Assessment:** [`hld/agent-mcp-usability-assessment.md`](hld/agent-mcp-usability-assessment.md).
 
-## Operators (CLI)
+## Operators (CLI + HTTP)
 
 ```bash
 trestle doctor
@@ -29,7 +29,9 @@ trestle pin <run_id>
 trestle recover
 ```
 
-**Operator HTTP:** [`hld/spec-operator-sessions-telemetry.md`](hld/spec-operator-sessions-telemetry.md) — sessions + telemetry UI.
+**Operator playbook:** [`docs/operator-sessions-telemetry.md`](docs/operator-sessions-telemetry.md) — bootstrap, UI routes, API examples, smoke checks.
+
+**Operator spec:** [`hld/spec-operator-sessions-telemetry.md`](hld/spec-operator-sessions-telemetry.md).
 
 ```bash
 trestle ops serve              # API + built UI at http://127.0.0.1:18733
@@ -43,10 +45,12 @@ cd console/web && npm install && npm run dev
 - [`hld/hld-interface-architecture-trestle.md`](hld/hld-interface-architecture-trestle.md) — nine-tool freeze
 - [`hld/plan-daytona-clean-room-scope.md`](hld/plan-daytona-clean-room-scope.md) — initiative closure (§11)
 - [`docs/agent-console-mcp.md`](docs/agent-console-mcp.md) — agent playbook
+- [`docs/operator-sessions-telemetry.md`](docs/operator-sessions-telemetry.md) — operator playbook
 
 ## Verify
 
 ```bash
-pytest -q                    # 109 tests
+pytest -q                         # 109 tests
 python scripts/smoke_agent_mcp.py
+python scripts/smoke_operator_api.py
 ```

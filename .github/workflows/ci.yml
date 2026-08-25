@@ -26,3 +26,5 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
       - run: pytest -q
+      - run: python scripts/smoke_agent_mcp.py
+      - run: python scripts/smoke_operator_api.py

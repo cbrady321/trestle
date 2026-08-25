@@ -121,4 +121,4 @@ Kernel freeze envelopes and nine MCP tools are **out of scope** to change.
 
 ## Handoff
 
-Implement from this spec only. Agent playbook remains [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md).
+Implement from this spec only. Agent playbook: [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md). Operator playbook: [`docs/operator-sessions-telemetry.md`](../docs/operator-sessions-telemetry.md).
