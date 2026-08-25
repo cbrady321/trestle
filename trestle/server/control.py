@@ -156,9 +156,7 @@ class ControlSurface:
                 retryable=False,
                 origin="projection",
             )
-        return await self.project.await_many_async(
-            run_ids, cast(JoinMode, mode), timeout_ms
-        )
+        return await self.project.await_many_async(run_ids, cast(JoinMode, mode), timeout_ms)
 
     def cancel(self, run_id: str) -> RequestOutcome:
         return self.project.cancel(run_id)
