@@ -8,10 +8,11 @@ completed_at: "2026-08-25T13:15:00+03:00"
 verified:
   code_commit: 0c2ed67
   closure_doc_commit: c980547
+  verification_commit: e3d2489
   tests: 109
   smoke_agent_mcp: ok
   smoke_operator_api: ok
-  verified_at: "2026-08-25T15:00:00+03:00"
+  verified_at: "2026-08-25T18:55:00+03:00"
 notes: >-
   Initiative complete: Phase C agent MCP + Phase E operator surface (F5/F6,
   trestle ops serve API, console/web UI). E3 async kernel and E6 HTTP MCP
