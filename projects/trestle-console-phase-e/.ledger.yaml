@@ -7,7 +7,7 @@ milestone: Phase E
 completed_at: "2026-08-25T13:15:00+03:00"
 verified:
   code_commit: 0c2ed67
-  closure_doc_commit: 6d95dcb
+  closure_doc_commit: c980547
   tests: 109
   smoke_agent_mcp: ok
   verified_at: "2026-08-25T14:45:00+03:00"
