@@ -437,7 +437,7 @@ Sections **1–5** record the public-doc study that concluded **§ Study conclus
 
 ## 11. Closure & next — Phase E (async + operator API)
 
-**Initiative status: complete** (2026-08-25). Phase C + Phase E code @ `0c2ed67`; closure docs @ `c980547` on `origin/master`. Optional tracks (E3, E6, operator v0.2) require owner sign-off — none block closure.
+**Initiative status: complete** (2026-08-25). Phase C + Phase E code @ `0c2ed67`; closure docs @ `c980547`; verification hardening @ `e3d2489` on `origin/master` @ `46e6da3`. Optional tracks (E3, E6, operator v0.2) require owner sign-off — none block closure.
 
 **Phase C is complete** (§0.5 done-when all `[x]`). **Owner sign-off (2026-08-25):**
 
