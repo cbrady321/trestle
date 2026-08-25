@@ -1,7 +1,7 @@
 # Agent Handoff — Trestle Console (Porch MVP)
 
-> **CANCELLED (2026-08-25).** Do not implement Porch or web Console.  
-> **Superseded:** Phase C agent MCP playbook shipped — [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md).
+> **CANCELLED (2026-08-25).** Do not implement Porch (`console/porch/`, `/porch/v1`).  
+> **Superseded:** Phase C agent MCP — [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md). Phase E operator surface — [`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md). Initiative complete: [`plan-daytona-clean-room-scope.md`](plan-daytona-clean-room-scope.md) §11.
 
 **Prerequisite:** ~~worthiness verification~~ — obsolete for Porch track.
 

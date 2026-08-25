@@ -1,6 +1,6 @@
 # Agent MCP usability assessment
 
-**Status:** Phase C complete. **Phase E1 (F5/F6) shipped** — `ControlSurface.run` honors `wait_ms` (R-WAIT-14).  
+**Status:** Initiative complete (Phase C + Phase E @ `0c2ed67`). **Phase E1 (F5/F6) shipped** — `ControlSurface.run` honors `wait_ms` (R-WAIT-14). Operator surface: [`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md).  
 **Date:** 2026-08-25 (assessment); E1 closure 2026-08-25  
 **Method:** Scripted FastMCP stdio client against `trestle serve` (two sessions: empty vs fixture plugin dir), plus `ControlSurface` direct calls and existing pytest corpus.  
 **Scope:** How agents should use `trestle serve` in real hosts — wiring, workflow, friction — without reopening the nine-tool freeze unless a gap is proven.

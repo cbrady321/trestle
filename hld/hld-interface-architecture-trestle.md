@@ -39,7 +39,7 @@ Trestle is a **Kernel** (foundation) that keeps a durable execution ledger. Fast
 - [Spike decisions](../spikes/RESULTS.md)
 - Exploration seeds (provisional; this HLD is authoritative): `_tmp/exploration-interface_design-cycle-1/H1-agent-envelope-hybrid.md`; `_tmp/exploration-interface_design-cycle-2/H1-catalog-envelope-first-failure.md` (H-dir-1: CatalogView + event-time `first_failure`)
 - Complementary (cite; do not fork bodies): [TTY-class oneshot overlay HLD](hld-tty-overlay-trestle.md); [TTY-class oneshot overlay contract](interface-design-tty-class-trestle.md)
-- Operational (agent MCP): [Agent console MCP playbook](../docs/agent-console-mcp.md); [console access scope plan](plan-daytona-clean-room-scope.md) (Phase E)
+- Operational (agent MCP): [Agent console MCP playbook](../docs/agent-console-mcp.md); [console access scope plan](plan-daytona-clean-room-scope.md) (§11 closure)
 - Operator (human): [Operator sessions/telemetry requirements](requirements-operator-sessions-telemetry.md); [Operator sessions/telemetry spec](spec-operator-sessions-telemetry.md)
 
 ## Goals & Non-Goals

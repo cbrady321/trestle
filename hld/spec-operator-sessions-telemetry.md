@@ -1,6 +1,6 @@
 # Spec — Operator sessions & telemetry
 
-Status: **active** — E5 implement from this file + freeze HLD.  
+Status: **complete** — E5/E5b implemented @ `0c2ed67`. v0.2 deferred per R-OP-5.  
 Date: 2026-08-25  
 Replaces: [`spec-console-lens-mvp.md`](spec-console-lens-mvp.md) (cancelled porch track).
 

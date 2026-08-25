@@ -41,7 +41,7 @@ cd console/web && npm install && npm run dev
 
 - [`trestle-requirements.md`](trestle-requirements.md) — product requirements
 - [`hld/hld-interface-architecture-trestle.md`](hld/hld-interface-architecture-trestle.md) — nine-tool freeze
-- [`hld/plan-daytona-clean-room-scope.md`](hld/plan-daytona-clean-room-scope.md) — active scope (Phase E)
+- [`hld/plan-daytona-clean-room-scope.md`](hld/plan-daytona-clean-room-scope.md) — initiative closure (§11)
 - [`docs/agent-console-mcp.md`](docs/agent-console-mcp.md) — agent playbook
 
 ## Verify

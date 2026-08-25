@@ -1,7 +1,9 @@
 # Plan — Trestle console access & operator telemetry (scope)
 
-Status: **Phase C complete** (agent MCP assess + playbook + verify). **Porch is OUT** — no `console/porch/`, no `/porch/v1` HTTP adapter, no web Console MVP from [`spec-console-lens-mvp.md`](spec-console-lens-mvp.md) (superseded).  
-**Shipped:** agent MCP usability assessment, playbook, host wiring, smoke tests. **Future (unspecified):** human **sessions / telemetry** inspection — **not** named “porch” or “Console product.”  
+Status: **Phase E complete** — agent MCP (Phase C) + operator HTTP + web MVP (Phase E). **Closure SSOT:** §11.  
+**Porch is OUT** — no `console/porch/`, no `/porch/v1`, no porch-named human product ([`spec-console-lens-mvp.md`](spec-console-lens-mvp.md) superseded).  
+**Shipped:** agent MCP playbook + smoke tests; `trestle ops serve` operator API; `console/web/` sessions + ask UI ([`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md)).  
+**Optional (owner picks):** E3 async kernel, E6 HTTP MCP, operator v0.2 polish.  
 **Daytona study:** closed — almost nothing to port; public web docs only. **No AGPL vendor source.**
 
 ## Guiding light
@@ -19,7 +21,7 @@ Status: **Phase C complete** (agent MCP assess + playbook + verify). **Porch is 
 
 ### Why we believe that
 
-- Agents need bounded retrieval over run evidence via MCP (G1/G7). Humans may eventually inspect **sessions and telemetry** — a separate, later surface; not a dashboard port and **not** called porch.
+- Agents need bounded retrieval over run evidence via MCP (G1/G7). Humans inspect **sessions and telemetry** via `trestle ops serve` + `console/web/` — retrieval-first, not a dashboard port, **not** called porch.
 
 ## Study conclusion — Daytona (Phase A closed)
 
@@ -32,9 +34,9 @@ Status: **Phase C complete** (agent MCP assess + playbook + verify). **Porch is 
 | Org, billing, webhooks, OIDC | **Drop** | Localhost single-user v0.1 |
 | Thick MCP / toolbox APIs | **Drop** | Nine tools only |
 | **Interface-plane patterns** (extra HTTP/UI in front of MCP) | **Drop for now** | Public web informed category only; **Porch HTTP adapter cancelled** (owner 2026-08-25) |
-| Public OpenAPI / SDK shapes from that product | **Do not port** | N/A — no human HTTP layer in current scope |
+| Public OpenAPI / SDK shapes from that product | **Do not port** | Operator `/ops/v1` uses Trestle freeze envelopes — not vendor DTOs |
 
-**Implication:** No clean-room **implementation** track remains from Daytona. Agent path = existing MCP. Human path = **future sessions/telemetry** (name TBD), not Porch/Console web.
+**Implication:** No clean-room **implementation** track remains from Daytona. Agent path = existing MCP. Human path = **`trestle ops serve`** + `console/web/` (Phase E) — not Porch/Console web.
 
 **Banned product names (human UI):** `porch`, `Porch`, `/porch/v1`, `console/porch/`, “Console product” as a dashboard. Freeze HLD may still say **MCP porch** for `trestle serve` — that is the agent adapter, not a human product.
 
@@ -44,13 +46,13 @@ Status: **Phase C complete** (agent MCP assess + playbook + verify). **Porch is 
 |---------|------|-----|-----------|
 | **`console/*` evidence** | Wrapper stdout/stderr on disk per run (R-LIM-7). | **Agents** | **Nine MCP tools** after `evidence_finalized`: `query(run_tail)`, `fetch` (grep/tail/range), `last_error`; TTY terminus = `fetch(art_…)`. |
 | **OperatorContract (CLI)** | Ops diagnostics and retention (`doctor`, `pin`, `unpin`, `recover`). | **Humans** | `trestle` CLI — v0.1; **`query` / `fetch` are MCP-only** (not CLI subcommands yet). |
-| **Sessions / telemetry UI** | Human inspection of run history, bounded telemetry — **not** a log dashboard. | **Humans (future)** | **Not scoped.** Likely sessions + telemetry vocabulary; **no porch naming.** Spec TBD when requirements exist. |
+| **Sessions / telemetry UI** | Human inspection of run history, bounded telemetry — **not** a log dashboard. | **Humans** | **`trestle ops serve`** — `console/web/` MVP (`/`, `/sessions`, `/sessions/{handle}/ask`). Spec: [`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md). **No porch naming.** |
 
 **Owner requirements (2026-08-25):**
 
 1. **Must:** Agents reach `console/*` evidence through **MCP** (`trestle serve`).
-2. **Out:** Porch HTTP adapter, `console/web/` MVP, any human product named porch.
-3. **Later:** Way for humans to inspect **sessions / telemetry** — design separately; retrieval-first like agents, not Daytona-shaped UI.
+2. **Out:** Porch HTTP adapter (`/porch/v1`, `console/porch/`), any human product named porch.
+3. **Shipped:** Operator sessions/telemetry via **`trestle ops serve`** + `console/web/` — retrieval-first like agents, not Daytona-shaped UI ([`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md)).
 
 ### Agent MCP console support (Must — kernel)
 
@@ -70,15 +72,15 @@ Agents use **`trestle serve` MCP only** (no HTTP BFF):
 1. **Assess** — `hld/agent-mcp-usability-assessment.md` ✓
 2. **Document** — `docs/agent-console-mcp.md` ✓
 3. **Verify** — pytest + `scripts/smoke_agent_mcp.py` ✓
-4. **Do not** build Porch, `console/`, or web UI under this plan ✓
+4. **Do not** build Porch or porch-named HTTP under Phase C ✓ (operator `console/web/` shipped in Phase E — §11)
 
 **Cancelled (do not implement):** [`spec-console-lens-mvp.md`](spec-console-lens-mvp.md), [`handoff-console-lens-implementer.md`](handoff-console-lens-implementer.md) Porch/web scope, [`console-port-worthiness-verification.md`](console-port-worthiness-verification.md) **Proceed to implement** Porch rows.
 
 ## Goals & Non-Goals
 
-**This-node goal (complete):** **Assessed and shipped** agent MCP usability (document + verify nine-tool retrieval). **Defer** human sessions/telemetry UI to a future spec — **no porch naming.**
+**This-node goal (complete):** **Shipped** agent MCP usability (Phase C) **and** operator sessions/telemetry surface (Phase E) — retrieval-first, **no porch naming.**
 
-**Non-goals:** Porch HTTP; `console/porch/`; `console/web/`; ninth MCP tool; log dashboard; live tail; sandbox/toolbox; vendor source; relitigating Daytona.
+**Non-goals:** Porch HTTP (`/porch/v1`, `console/porch/`); ninth MCP tool; log dashboard; live tail; sandbox/toolbox; vendor source; relitigating Daytona.
 
 ### Phase status
 
@@ -89,7 +91,7 @@ Agents use **`trestle serve` MCP only** (no HTTP BFF):
 | C0 Worthiness (Porch) | **Obsolete** | verification doc historical only |
 | **C1 Assess agent MCP** | **Done** | `hld/agent-mcp-usability-assessment.md` |
 | **C2 Agent console MCP** | **Done** | `docs/agent-console-mcp.md` + README + `.cursor/mcp.json` |
-| D Sessions/telemetry UI | **Not started** | future requirements + spec |
+| D Sessions/telemetry UI | **Done** | E4 spec + E5 API + E5b web (`0c2ed67`) |
 
 ---
 
@@ -99,7 +101,7 @@ Agents use **`trestle serve` MCP only** (no HTTP BFF):
 
 **First:** determine the best way for agents to use `trestle serve` MCP in real hosts (Cursor, Claude Desktop, etc.) — wiring, onboarding, workflow, and friction — without reopening the nine-tool freeze unless assessment proves a gap.
 
-**Then:** agents reach run **`console/*` evidence** through that path — `query` + `fetch` after finalize, bounded slices, retrieval-first. Operators use **`trestle doctor` / `pin` / `recover`** on the CLI today; **`query` / `fetch` require MCP** (`trestle serve`). A future **sessions / telemetry** human surface is out of scope here and will **not** use the name porch.
+**Then:** agents reach run **`console/*` evidence** through that path — `query` + `fetch` after finalize, bounded slices, retrieval-first. Operators use **`trestle doctor` / `pin` / `recover`** on the CLI; **`query` / `fetch` for agents require MCP** (`trestle serve`). Humans inspect sessions/telemetry via **`trestle ops serve`** + `console/web/` — not porch.
 
 ### 0.2 Read order
 
@@ -137,7 +139,7 @@ Run at least one **real agent session** (or scripted MCP client) against `trestl
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                                    # 104 tests incl. MCP stdio smoke
+pytest -q                                    # 109 tests incl. MCP stdio smoke + operator API
 python scripts/smoke_agent_mcp.py            # ControlSurface golden path
 trestle serve                                # MCP — agent path (query/fetch via tools)
 trestle doctor                               # CLI operator path
@@ -148,9 +150,9 @@ trestle doctor                               # CLI operator path
 - [x] `hld/agent-mcp-usability-assessment.md` published with recommendation and playbook outline.
 - [x] `docs/agent-console-mcp.md` published (implements assessment).
 - [x] README links agent MCP path per assessment.
-- [x] No `console/` tree added.
+- [x] No porch tree added (Phase C). Operator `console/web/` shipped in Phase E (§11).
 - [x] Kernel diff docs-only (or test fixes if assessment finds real gaps).
-- [x] 104 pytest tests pass; MCP blocking-run contract locked in `tests/test_mcp_stdio_smoke.py`.
+- [x] 109 pytest tests pass; MCP blocking-run contract locked in `tests/test_mcp_stdio_smoke.py`.
 
 ---
 
@@ -171,9 +173,9 @@ See git history or [`spec-console-lens-mvp.md`](spec-console-lens-mvp.md) for ar
 
 ## How the clean-room process works (archived — Porch track cancelled)
 
-Phase A study is **closed** (§ Study conclusion). Phase B Porch/web spec is **superseded** (owner 2026-08-25). **Phase C complete** — agent MCP console docs + verify. Human **sessions/telemetry** inspection is a **future** spec — not porch, not `console/`.
+Phase A study is **closed** (§ Study conclusion). Phase B Porch/web spec is **superseded** (owner 2026-08-25). **Phase C complete** — agent MCP console docs + verify. **Phase E complete** — operator sessions/telemetry API + `console/web/` MVP (§11).
 
-The discipline below remains valid if a future human surface is specified; **do not implement** `console/porch/` or `console/web/` under this plan.
+The discipline below remains valid for future operator polish; **do not implement** `console/porch/` or `/porch/v1`.
 
 ### Three phases (sequential gates)
 
@@ -190,7 +192,7 @@ to port from vendor                                               docs/agent-con
 | **A — Study** | Done | § Study conclusion |
 | **B — Spec (Porch/web)** | **Cancelled** | [`spec-console-lens-mvp.md`](spec-console-lens-mvp.md) — historical only |
 | **C — Agent MCP usability** | **Done** | Assessment memo + playbook + README + smoke tests; no `console/` tree |
-| **D — Sessions/telemetry UI** | **Not started** | Future requirements; name TBD (not porch) |
+| **D — Sessions/telemetry UI** | **Done** | E4–E5b: operator API + `console/web/` MVP (`0c2ed67`) |
 
 ### The Chinese wall (non-negotiable)
 
@@ -366,7 +368,7 @@ Screens that survive the gates, each mapped to Trestle tools (spec will expand t
 
 ## 6. Work sequence (historical)
 
-Phases A–B complete. **Phase C complete** (§0.5 done-when all [x]). **Next:** Phase D sessions/telemetry UI — not started; requires new spec.
+Phases A–B complete. **Phase C complete** (§0.5 done-when all [x]). **Phase E complete** (§11) — operator API + `console/web/` MVP shipped @ `0c2ed67`.
 
 1. ~~Accept ranking~~ — done.  
 2. ~~Console MVP spec~~ — cancelled (owner 2026-08-25).  
@@ -380,7 +382,7 @@ Phases A–B complete. **Phase C complete** (§0.5 done-when all [x]). **Next:**
 
 **Binding for Phase C.** Supersedes log-pane / artifact-browser as MVP centerpieces.
 
-Trestle’s product promise is **G1 + G4 + G7**: keep everything on disk, push almost nothing into context, pull **bounded slices** that answer the next question (`DefaultAgentSuccess`, named views, `fetch` with grep/tail/range). **Agents** use MCP today; **humans** use CLI. A future sessions/telemetry UI should follow the same retrieval grammar — not a scrollable log viewer.
+Trestle’s product promise is **G1 + G4 + G7**: keep everything on disk, push almost nothing into context, pull **bounded slices** that answer the next question (`DefaultAgentSuccess`, named views, `fetch` with grep/tail/range). **Agents** use MCP (`trestle serve`); **humans** use CLI (`doctor`/`pin`/`recover`) and operator HTTP (`trestle ops serve` + `console/web/`). Both follow the same retrieval grammar — not a scrollable log viewer.
 
 | Want | Do not build |
 |------|----------------|
@@ -421,7 +423,7 @@ Canonical **active** build list is **§0.3**. This table is **archived** from th
 
 ## 9. Open decisions (obsolete — Porch cancelled)
 
-Former Porch implementer decisions (spawn vs attach, MCP transport) **do not apply**. Future sessions/telemetry UI decisions are **not started**.
+Former Porch implementer decisions (spawn vs attach, MCP transport) **do not apply**. Operator v0.2 polish (registry, failures tab, pin/cancel UI) is **optional** — see [`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md) R-OP-5.
 
 ---
 
@@ -432,6 +434,8 @@ Sections **1–5** record the public-doc study that concluded **§ Study conclus
 ---
 
 ## 11. Closure & next — Phase E (async + operator API)
+
+**Initiative status: complete** (2026-08-25). Phase C + Phase E code @ `0c2ed67`; closure docs @ `6d95dcb`. Optional tracks (E3, E6, operator v0.2) require owner sign-off — none block closure.
 
 **Phase C is complete** (§0.5 done-when all `[x]`). **Owner sign-off (2026-08-25):**
 
@@ -461,16 +465,19 @@ Verify locally:
 pip install -e ".[dev]"
 pytest -q
 python scripts/smoke_agent_mcp.py
+trestle ops serve   # http://127.0.0.1:18733
 ```
 
 ### Do not reopen without owner sign-off
 
 | Item | Why blocked |
 |------|-------------|
-| Porch / `console/` / web UI | Owner cancelled 2026-08-25 |
+| Porch / `console/porch/` / `/porch/v1` | Owner cancelled 2026-08-25 — operator surface is `/ops/v1`, not porch |
 | Ninth MCP tool / live tail | Freeze + R-QB-28 |
 | Replace stdio MCP with HTTP for agents | R-FMC-1; breaks Phase C wiring |
 | FastMCP Docket/Tasks | R-FMC-8 |
+| Admit / `run` from operator HTTP or UI | Freeze — read-only operator surface |
 
 **Agent SSOT:** [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md)  
+**Operator SSOT:** [`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md)  
 **Assessment:** [`hld/agent-mcp-usability-assessment.md`](agent-mcp-usability-assessment.md)

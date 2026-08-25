@@ -1,7 +1,7 @@
 # Agent Handoff — Trestle Console port worthiness verification
 
-> **OBSOLETE (2026-08-25).** Porch/web track cancelled. Phase C complete — see [`plan-daytona-clean-room-scope.md`](plan-daytona-clean-room-scope.md) §0.5.  
-> **Post-C status (2026-08-25):** worthiness artifact at [`console-port-worthiness-verification.md`](console-port-worthiness-verification.md); agent playbook at [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md); **104** pytest tests pass.
+> **OBSOLETE (2026-08-25).** Porch/web track cancelled. Initiative complete — see [`plan-daytona-clean-room-scope.md`](plan-daytona-clean-room-scope.md) §11.  
+> **Shipped:** agent playbook [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md); operator surface [`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md); **109** pytest tests pass.
 
 ## 1. Identity & Framing
 

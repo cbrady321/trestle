@@ -1,7 +1,7 @@
 # Console port worthiness verification
 
-> **OBSOLETE (2026-08-25).** Porch/web **Proceed to implement** verdicts are void. Owner: Porch OUT; human inspection = future **sessions/telemetry** (not porch).  
-> **Phase C complete:** [`plan-daytona-clean-room-scope.md`](plan-daytona-clean-room-scope.md) §0 — agent MCP playbook shipped.
+> **OBSOLETE (2026-08-25).** Porch/web **Proceed to implement** verdicts are void. Owner: Porch OUT. Human operator surface shipped in Phase E — [`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md).  
+> **Initiative complete:** [`plan-daytona-clean-room-scope.md`](plan-daytona-clean-room-scope.md) §11.
 
 Status: **C0 complete (historical)** — gate for cancelled Porch implement track.
 

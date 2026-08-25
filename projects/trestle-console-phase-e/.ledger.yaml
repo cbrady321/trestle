@@ -1,9 +1,17 @@
 initiative: trestle-console-access
 project_dir: projects/trestle-console-phase-e
 stage: complete
+initiative_closed: true
 unit: trestle-console-phase-e
 milestone: Phase E
 completed_at: "2026-08-25T13:15:00+03:00"
+verified:
+  code_commit: 0c2ed67
+  closure_doc_commit: 6d95dcb
+  tests: 109
+  smoke_agent_mcp: ok
+  verified_at: "2026-08-25T14:45:00+03:00"
 notes: >-
-  Phase E complete: F5/F6, CI, operator requirements+spec, trestle ops serve API,
-  console/web UI (sessions + ask). E3 async kernel and E6 HTTP MCP remain optional.
+  Initiative complete: Phase C agent MCP + Phase E operator surface (F5/F6,
+  trestle ops serve API, console/web UI). E3 async kernel and E6 HTTP MCP
+  remain optional owner picks. Closure SSOT: hld/plan-daytona-clean-room-scope.md §11.

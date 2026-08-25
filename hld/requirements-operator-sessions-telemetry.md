@@ -1,6 +1,6 @@
 # Requirements — Operator sessions & telemetry (Phase D / E4)
 
-Status: **active** — gates E5 operator API implementation.  
+Status: **complete** — E5 API + E5b web shipped @ `0c2ed67`.  
 Date: 2026-08-25  
 Supersedes: porch-named human surfaces (`spec-console-lens-mvp.md` — cancelled).
 
