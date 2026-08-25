@@ -15,7 +15,20 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="trestle", description="Trestle execution ledger")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("serve", help="Start the MCP stdio server")
+    serve = sub.add_parser("serve", help="Start the MCP server (stdio or streamable HTTP)")
+    serve.add_argument(
+        "--transport",
+        default="stdio",
+        choices=["stdio", "streamable-http"],
+        help="Agent MCP transport (default stdio)",
+    )
+    serve.add_argument("--host", default="127.0.0.1", help="HTTP bind host (streamable-http only)")
+    serve.add_argument(
+        "--port",
+        type=int,
+        default=18732,
+        help="HTTP bind port (streamable-http only, default 18732)",
+    )
     ops = sub.add_parser("ops", help="Operator HTTP surface")
     ops_sub = ops.add_subparsers(dest="ops_command", required=True)
     ops_serve = ops_sub.add_parser("serve", help="Start operator HTTP API (sessions/telemetry)")
@@ -40,7 +53,11 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     if args.command == "serve":
-        return run_server()
+        return run_server(
+            transport=args.transport,
+            host=args.host,
+            port=args.port,
+        )
     if args.command == "ops" and args.ops_command == "serve":
         home = Path(args.home) if args.home else None
         return run_ops_server(host=args.host, port=args.port, home=home)

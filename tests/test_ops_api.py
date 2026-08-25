@@ -72,3 +72,70 @@ def test_ops_invalid_view_refusal(ops_client: TestClient) -> None:
     assert payload["issued"] is False
     assert payload["body"]["origin"] == "projection"
     assert "run_id" not in payload["body"]
+
+
+def test_ops_registry(ops_client: TestClient) -> None:
+    resp = ops_client.get("/ops/v1/registry")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["issued"] is True
+    assert payload["body"]["registry_version"] >= 1
+    assert any(item.get("name") == "echo" for item in payload["body"]["items"])
+
+
+def test_ops_registry_describe(ops_client: TestClient) -> None:
+    resp = ops_client.get("/ops/v1/registry/echo")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["issued"] is True
+    assert payload["body"]["name"] == "echo"
+
+
+def test_ops_host_wiring(ops_client: TestClient) -> None:
+    resp = ops_client.get("/ops/v1/host_wiring")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["issued"] is True
+    assert payload["body"]["transport"] == "stdio"
+    assert "trestle" in payload["body"]["snippet"]["mcpServers"]
+
+
+def test_ops_recent_failures_view(ops_client: TestClient) -> None:
+    resp = ops_client.post("/ops/v1/sessions/recent_failures/rows", json={"params": {}})
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["issued"] is True
+    assert "items" in payload["body"]
+
+
+def test_ops_pin_retention(ops_client: TestClient) -> None:
+    kernel = ops_client.app.state.kernel
+    view = kernel.control.run(plugin="echo", args={"message": "pin"}, wait_ms=5000)
+    assert view.run_id
+
+    resp = ops_client.put(f"/ops/v1/retention/{view.run_id}")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["issued"] is True
+    assert payload["body"]["code"] == "projection.pin_accepted"
+
+    unpin = ops_client.delete(f"/ops/v1/retention/{view.run_id}")
+    assert unpin.status_code == 200
+    unpin_body = unpin.json()
+    assert unpin_body["issued"] is True
+    assert unpin_body["body"]["code"] == "projection.unpin_accepted"
+
+
+def test_ops_join_waits(ops_client: TestClient) -> None:
+    kernel = ops_client.app.state.kernel
+    view = kernel.control.run(plugin="echo", args={"message": "join"}, wait_ms=5000)
+    assert view.state == "succeeded"
+
+    resp = ops_client.post(
+        "/ops/v1/waits/join",
+        json={"handles": [view.run_id], "mode": "all", "timeout_ms": 1000},
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["issued"] is True
+    assert payload["body"]["items"][0]["run_id"] == view.run_id

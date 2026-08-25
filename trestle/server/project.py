@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from dataclasses import dataclass
@@ -50,6 +51,36 @@ class Project:
             if time.monotonic() >= deadline:
                 return view
             time.sleep(0.05)
+
+    async def await_one_async(self, run_id: Handle, wait_ms: int) -> RunView | RequestOutcome:
+        deadline = time.monotonic() + (wait_ms / 1000.0)
+        while True:
+            view = self.status(run_id)
+            if isinstance(view, RequestOutcome):
+                return view
+            if view.state not in {"queued", "running"}:
+                return view
+            if time.monotonic() >= deadline:
+                return view
+            await asyncio.sleep(0.05)
+
+    async def await_many_async(
+        self,
+        run_ids: list[Handle],
+        mode: JoinMode,
+        timeout_ms: int,
+    ) -> list[RunView] | RequestOutcome:
+        deadline = time.monotonic() + (timeout_ms / 1000.0)
+        while True:
+            views, outcome = self._collect_run_views(run_ids)
+            if outcome is not None:
+                return outcome
+            assert views is not None
+            if _join_satisfied(views, mode):
+                return views
+            if time.monotonic() >= deadline:
+                return views
+            await asyncio.sleep(0.05)
 
     def await_many(
         self,

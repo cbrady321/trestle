@@ -202,7 +202,9 @@ Task creation, when implemented, is **server-directed** after the client adverti
 
 Trestle's v0.1 **agent** transport is **stdio MCP** (R-FMC-1). Notifications are an **optimization**, never a correctness mechanism (R-REG-2).
 
-**Transport amendment (2026-08-25):** stdio MCP **MUST** remain the agent transport for v0.1 — Cursor `.cursor/mcp.json` wiring and Phase C deliverables depend on it. A **separate** optional HTTP operator API for human inspection (R-OPS-10) does **not** amend R-FMC-1. Optional streamable HTTP MCP alongside stdio (same nine tools, same admission) **MAY** be added only by a later named amendment after operator API scope is settled — never as a replacement for stdio without amending R-FMC-1/4 explicitly.
+**Transport amendment (2026-08-25):** stdio MCP **MUST** remain the default agent transport for v0.1 — Cursor `.cursor/mcp.json` wiring and Phase C deliverables depend on it. A **separate** optional HTTP operator API for human inspection (R-OPS-10) does **not** amend R-FMC-1.
+
+**Transport amendment E6 (2026-08-25):** streamable HTTP MCP **MAY** run **alongside** stdio via `trestle serve --transport streamable-http` — same nine tools, same admission, loopback bind only. Spec: [`hld/spec-agent-mcp-streamable-http.md`](hld/spec-agent-mcp-streamable-http.md). Does **not** replace stdio default; does **not** use FastMCP `http_app()` mount (R-FMC-4).
 
 ### 2.7 TTY-class local work (optional overlay)
 

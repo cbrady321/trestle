@@ -3,7 +3,7 @@
 Status: **Phase E complete** — agent MCP (Phase C) + operator HTTP + web MVP (Phase E). **Closure SSOT:** §11.  
 **Porch is OUT** — no `console/porch/`, no `/porch/v1`, no porch-named human product ([`spec-console-lens-mvp.md`](spec-console-lens-mvp.md) superseded).  
 **Shipped:** agent MCP playbook + smoke tests; `trestle ops serve` operator API; `console/web/` sessions + ask UI ([`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md)).  
-**Optional (owner picks):** E3 async kernel, E6 HTTP MCP, operator v0.2 polish.  
+**Optional (owner picks):** ~~E3 async kernel, E6 HTTP MCP, operator v0.2 polish~~ — **all complete** (2026-08-25 closure pass).  
 **Daytona study:** closed — almost nothing to port; public web docs only. **No AGPL vendor source.**
 
 ## Guiding light
@@ -425,7 +425,7 @@ Canonical **active** build list is **§0.3**. This table is **archived** from th
 
 ## 9. Open decisions (obsolete — Porch cancelled)
 
-Former Porch implementer decisions (spawn vs attach, MCP transport) **do not apply**. Operator v0.2 polish (registry, failures tab, pin/cancel UI) is **optional** — see [`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md) R-OP-5.
+Former Porch implementer decisions (spawn vs attach, MCP transport) **do not apply**. Operator v0.2 (registry, failures tab, pin/cancel UI) is **complete** — see [`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md) R-OP-5.
 
 ---
 
@@ -437,7 +437,7 @@ Sections **1–5** record the public-doc study that concluded **§ Study conclus
 
 ## 11. Closure & next — Phase E (async + operator API)
 
-**Initiative status: complete** (2026-08-25). Phase C + Phase E code @ `0c2ed67`; closure docs @ `c980547`; verification hardening @ `e3d2489` on `origin/master` @ `46e6da3`. Optional tracks (E3, E6, operator v0.2) require owner sign-off — none block closure.
+**Initiative status: complete** (2026-08-25). Phase C + Phase E + optional tracks E3, E6, operator v0.2 closed in closure pass.
 
 **Phase C is complete** (§0.5 done-when all `[x]`). **Owner sign-off (2026-08-25):**
 
@@ -455,11 +455,11 @@ Sections **1–5** record the public-doc study that concluded **§ Study conclus
 |------|--------|-------------|
 | **E1 F5/F6** | **Done** | Non-blocking `ControlSurface.run`; tests; playbook §3 |
 | **E2 Push + CI** | **Done** | `ce0b395` on `origin/master`; CI green |
-| **E3 Async kernel** | Optional | Async conductor/project; wrapper stays sync |
+| **E3 Async kernel** | **Done** | `run_async`, `drive_async`, `await_*_async`; wrapper stays sync |
 | **E4 Phase D** | **Done** | [`requirements-operator-sessions-telemetry.md`](requirements-operator-sessions-telemetry.md) + [`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md) |
-| **E5 Operator API** | **MVP done** | `trestle ops serve`, `trestle/ops/`, `console/openapi.yaml`, `tests/test_ops_api.py` |
-| **E5b Web UI** | **Done** | `console/web/` — `/`, `/sessions`, `/sessions/{handle}/ask` |
-| **E6 Transport** | Optional | Streamable HTTP MCP alongside stdio — only if spec'd |
+| **E5 Operator API** | **Done** | `trestle ops serve`, `trestle/ops/` v0.2, `console/openapi.yaml` |
+| **E5b Web UI** | **Done** | `console/web/` — sessions, registry, host wiring, ask actions |
+| **E6 Transport** | **Done** | [`spec-agent-mcp-streamable-http.md`](spec-agent-mcp-streamable-http.md); `trestle serve --transport streamable-http` |
 
 Verify locally:
 

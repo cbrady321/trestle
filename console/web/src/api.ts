@@ -1,9 +1,12 @@
 import type {
   BoundedView,
+  CatalogView,
   FetchSlice,
   HealthBody,
+  HostWiringBody,
   OpsEnvelope,
   RequestOutcome,
+  RunRow,
 } from "./types";
 
 const OPS_BASE = "/ops/v1";
@@ -26,6 +29,22 @@ export async function readHealth(): Promise<OpsEnvelope<HealthBody | RequestOutc
   return opsFetch<HealthBody | RequestOutcome>("/health");
 }
 
+export async function readHostWiring(): Promise<OpsEnvelope<HostWiringBody>> {
+  return opsFetch<HostWiringBody>("/host_wiring");
+}
+
+export async function iterRegistry(): Promise<OpsEnvelope<CatalogView | RequestOutcome>> {
+  return opsFetch<CatalogView | RequestOutcome>("/registry");
+}
+
+export async function describeRegistryEntry(
+  pluginId: string,
+): Promise<OpsEnvelope<Record<string, unknown> | RequestOutcome>> {
+  return opsFetch<Record<string, unknown> | RequestOutcome>(
+    `/registry/${encodeURIComponent(pluginId)}`,
+  );
+}
+
 export async function readSessionRows(
   view: string,
   params: Record<string, unknown> = {},
@@ -44,6 +63,36 @@ export async function readTelemetryChunk(
   return opsFetch<FetchSlice | RequestOutcome>("/telemetry/chunk", {
     method: "POST",
     body: JSON.stringify({ handle, window }),
+  });
+}
+
+export async function cancelRun(handle: string): Promise<OpsEnvelope<RequestOutcome>> {
+  return opsFetch<RequestOutcome>("/actions/cancel", {
+    method: "POST",
+    body: JSON.stringify({ handle }),
+  });
+}
+
+export async function pinRetention(handle: string): Promise<OpsEnvelope<RequestOutcome>> {
+  return opsFetch<RequestOutcome>(`/retention/${encodeURIComponent(handle)}`, {
+    method: "PUT",
+  });
+}
+
+export async function unpinRetention(handle: string): Promise<OpsEnvelope<RequestOutcome>> {
+  return opsFetch<RequestOutcome>(`/retention/${encodeURIComponent(handle)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function joinWaits(
+  handles: string[],
+  mode = "all",
+  timeoutMs = 2000,
+): Promise<OpsEnvelope<{ items: RunRow[] } | RequestOutcome>> {
+  return opsFetch<{ items: RunRow[] } | RequestOutcome>("/waits/join", {
+    method: "POST",
+    body: JSON.stringify({ handles, mode, timeout_ms: timeoutMs }),
   });
 }
 

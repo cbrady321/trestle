@@ -88,8 +88,11 @@ All responses use the operator envelope: `{ "issued": bool, "body": { ... } }`.
 | Route | Job | Operator call |
 |-------|-----|---------------|
 | `/` | Connection health | `read_health` |
-| `/sessions` | Recent sessions list | `read_session_rows(recent_runs)` |
-| `/sessions/{handle}/ask` | Bounded ask card | `read_session_rows(run)` + `read_telemetry_chunk` |
+| `/host-wiring` | MCP stdio snippet | `read_host_wiring` |
+| `/sessions` | Recent runs / failures tabs | `read_session_rows` |
+| `/sessions/{handle}/ask` | Bounded ask + actions | `read_session_rows`, chunk, cancel/pin |
+| `/registry` | Plugin catalog | `iter_registry` |
+| `/registry/{name}` | Plugin detail | `describe_registry_entry` |
 
 The ask page shows **chunks**, not a live stream. Truncation and continuation handles are displayed when present.
 
@@ -143,11 +146,9 @@ trestle ops serve   # open http://127.0.0.1:18733
 
 ---
 
-## 6. Deferred (v0.2 — owner sign-off)
+## 6. Operator v0.2 (complete)
 
-Per R-OP-5: registry browser, `recent_failures` tab, pin/cancel from UI, host wiring editor. Not required for initiative closure.
-
----
+Registry browser, `recent_failures` tab, host wiring snippet, pin/cancel/join from Ask UI, retrieval chain panel. See [`hld/spec-operator-sessions-telemetry.md`](../hld/spec-operator-sessions-telemetry.md) §3–4.
 
 ## 7. Out of scope
 

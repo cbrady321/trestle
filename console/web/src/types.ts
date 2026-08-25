@@ -41,3 +41,32 @@ export interface RunRow {
   started_at?: string;
   ended_at?: string;
 }
+
+export interface PluginCatalogRow {
+  name: string;
+  version?: string;
+  description?: string;
+  valid?: boolean;
+  capability_class?: string;
+}
+
+export interface CatalogView {
+  registry_version: number;
+  items: PluginCatalogRow[];
+  truncated?: boolean;
+  next_cursor?: string | null;
+}
+
+export interface HostWiringBody {
+  transport: string;
+  snippet: Record<string, unknown>;
+  note: string;
+}
+
+export interface RetrievalEvent {
+  label: string;
+  issued: boolean;
+  bytes?: number;
+  at: string;
+}
+

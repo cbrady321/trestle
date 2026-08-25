@@ -36,6 +36,15 @@ Copy any one-file plugin into that directory. Hot reload: drop a new `.py` file;
 
 **Claude Desktop** — same shape under `mcpServers` in your desktop config file.
 
+**Optional streamable HTTP** (E6 — alongside stdio, not a replacement):
+
+```bash
+trestle serve --transport streamable-http --port 18732
+# endpoint: http://127.0.0.1:18732/mcp
+```
+
+See [`hld/spec-agent-mcp-streamable-http.md`](../hld/spec-agent-mcp-streamable-http.md).
+
 ```json
 {
   "mcpServers": {

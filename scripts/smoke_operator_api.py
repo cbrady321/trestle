@@ -67,6 +67,28 @@ def main() -> int:
     assert refusal_body["body"]["origin"] == "projection"
     assert "run_id" not in refusal_body["body"]
 
+    registry = client.get("/ops/v1/registry")
+    assert registry.status_code == 200, registry.text
+    registry_body = registry.json()
+    assert registry_body["issued"] is True
+    assert len(registry_body["body"]["items"]) >= 1
+
+    host = client.get("/ops/v1/host_wiring")
+    assert host.status_code == 200, host.text
+    host_body = host.json()
+    assert host_body["issued"] is True
+    assert host_body["body"]["transport"] == "stdio"
+
+    pin = client.put(f"/ops/v1/retention/{run_id}")
+    assert pin.status_code == 200, pin.text
+    pin_body = pin.json()
+    assert pin_body["issued"] is True
+
+    failures = client.post("/ops/v1/sessions/recent_failures/rows", json={"params": {}})
+    assert failures.status_code == 200, failures.text
+    failures_body = failures.json()
+    assert failures_body["issued"] is True
+
     if WEB_DIST.is_dir():
         ui = client.get("/")
         assert ui.status_code == 200, ui.text

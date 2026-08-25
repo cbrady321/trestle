@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Trestle Operator API
-  version: 0.1.0
-  description: Sessions and telemetry — in-process ControlSurface projection (/ops/v1).
+  version: 0.2.0
+  description: Sessions, telemetry, registry, and operator actions — in-process ControlSurface projection (/ops/v1).
 servers:
   - url: http://127.0.0.1:18733
 paths:
@@ -13,6 +13,33 @@ paths:
       responses:
         "200":
           description: Envelope with health body or operator failure
+  /ops/v1/host_wiring:
+    get:
+      operationId: read_host_wiring
+      summary: Static MCP stdio host snippet for copy-paste
+      responses:
+        "200":
+          description: Host wiring snippet envelope
+  /ops/v1/registry:
+    get:
+      operationId: iter_registry
+      summary: Plugin catalog (ControlSurface.list_plugins)
+      responses:
+        "200":
+          description: CatalogView envelope
+  /ops/v1/registry/{plugin_id}:
+    get:
+      operationId: describe_registry_entry
+      summary: One plugin description (ControlSurface.describe_plugin)
+      parameters:
+        - name: plugin_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Plugin description envelope or projection refusal
   /ops/v1/sessions/{view}/rows:
     post:
       operationId: read_session_rows
@@ -23,6 +50,16 @@ paths:
           required: true
           schema:
             type: string
+            enum:
+              - run
+              - last_error
+              - run_tail
+              - run_events
+              - recent_runs
+              - recent_failures
+              - run_provenance
+              - run_artifacts
+              - artifact_refs
       requestBody:
         content:
           application/json:
@@ -56,3 +93,71 @@ paths:
       responses:
         "200":
           description: FetchSlice envelope or projection refusal
+  /ops/v1/actions/cancel:
+    post:
+      operationId: cancel_run
+      summary: Cancel a running session (ControlSurface.cancel)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [handle]
+              properties:
+                handle:
+                  type: string
+      responses:
+        "200":
+          description: RequestOutcome envelope
+  /ops/v1/retention/{handle}:
+    put:
+      operationId: pin_retention
+      summary: Pin session or artifact for retention (ControlSurface.pin)
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: RequestOutcome envelope
+    delete:
+      operationId: unpin_retention
+      summary: Remove retention pin (ControlSurface.unpin)
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: RequestOutcome envelope
+  /ops/v1/waits/join:
+    post:
+      operationId: join_waits
+      summary: Await session completion (ControlSurface.await_runs)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [handles]
+              properties:
+                handles:
+                  type: array
+                  items:
+                    type: string
+                mode:
+                  type: string
+                  enum: [all, any, first_failure]
+                  default: all
+                timeout_ms:
+                  type: integer
+                  default: 2000
+      responses:
+        "200":
+          description: RunView list envelope or projection refusal

@@ -4,20 +4,28 @@ import { isOutcome, readSessionRows } from "../api";
 import { Alert, Card } from "../components/ui";
 import type { RunRow } from "../types";
 
+type SessionView = "recent_runs" | "recent_failures";
+
 export function SessionsPage() {
+  const [view, setView] = useState<SessionView>("recent_runs");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<RunRow[]>([]);
 
   useEffect(() => {
-    readSessionRows("recent_runs")
+    setLoading(true);
+    setError(null);
+    readSessionRows(view)
       .then((envelope) => {
         if (!envelope.issued || isOutcome(envelope.body)) {
           setError(
             isOutcome(envelope.body)
-              ? `${envelope.body.code}: ${envelope.body.message}`
+              ? envelope.body.code === "projection.not_finalized"
+                ? "Telemetry not filed yet for some sessions."
+                : `${envelope.body.code}: ${envelope.body.message}`
               : "Failed to load sessions",
           );
+          setRows([]);
           return;
         }
         setRows(envelope.body.items as RunRow[]);
@@ -26,18 +34,36 @@ export function SessionsPage() {
         setError(err instanceof Error ? err.message : "Request failed");
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [view]);
 
   return (
     <div>
-      <h1>Recent sessions</h1>
+      <h1>Sessions</h1>
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+        <button
+          type="button"
+          className={`btn${view === "recent_runs" ? "" : " btn-muted"}`}
+          onClick={() => setView("recent_runs")}
+        >
+          Recent runs
+        </button>
+        <button
+          type="button"
+          className={`btn${view === "recent_failures" ? "" : " btn-muted"}`}
+          onClick={() => setView("recent_failures")}
+        >
+          Recent failures
+        </button>
+      </div>
       {loading && <Alert>Loading sessions…</Alert>}
-      {error && <Alert variant="error">{error}</Alert>}
+      {error && <Alert variant="warn">{error}</Alert>}
       {!loading && !error && rows.length === 0 && (
-        <Alert variant="warn">No sessions yet. Run a plugin via MCP or CLI first.</Alert>
+        <Alert variant="warn">
+          No sessions in this view. Run a plugin via MCP or CLI first.
+        </Alert>
       )}
       {rows.length > 0 && (
-        <Card title="Sessions (recent_runs)">
+        <Card title={view === "recent_runs" ? "Recent runs" : "Recent failures"}>
           <table className="table">
             <thead>
               <tr>

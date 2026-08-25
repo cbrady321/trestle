@@ -15,6 +15,8 @@ trestle doctor
 
 Coding agents use **`trestle serve`** — nine frozen MCP tools (`run`, `query`, `fetch`, …) over bounded run evidence. Wire Cursor or Claude Desktop via [`.cursor/mcp.json`](.cursor/mcp.json) (or equivalent `mcpServers` entry with `command: trestle`, `args: ["serve"]`).
 
+Optional streamable HTTP (alongside stdio): `trestle serve --transport streamable-http` → `http://127.0.0.1:18732/mcp`. See [`hld/spec-agent-mcp-streamable-http.md`](hld/spec-agent-mcp-streamable-http.md).
+
 **Playbook:** [`docs/agent-console-mcp.md`](docs/agent-console-mcp.md) — attach, golden workflow, retrieval tree, refusals, smoke checks.
 
 **Assessment:** [`hld/agent-mcp-usability-assessment.md`](hld/agent-mcp-usability-assessment.md).
@@ -35,6 +37,7 @@ trestle recover
 
 ```bash
 trestle ops serve              # API + built UI at http://127.0.0.1:18733
+# UI: /sessions (runs + failures), /registry, /host-wiring, /sessions/{id}/ask
 # Dev UI (proxies /ops to ops serve):
 cd console/web && npm install && npm run dev
 ```
@@ -50,7 +53,8 @@ cd console/web && npm install && npm run dev
 ## Verify
 
 ```bash
-pytest -q                         # 109 tests
+pytest -q                         # 116 tests
 python scripts/smoke_agent_mcp.py
 python scripts/smoke_operator_api.py
+pytest tests/test_mcp_http_smoke.py -q   # optional HTTP MCP transport
 ```

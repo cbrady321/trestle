@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import shutil
 import subprocess
@@ -138,6 +139,10 @@ class Conductor:
 
         self.scheduler.complete(order.run_id)
         return classification
+
+    async def drive_async(self, order: WorkOrder) -> str:
+        """Async entry — runs sync drive on a worker thread (wrapper stays sync)."""
+        return await asyncio.to_thread(self.drive, order)
 
     def _promote_outputs(self, run_dir: Path, ledger: RunLedger, run_id: str) -> list[str]:
         outputs_dir = work_dir(run_dir) / "outputs"

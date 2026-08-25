@@ -40,7 +40,11 @@ export function HomePage() {
         </Card>
       )}
       <p>
-        Browse <a href="/sessions">recent sessions</a> to inspect bounded telemetry.
+        Browse <a href="/sessions">recent sessions</a> or inspect the{" "}
+        <a href="/registry">plugin registry</a>.
+      </p>
+      <p>
+        Agent hosts: copy the <a href="/host-wiring">MCP stdio snippet</a>.
       </p>
     </div>
   );

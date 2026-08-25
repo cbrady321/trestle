@@ -53,11 +53,15 @@ Humans inspect **sessions** (runs) and **telemetry** (bounded evidence slices) t
 - Route `/sessions/{handle}/ask` composes session row + telemetry chunk(s) with explicit windows — **bounded answer card** (bytes + continuation handle), not a log scroller.
 - **MUST** show `projection.not_finalized` as “telemetry not filed yet” — never fake streams.
 
-### R-OP-5 Deferred (v0.2)
+### R-OP-5 Operator v0.2 (complete)
 
-- Registry browser, host wiring editor, `recent_failures` tab, retrieval chain analytics, join/cancel/pin from UI.
-- Admit / `run` from browser (Drop — freeze).
-- Live tail of running sessions (Drop — R-QB-28).
+- Registry browser (`GET /ops/v1/registry`, `GET /ops/v1/registry/{id}`).
+- Host wiring snippet (`GET /ops/v1/host_wiring`).
+- `recent_failures` tab in Sessions UI.
+- Pin/cancel/join from Ask UI (`PUT/DELETE /ops/v1/retention`, `POST /ops/v1/actions/cancel`, `POST /ops/v1/waits/join`).
+- Retrieval chain analytics panel on Ask page.
+
+**Still dropped:** admit / `run` from browser; live tail (R-QB-28).
 
 ### R-OP-6 Banned naming
 
@@ -75,6 +79,7 @@ Humans inspect **sessions** (runs) and **telemetry** (bounded evidence slices) t
 - [x] [`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md) implements routes, layout, and naming wall.
 - [x] E5 operator API MVP: `trestle ops serve`, tests green.
 - [x] E5b web UI: `console/web/` routes per spec §4.
+- [x] R-OP-5 v0.2: registry, host wiring, failures tab, pin/cancel/join UI, retrieval chain.
 
 ## References
 

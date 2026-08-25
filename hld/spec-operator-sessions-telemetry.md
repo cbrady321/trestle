@@ -1,6 +1,6 @@
 # Spec — Operator sessions & telemetry
 
-Status: **complete** — E5/E5b implemented @ `0c2ed67`. v0.2 deferred per R-OP-5.  
+Status: **complete** — E5/E5b + v0.2 @ operator API 0.2.0.  
 Date: 2026-08-25  
 Replaces: [`spec-console-lens-mvp.md`](spec-console-lens-mvp.md) (cancelled porch track).
 
@@ -70,12 +70,19 @@ Operator-local failure (HTTP 502): `{ "issued": false, "body": { "code": "operat
 | HTTP | `operationId` | Python (`trestle/ops/`) | ControlSurface |
 |------|---------------|---------------------------|----------------|
 | `GET /ops/v1/health` | `read_health` | `read_health()` | `list_plugins` |
+| `GET /ops/v1/host_wiring` | `read_host_wiring` | `read_host_wiring()` | static snippet |
+| `GET /ops/v1/registry` | `iter_registry` | `iter_registry()` | `list_plugins` |
+| `GET /ops/v1/registry/{plugin_id}` | `describe_registry_entry` | `describe_registry_entry(id)` | `describe_plugin` |
 | `POST /ops/v1/sessions/{view}/rows` | `read_session_rows` | `read_session_rows(view, params, cursor)` | `query` |
 | `POST /ops/v1/telemetry/chunk` | `read_telemetry_chunk` | `read_telemetry_chunk(handle, window)` | `fetch` |
+| `POST /ops/v1/actions/cancel` | `cancel_run` | `cancel_run(handle)` | `cancel` |
+| `PUT /ops/v1/retention/{handle}` | `pin_retention` | `pin_retention(handle)` | `pin` |
+| `DELETE /ops/v1/retention/{handle}` | `unpin_retention` | `unpin_retention(handle)` | `unpin` |
+| `POST /ops/v1/waits/join` | `join_waits` | `join_waits(handles, mode, timeout_ms)` | `await_runs` |
 
 `view` ∈ nine freeze ViewNames. Rows body: `{ "params": {}, "cursor": null }`. Chunk body: `{ "handle": "<handle>", "window": { "kind": "tail", "count": 50 } }` — **`handle`** on operator wire (maps to Kernel `fetch` `target` internally).
 
-**No routes** for: admit/run, live stream, SQL, filesystem paths, cancel/pin (v0.2).
+**No routes** for: admit/run, live stream, SQL, filesystem paths.
 
 Author `console/openapi.yaml` from this table.
 
@@ -88,6 +95,9 @@ trestle/ops/
   health.py         # read_health
   sessions.py       # read_session_rows
   telemetry.py      # read_telemetry_chunk
+  registry.py       # iter_registry, describe_registry_entry
+  actions.py        # cancel_run, pin_retention, unpin_retention, join_waits
+  host_wiring.py    # read_host_wiring
   serve.py          # uvicorn entry for CLI
 ```
 
@@ -101,8 +111,11 @@ CLI: `trestle ops serve [--host 127.0.0.1] [--port 18733] [--home PATH]`.
 | Route | Jobs | Operator calls | Notes |
 |-------|------|----------------|-------|
 | `/` | H1 | `read_health` | Connection / registry_version |
-| `/sessions` | S1 | `read_session_rows(recent_runs)` | Row → `/sessions/{handle}/ask` |
-| `/sessions/{handle}/ask` | S2, T1, X1 | `read_session_rows(run)` + `read_telemetry_chunk` | **Ask UI** — chunk + budget + continuation |
+| `/host-wiring` | — | `read_host_wiring` | MCP stdio snippet copy |
+| `/sessions` | S1 | `read_session_rows(recent_runs \| recent_failures)` | Tab toggle |
+| `/sessions/{handle}/ask` | S2, T1, X1 | `read_session_rows(run)` + chunk + actions | Ask UI + retrieval chain |
+| `/registry` | — | `iter_registry` | Plugin catalog |
+| `/registry/{name}` | — | `describe_registry_entry` | Plugin detail |
 
 **Not-finalized (R-QB-28):** until `evidence_finalized`, only `run` and `recent_runs` views succeed; UI shows “telemetry not filed yet.”
 

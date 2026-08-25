@@ -105,15 +105,23 @@ def attach_registry_version_mirror(mcp: Any, kernel: Kernel) -> None:
     mcp._list_tools_mcp = list_tools_with_registry_version
 
 
-def run_server() -> int:
+def run_server(
+    *,
+    transport: str = "stdio",
+    host: str = "127.0.0.1",
+    port: int = 18732,
+) -> int:
     from fastmcp import FastMCP
+
+    if transport == "streamable-http" and host not in {"127.0.0.1", "localhost", "::1"}:
+        raise SystemExit("streamable-http MCP must bind loopback only")
 
     kernel = create_kernel()
     mcp = FastMCP("trestle")
     attach_registry_version_mirror(mcp, kernel)
 
     @mcp.tool
-    def run(
+    async def run(
         plugin: str,
         args: dict[str, Any] | None = None,
         version: str | None = None,
@@ -123,7 +131,7 @@ def run_server() -> int:
         """Start a plugin run and optionally wait for a status frame."""
         kernel.registry.maybe_refresh()
         return _wire_result(
-            kernel.control.run(
+            await kernel.control.run_async(
                 plugin=plugin,
                 args=args,
                 version=version,
@@ -133,13 +141,13 @@ def run_server() -> int:
         )
 
     @mcp.tool
-    def await_runs(
+    async def await_runs(
         run_ids: list[str],
         mode: str = "all",
         timeout_ms: int = 2000,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Wait for existing runs to reach a terminal state."""
-        result = kernel.control.await_runs(run_ids, mode=mode, timeout_ms=timeout_ms)
+        result = await kernel.control.await_runs_async(run_ids, mode=mode, timeout_ms=timeout_ms)
         if isinstance(result, RequestOutcome):
             return result.to_dict()
         return [view.to_dict() for view in result]
@@ -197,5 +205,10 @@ def run_server() -> int:
 
     signal.signal(signal.SIGTERM, _handle_sigterm)
 
-    mcp.run(transport="stdio")
+    if transport == "stdio":
+        mcp.run(transport="stdio")
+    elif transport == "streamable-http":
+        mcp.run(transport="streamable-http", host=host, port=port)
+    else:
+        raise SystemExit(f"unsupported MCP transport: {transport}")
     return 0
