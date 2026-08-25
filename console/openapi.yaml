@@ -1,0 +1,58 @@
+openapi: 3.1.0
+info:
+  title: Trestle Operator API
+  version: 0.1.0
+  description: Sessions and telemetry — in-process ControlSurface projection (/ops/v1).
+servers:
+  - url: http://127.0.0.1:18733
+paths:
+  /ops/v1/health:
+    get:
+      operationId: read_health
+      summary: Operator reachability and registry_version
+      responses:
+        "200":
+          description: Envelope with health body or operator failure
+  /ops/v1/sessions/{view}/rows:
+    post:
+      operationId: read_session_rows
+      summary: Named view rows (ControlSurface.query)
+      parameters:
+        - name: view
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                params:
+                  type: object
+                cursor:
+                  type: string
+                  nullable: true
+      responses:
+        "200":
+          description: BoundedView envelope or projection refusal
+  /ops/v1/telemetry/chunk:
+    post:
+      operationId: read_telemetry_chunk
+      summary: Bounded telemetry chunk (ControlSurface.fetch)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [handle, window]
+              properties:
+                handle:
+                  type: string
+                window:
+                  type: object
+      responses:
+        "200":
+          description: FetchSlice envelope or projection refusal

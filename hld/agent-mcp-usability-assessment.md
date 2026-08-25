@@ -1,27 +1,29 @@
 # Agent MCP usability assessment
 
-**Status:** Phase C complete — C1 assessment + C2 playbook shipped (`docs/agent-console-mcp.md`).  
-**Date:** 2026-08-25  
-**Method:** Scripted FastMCP stdio client against `trestle serve` (two sessions: empty vs fixture plugin dir), plus `ControlSurface` direct calls and existing pytest corpus (103 passed at ship).  
+**Status:** Phase C complete. **Phase E1 (F5/F6) shipped** — `ControlSurface.run` honors `wait_ms` (R-WAIT-14).  
+**Date:** 2026-08-25 (assessment); E1 closure 2026-08-25  
+**Method:** Scripted FastMCP stdio client against `trestle serve` (two sessions: empty vs fixture plugin dir), plus `ControlSurface` direct calls and existing pytest corpus.  
 **Scope:** How agents should use `trestle serve` in real hosts — wiring, workflow, friction — without reopening the nine-tool freeze unless a gap is proven.
+
+> **Historical note:** Session C and friction rows F5/F6 below describe **pre-E1** blocking `run` behavior. Current SSOT: [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md) §3 and `tests/test_mcp_stdio_smoke.py`.
 
 ---
 
-## Executive summary
+## Executive summary (Phase C baseline)
 
-**Recommendation (executed):** **Docs-first** agent onboarding shipped — playbook, host JSON, retrieval decision tree, mis-invocation table, `.cursor/mcp.json`, README pointer, smoke tests. **No kernel or freeze changes** for Phase C. F5/F6 (non-blocking `run`) remain deferred pending owner freeze amendment.
+**Recommendation (executed):** **Docs-first** agent onboarding shipped — playbook, host JSON, retrieval decision tree, mis-invocation table, `.cursor/mcp.json`, README pointer, smoke tests. **E1 shipped:** non-blocking `run` per R-WAIT-14.
 
-The nine-tool surface is **technically sound** and **G1-compliant** (2,365-byte `tools/list`, nine tools, schemas pulled via `describe_plugin`). The main gaps are **discoverability** (view names, retrieval paths, plugin install location) and **one behavioral mismatch** between freeze/HLD `wait_ms` semantics and the current blocking `run` implementation.
+The nine-tool surface is **technically sound** and **G1-compliant** (2,365-byte `tools/list`, nine tools, schemas pulled via `describe_plugin`). Remaining gaps are **discoverability** (view names, retrieval paths, plugin install location) — not wait semantics.
 
 | Dimension | Score (1–5) | Verdict |
 |-----------|-------------|---------|
 | Host attach | 4 | Works via stdio; repo ships `.cursor/mcp.json` + playbook §0 |
 | Cold start / G1 | 5 | Nine tools, 2.4 KB definitions |
-| Run → wait → terminal | 3 | Happy path works; `wait_ms` non-blocking semantics not realized |
+| Run → wait → terminal | **4** | Happy path works; **`wait_ms` honors deadline** (E1) |
 | Console retrieval | 3 | `fetch`/`query` work; path choice not self-evident |
-| Refusals & honesty | 4 | Codes actionable; `not_finalized` hard to hit via MCP |
+| Refusals & honesty | 4 | Codes actionable; `not_finalized` exercisable via short `wait_ms` + query |
 | Plugin discovery | 4 | Pull model good; fresh home has no plugins |
-| **Overall** | **4** | **C2 shipped; F5/F6 deferred (documented, not fixed)** |
+| **Overall** | **4** | **C2 + E1 shipped** |
 
 ---
 
@@ -279,8 +281,8 @@ The playbook should implement this outline verbatim in structure:
 
 ### §3 — Wait & honesty
 
-- `run` blocks until plugin completes (current behavior)
-- `await_runs` for joining handles already admitted elsewhere
+- `run` admits → background drive → honors `wait_ms` (R-WAIT-14)
+- Short `wait_ms` on slow plugins → `running` frame; join with `await_runs`
 - `projection.not_finalized` → wait, then retry query
 - `limits_exceeded` on status frame → evidence truncated by design
 - Admission errors never include `run_id`
@@ -319,7 +321,7 @@ Manual MCP: `trestle serve` → `list_plugins` → `run(echo)` → `fetch({run_i
 | Plugin bootstrap | §6 + playbook §0 |
 | Smoke verification | Session B + playbook §5 |
 
-**C2 shipped.** Playbook, host snippet, README, example plugin, and MCP stdio smoke test in repo. F5/F6 documented in playbook §3; kernel unchanged unless owner requests freeze amendment.
+**C2 + E1 shipped.** Playbook, host snippet, README, example plugin, MCP stdio smoke, and non-blocking `run` (R-WAIT-14) in repo.
 
 ---
 

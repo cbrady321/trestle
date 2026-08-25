@@ -4,5 +4,5 @@ stage: in_progress
 unit: trestle-console-phase-e
 milestone: Phase E
 notes: >-
-  Phase E1 F5/F6 non-blocking ControlSurface.run shipped; requirements v0.8 +
-  HLD amendment; plan §11 Phase E; playbook §3 updated. Phase E2 push+CI pending.
+  E1-E2 complete (F5/F6, CI). E4 requirements+spec landed. E5 operator API MVP
+  shipped (trestle ops serve). E5b web UI and E3 async kernel remain optional.

@@ -6,6 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from trestle.ops.serve import run_ops_server
 from trestle.server.doctor import run_doctor, run_recover
 from trestle.server.main import create_kernel, default_home, run_server
 
@@ -15,6 +16,12 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("serve", help="Start the MCP stdio server")
+    ops = sub.add_parser("ops", help="Operator HTTP surface")
+    ops_sub = ops.add_subparsers(dest="ops_command", required=True)
+    ops_serve = ops_sub.add_parser("serve", help="Start operator HTTP API (sessions/telemetry)")
+    ops_serve.add_argument("--host", default="127.0.0.1", help="Bind host (default 127.0.0.1)")
+    ops_serve.add_argument("--port", type=int, default=18733, help="Bind port (default 18733)")
+    ops_serve.add_argument("--home", help="Override TRESTLE_HOME")
     doctor = sub.add_parser("doctor", help="Report service health and configuration")
     doctor.add_argument("--home", help="Override TRESTLE_HOME")
     doctor.add_argument(
@@ -34,6 +41,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "serve":
         return run_server()
+    if args.command == "ops" and args.ops_command == "serve":
+        home = Path(args.home) if args.home else None
+        return run_ops_server(host=args.host, port=args.port, home=home)
     if args.command == "doctor":
         return run_doctor(home=args.home, run_gc_pass=getattr(args, "gc", False))
     if args.command == "recover":

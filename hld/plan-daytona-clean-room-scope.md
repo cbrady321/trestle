@@ -447,11 +447,12 @@ Sections **1–5** record the public-doc study that concluded **§ Study conclus
 
 | Step | Status | Deliverable |
 |------|--------|-------------|
-| **E1 F5/F6** | **In progress** | Non-blocking `ControlSurface.run`; tests; playbook §3 |
-| **E2 Push + CI** | Pending | `git push origin master`; GitHub Actions green on Phase C + E1 |
+| **E1 F5/F6** | **Done** | Non-blocking `ControlSurface.run`; tests; playbook §3 |
+| **E2 Push + CI** | **Done** | `ce0b395` on `origin/master`; CI green |
 | **E3 Async kernel** | Optional | Async conductor/project; wrapper stays sync |
-| **E4 Phase D** | Not started | Requirements + spec (sessions/telemetry, retrieval-first, **no porch naming**) |
-| **E5 Operator API** | Blocked on E4 | FastAPI read-only endpoints mirroring MCP admission |
+| **E4 Phase D** | **Done** | [`requirements-operator-sessions-telemetry.md`](requirements-operator-sessions-telemetry.md) + [`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md) |
+| **E5 Operator API** | **MVP done** | `trestle ops serve`, `trestle/ops/`, `console/openapi.yaml`, `tests/test_ops_api.py` |
+| **E5b Web UI** | Not started | `console/web/` routes per spec §4 |
 | **E6 Transport** | Optional | Streamable HTTP MCP alongside stdio — only if spec'd |
 
 Verify locally:

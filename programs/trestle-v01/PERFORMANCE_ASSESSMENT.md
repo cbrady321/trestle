@@ -8,7 +8,7 @@ recommended agent path against a naive poll baseline.
 Agent path (5 tool turns):
 
 1. `list_plugins`
-2. `run` with `wait_ms=5000` (blocks until terminal)
+2. `run` with `wait_ms=5000` (terminal within wait, or `running` frame on timeout)
 3. `await_runs` (join confirmation; already terminal)
 4. `query` (`recent_runs`)
 5. `fetch` (bounded slice via handle)

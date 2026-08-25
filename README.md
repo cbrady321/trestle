@@ -23,20 +23,24 @@ Coding agents use **`trestle serve`** — nine frozen MCP tools (`run`, `query`,
 
 ```bash
 trestle doctor
-trestle serve    # stdio MCP — agent path
+trestle serve          # stdio MCP — agent path
+trestle ops serve      # HTTP operator API — sessions/telemetry (localhost:18733)
 trestle pin <run_id>
 trestle recover
 ```
+
+**Operator HTTP:** [`hld/spec-operator-sessions-telemetry.md`](hld/spec-operator-sessions-telemetry.md) — retrieval-first sessions + telemetry UI (Phase D/E).
 
 ## Requirements and architecture
 
 - [`trestle-requirements.md`](trestle-requirements.md) — product requirements
 - [`hld/hld-interface-architecture-trestle.md`](hld/hld-interface-architecture-trestle.md) — nine-tool freeze
-- [`hld/plan-daytona-clean-room-scope.md`](hld/plan-daytona-clean-room-scope.md) — active scope (agent MCP console)
+- [`hld/plan-daytona-clean-room-scope.md`](hld/plan-daytona-clean-room-scope.md) — active scope (Phase E)
+- [`docs/agent-console-mcp.md`](docs/agent-console-mcp.md) — agent playbook
 
 ## Verify
 
 ```bash
-pytest -q                    # 104 tests
+pytest -q                    # 109 tests
 python scripts/smoke_agent_mcp.py
 ```
