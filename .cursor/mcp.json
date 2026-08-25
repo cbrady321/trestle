@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "trestle": {
+      "command": "trestle",
+      "args": ["serve"],
+      "env": {
+        "TRESTLE_HOME": "~/.trestle"
+      }
+    }
+  }
+}
