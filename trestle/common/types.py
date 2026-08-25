@@ -211,15 +211,20 @@ class PublishView:
 class CatalogView:
     registry_version: int
     items: list[PluginCatalogRow]
+    plugin_search_paths: list[str]
     next_cursor: Handle | None = None
     truncated: bool = False
+    catalog_hint: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
             "registry_version": self.registry_version,
             "items": [row.to_dict() for row in self.items],
             "truncated": self.truncated,
+            "plugin_search_paths": list(self.plugin_search_paths),
         }
+        if self.catalog_hint is not None:
+            out["catalog_hint"] = self.catalog_hint
         if self.next_cursor is not None:
             out["next_cursor"] = self.next_cursor
         return out

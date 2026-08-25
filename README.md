@@ -6,8 +6,7 @@ A durable local execution ledger with an MCP control surface.
 
 ```bash
 pip install -e ".[dev]"
-mkdir -p ~/.trestle/plugins
-cp examples/plugins/echo.py ~/.trestle/plugins/
+trestle init
 trestle doctor
 ```
 
@@ -53,7 +52,7 @@ cd console/web && npm install && npm run dev
 ## Verify
 
 ```bash
-pytest -q                         # 126 tests
+pytest -q                         # 135 tests
 python scripts/smoke_agent_mcp.py
 python scripts/smoke_operator_api.py
 pytest tests/test_mcp_http_smoke.py -q   # optional HTTP MCP transport

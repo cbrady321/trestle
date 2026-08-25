@@ -466,6 +466,8 @@ class PluginCatalogRow:  # catalog freeze — bumps CatalogView, not ViewRow tab
 class CatalogView:  # registry publication — sibling of BoundedView, not a subtype
     registry_version: int  # Kernel publication fact (R-REG-6)
     items: Sequence[PluginCatalogRow]
+    plugin_search_paths: Sequence[str]  # absolute watched dirs (agent-plugin-publish)
+    catalog_hint: str | None  # set when items empty; actionable bootstrap text
     next_cursor: Handle | None
     truncated: bool
 ```
@@ -828,3 +830,4 @@ Do not implement until this agreement is the working set. Existing `trestle/` sc
 - **2026-08-20 / `tty-overlay-kinds`** — `limits_exceeded` None/omit = not checked (class stays CatalogView); Admit/`run` preconditions cite overlay `admission.tty_not_ready` without execute-to-learn; `LimitExceededMarker.stream` notes wrapper stdout/stderr vs overlay `tty_console`. Overlay HLD amendment remains `tty-class-overlay`; this freeze envelope-typing amendment remains `tty-overlay-kinds`.
 - **2026-08-20 / `tty-overlay-kinds`** — Typed overlay-bound members onto freeze envelopes: `RunView.limits_exceeded` (R-LIM-5 + R-LIM-3 marker), optional `PluginCatalogRow.capability_class` (CatalogView bump; nine ViewRows untouched), `admission.tty_not_ready` on the `admission.*` example list. Requirements reference v0.5. Pointers to complementary overlay HLD and interface-design artifact. Handoff preserve list plus overlay kinds. Architecture Reference unchanged: three ports, nine tools, E2 Control deferred, DefaultAgentSuccess grammar, `first_failure`, CatalogView vs BoundedView split.
 - **2026-08-25 / `agent-plugin-publish`** — Fixed tenth MCP tool `publish_plugin` (`source`, optional `name` → `PublishView` or `publication.*` `RequestOutcome`). `RequestOutcome.origin` gains `publication`. ProjectionContract gains `PublishView`. Writes to primary plugin dir; same hot-reload pipeline as filesystem drop-in (R-REG-1). R-MCP-1 still holds — count does not grow with plugin count. Complementary contract: [`interface-design-agent-plugin-interface.md`](interface-design-agent-plugin-interface.md).
+- **2026-08-25 / `agent-plugin-publish`** — `CatalogView` gains `plugin_search_paths` and `catalog_hint` (APL-01). `PluginPublicationConfig`: `--plugin-dir`, `config.toml [plugins].paths`, `TRESTLE_PLUGIN_DIRS`, `trestle init`. Doctor lists paths with per-dir plugin counts.

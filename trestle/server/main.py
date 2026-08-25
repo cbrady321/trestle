@@ -15,6 +15,7 @@ from trestle.server.conductor import Conductor
 from trestle.server.config import load_config
 from trestle.server.control import ControlSurface
 from trestle.server.project import Project
+from trestle.server.plugin_paths import resolve_plugin_dirs
 from trestle.server.recovery import recover_on_startup
 from trestle.server.registry import Registry
 from trestle.server.runs import RunRegistry
@@ -36,6 +37,7 @@ def create_kernel(
     home: Path | None = None,
     plugin_dirs: list[Path] | None = None,
     *,
+    cli_plugin_dirs: list[Path] | None = None,
     skip_recovery: bool = False,
 ) -> Kernel:
     trestle_home = home or default_home()
@@ -48,7 +50,10 @@ def create_kernel(
 
         rebuild_from_ledgers(trestle_home, ttl_s=config.idempotency_ttl_s)
 
-    dirs = plugin_dirs or [trestle_home / "plugins"]
+    if plugin_dirs is not None:
+        dirs = plugin_dirs
+    else:
+        dirs = resolve_plugin_dirs(trestle_home, cli_dirs=cli_plugin_dirs)
     registry = Registry(home=trestle_home, plugin_dirs=dirs)
     registry.refresh()
     scheduler = Scheduler()
@@ -112,10 +117,12 @@ def run_server(
     *,
     transport: str = "stdio",
     port: int = 18732,
+    home: Path | None = None,
+    cli_plugin_dirs: list[Path] | None = None,
 ) -> int:
     from fastmcp import FastMCP
 
-    kernel = create_kernel()
+    kernel = create_kernel(home=home, cli_plugin_dirs=cli_plugin_dirs)
     mcp = FastMCP("trestle")
     attach_registry_version_mirror(mcp, kernel)
 

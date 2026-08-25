@@ -8,7 +8,28 @@ from pathlib import Path
 
 from trestle.ops.serve import run_ops_server
 from trestle.server.doctor import run_doctor, run_recover
+from trestle.server.init_cmd import run_init
 from trestle.server.main import create_kernel, default_home, run_server
+
+
+def _add_home_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--home", help="Override TRESTLE_HOME")
+
+
+def _add_plugin_dir_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--plugin-dir",
+        action="append",
+        dest="plugin_dirs",
+        metavar="PATH",
+        help="Plugin directory to watch (repeatable; replaces config/env when set)",
+    )
+
+
+def _cli_plugin_dirs(raw: list[str] | None) -> list[Path] | None:
+    if not raw:
+        return None
+    return [Path(path) for path in raw]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -28,6 +49,9 @@ def main(argv: list[str] | None = None) -> int:
         default=18732,
         help="HTTP bind port on 127.0.0.1 (streamable-http only, default 18732)",
     )
+    _add_home_arg(serve)
+    _add_plugin_dir_arg(serve)
+
     ops = sub.add_parser("ops", help="Operator HTTP surface")
     ops_sub = ops.add_subparsers(dest="ops_command", required=True)
     ops_serve = ops_sub.add_parser("serve", help="Start operator HTTP API (sessions/telemetry)")
@@ -37,34 +61,62 @@ def main(argv: list[str] | None = None) -> int:
         default=18733,
         help="Bind port on 127.0.0.1 (default 18733)",
     )
-    ops_serve.add_argument("--home", help="Override TRESTLE_HOME")
+    _add_home_arg(ops_serve)
+    _add_plugin_dir_arg(ops_serve)
+
+    init = sub.add_parser("init", help="Create TRESTLE_HOME and seed default plugins")
+    _add_home_arg(init)
+    init.add_argument(
+        "--no-seed",
+        action="store_true",
+        help="Create plugins directory without seeding echo.py",
+    )
+
     doctor = sub.add_parser("doctor", help="Report service health and configuration")
-    doctor.add_argument("--home", help="Override TRESTLE_HOME")
+    _add_home_arg(doctor)
+    _add_plugin_dir_arg(doctor)
     doctor.add_argument(
         "--gc",
         action="store_true",
         help="Run a retention sweep and include gc stats",
     )
+
     recover = sub.add_parser("recover", help="Run crash recovery sweep")
-    recover.add_argument("--home", help="Override TRESTLE_HOME")
+    _add_home_arg(recover)
+
     pin = sub.add_parser("pin", help="Pin a run or artifact for retention")
     pin.add_argument("target", help="Run id or artifact id to pin")
-    pin.add_argument("--home", help="Override TRESTLE_HOME")
+    _add_home_arg(pin)
+
     unpin = sub.add_parser("unpin", help="Remove a retention pin")
     unpin.add_argument("target", help="Run id or artifact id to unpin")
-    unpin.add_argument("--home", help="Override TRESTLE_HOME")
+    _add_home_arg(unpin)
 
     args = parser.parse_args(argv)
     if args.command == "serve":
+        home = Path(args.home) if getattr(args, "home", None) else None
         return run_server(
             transport=args.transport,
             port=args.port,
+            home=home,
+            cli_plugin_dirs=_cli_plugin_dirs(getattr(args, "plugin_dirs", None)),
         )
     if args.command == "ops" and args.ops_command == "serve":
         home = Path(args.home) if args.home else None
-        return run_ops_server(port=args.port, home=home)
+        return run_ops_server(
+            port=args.port,
+            home=home,
+            cli_plugin_dirs=_cli_plugin_dirs(getattr(args, "plugin_dirs", None)),
+        )
+    if args.command == "init":
+        trestle_home = Path(args.home) if args.home else default_home()
+        return run_init(home=trestle_home, seed_echo=not args.no_seed)
     if args.command == "doctor":
-        return run_doctor(home=args.home, run_gc_pass=getattr(args, "gc", False))
+        return run_doctor(
+            home=args.home,
+            run_gc_pass=getattr(args, "gc", False),
+            cli_plugin_dirs=_cli_plugin_dirs(getattr(args, "plugin_dirs", None)),
+        )
     if args.command == "recover":
         return run_recover(home=args.home)
     if args.command == "pin":

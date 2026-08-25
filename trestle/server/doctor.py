@@ -8,6 +8,7 @@ from pathlib import Path
 from trestle.server.config import TrestleConfig, load_config
 from trestle.server.gc import GCReport, count_runs, run_gc
 from trestle.server.main import create_kernel, default_home
+from trestle.server.plugin_paths import resolve_plugin_dirs
 from trestle.server.recovery import recover_on_startup
 
 
@@ -19,6 +20,7 @@ class DoctorReport:
     registry_version: int
     plugin_count: int
     plugins: tuple[str, ...]
+    plugin_search_paths: tuple[tuple[str, int], ...]
     draining: bool
     run_counts: dict[str, int]
     config: TrestleConfig
@@ -44,6 +46,9 @@ class DoctorReport:
         ]
         for state in sorted(k for k in self.run_counts if k != "total"):
             rows.append(f"  {state}: {self.run_counts[state]}")
+        rows.append("plugin_search_paths:")
+        for path, count in self.plugin_search_paths:
+            rows.append(f"  - {path} ({count} plugins)")
         rows.append(f"plugins: {self.plugin_count}")
         for plugin_id in self.plugins:
             rows.append(f"  - {plugin_id}")
@@ -68,12 +73,16 @@ def build_doctor_report(
     run_gc_pass: bool = False,
     skip_recovery: bool = True,
     plugin_dirs: list[Path] | None = None,
+    cli_plugin_dirs: list[Path] | None = None,
 ) -> DoctorReport:
     trestle_home = home
     config = load_config(trestle_home)
+    resolved_dirs = plugin_dirs
+    if resolved_dirs is None:
+        resolved_dirs = resolve_plugin_dirs(trestle_home, cli_dirs=cli_plugin_dirs)
     kernel = create_kernel(
         home=trestle_home,
-        plugin_dirs=plugin_dirs,
+        plugin_dirs=resolved_dirs,
         skip_recovery=skip_recovery,
     )
     kernel.registry.refresh()
@@ -91,6 +100,7 @@ def build_doctor_report(
     health = "ok"
     if run_counts.get("running", 0):
         health = "degraded"
+    counts_by_dir = kernel.registry.plugin_counts_by_dir()
 
     return DoctorReport(
         home=trestle_home,
@@ -99,6 +109,9 @@ def build_doctor_report(
         registry_version=kernel.registry.registry_version,
         plugin_count=len(kernel.registry.snapshots),
         plugins=tuple(sorted(kernel.registry.snapshots)),
+        plugin_search_paths=tuple(
+            (str(path), counts_by_dir.get(path, 0)) for path in kernel.registry.plugin_dirs
+        ),
         draining=kernel.control.scheduler.draining,
         run_counts=run_counts,
         config=config,
@@ -107,9 +120,18 @@ def build_doctor_report(
     )
 
 
-def run_doctor(*, home: str | None = None, run_gc_pass: bool = False) -> int:
+def run_doctor(
+    *,
+    home: str | None = None,
+    run_gc_pass: bool = False,
+    cli_plugin_dirs: list[Path] | None = None,
+) -> int:
     trestle_home = Path(home) if home else default_home()
-    report = build_doctor_report(home=trestle_home, run_gc_pass=run_gc_pass)
+    report = build_doctor_report(
+        home=trestle_home,
+        run_gc_pass=run_gc_pass,
+        cli_plugin_dirs=cli_plugin_dirs,
+    )
     for line in report.lines():
         print(line)
     return 0

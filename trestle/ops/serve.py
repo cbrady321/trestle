@@ -15,8 +15,9 @@ def run_ops_server(
     *,
     port: int = 18733,
     home: Path | None = None,
+    cli_plugin_dirs: list[Path] | None = None,
 ) -> int:
-    kernel = create_kernel(home=home)
+    kernel = create_kernel(home=home, cli_plugin_dirs=cli_plugin_dirs)
     app = create_app(kernel)
     uvicorn.run(app, host=LOOPBACK_HOST, port=port, log_level="warning")
     return 0

@@ -20,15 +20,37 @@ pytest -q   # optional sanity check
 
 ### Plugin home
 
-Trestle loads plugins from `$TRESTLE_HOME/plugins/` (default `~/.trestle/plugins/`). **An empty plugin directory means every `run` returns `admission.plugin_not_found`.**
+Trestle loads plugins from configured **plugin search paths** (default `$TRESTLE_HOME/plugins/`). **An empty catalog means every `run` returns `admission.plugin_not_found`.**
+
+```bash
+trestle init                    # create ~/.trestle, plugins/, seed echo.py
+trestle doctor                  # plugin_search_paths + plugin counts
+```
+
+Or manually:
 
 ```bash
 mkdir -p ~/.trestle/plugins
 cp examples/plugins/echo.py ~/.trestle/plugins/
-trestle doctor   # plugins: 1
+trestle doctor
 ```
 
-Copy any one-file plugin into that directory. Hot reload: drop a new `.py` file; call `list_plugins` again (`registry_version` bumps).
+**Project repos** — point the server at repo tool folders (repeatable flag replaces config/env for that process):
+
+```bash
+trestle serve --plugin-dir ./tools --plugin-dir ./packages/scripts
+```
+
+Or persist in `$TRESTLE_HOME/config.toml`:
+
+```toml
+[plugins]
+paths = ["~/.trestle/plugins", "/abs/path/to/repo/tools"]
+```
+
+Or env: `TRESTLE_PLUGIN_DIRS="$HOME/.trestle/plugins:/abs/repo/tools"`.
+
+Hot reload: drop a new `.py` file into any watched path, or call `publish_plugin`; then `list_plugins` (`registry_version` bumps).
 
 ### Host wiring
 
@@ -111,7 +133,7 @@ Typical successful path:
 | `query` | Named view over run history (bounded rows) |
 | `fetch` | Bytes of one handle (result, artifact, summary continuation) |
 | `pin` / `unpin` | Retention policy |
-| `list_plugins` | Catalog names only — no schemas |
+| `list_plugins` | Catalog names only — no schemas; includes `plugin_search_paths`; `catalog_hint` when empty |
 | `describe_plugin` | One plugin's schema and metadata |
 | `publish_plugin` | Create or update a plugin from Python source at runtime |
 

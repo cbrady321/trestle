@@ -127,7 +127,7 @@ plugin_search_paths:
 ## Interface 2 — AgentCatalogPort (MCP wire)
 
 **Stories:** APL-01–APL-07  
-**Medium:** wire — nine frozen MCP tools; this section owns **catalog subset only**  
+**Medium:** wire — ten frozen MCP tools; this section owns **catalog subset only**  
 **Consumer:** coding agent
 
 ### Shared freeze (cite, do not fork)
@@ -296,7 +296,7 @@ write plugins/foo.py
 
 | # | Scenario | Seam | Steps | Expected contract outcome |
 |---|----------|------|-------|---------------------------|
-| P1 | First attach, empty home | 2 | `tools/list` → `list_plugins` | 9 tools; `items=[]`; `catalog_hint` set; `plugin_search_paths` lists default dir |
+| P1 | First attach, empty home | 2 | `tools/list` → `list_plugins` | 10 tools; `items=[]`; `catalog_hint` set; `plugin_search_paths` lists default dir |
 | P2 | Browse without schemas | 2 | `list_plugins` | `items[*]` have name/version/class; no `input_schema` key anywhere |
 | P3 | Learn args for one plugin | 2 | `describe_plugin("echo")` | `input_schema` present; `snapshot_id` present |
 | P4 | Agent publishes new tool | 3→2 | write `plugins/fresh.py` → `list_plugins` → `run` | `registry_version` increases; `run` returns `RunView` with `run_id` |
@@ -313,23 +313,23 @@ write plugins/foo.py
 
 | Story | Primary interface | Shipped today? |
 |-------|-------------------|----------------|
-| APL-01 | CatalogView bump + playbook | **Partial** — hint/paths not on wire |
+| APL-01 | CatalogView bump + playbook | **Yes** |
 | APL-02 | `list_plugins` / `CatalogView` | **Yes** |
 | APL-03 | `describe_plugin` / `PluginDescription` | **Yes** (schema stub in code) |
-| APL-04 | PluginSurface + filesystem | **Yes** |
+| APL-04 | PluginSurface + filesystem + `publish_plugin` | **Yes** |
 | APL-05 | `run` porch grammar | **Yes** |
 | APL-06 | `registry_version` mirror | **Yes** |
 | APL-07 | admission vs terminal codes | **Yes** |
-| APL-08 | PluginPublicationConfig | **No** — kernel `plugin_dirs` only |
+| APL-08 | PluginPublicationConfig | **Yes** |
 
 ### Recommended build order
 
-1. **PluginPublicationConfig** — `--plugin-dir`, `config.toml`, `TRESTLE_PLUGIN_DIRS`, doctor lines (APL-08).
-2. **CatalogView bump** — `plugin_search_paths`, `catalog_hint` (APL-01).
-3. **Playbook + Cursor rule** — golden workflow references new fields (no freeze change).
-4. **`trestle init`** — create home, default path, seed `echo.py` (APL-01 bootstrap).
+1. ~~**PluginPublicationConfig**~~ — shipped.
+2. ~~**CatalogView bump**~~ — shipped.
+3. ~~**Playbook + Cursor rule**~~ — playbook updated.
+4. ~~**`trestle init`**~~ — shipped.
 
-**Do not build:** tenth MCP tool, per-plugin tools, REST execution API, package entry-point scanner (separate initiative).
+**Do not build:** per-plugin tools, REST execution API, package entry-point scanner (separate initiative).
 
 ---
 

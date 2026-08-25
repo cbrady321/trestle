@@ -11,6 +11,7 @@ from pathlib import Path
 from trestle.common import codes
 from trestle.common.fsutil import atomic_write, sha256_bytes
 from trestle.common.types import CatalogView, PluginCatalogRow, PluginSnapshot, PublishView, RequestOutcome
+from trestle.server.plugin_paths import CATALOG_HINT_EMPTY, log_plugin_warning
 from trestle.server.snapshots import discover_plugin_name, discover_plugin_name_from_source, materialize_snapshot
 
 MAX_PUBLISH_SOURCE_BYTES = 512 * 1024
@@ -88,6 +89,7 @@ class Registry:
 
     def refresh(self) -> None:
         paths: list[tuple[Path, str]] = []
+        claimed: set[str] = set()
         for plugin_dir in self.plugin_dirs:
             if not plugin_dir.is_dir():
                 continue
@@ -97,6 +99,13 @@ class Registry:
                 plugin_id = discover_plugin_name(path)
                 if plugin_id is None:
                     plugin_id = path.stem
+                if plugin_id in claimed:
+                    log_plugin_warning(
+                        self.home,
+                        f"duplicate plugin name {plugin_id!r} in {path}; first path wins",
+                    )
+                    continue
+                claimed.add(plugin_id)
                 paths.append((path, plugin_id))
 
         seen: dict[str, PluginSnapshot] = {}
@@ -141,7 +150,34 @@ class Registry:
             )
             for snap in sorted(self.snapshots.values(), key=lambda s: s.plugin)
         ]
-        return CatalogView(registry_version=self.registry_version, items=items, truncated=False)
+        search_paths = [str(path) for path in self.plugin_dirs]
+        hint = CATALOG_HINT_EMPTY if not items else None
+        return CatalogView(
+            registry_version=self.registry_version,
+            items=items,
+            plugin_search_paths=search_paths,
+            truncated=False,
+            catalog_hint=hint,
+        )
+
+    def plugin_counts_by_dir(self) -> dict[Path, int]:
+        counts = {plugin_dir: 0 for plugin_dir in self.plugin_dirs}
+        claimed: set[str] = set()
+        for plugin_dir in self.plugin_dirs:
+            if not plugin_dir.is_dir():
+                continue
+            for path in sorted(plugin_dir.glob("*.py")):
+                if path.name.startswith("_"):
+                    continue
+                plugin_id = discover_plugin_name(path)
+                if plugin_id is None:
+                    plugin_id = path.stem
+                if plugin_id in claimed:
+                    continue
+                if plugin_id in self.snapshots:
+                    counts[plugin_dir] += 1
+                    claimed.add(plugin_id)
+        return counts
 
     def describe(self, plugin_id: str) -> dict[str, object] | None:
         self.maybe_refresh()

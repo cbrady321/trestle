@@ -250,7 +250,7 @@ Agents that conflate `plugin_not_found` with `failed` waste turns on fetch/query
 - Does not require Python package discovery (`pyproject.toml` entry points, namespace packages) in v0.1.
 - Does not mount arbitrary import trees — still one `@trestle` function per published file.
 - Does not change MCP tool surface.
-- **v0.1 status:** kernel `plugin_dirs: list[Path]` exists; CLI/config UX **not shipped** — story marks the gap.
+- **v0.1 status:** shipped — `--plugin-dir`, `config.toml [plugins].paths`, `TRESTLE_PLUGIN_DIRS`, doctor `plugin_search_paths`.
 
 **Why this framing works**
 The “point Trestle at my folder” job is real for local web-service deployments but is currently API-only. This story is independently testable once wiring lands and does not duplicate APL-04’s author job.
@@ -272,7 +272,7 @@ The “point Trestle at my folder” job is real for local web-service deploymen
 | Invoke | APL-05 | `run` |
 | Freshness | APL-06 | `registry_version` |
 | Recover | APL-07 | admission vs terminal codes |
-| Configure | APL-08 | multi-path (gap) |
+| Configure | APL-08 | multi-path config |
 
 **Suggested golden path (≤6 turns after bootstrap):**  
 APL-01 → APL-02 → APL-03 (if needed) → APL-05 → US-05 fetch/query.
