@@ -139,7 +139,7 @@ Run at least one **real agent session** (or scripted MCP client) against `trestl
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                                    # 109 tests incl. MCP stdio smoke + operator API
+pytest -q                                    # 116 tests incl. MCP stdio + HTTP + operator API
 python scripts/smoke_agent_mcp.py            # ControlSurface golden path
 python scripts/smoke_operator_api.py         # Operator API + optional web dist
 trestle serve                                # MCP — agent path (query/fetch via tools)
@@ -154,7 +154,7 @@ trestle doctor                               # CLI operator path
 - [x] README links agent MCP path per assessment.
 - [x] No porch tree added (Phase C). Operator `console/web/` shipped in Phase E (§11).
 - [x] Kernel diff docs-only (or test fixes if assessment finds real gaps).
-- [x] 109 pytest tests pass; MCP blocking-run contract locked in `tests/test_mcp_stdio_smoke.py`.
+- [x] 116 pytest tests pass; MCP blocking-run contract locked in `tests/test_mcp_stdio_smoke.py`.
 
 ---
 
@@ -468,6 +468,7 @@ pip install -e ".[dev]"
 pytest -q
 python scripts/smoke_agent_mcp.py
 python scripts/smoke_operator_api.py
+pytest tests/test_mcp_http_smoke.py -q   # streamable HTTP MCP (E6)
 trestle ops serve   # http://127.0.0.1:18733
 ```
 

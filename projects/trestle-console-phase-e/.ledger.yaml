@@ -7,13 +7,15 @@ milestone: Phase E + optional tracks
 completed_at: "2026-08-25T20:00:00+03:00"
 verified:
   closure_commit: 600f06b
+  head_commit: 96c021d
   tests: 116
   smoke_agent_mcp: ok
   smoke_operator_api: ok
   smoke_mcp_http: ok
   operator_api_version: "0.2.0"
-  verified_at: "2026-08-25T20:00:00+03:00"
+  ci_run: 32875453825
+  verified_at: "2026-08-25T20:05:00+03:00"
 notes: >-
-  Initiative complete: Phase C agent MCP, Phase E operator surface, operator v0.2
-  (registry, failures tab, host wiring, pin/cancel/join UI), E3 async kernel paths,
-  E6 streamable HTTP MCP alongside stdio. Closure SSOT: hld/plan-daytona-clean-room-scope.md §11.
+  Initiative complete: Phase C agent MCP, Phase E operator surface, operator v0.2,
+  E3 async kernel paths, E6 streamable HTTP MCP. Closure SSOT:
+  hld/plan-daytona-clean-room-scope.md §11. CI green on 96c021d.
