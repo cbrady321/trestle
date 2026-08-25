@@ -6,6 +6,7 @@ unit: trestle-console-phase-e
 milestone: Phase E + optional tracks
 completed_at: "2026-08-25T20:00:00+03:00"
 verified:
+  closure_commit: 600f06b
   tests: 116
   smoke_agent_mcp: ok
   smoke_operator_api: ok
