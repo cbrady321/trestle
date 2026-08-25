@@ -284,13 +284,13 @@ APL-01 → APL-02 → APL-03 (if needed) → APL-05 → US-05 fetch/query.
 
 ---
 
-## Open Questions
+## Open Questions (resolved)
 
-1. **`trestle init`** — Should first attach auto-create `plugins/` and seed `echo.py` (assessment F2)?
-2. **APL-08 wiring** — Prefer `--plugin-dir` (repeatable), `config.toml [plugins].paths`, or env `TRESTLE_PLUGIN_DIRS`?
-3. **Package-shaped plugins** — Entry points vs `**/plugins/*.py` recursive scan — separate initiative?
-4. **Agent upload without filesystem write** — Explicitly out of freeze; confirm no future tenth tool?
-5. **Streamable HTTP vs stdio** — Same stories apply; does Cursor default to stdio only or document HTTP path equally?
+1. **`trestle init`** — **Resolved:** shipped; creates home, `plugins/`, seeds `echo.py`.
+2. **APL-08 wiring** — **Resolved:** all three — `--plugin-dir`, `config.toml [plugins].paths`, `TRESTLE_PLUGIN_DIRS` (CLI replaces list when set).
+3. **Package-shaped plugins** — Deferred; separate initiative.
+4. **Agent upload without filesystem write** — **Resolved:** `publish_plugin` (fixed tenth tool; R-MCP-1 still holds).
+5. **Streamable HTTP vs stdio** — Both documented; stdio remains default (R-FMC-1).
 
 ---
 
@@ -300,7 +300,7 @@ APL-01 → APL-02 → APL-03 (if needed) → APL-05 → US-05 fetch/query.
 |----|----------|---------|------------|
 | C1 | minor | APL-01 and APL-02 both touch `list_plugins` | Kept — different situations (attach vs steady browse); bounded with non-goals |
 | C2 | minor | APL-04 overlaps US-07 | Kept — different actor (agent vs author); cross-referenced |
-| C3 | major | APL-08 not testable on main today | Bounded with explicit v0.1 gap + kernel API note |
+| C3 | major | APL-08 not testable on main today | **Resolved** — `tests/test_plugin_publication_config.py` |
 | C4 | minor | APL-05 thin | Kept — distinct mis-invocation class with clear acceptance tests |
 
 **Gate:** pass — no unresolved major findings after C3 bound.

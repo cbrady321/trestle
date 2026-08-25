@@ -52,7 +52,7 @@ cd console/web && npm install && npm run dev
 ## Verify
 
 ```bash
-pytest -q                         # 135 tests
+pytest -q                         # 136 tests
 python scripts/smoke_agent_mcp.py
 python scripts/smoke_operator_api.py
 pytest tests/test_mcp_http_smoke.py -q   # optional HTTP MCP transport

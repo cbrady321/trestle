@@ -122,3 +122,31 @@ def test_stdio_run_returns_running_on_short_wait_ms(smoke_home: Path) -> None:
             assert joined[0]["state"] == "succeeded"
 
     asyncio.run(exercise())
+
+
+def test_stdio_empty_catalog_includes_bootstrap_fields() -> None:
+    """APL-01: empty catalog exposes plugin_search_paths and catalog_hint on the wire."""
+
+    async def exercise() -> None:
+        home = Path(tempfile.mkdtemp(prefix="trestle-mcp-empty-"))
+        (home / "plugins").mkdir()
+        env = os.environ.copy()
+        env["TRESTLE_HOME"] = str(home)
+
+        transport = StdioTransport(
+            command=sys.executable,
+            args=["-m", "trestle.cli", "serve"],
+            env=env,
+        )
+
+        async with Client(transport=transport) as client:
+            tools = await client.list_tools()
+            assert len(tools) == 10
+
+            catalog = (await client.call_tool("list_plugins", {})).data
+            assert catalog["items"] == []
+            assert catalog["plugin_search_paths"] == [str((home / "plugins").resolve())]
+            assert "catalog_hint" in catalog
+            assert "publish_plugin" in catalog["catalog_hint"]
+
+    asyncio.run(exercise())

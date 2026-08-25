@@ -1,9 +1,9 @@
 # Agent MCP usability assessment
 
-**Status:** Initiative complete (Phase C + Phase E @ `0c2ed67`). **Phase E1 (F5/F6) shipped** — `ControlSurface.run` honors `wait_ms` (R-WAIT-14). Operator surface: [`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md).  
-**Date:** 2026-08-25 (assessment); E1 closure 2026-08-25  
+**Status:** Initiative complete (Phase C + Phase E @ `0c2ed67`). **Phase E1 (F5/F6) shipped** — `ControlSurface.run` honors `wait_ms` (R-WAIT-14). **Agent plugin interface shipped** @ `ecd91ec` — ten-tool porch (`publish_plugin`), `trestle init`, `plugin_search_paths` / `catalog_hint`, `--plugin-dir` / `config.toml`. Operator surface: [`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md).  
+**Date:** 2026-08-25 (assessment); E1 closure 2026-08-25; agent plugin interface 2026-08-25  
 **Method:** Scripted FastMCP stdio client against `trestle serve` (two sessions: empty vs fixture plugin dir), plus `ControlSurface` direct calls and existing pytest corpus.  
-**Scope:** How agents should use `trestle serve` in real hosts — wiring, workflow, friction — without reopening the nine-tool freeze unless a gap is proven.
+**Scope:** How agents should use `trestle serve` in real hosts — wiring, workflow, friction — without reopening the fixed porch unless a gap is proven.
 
 > **Historical note:** Session C and friction rows F5/F6 below describe **pre-E1** blocking `run` behavior. Current SSOT: [`docs/agent-console-mcp.md`](../docs/agent-console-mcp.md) §3 and `tests/test_mcp_stdio_smoke.py`.
 
@@ -13,16 +13,16 @@
 
 **Recommendation (executed):** **Docs-first** agent onboarding shipped — playbook, host JSON, retrieval decision tree, mis-invocation table, `.cursor/mcp.json`, README pointer, smoke tests. **E1 shipped:** non-blocking `run` per R-WAIT-14.
 
-The nine-tool surface is **technically sound** and **G1-compliant** (2,365-byte `tools/list`, nine tools, schemas pulled via `describe_plugin`). Remaining gaps are **discoverability** (view names, retrieval paths, plugin install location) — not wait semantics.
+The ten-tool surface is **technically sound** and **G1-compliant** (`tools/list` under byte budget; schemas pulled via `describe_plugin`; runtime publish via `publish_plugin`). Prior discoverability gaps (plugin install location, empty-catalog diagnosis, project plugin paths) are **closed** in playbook §0 and `CatalogView` bootstrap fields.
 
 | Dimension | Score (1–5) | Verdict |
 |-----------|-------------|---------|
 | Host attach | 4 | Works via stdio; repo ships `.cursor/mcp.json` + playbook §0 |
-| Cold start / G1 | 5 | Nine tools, 2.4 KB definitions |
+| Cold start / G1 | 5 | Ten tools; `tools/list` stays under budget |
 | Run → wait → terminal | **4** | Happy path works; **`wait_ms` honors deadline** (E1) |
 | Console retrieval | 3 | `fetch`/`query` work; path choice not self-evident |
 | Refusals & honesty | 4 | Codes actionable; `not_finalized` exercisable via short `wait_ms` + query |
-| Plugin discovery | 4 | Pull model good; fresh home has no plugins |
+| Plugin discovery | 5 | `trestle init`, `catalog_hint`, `plugin_search_paths`, `publish_plugin` |
 | **Overall** | **4** | **C2 + E1 shipped** |
 
 ---
@@ -32,12 +32,12 @@ The nine-tool surface is **technically sound** and **G1-compliant** (2,365-byte 
 ### Session A — empty `TRESTLE_HOME` (onboarding failure mode)
 
 - Transport: `StdioTransport(command=python, args=["-m", "trestle.cli", "serve"])`
-- `tools/list`: 9 tools, **2,365 bytes** (budget 8,192)
-- `list_plugins`: 0 items (`registry_version: 1`)
+- `tools/list`: 10 tools (budget 8,192)
+- `list_plugins`: 0 items (`registry_version: 1`); `plugin_search_paths` lists default dir; `catalog_hint` set ✓
 - `run(plugin="echo")` → `admission.plugin_not_found` (no `run_id`) ✓
 - Refusals: `fetch("/etc/passwd")` → `projection.invalid_handle`; `query(view="plugin_stats")` → `projection.invalid_view` ✓
 
-**Finding:** A fresh install with default `~/.trestle` and no `plugins/` directory gives agents no plugins and no hint where to put them.
+**Finding (resolved @ `ecd91ec`):** Empty catalog is diagnosable — `catalog_hint` names next steps; `trestle init` seeds `echo.py`; `publish_plugin` works without filesystem write.
 
 ### Session B — fixture plugins + limits (`TRESTLE_TEST_LIMITS=1`)
 
@@ -67,7 +67,7 @@ wait_ms=500 on slow(seconds=2) → elapsed 2.34s, state=succeeded
 
 | Check | Result |
 |-------|--------|
-| Stdio spawn works | ✓ Scripted client connected and called all nine tools |
+| Stdio spawn works | ✓ Scripted client connected and called all ten tools |
 | Repo `.cursor/mcp.json` | ✓ Shipped |
 | `docs/agent-console-mcp.md` playbook | ✓ Shipped |
 | README MCP pointer | ✓ Root `README.md` links playbook + wiring |
@@ -183,9 +183,7 @@ Admission refusals correctly omit `run_id`. Messages are short and machine-reada
 | Hot reload | ✓ `registry_version` bumps (`test_m6_extending`) |
 | Param naming | `run(plugin=…)` vs `describe_plugin(plugin_id=…)` — minor inconsistency |
 
-**Friction:** Default `TRESTLE_HOME/plugins` must exist and contain `.py` plugins. No `trestle init` or sample plugin in repo for agents.
-
-**Remediation:** docs §0 bootstrap (`mkdir -p ~/.trestle/plugins`, copy example plugin); optional example plugin file in repo (not a new tool).
+**Friction (resolved):** `trestle init` + `catalog_hint` on empty `list_plugins`; `--plugin-dir` / `config.toml` for project repos.
 
 ---
 
@@ -194,7 +192,7 @@ Admission refusals correctly omit `run_id`. Messages are short and machine-reada
 | # | Friction | Severity | Remediation | Freeze? | Status |
 |---|----------|----------|-------------|---------|
 | F1 | No host wiring in repo | High | Docs + `.cursor/mcp.json` example | No | **Done** |
-| F2 | Empty plugin dir on first run | High | Docs bootstrap + example plugin | No | **Done** |
+| F2 | Empty plugin dir on first run | High | `trestle init` + `catalog_hint` | No | **Done** |
 | F3 | View names not on `tools/list` | Medium | Playbook view table | No | **Done** |
 | F4 | `run_tail` vs `fetch` confusion | Medium | Playbook retrieval tree | No | **Done** |
 | F5 | `run` blocks entire call | Medium–High | Document; defer non-blocking `run` | **Only if owner requires** | **Documented** |
@@ -335,7 +333,8 @@ Manual MCP: `trestle serve` → `list_plugins` → `run(echo)` → `fetch({run_i
 | `query` | Query a named view. |
 | `fetch` | Fetch bytes for a handle within a window. |
 | `pin` / `unpin` | Retention |
-| `list_plugins` | List published plugins. |
+| `list_plugins` | List published plugins (`plugin_search_paths`, `catalog_hint` when empty). |
 | `describe_plugin` | Describe one plugin including input schema. |
+| `publish_plugin` | Publish or update a plugin from Python source at runtime. |
 
 **View names (for playbook):** `run`, `last_error`, `run_tail`, `run_events`, `recent_runs`, `recent_failures`, `run_provenance`, `run_artifacts`, `artifact_refs`.
