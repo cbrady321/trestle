@@ -74,7 +74,7 @@ Humans inspect **sessions** (runs) and **telemetry** (bounded evidence slices) t
 - [x] This requirements file exists with Must jobs H1, S1, S2, T1, X1, ask UI R-OP-4.
 - [x] [`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md) implements routes, layout, and naming wall.
 - [x] E5 operator API MVP: `trestle ops serve`, tests green.
-- [ ] E5b web UI: `console/web/` routes per spec §4.
+- [x] E5b web UI: `console/web/` routes per spec §4.
 
 ## References
 

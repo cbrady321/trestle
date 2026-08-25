@@ -1,0 +1,174 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  line-height: 1.5;
+  color: #1a1a1a;
+  background: #f4f4f5;
+}
+
+body {
+  margin: 0;
+}
+
+a {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.layout {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+.nav {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #d4d4d8;
+}
+
+.nav a {
+  font-weight: 600;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid #e4e4e7;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.card-title {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  border-bottom: 1px solid #f4f4f5;
+}
+
+.card-body {
+  padding: 1rem;
+}
+
+.alert {
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.alert-info {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+}
+
+.alert-warn {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+
+.alert-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid #d4d4d8;
+  background: #fff;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.btn:hover:not(:disabled) {
+  background: #f4f4f5;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #f4f4f5;
+}
+
+.table th {
+  font-weight: 600;
+  color: #52525b;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+}
+
+.chunk-pre {
+  background: #f4f4f5;
+  padding: 0.75rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 0.8rem;
+  max-height: 320px;
+}
+
+.meta {
+  font-size: 0.8rem;
+  color: #71717a;
+  margin-top: 0.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #f4f4f5;
+    background: #18181b;
+  }
+
+  .card {
+    background: #27272a;
+    border-color: #3f3f46;
+  }
+
+  .card-title {
+    border-color: #3f3f46;
+  }
+
+  .table th,
+  .table td {
+    border-color: #3f3f46;
+  }
+
+  .btn {
+    background: #27272a;
+    border-color: #3f3f46;
+    color: #f4f4f5;
+  }
+
+  .chunk-pre {
+    background: #18181b;
+  }
+
+  .nav {
+    border-color: #3f3f46;
+  }
+}

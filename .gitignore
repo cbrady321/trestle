@@ -9,3 +9,4 @@ __pycache__/
 /.loop-state.yaml
 spikes/out/
 _tmp/
+node_modules/

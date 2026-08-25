@@ -1,8 +1,9 @@
 initiative: trestle-console-access
 project_dir: projects/trestle-console-phase-e
-stage: in_progress
+stage: complete
 unit: trestle-console-phase-e
 milestone: Phase E
+completed_at: "2026-08-25T13:15:00+03:00"
 notes: >-
-  E1-E2 complete (F5/F6, CI). E4 requirements+spec landed. E5 operator API MVP
-  shipped (trestle ops serve). E5b web UI and E3 async kernel remain optional.
+  Phase E complete: F5/F6, CI, operator requirements+spec, trestle ops serve API,
+  console/web UI (sessions + ask). E3 async kernel and E6 HTTP MCP remain optional.

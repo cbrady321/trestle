@@ -29,7 +29,13 @@ trestle pin <run_id>
 trestle recover
 ```
 
-**Operator HTTP:** [`hld/spec-operator-sessions-telemetry.md`](hld/spec-operator-sessions-telemetry.md) — retrieval-first sessions + telemetry UI (Phase D/E).
+**Operator HTTP:** [`hld/spec-operator-sessions-telemetry.md`](hld/spec-operator-sessions-telemetry.md) — sessions + telemetry UI.
+
+```bash
+trestle ops serve              # API + built UI at http://127.0.0.1:18733
+# Dev UI (proxies /ops to ops serve):
+cd console/web && npm install && npm run dev
+```
 
 ## Requirements and architecture
 

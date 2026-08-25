@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from starlette.applications import Starlette
+from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.routing import Route
+from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
 
 from trestle.common.types import RequestOutcome
 from trestle.ops.health import read_health
@@ -57,12 +60,27 @@ def create_app(kernel: Kernel) -> Starlette:
         window = payload.get("window") or {}
         return _wire_control_result(read_telemetry_chunk(kernel, handle=handle, window=window))
 
-    app = Starlette(
-        routes=[
-            Route("/ops/v1/health", health, methods=["GET"]),
-            Route("/ops/v1/sessions/{view}/rows", session_rows, methods=["POST"]),
-            Route("/ops/v1/telemetry/chunk", telemetry_chunk, methods=["POST"]),
+    routes: list[Route | Mount] = [
+        Route("/ops/v1/health", health, methods=["GET"]),
+        Route("/ops/v1/sessions/{view}/rows", session_rows, methods=["POST"]),
+        Route("/ops/v1/telemetry/chunk", telemetry_chunk, methods=["POST"]),
+    ]
+
+    web_dist = Path(__file__).resolve().parents[2] / "console" / "web" / "dist"
+    if web_dist.is_dir():
+        routes.append(Mount("/", app=StaticFiles(directory=web_dist, html=True), name="web"))
+
+    app = Starlette(routes=routes)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://127.0.0.1:5173",
+            "http://localhost:5173",
+            "http://127.0.0.1:4173",
+            "http://localhost:4173",
         ],
+        allow_methods=["GET", "POST"],
+        allow_headers=["*"],
     )
     app.state.kernel = kernel
     return app

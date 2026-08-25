@@ -452,7 +452,7 @@ Sections **1–5** record the public-doc study that concluded **§ Study conclus
 | **E3 Async kernel** | Optional | Async conductor/project; wrapper stays sync |
 | **E4 Phase D** | **Done** | [`requirements-operator-sessions-telemetry.md`](requirements-operator-sessions-telemetry.md) + [`spec-operator-sessions-telemetry.md`](spec-operator-sessions-telemetry.md) |
 | **E5 Operator API** | **MVP done** | `trestle ops serve`, `trestle/ops/`, `console/openapi.yaml`, `tests/test_ops_api.py` |
-| **E5b Web UI** | Not started | `console/web/` routes per spec §4 |
+| **E5b Web UI** | **Done** | `console/web/` — `/`, `/sessions`, `/sessions/{handle}/ask` |
 | **E6 Transport** | Optional | Streamable HTTP MCP alongside stdio — only if spec'd |
 
 Verify locally:
