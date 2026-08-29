@@ -14,8 +14,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
-      - run: ruff check trestle tests
-      - run: ruff format --check trestle tests
+      - run: ruff check trestle tests packages/trestle-packs scripts/smoke_packs.py
+      - run: ruff format --check trestle tests packages/trestle-packs scripts/smoke_packs.py
 
   test:
     runs-on: ubuntu-latest
@@ -24,7 +24,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev,packs]"
       - run: pytest -q
+      - run: pytest packages/trestle-packs/tests/ -q
       - run: python scripts/smoke_agent_mcp.py
       - run: python scripts/smoke_operator_api.py
+      - run: python scripts/smoke_packs.py

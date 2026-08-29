@@ -25,6 +25,8 @@ from trestle.common.types import (
 from trestle.server.config import load_config
 from trestle.server.idempotency import IdempotencyStore
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, run_dir_for, work_dir
+from trestle.server.plugin_paths import CATALOG_HINT_PACKS_MISSING
+from trestle.server.plugin_validate import validate_plugin_imports
 from trestle.server.recovery import find_run_dir
 from trestle.server.registry import Registry
 from trestle.server.scheduler import Scheduler
@@ -60,6 +62,21 @@ class Admission:
                 outcome=RequestOutcome(
                     code=codes.PLUGIN_NOT_FOUND,
                     message=f"plugin version not found: {req.plugin}@{req.version}",
+                    retryable=False,
+                    origin="admission",
+                ),
+            )
+
+        import_error = validate_plugin_imports(Path(snap.source_path))
+        if import_error is not None:
+            message = f"plugin import failed: {import_error}"
+            if "trestle_packs" in import_error:
+                message = f"{message}; {CATALOG_HINT_PACKS_MISSING}"
+            return AdmitResultRefused(
+                tag="refused",
+                outcome=RequestOutcome(
+                    code=codes.IMPORT_FAILED,
+                    message=message,
                     retryable=False,
                     origin="admission",
                 ),

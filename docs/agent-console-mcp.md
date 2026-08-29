@@ -1,6 +1,7 @@
 # Agent console MCP playbook
 
 **Audience:** coding agents (Cursor, Claude Desktop, other MCP hosts) using `trestle serve`.  
+**Quick start:** [`docs/agents.md`](agents.md) — scannable agent guide. **Cursor skill:** [`.cursor/skills/trestle/SKILL.md`](../.cursor/skills/trestle/SKILL.md).  
 **SSOT for:** ten-tool workflow, console evidence retrieval, host wiring.  
 **Kernel freeze:** [`hld/hld-interface-architecture-trestle.md`](../hld/hld-interface-architecture-trestle.md) — do not invent tools or views.  
 **Assessment:** [`hld/agent-mcp-usability-assessment.md`](../hld/agent-mcp-usability-assessment.md).
@@ -15,8 +16,11 @@ Agents reach run evidence **only** through MCP (`trestle serve`). There is no HT
 
 ```bash
 pip install -e ".[dev]"
+pip install -e ".[packs]"          # workflow packs: Docker, pytest, migrations
 pytest -q   # optional sanity check
 ```
+
+Workflow pack plugins live in `examples/packs/`. See [`docs/packs.md`](packs.md).
 
 ### Plugin home
 

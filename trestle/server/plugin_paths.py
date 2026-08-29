@@ -11,6 +11,11 @@ CATALOG_HINT_EMPTY = (
     "plugin_search_paths directory, call publish_plugin, then list_plugins again."
 )
 
+CATALOG_HINT_PACKS_MISSING = (
+    "Pack plugins require trestle-packs. Install with: "
+    'pip install -e "packages/trestle-packs[all]" or pip install -e ".[packs]"'
+)
+
 
 def expand_plugin_path(raw: str, home: Path) -> Path:
     path = Path(raw).expanduser()

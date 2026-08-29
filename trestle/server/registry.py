@@ -10,9 +10,24 @@ from pathlib import Path
 
 from trestle.common import codes
 from trestle.common.fsutil import atomic_write, sha256_bytes
-from trestle.common.types import CatalogView, PluginCatalogRow, PluginSnapshot, PublishView, RequestOutcome
-from trestle.server.plugin_paths import CATALOG_HINT_EMPTY, log_plugin_warning
-from trestle.server.snapshots import discover_plugin_name, discover_plugin_name_from_source, materialize_snapshot
+from trestle.common.types import (
+    CatalogView,
+    PluginCatalogRow,
+    PluginSnapshot,
+    PublishView,
+    RequestOutcome,
+)
+from trestle.server.plugin_paths import (
+    CATALOG_HINT_EMPTY,
+    CATALOG_HINT_PACKS_MISSING,
+    log_plugin_warning,
+)
+from trestle.server.plugin_validate import validate_plugin_imports
+from trestle.server.snapshots import (
+    discover_plugin_name,
+    discover_plugin_name_from_source,
+    materialize_snapshot,
+)
 
 MAX_PUBLISH_SOURCE_BYTES = 512 * 1024
 
@@ -140,18 +155,28 @@ class Registry:
 
     def catalog(self) -> CatalogView:
         self.maybe_refresh()
-        items = [
-            PluginCatalogRow(
-                name=snap.plugin,
-                version=snap.version,
-                description=f"Plugin {snap.plugin}",
-                valid=True,
-                capability_class=None,
+        items: list[PluginCatalogRow] = []
+        packs_missing = False
+        for snap in sorted(self.snapshots.values(), key=lambda s: s.plugin):
+            import_error = validate_plugin_imports(Path(snap.source_path))
+            valid = import_error is None
+            if import_error is not None and "trestle_packs" in import_error:
+                packs_missing = True
+            items.append(
+                PluginCatalogRow(
+                    name=snap.plugin,
+                    version=snap.version,
+                    description=f"Plugin {snap.plugin}",
+                    valid=valid,
+                    capability_class=None,
+                )
             )
-            for snap in sorted(self.snapshots.values(), key=lambda s: s.plugin)
-        ]
         search_paths = [str(path) for path in self.plugin_dirs]
-        hint = CATALOG_HINT_EMPTY if not items else None
+        hint: str | None = None
+        if not items:
+            hint = CATALOG_HINT_EMPTY
+        elif packs_missing:
+            hint = CATALOG_HINT_PACKS_MISSING
         return CatalogView(
             registry_version=self.registry_version,
             items=items,

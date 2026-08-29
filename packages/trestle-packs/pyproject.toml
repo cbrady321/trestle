@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trestle-packs"
+version = "0.1.0"
+description = "Pre-built workflow packs for Trestle plugins — Docker, pytest, migrations"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+docker = ["python-on-whales>=0.76"]
+pytest = ["pytest>=8.0"]
+migrate = ["alembic>=1.13", "yoyo-migrations>=9.0"]
+all = [
+    "python-on-whales>=0.76",
+    "pytest>=8.0",
+    "alembic>=1.13",
+    "yoyo-migrations>=9.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trestle_packs"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

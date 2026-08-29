@@ -16,7 +16,10 @@ Coding agents use **`trestle serve`** — ten frozen MCP tools (`run`, `query`, 
 
 Optional streamable HTTP (alongside stdio): `trestle serve --transport streamable-http` → `http://127.0.0.1:18732/mcp`. See [`hld/spec-agent-mcp-streamable-http.md`](hld/spec-agent-mcp-streamable-http.md).
 
-**Playbook:** [`docs/agent-console-mcp.md`](docs/agent-console-mcp.md) — attach, golden workflow, retrieval tree, refusals, smoke checks.
+**Agent guide:** [`docs/agents.md`](docs/agents.md) — quick start for coding agents.  
+**Workflow packs:** [`docs/packs.md`](docs/packs.md) — Docker / pytest / migration plugins.  
+**Full playbook:** [`docs/agent-console-mcp.md`](docs/agent-console-mcp.md) — retrieval tree, refusals, smoke checks.  
+**Cursor skill:** [`.cursor/skills/trestle/SKILL.md`](.cursor/skills/trestle/SKILL.md) — compact rules for agents in this repo.
 
 **Assessment:** [`hld/agent-mcp-usability-assessment.md`](hld/agent-mcp-usability-assessment.md).
 
@@ -46,14 +49,18 @@ cd console/web && npm install && npm run dev
 - [`trestle-requirements.md`](trestle-requirements.md) — product requirements
 - [`hld/hld-interface-architecture-trestle.md`](hld/hld-interface-architecture-trestle.md) — ten-tool freeze
 - [`hld/plan-daytona-clean-room-scope.md`](hld/plan-daytona-clean-room-scope.md) — initiative closure (§11)
-- [`docs/agent-console-mcp.md`](docs/agent-console-mcp.md) — agent playbook
+- [`docs/agents.md`](docs/agents.md) — agent guide (start here)
+- [`docs/agent-console-mcp.md`](docs/agent-console-mcp.md) — agent playbook (full reference)
+- [`hld/design-plugin-packs.md`](hld/design-plugin-packs.md) — workflow packs (Docker, pytest, migrations)
+- [`docs/packs.md`](docs/packs.md) — pack agent quick-start
 - [`docs/operator-sessions-telemetry.md`](docs/operator-sessions-telemetry.md) — operator playbook
 
 ## Verify
 
 ```bash
-pytest -q                         # 136 tests
+pytest -q                         # 142 tests
 python scripts/smoke_agent_mcp.py
 python scripts/smoke_operator_api.py
+python scripts/smoke_packs.py     # pack plugins (requires pip install -e ".[packs]")
 pytest tests/test_mcp_http_smoke.py -q   # optional HTTP MCP transport
 ```

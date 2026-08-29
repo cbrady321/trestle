@@ -3,7 +3,7 @@
 **Audience:** humans inspecting run history and bounded telemetry — not coding agents.  
 **SSOT for:** `trestle ops serve`, `/ops/v1` routes, `console/web/` UI.  
 **Spec:** [`hld/spec-operator-sessions-telemetry.md`](../hld/spec-operator-sessions-telemetry.md).  
-**Agent path (separate):** [`docs/agent-console-mcp.md`](agent-console-mcp.md) — stdio MCP only.
+**Agent path (separate):** [`docs/agents.md`](agents.md) (quick start) · [`docs/agent-console-mcp.md`](agent-console-mcp.md) (full playbook) — stdio MCP only.
 
 Operators use **`trestle ops serve`** for read-only sessions and telemetry. Agents continue to use **`trestle serve`** (nine MCP tools). The operator surface does **not** admit or `run` work from the browser.
 

@@ -2,6 +2,7 @@
 
 SERVICE_DRAINING = "admission.service_draining"
 PLUGIN_NOT_FOUND = "admission.plugin_not_found"
+IMPORT_FAILED = "admission.import_failed"
 INVALID_ARGS = "admission.invalid_args"
 QUEUE_FULL = "admission.queue_full"
 IDEMPOTENCY_KEY_CONFLICT = "admission.idempotency_key_conflict"
