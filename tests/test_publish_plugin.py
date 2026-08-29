@@ -10,21 +10,21 @@ from trestle.common import codes
 from trestle.common.types import PublishView, RequestOutcome
 from trestle.server.main import create_kernel
 
-PLUGIN_SOURCE = '''\
+PLUGIN_SOURCE = """\
 from trestle.plugin.surface import Context, trestle
 
 @trestle
 def greeter(ctx: Context, message: str = "hi") -> dict[str, str]:
     return {"message": message}
-'''
+"""
 
-UPDATED_SOURCE = '''\
+UPDATED_SOURCE = """\
 from trestle.plugin.surface import Context, trestle
 
 @trestle
 def greeter(ctx: Context, message: str = "hello") -> dict[str, str]:
     return {"message": message}
-'''
+"""
 
 
 @pytest.fixture

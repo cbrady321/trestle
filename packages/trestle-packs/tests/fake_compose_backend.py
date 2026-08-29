@@ -64,7 +64,4 @@ class FakeComposeBackend:
         *,
         cwd: Path,
     ) -> dict[str, str]:
-        return {
-            service: "\n".join(self._log_lines.get(service, [])) + "\n"
-            for service in services
-        }
+        return {service: "\n".join(self._log_lines.get(service, [])) + "\n" for service in services}

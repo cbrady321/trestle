@@ -9,13 +9,13 @@ from pathlib import Path
 from typing import Any
 
 from trestle.common.bind import LOOPBACK_HOST
-from trestle.common.types import RequestOutcome, RunView, PublishView
+from trestle.common.types import PublishView, RequestOutcome, RunView
 from trestle.server.admission import Admission
 from trestle.server.conductor import Conductor
 from trestle.server.config import load_config
 from trestle.server.control import ControlSurface
-from trestle.server.project import Project
 from trestle.server.plugin_paths import resolve_plugin_dirs
+from trestle.server.project import Project
 from trestle.server.recovery import recover_on_startup
 from trestle.server.registry import Registry
 from trestle.server.runs import RunRegistry

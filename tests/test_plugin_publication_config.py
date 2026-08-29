@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -18,7 +17,9 @@ def test_resolve_plugin_dirs_defaults_to_home_plugins(tmp_path: Path) -> None:
     assert resolve_plugin_dirs(home) == [(home / "plugins").resolve()]
 
 
-def test_resolve_plugin_dirs_cli_overrides_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_plugin_dirs_cli_overrides_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     home = tmp_path / "trestle"
     home.mkdir()
     cli_dir = tmp_path / "cli-plugins"
@@ -32,7 +33,9 @@ def test_resolve_plugin_dirs_cli_overrides_config(tmp_path: Path, monkeypatch: p
     assert resolve_plugin_dirs(home, cli_dirs=[cli_dir]) == [cli_dir.resolve()]
 
 
-def test_resolve_plugin_dirs_config_before_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_plugin_dirs_config_before_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     home = tmp_path / "trestle"
     home.mkdir()
     config_dir = tmp_path / "config-plugins"
@@ -45,7 +48,9 @@ def test_resolve_plugin_dirs_config_before_env(tmp_path: Path, monkeypatch: pyte
     assert resolve_plugin_dirs(home) == [config_dir.resolve()]
 
 
-def test_resolve_plugin_dirs_env_when_no_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_plugin_dirs_env_when_no_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     home = tmp_path / "trestle"
     home.mkdir()
     env_dir = tmp_path / "env-plugins"
@@ -104,7 +109,9 @@ def test_doctor_lists_plugin_search_paths(tmp_path: Path) -> None:
     assert any("(1 plugins)" in line for line in lines)
 
 
-def test_trestle_init_creates_home_and_seeds_echo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_trestle_init_creates_home_and_seeds_echo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     home = tmp_path / "trestle"
     monkeypatch.setenv("TRESTLE_HOME", str(home))
     assert main(["init"]) == 0
