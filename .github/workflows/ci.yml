@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: ruff check trestle tests packages/trestle-packs scripts/smoke_packs.py scripts/demo_pack_workflows.py
+      - run: ruff format --check trestle tests packages/trestle-packs scripts/smoke_packs.py scripts/demo_pack_workflows.py
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev,packs]"
+      - run: pytest -q
+      - run: pytest packages/trestle-packs/tests/ -q
+      - run: python scripts/smoke_agent_mcp.py
+      - run: python scripts/smoke_operator_api.py
+      - run: python scripts/smoke_packs.py
+      - run: python scripts/demo_pack_workflows.py

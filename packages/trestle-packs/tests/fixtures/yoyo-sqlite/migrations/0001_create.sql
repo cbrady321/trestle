@@ -1,0 +1,1 @@
+CREATE TABLE pack_demo (id INTEGER PRIMARY KEY, label TEXT NOT NULL);

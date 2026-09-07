@@ -1,0 +1,11 @@
+venv/
+.venv-spikes/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.DS_Store
+/.ledger.yaml
+/.loop-state.yaml
+_tmp/
+node_modules/

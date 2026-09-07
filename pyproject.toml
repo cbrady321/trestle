@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[project]
+name = "trestle"
+version = "0.1.0"
+description = "A durable local execution ledger with an MCP control surface"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastmcp==3.4.7",
+    "starlette>=1.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx2>=2.0",
+    "mypy>=1.11",
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+packs = [
+    "trestle-packs[all] @ file:packages/trestle-packs",
+]
+
+[project.scripts]
+trestle = "trestle.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["trestle"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette.testclient`:starlette.exceptions.StarletteDeprecationWarning",
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["trestle"]
+
+[[tool.mypy.overrides]]
+module = ["fastmcp", "fastmcp.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["trestle.server.main"]
+disable_error_code = ["untyped-decorator"]
