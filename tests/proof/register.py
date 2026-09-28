@@ -198,12 +198,13 @@ def load_rollback(*, path: Path | None = None) -> list[dict[str, Any]]:
     return list(tomllib.loads(path.read_text()).get("boundary", []))
 
 
-def is_landed(_merge_id: str) -> bool:
-    """Placeholder: wired to `trailers.landing` by `L.P0-0d.7`, which builds
-    `trailers.py`. Until then no boundary is ever reported landed, so this
-    leaf's own selftest injects a landed predicate instead of relying on a
-    real `master` history."""
-    return False
+def is_landed(merge_id: str) -> bool:
+    """Wired to `trailers.landing` (L.P0-0d.7): a boundary's merge is
+    landed once it has a `WR-Merge: <merge_id>` carrier reachable from
+    `HEAD`."""
+    from tests.proof import trailers as trailers_mod
+
+    return trailers_mod.landing(merge_id) is not None
 
 
 def rollback_violations(
