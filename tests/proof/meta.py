@@ -328,6 +328,78 @@ def cmd_check_map(_args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+ROW_OWNERS_PATH = ROOT / "tests" / "proof" / "row_owners.toml"
+
+# CSC-1 labels registry schema (exact key set; L.P0-0c.2). `id` and `row` are
+# always required; every other key is optional.
+CSC1_REQUIRED_KEYS = {"id", "row", "step", "slice", "tier", "venue", "posture", "declared_by"}
+CSC1_OPTIONAL_KEYS = {"composes", "oq", "reason"}
+CSC1_ALL_KEYS = CSC1_REQUIRED_KEYS | CSC1_OPTIONAL_KEYS
+
+
+def _load_all_labels() -> list[dict[str, object]]:
+    labels = []
+    labels_dir = ROOT / "tests" / "proof" / "labels.d"
+    for path in sorted(labels_dir.glob("*.toml")):
+        data = tomllib.loads(path.read_text())
+        labels.extend(data.get("label", []))
+    return labels
+
+
+def cmd_audit_rows(_args: argparse.Namespace) -> int:
+    """`python -m tests.proof.meta audit-rows` (L.P0-0c.2, report mode):
+    validate the CSC-1 label schema exactly, then report every one of the
+    129 rows with no registered clause (a direct `<row>:<label>`, or credit
+    through one of MC-03's nine matrix-credited rows, `matrix_map.toml`'s
+    `rows` field). Report mode: always exits 0; `--enforce` is a later
+    leaf's addition (plan-workflow-runtime.md L1712)."""
+    from tests.proof import transcribe as transcribe_mod
+
+    labels = _load_all_labels()
+    errors: list[str] = []
+    for label in labels:
+        extra = set(label) - CSC1_ALL_KEYS
+        missing = CSC1_REQUIRED_KEYS - set(label)
+        if extra or missing:
+            errors.append(f"{label.get('id')}: bad schema (extra={extra}, missing={missing})")
+            continue
+        if label.get("posture") == "gated_on" and not label.get("oq"):
+            errors.append(f"{label.get('id')}: posture=gated_on requires an 'oq' field")
+        composes = label.get("composes")
+        if composes is not None:
+            matrix_ids = transcribe_mod.matrix_ids()
+            if composes not in matrix_ids and composes not in {
+                c["id"] for c in transcribe_mod.load_matrix_map()
+            }:
+                errors.append(
+                    f"{label.get('id')}: composes={composes!r} does not name an MC-03 clause/part"
+                )
+
+    if errors:
+        print("audit-rows: label schema errors:")
+        for e in errors:
+            print(f"  {e}")
+        return 1
+
+    matrix_credited_rows: set[str] = set()
+    for clause in tomllib.loads((ROOT / "tests" / "proof" / "matrix_map.toml").read_text()).get(
+        "clause", []
+    ):
+        matrix_credited_rows.update(clause.get("rows", []))
+
+    labeled_rows = {label["row"] for label in labels if "row" in label}
+    rows = tomllib.loads(ROW_OWNERS_PATH.read_text()).get("row", [])
+    uncovered = [
+        r["id"] for r in rows if r["id"] not in labeled_rows and r["id"] not in matrix_credited_rows
+    ]
+
+    print(f"audit-rows: {len(rows)} rows, {len(uncovered)} with no registered clause (report mode)")
+    if uncovered:
+        for rid in uncovered:
+            print(f"  unowned: {rid}")
+    return 0
+
+
 def mypy_error_sites() -> list[str]:
     """`file:line` for every current `mypy trestle` error."""
     proc = _run([sys.executable, "-m", "mypy", "trestle"])
@@ -376,6 +448,7 @@ def build_parser() -> argparse.ArgumentParser:
     ratchet_parser = sub.add_parser("mypy-ratchet")
     ratchet_parser.add_argument("--max", type=int, required=True)
     sub.add_parser("check-map")
+    sub.add_parser("audit-rows")
     return parser
 
 
@@ -394,6 +467,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_mypy_ratchet(args)
     if args.command == "check-map":
         return cmd_check_map(args)
+    if args.command == "audit-rows":
+        return cmd_audit_rows(args)
     parser.error(f"unknown command {args.command}")
     return 2
 

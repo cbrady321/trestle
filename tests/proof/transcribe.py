@@ -20,6 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MATRIX_MAP_PATH = ROOT / "tests" / "proof" / "matrix_map.toml"
+ROW_OWNERS_PATH = ROOT / "tests" / "proof" / "row_owners.toml"
 
 MATRIX_CLAUSE_RE = re.compile(r"^[AB]\d+\.\d+$")
 
@@ -118,15 +119,69 @@ def cmd_check_matrix(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
-def cmd_check_rows(_args: argparse.Namespace) -> int:
-    # Extended by L.P0-0c.2.
-    print("transcribe --check rows: not yet built (L.P0-0c.2)")
-    return 2
+def load_row_owners() -> list[dict[str, object]]:
+    data = tomllib.loads(ROW_OWNERS_PATH.read_text())
+    return list(data.get("row", []))
+
+
+ROW_TABLE_HEADER = "## 7. Row ownership"
+ROW_LINE_RE = re.compile(r"^\|\s*(WR-[A-Za-z0-9-]+)\s*\|")
+
+
+def _decomposition_row_ids(decomposition_text: str) -> list[str]:
+    """Extract every row id from decomposition's §7 "Row ownership" table."""
+    lines = decomposition_text.splitlines()
+    start = None
+    for i, line in enumerate(lines):
+        if line.strip().startswith(ROW_TABLE_HEADER):
+            start = i
+            break
+    if start is None:
+        raise ValueError("decomposition §7 row-ownership table not found")
+
+    ids: list[str] = []
+    for line in lines[start:]:
+        if line.strip().startswith("## 8."):
+            break
+        match = ROW_LINE_RE.match(line.strip())
+        if match:
+            ids.append(match.group(1))
+    return ids
+
+
+def cmd_check_rows(args: argparse.Namespace) -> int:
+    decomposition_path = args.decomposition or os.environ.get("TRESTLE_DECOMPOSITION")
+    if not decomposition_path:
+        print("transcribe --check rows: no decomposition packet available (HOST-only); UNPROVEN")
+        return 0
+    path = Path(decomposition_path)
+    if not path.exists():
+        print(f"transcribe --check rows: {path} not found; UNPROVEN")
+        return 0
+
+    text = path.read_text()
+    decomposition_ids = _decomposition_row_ids(text)
+    owned_ids = [r["id"] for r in load_row_owners()]
+
+    ok = True
+    missing = set(decomposition_ids) - set(owned_ids)
+    extra = set(owned_ids) - set(decomposition_ids)
+    if missing:
+        print(f"DIFF: row_owners.toml is missing row(s): {sorted(missing)}")
+        ok = False
+    if extra:
+        print(f"DIFF: row_owners.toml has extra row(s) not in decomposition: {sorted(extra)}")
+        ok = False
+    if len(owned_ids) != len(set(owned_ids)):
+        print("DIFF: row_owners.toml has a duplicate row id")
+        ok = False
+    return 0 if ok else 1
 
 
 def cmd_check_all(args: argparse.Namespace) -> int:
-    # Extended by L.P0-0c.2 to also run --check rows.
-    return cmd_check_matrix(args)
+    matrix_rc = cmd_check_matrix(args)
+    rows_rc = cmd_check_rows(args)
+    return matrix_rc if matrix_rc != 0 else rows_rc
 
 
 def build_parser() -> argparse.ArgumentParser:

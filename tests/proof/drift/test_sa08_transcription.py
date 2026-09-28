@@ -32,3 +32,24 @@ def test_matrix_verbatim_against_requirements(sa: str) -> None:
 
     rc = transcribe.cmd_check_matrix(Namespace(requirements=requirements))
     assert rc == 0
+
+
+@pytest.mark.parametrize("sa", ["SA-08"])
+def test_row_owners_129_unique(sa: str) -> None:
+    rows = transcribe.load_row_owners()
+    ids = [r["id"] for r in rows]
+    assert len(ids) == 129
+    assert len(set(ids)) == 129
+    assert sum(1 for i in ids if i.startswith("WR-COMPAT-")) == 12
+
+
+@pytest.mark.parametrize("sa", ["SA-08"])
+def test_row_owners_against_decomposition(sa: str) -> None:
+    """HOST-only (main checkout has decomposition-workflow-runtime.md)."""
+    decomposition = os.environ.get("TRESTLE_DECOMPOSITION")
+    if not decomposition or not os.path.exists(decomposition):
+        pytest.skip("TRESTLE_DECOMPOSITION not set to the main checkout (HOST-only, UNPROVEN)")
+    from argparse import Namespace
+
+    rc = transcribe.cmd_check_rows(Namespace(decomposition=decomposition))
+    assert rc == 0
