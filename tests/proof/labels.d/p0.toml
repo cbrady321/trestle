@@ -1,0 +1,24 @@
+# CSC-1 labels registry fragment for P0 (MC-04).
+# Schema: [[label]] {id, row, composes?, step, slice, tier, venue, posture, oq?, reason?, declared_by}
+# Declared here at collection-schema granularity only (L.P0-0a.2); the
+# matrix ids this composes against switch on at L.P0-0c.1.
+
+[[label]]
+id = "WR-PROOF-8:baseline-preserved"
+row = "WR-PROOF-8"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-0a.1"
+
+[[label]]
+id = "WR-COMPAT-12:preserved"
+row = "WR-COMPAT-12"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-0a.1"

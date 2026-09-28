@@ -8,11 +8,14 @@ import sys
 import textwrap
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[3]
 BASELINE_PATH = ROOT / "tests" / "proof" / "baseline.json"
 NODEIDS_PATH = ROOT / "tests" / "fixtures" / "golden" / "s0" / "nodeids.txt"
 
 
+@pytest.mark.proves("WR-PROOF-8", "WR-PROOF-8:baseline-preserved", "core", "core", "must", "CI")
 def test_baseline_312_matches_ev01_or_explained() -> None:
     proc = subprocess.run(
         [sys.executable, "-m", "tests.proof.meta", "baseline"],
@@ -23,6 +26,7 @@ def test_baseline_312_matches_ev01_or_explained() -> None:
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
+@pytest.mark.proves("WR-COMPAT-12", "WR-COMPAT-12:preserved", "core", "core", "must", "CI")
 def test_nodeids_are_187_unique() -> None:
     ids = [line for line in NODEIDS_PATH.read_text().splitlines() if line.strip()]
     assert len(ids) == 187
