@@ -260,6 +260,39 @@ def cmd_inventory(args: argparse.Namespace) -> int:
     return 0
 
 
+def mypy_error_sites() -> list[str]:
+    """`file:line` for every current `mypy trestle` error."""
+    proc = _run([sys.executable, "-m", "mypy", "trestle"])
+    sites = []
+    for line in proc.stdout.splitlines():
+        match = re.match(r"^(\S+:\d+): error:", line)
+        if match:
+            sites.append(match.group(1))
+    return sites
+
+
+def cmd_mypy_ratchet(args: argparse.Namespace) -> int:
+    """`mypy trestle` may carry at most `--max` errors (WR-PROOF-8:
+    mypy-ratchet-le-1), and a known error may never move: every current
+    error site must already be one of `baseline.json`'s `ev01.mypy_error_sites`
+    (a fixed error count with a *different* location is still a ratchet
+    violation, not a wash)."""
+    sites = mypy_error_sites()
+    baseline = json.loads(BASELINE_PATH.read_text())
+    baseline_sites = set(baseline["ev01"].get("mypy_error_sites", []))
+
+    if len(sites) > args.max:
+        print(f"mypy-ratchet: {len(sites)} error(s) > max {args.max}: {sites}")
+        return 1
+
+    unknown = set(sites) - baseline_sites
+    if unknown:
+        print(f"mypy-ratchet: error site(s) not in the recorded baseline: {sorted(unknown)}")
+        return 1
+
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m tests.proof.meta")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -272,6 +305,8 @@ def build_parser() -> argparse.ArgumentParser:
     inventory_parser.add_argument("--strict", action="store_true")
     inventory_parser.add_argument("--count-pending", action="store_true", dest="count_pending")
     inventory_parser.add_argument("--lane", default=None)
+    ratchet_parser = sub.add_parser("mypy-ratchet")
+    ratchet_parser.add_argument("--max", type=int, required=True)
     return parser
 
 
@@ -286,6 +321,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_enforce(args)
     if args.command == "inventory":
         return cmd_inventory(args)
+    if args.command == "mypy-ratchet":
+        return cmd_mypy_ratchet(args)
     parser.error(f"unknown command {args.command}")
     return 2
 
