@@ -1,0 +1,74 @@
+# Facet inventory (L.P0-0a.4). Schema (p0-court.md "## Leaves and joins"
+# verifier text): [[facet]] {id, lane, golden, extractor = "module:function"
+# | "pending", additive = "named" | "free"}
+#
+# `golden` names the tests/fixtures/golden/s0/<facet>.json this facet
+# renders against; every entry is `extractor = "pending"` until its lane
+# builds the real extractor (P0-1A..E; L.P0-1A.7 builds ledger_kinds,
+# meta_fields, fossil_projection).
+
+[[facet]]
+id = "tools_list"
+additive = "named"
+golden = "tests/fixtures/golden/s0/tools_list.json"
+extractor = "pending"
+
+[[facet]]
+id = "runview_shape"
+additive = "named"
+golden = "tests/fixtures/golden/s0/runview_shape.json"
+extractor = "pending"
+
+[[facet]]
+id = "refusal_codes"
+additive = "named"
+golden = "tests/fixtures/golden/s0/refusal_codes.json"
+extractor = "pending"
+
+[[facet]]
+id = "context_surface"
+additive = "named"
+golden = "tests/fixtures/golden/s0/context_surface.json"
+extractor = "pending"
+
+[[facet]]
+id = "query_row_shapes"
+additive = "named"
+golden = "tests/fixtures/golden/s0/query_row_shapes.json"
+extractor = "pending"
+
+[[facet]]
+id = "spec_keys"
+additive = "free"
+golden = "tests/fixtures/golden/s0/spec_keys.json"
+extractor = "pending"
+
+[[facet]]
+id = "ledger_kinds"
+additive = "free"
+golden = "tests/fixtures/golden/s0/ledger_kinds.json"
+extractor = "pending"
+
+[[facet]]
+id = "meta_fields"
+additive = "free"
+golden = "tests/fixtures/golden/s0/meta_fields.json"
+extractor = "pending"
+
+[[facet]]
+id = "snapshot_manifest"
+additive = "free"
+golden = "tests/fixtures/golden/s0/snapshot_manifest.json"
+extractor = "pending"
+
+[[facet]]
+id = "event_row_shape"
+additive = "free"
+golden = "tests/fixtures/golden/s0/event_row_shape.json"
+extractor = "pending"
+
+[[facet]]
+id = "fossil_projection"
+additive = "free"
+golden = "tests/fixtures/golden/s0/fossil_projection.json"
+extractor = "pending"

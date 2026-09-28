@@ -14,11 +14,15 @@ import os
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 BASELINE_PATH = ROOT / "tests" / "proof" / "baseline.json"
 NODEIDS_PATH = ROOT / "tests" / "fixtures" / "golden" / "s0" / "nodeids.txt"
+GAPS_PATH = ROOT / "tests" / "proof" / "gaps.toml"
+FACETS_PATH = ROOT / "tests" / "proof" / "facets.toml"
+FOSSIL_MANIFEST_PATH = ROOT / "tests" / "fixtures" / "fossils" / "s0" / "MANIFEST.toml"
 
 BASELINE_FIELDS = [
     "root_passed",
@@ -58,7 +62,13 @@ def measure_current() -> dict[str, object]:
     stays stable"; recorded as a plan-gap (p0-court.md L250 does not spell
     out the exclusion).
     """
-    root_passed, _root_skipped = _pytest_counts(["--ignore=tests/proof"])
+    # `packages/trestle-packs/tests` is in `testpaths` from L.P0-0a.5 on, so
+    # a bare `pytest -q` collects both; exclude it here to keep
+    # `root_passed` meaning only the non-packs S0 corpus (measured
+    # separately below), matching EV-01's separate root/packs fields.
+    root_passed, _root_skipped = _pytest_counts(
+        ["--ignore=tests/proof", "--ignore=packages/trestle-packs"]
+    )
     # The packs half is run with the worktree's own trestle_packs source
     # prepended on PYTHONPATH. In CI, `pip install -e ".[dev,packs]"` makes
     # this a no-op (the editable install already resolves there first); on
@@ -198,6 +208,58 @@ def cmd_enforce(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_inventories() -> tuple[list[dict], list[dict], list[dict]]:
+    gaps = tomllib.loads(GAPS_PATH.read_text()).get("gap", [])
+    facets = tomllib.loads(FACETS_PATH.read_text()).get("facet", [])
+    states = tomllib.loads(FOSSIL_MANIFEST_PATH.read_text()).get("state", [])
+    return gaps, facets, states
+
+
+def cmd_inventory(args: argparse.Namespace) -> int:
+    """Report the gap/facet/fossil-state inventories (L.P0-0a.4).
+
+    `--strict`: exit 1 on any pending entry, or any `target = "required"`
+    gap with no real entry point yet.
+    `--count-pending [--lane X]`: print the pending count and exit 0 iff
+    >=1 pending entry (1 otherwise) — a side-effect-free CM-7 probe
+    (TM-P0-8). `--lane` filters to gaps owned by that lane; facets and
+    fossil states (which are not lane-scoped in this delivery) are counted
+    regardless of `--lane`.
+    """
+    gaps, facets, states = _load_inventories()
+
+    if args.count_pending:
+        lane = args.lane
+        count = 0
+        for g in gaps:
+            if lane and g.get("lane") != lane:
+                continue
+            if g.get("entry") == "pending":
+                count += 1
+        if not lane:
+            count += sum(1 for f in facets if f.get("extractor") == "pending")
+            count += sum(1 for s in states if s.get("producer") == "pending")
+        print(count)
+        return 0 if count >= 1 else 1
+
+    print(f"gaps: {len(gaps)} (21 expected)")
+    print(f"facets: {len(facets)} (11 expected)")
+    present_states = [s for s in states if not s.get("absent")]
+    n_absent = len(states) - len(present_states)
+    print(f"fossil states: {len(present_states)} present + {n_absent} absent (19 present expected)")
+
+    if args.strict:
+        pending = (
+            [g["id"] for g in gaps if g.get("entry") == "pending"]
+            + [f["id"] for f in facets if f.get("extractor") == "pending"]
+            + [s["id"] for s in states if s.get("producer") == "pending"]
+        )
+        if pending:
+            print(f"STRICT: {len(pending)} pending entries")
+            return 1
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m tests.proof.meta")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -206,6 +268,10 @@ def build_parser() -> argparse.ArgumentParser:
     report_parser.add_argument("--json", action="store_true")
     enforce_parser = sub.add_parser("enforce")
     enforce_parser.add_argument("--print-mode", action="store_true", dest="print_mode")
+    inventory_parser = sub.add_parser("inventory")
+    inventory_parser.add_argument("--strict", action="store_true")
+    inventory_parser.add_argument("--count-pending", action="store_true", dest="count_pending")
+    inventory_parser.add_argument("--lane", default=None)
     return parser
 
 
@@ -218,6 +284,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_report(args)
     if args.command == "enforce":
         return cmd_enforce(args)
+    if args.command == "inventory":
+        return cmd_inventory(args)
     parser.error(f"unknown command {args.command}")
     return 2
 
