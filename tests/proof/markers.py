@@ -10,6 +10,8 @@ Registered markers:
     tool.
   gated_on(q) — this test's proof is gated on open question `q`.
   na(reason) — this clause is not applicable, for the stated reason.
+  host_only — a PROC node whose label venue is HOST (CSC-9; L.P0-0d.9).
+  docker_host — a DOCKER node (CSC-9; L.P0-0d.9).
 """
 
 from __future__ import annotations
@@ -27,6 +29,8 @@ MARKER_DOCS = {
     "stub_proven": "stub_proven(label): this clause is proven against a stub, not the real tool",
     "gated_on": "gated_on(q): this test's proof is gated on open question 'q'",
     "na": "na(reason): this clause is not applicable, for the stated reason",
+    "host_only": "host_only: a PROC node whose label venue is HOST (CSC-9)",
+    "docker_host": "docker_host: a DOCKER node (CSC-9)",
 }
 
 

@@ -10,4 +10,4 @@ plugin it loads) is still picked up, instead of the packs subpackage's own
 
 from __future__ import annotations
 
-pytest_plugins = ("tests.proof.plugin",)
+pytest_plugins = ("tests.proof.plugin", "pytester")
