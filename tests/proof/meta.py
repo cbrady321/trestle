@@ -260,6 +260,74 @@ def cmd_inventory(args: argparse.Namespace) -> int:
     return 0
 
 
+MATRIX_MAP_PATH = ROOT / "tests" / "proof" / "matrix_map.toml"
+
+
+def cmd_check_map(_args: argparse.Namespace) -> int:
+    """`python -m tests.proof.meta check-map` (L.P0-0c.1): validate
+    `matrix_map.toml`'s schema and the frozen MC-03 shape (65 clause ids,
+    18 cells, 69 clause-parts, 3 stub-label-required, 2 adversary-stub)."""
+    from tests.proof import transcribe as transcribe_mod
+
+    data = tomllib.loads(MATRIX_MAP_PATH.read_text())
+    clauses = data.get("clause", [])
+
+    ok = True
+    ids = []
+    cells = set()
+    n_parts = 0
+    n_stub_req = 0
+    n_adversary = 0
+    id_re = transcribe_mod.MATRIX_CLAUSE_RE
+    required_keys = {
+        "id",
+        "cell",
+        "fragment",
+        "rows",
+        "rows_source",
+        "stub_label_required",
+        "adversary_stub",
+    }
+    for clause in clauses:
+        missing = required_keys - set(clause)
+        if missing or not ("step" in clause or "parts" in clause):
+            print(f"check-map: {clause.get('id')}: missing key(s) {missing or {'step|parts'}}")
+            ok = False
+            continue
+        cid = clause["id"]
+        if not id_re.match(cid):
+            print(f"check-map: {cid!r} does not match MC-03 clause id shape")
+            ok = False
+        ids.append(cid)
+        cells.add(clause["cell"])
+        n_parts += len(clause["parts"]) if "parts" in clause else 1
+        if clause["stub_label_required"]:
+            n_stub_req += 1
+        if clause["adversary_stub"]:
+            n_adversary += 1
+
+    if len(ids) != len(set(ids)):
+        print("check-map: duplicate clause id")
+        ok = False
+    if len(ids) != 65:
+        print(f"check-map: {len(ids)} clause ids, expected 65")
+        ok = False
+    if len(cells) != 18:
+        print(f"check-map: {len(cells)} cells, expected 18")
+        ok = False
+    if n_parts != 69:
+        print(f"check-map: {n_parts} clause-parts, expected 69")
+        ok = False
+    if n_stub_req != 3:
+        print(f"check-map: {n_stub_req} stub_label_required, expected 3")
+        ok = False
+    if n_adversary != 2:
+        print(f"check-map: {n_adversary} adversary_stub, expected 2")
+        ok = False
+
+    return 0 if ok else 1
+
+
 def mypy_error_sites() -> list[str]:
     """`file:line` for every current `mypy trestle` error."""
     proc = _run([sys.executable, "-m", "mypy", "trestle"])
@@ -307,6 +375,7 @@ def build_parser() -> argparse.ArgumentParser:
     inventory_parser.add_argument("--lane", default=None)
     ratchet_parser = sub.add_parser("mypy-ratchet")
     ratchet_parser.add_argument("--max", type=int, required=True)
+    sub.add_parser("check-map")
     return parser
 
 
@@ -323,6 +392,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_inventory(args)
     if args.command == "mypy-ratchet":
         return cmd_mypy_ratchet(args)
+    if args.command == "check-map":
+        return cmd_check_map(args)
     parser.error(f"unknown command {args.command}")
     return 2
 
