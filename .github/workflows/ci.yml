@@ -29,6 +29,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev,packs]"
+      - run: python -m tests.proof.guards clean-path --github-env
       - run: pytest -q
         env:
           TRESTLE_PROOF_GATE: ci-test
@@ -53,6 +54,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev,packs]"
+      - run: python -m tests.proof.guards clean-path --github-env
       - run: pytest -q -m compat
         env:
           TRESTLE_PROOF_GATE: ci-compat
@@ -62,9 +64,48 @@ jobs:
           path: tests/proof/results/
           if-no-files-found: ignore
 
+  guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: python -m tests.proof.guards clean-path --github-env
+      - run: pytest -q tests/proof/selftest/test_guards.py tests/proof/selftest/test_session.py
+        env:
+          TRESTLE_PROOF_GATE: ci-guards
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proof-results-ci-guards
+          path: tests/proof/results/
+          if-no-files-found: ignore
+
+  ancestry:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: python -m tests.proof.guards clean-path --github-env
+      - run: pytest -q tests/proof/drift/test_sa10_attribution.py tests/proof/selftest/test_ancestry.py
+        env:
+          TRESTLE_PROOF_GATE: ${{ matrix.os == 'ubuntu-latest' && 'ci-ancestry-linux' || 'ci-ancestry-macos' }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proof-results-ci-ancestry-${{ matrix.os }}
+          path: tests/proof/results/
+          if-no-files-found: ignore
+
   proof-ledger:
     runs-on: ubuntu-latest
-    needs: [test, compat]
+    needs: [test, compat, guards, ancestry]
     steps:
       - uses: actions/checkout@v4
         with:

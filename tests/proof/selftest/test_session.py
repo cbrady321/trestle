@@ -91,3 +91,78 @@ def test_import_origin_guard_accepts_canonical_packs_copy() -> None:
         text=True,
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_guard_env_applies_in_packs_session() -> None:
+    """L.P0-0b.6: the packs test session still passes when run under
+    `guards.scrub_subprocess_env()` — the scrub removes credential-bearing
+    variables without breaking anything the packs suite actually needs."""
+    from tests.proof import guards
+
+    base_env = {**os.environ, "PYTHONPATH": str(ROOT / "packages" / "trestle-packs")}
+    scrubbed_env = guards.scrub_subprocess_env(base_env)
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-c",
+            "pyproject.toml",
+            "--rootdir",
+            ".",
+            "packages/trestle-packs/tests",
+        ],
+        cwd=ROOT,
+        env=scrubbed_env,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_every_ci_pytest_job_has_clean_path_step() -> None:
+    """Static check over `.github/workflows/ci.yml`: every job with a
+    `pytest` step has a `guards clean-path` step earlier in that same
+    job."""
+    lines = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8").splitlines()
+
+    jobs: list[tuple[str, list[str]]] = []
+    current_job: str | None = None
+    current_lines: list[str] = []
+    in_jobs_block = False
+    for line in lines:
+        if line.rstrip() == "jobs:":
+            in_jobs_block = True
+            continue
+        if not in_jobs_block:
+            continue
+        if line.startswith("  ") and not line.startswith("   ") and line.rstrip().endswith(":"):
+            if current_job is not None:
+                jobs.append((current_job, current_lines))
+            current_job = line.strip().rstrip(":")
+            current_lines = []
+            continue
+        if current_job is not None:
+            current_lines.append(line)
+    if current_job is not None:
+        jobs.append((current_job, current_lines))
+
+    assert jobs, "no jobs parsed from ci.yml"
+
+    for job_name, job_lines in jobs:
+        run_lines = [line for line in job_lines if "run:" in line]
+        pytest_indices = [
+            i for i, line in enumerate(run_lines) if "pytest" in line and "run:" in line
+        ]
+        if not pytest_indices:
+            continue
+        clean_path_indices = [
+            i for i, line in enumerate(run_lines) if "guards" in line and "clean-path" in line
+        ]
+        assert clean_path_indices, f"job {job_name!r} runs pytest with no clean-path step"
+        for pytest_index in pytest_indices:
+            assert any(cp < pytest_index for cp in clean_path_indices), (
+                f"job {job_name!r} runs pytest before its clean-path step"
+            )
