@@ -504,6 +504,8 @@ def build_parser() -> argparse.ArgumentParser:
     register_parser = sub.add_parser("register")
     register_parser.add_argument("--probe", default=None)
     register_parser.add_argument("--final", action="store_true")
+    kdoc_parser = sub.add_parser("kdoc")
+    kdoc_parser.add_argument("--history", default=None)
     return parser
 
 
@@ -528,6 +530,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_open_questions(args)
     if args.command == "register":
         return cmd_register(args)
+    if args.command == "kdoc":
+        from tests.proof import kdoc as kdoc_mod
+
+        return kdoc_mod.cmd_kdoc(args)
     parser.error(f"unknown command {args.command}")
     return 2
 
