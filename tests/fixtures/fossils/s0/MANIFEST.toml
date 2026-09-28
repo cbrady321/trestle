@@ -2,7 +2,7 @@
 # joins" verifier text): [[state]] {id, producer = "module:function" |
 # "pending", s0_projection = {state, kinds, meta_keys}, absent = bool}
 #
-# 19 states total: 2 spine (L.P0-0c.6), 16 lane-A (L.P0-1A.5), 1 straddle
+# 19 states total: 2 spine (L.P0-0c.6, built here), 16 lane-A (L.P0-1A.5), 1 straddle
 # (L.P0-1A.6) — per p0-court.md's own cross-reference (row "P0-1A" join,
 # citing exactly these three leaves for "19 states"). `crashed` is a real
 # run-ledger terminal kind (trestle/server/ledger.py TERMINAL_KINDS) but has
@@ -16,12 +16,12 @@
 
 [[state]]
 id = "succeeded"
-producer = "pending"
+producer = "tests.proof.fossils:produce_succeeded"
 absent = false
 
 [[state]]
 id = "failed"
-producer = "pending"
+producer = "tests.proof.fossils:produce_failed"
 absent = false
 
 [[state]]

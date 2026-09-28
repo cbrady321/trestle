@@ -1,0 +1,6 @@
+{"seq":1,"kind":"created","at":"2026-09-28T21:41:01Z","run_id":"r_aaaadihj63h6ixg6tga","spec_hash":"c0996b055ae1e7698bd68d6b7a0ed9017b4249686f1e999ce871c6c98fc374ec","service_epoch":"epoch_3sbr5mo5dmil6","plugin":"echo","version":"0.1.0","snapshot_id":"snap_ad6145e7316cff68","args_hash":"b31e7c537926c29725303ebaeec481a9e18502446b0a6e73738a81588ee829ab"}
+{"seq":2,"kind":"admitted","at":"2026-09-28T21:41:01Z","run_id":"r_aaaadihj63h6ixg6tga","snapshot_id":"snap_ad6145e7316cff68"}
+{"seq":3,"kind":"started","at":"2026-09-28T21:41:01Z","run_id":"r_aaaadihj63h6ixg6tga"}
+{"seq":4,"kind":"execution_ended","at":"2026-09-28T21:41:01Z","run_id":"r_aaaadihj63h6ixg6tga","classification":"succeeded","exit_code":0,"duration_ms":178}
+{"seq":5,"kind":"evidence_finalized","at":"2026-09-28T21:41:01Z","run_id":"r_aaaadihj63h6ixg6tga","completeness":"complete","result_state":"complete"}
+{"seq":6,"kind":"succeeded","at":"2026-09-28T21:41:01Z","run_id":"r_aaaadihj63h6ixg6tga"}
