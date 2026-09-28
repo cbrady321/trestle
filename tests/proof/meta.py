@@ -400,6 +400,44 @@ def cmd_audit_rows(_args: argparse.Namespace) -> int:
     return 0
 
 
+K_DOC_MAP_PATH = ROOT / "tests" / "proof" / "k_doc_map.toml"
+OPEN_QUESTIONS_PATH = ROOT / "tests" / "proof" / "open_questions.toml"
+
+
+def load_open_questions() -> list[dict[str, object]]:
+    return list(tomllib.loads(OPEN_QUESTIONS_PATH.read_text()).get("oq", []))
+
+
+def cmd_open_questions(_args: argparse.Namespace) -> int:
+    """`python -m tests.proof.meta open-questions` (L.P0-0c.3): exit 0 iff
+    every label bound to a listed open-question id carries posture
+    `gated_on` or `both_variant` and no claimed label or `proves` marker
+    decides one. A label whose `oq` names an id outside `open_questions.toml`
+    is a load error."""
+    oq_ids = {o["id"] for o in load_open_questions()}
+    labels = _load_all_labels()
+
+    for label in labels:
+        oq = label.get("oq")
+        if oq is None:
+            continue
+        if oq not in oq_ids:
+            print(
+                f"open-questions: load error: {label.get('id')} names oq={oq!r}, "
+                "not in open_questions.toml"
+            )
+            return 1
+        posture = label.get("posture")
+        if posture not in ("gated_on", "both_variant"):
+            print(
+                f"open-questions: {label.get('id')} is bound to open question {oq!r} but "
+                f"posture={posture!r} decides it (must be gated_on or both_variant)"
+            )
+            return 1
+
+    return 0
+
+
 def mypy_error_sites() -> list[str]:
     """`file:line` for every current `mypy trestle` error."""
     proc = _run([sys.executable, "-m", "mypy", "trestle"])
@@ -449,6 +487,7 @@ def build_parser() -> argparse.ArgumentParser:
     ratchet_parser.add_argument("--max", type=int, required=True)
     sub.add_parser("check-map")
     sub.add_parser("audit-rows")
+    sub.add_parser("open-questions")
     return parser
 
 
@@ -469,6 +508,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_check_map(args)
     if args.command == "audit-rows":
         return cmd_audit_rows(args)
+    if args.command == "open-questions":
+        return cmd_open_questions(args)
     parser.error(f"unknown command {args.command}")
     return 2
 

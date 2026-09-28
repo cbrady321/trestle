@@ -1,0 +1,203 @@
+# k_doc_map.toml (L.P0-0c.3): K-1..K-19, requirements-workflow-runtime.md's
+# "Knowing changes" table (L528-550). Schema: [[k]] {id, rows, docs,
+# docs_source, confirm, recorded_default, landing_merge, must_appear_by}.
+# PLAN-GAP: the Knowing-changes table has no doc-file column of its own (only
+# K-11/K-12 name a doc path inline); every other 'docs' entry here is this
+# delivery's own best-effort inference from the row's subject matter against
+# the product docs/ tree, recorded per-item in docs_source. PLAN-GAP:
+# plan-workflow-runtime.md has no single "HYBRID §13 landing table"; every
+# landing_merge below except K-19 (given verbatim in this leaf's own spec
+# text) is reconstructed by grepping each K-id's leaf citations across the
+# whole file. K-16 has neither: it is explicitly conditional and unbuilt in
+# this plan revision (requirements-workflow-runtime.md:545, plan-workflow-
+# runtime.md:204).
+
+[[k]]
+id = "K-1"
+rows = ["WR-IDEM-1"]
+docs = ["docs/agents.md"]
+docs_source = "requirements-workflow-runtime.md:530 (Knowing changes table); doc file inferred from WR-COMPAT-6/7 area (agents.md houses run/idempotency semantics) -- plan-gap: no explicit doc column for K-1"
+confirm = "yes"
+recorded_default = "decline patch applied (CM-7); no explicit per-K default text found for K-1 itself"
+landing_merge = "CK-1"
+must_appear_by = "CK-1"
+
+[[k]]
+id = "K-2"
+rows = ["WR-PLAN-5"]
+docs = ["docs/agents.md"]
+docs_source = "requirements-workflow-runtime.md:531; doc inferred (plan identity/snapshot ids) -- plan-gap: no explicit doc column"
+confirm = "no"
+recorded_default = "n/a (not confirm-gated)"
+landing_merge = "CL-C1"
+must_appear_by = "CL-C1"
+
+[[k]]
+id = "K-3"
+rows = ["WR-PLAN-9"]
+docs = ["docs/plugins.md", "examples/packs/integration_pipeline.py"]
+docs_source = "requirements-workflow-runtime.md:532"
+confirm = "yes"
+recorded_default = "decline patch; tied to K-4"
+landing_merge = "CK-3/4"
+must_appear_by = "CK-3/4"
+
+[[k]]
+id = "K-4"
+rows = ["WR-PLAN-9", "WR-EVID-5"]
+docs = ["docs/plugins.md"]
+docs_source = "requirements-workflow-runtime.md:533"
+confirm = "with K-3"
+recorded_default = "tied to K-3's confirm"
+landing_merge = "CK-3/4"
+must_appear_by = "CK-3/4"
+
+[[k]]
+id = "K-5"
+rows = ["WR-PLAN-4", "WR-PLAN-8"]
+docs = ["docs/plugins.md"]
+docs_source = "requirements-workflow-runtime.md:534; doc inferred"
+confirm = "no"
+recorded_default = "n/a (not confirm-gated)"
+landing_merge = "CL-C1"
+must_appear_by = "CL-C1"
+
+[[k]]
+id = "K-6"
+rows = ["WR-OWN-4"]
+docs = ["docs/packs.md"]
+docs_source = "requirements-workflow-runtime.md:535"
+confirm = "no"
+recorded_default = "n/a; Adopt K-6 per maintainer decision 2026-09-14"
+landing_merge = "NW-1"
+must_appear_by = "NW-1"
+
+[[k]]
+id = "K-7"
+rows = ["WR-CANCEL-1"]
+docs = ["docs/agents.md"]
+docs_source = "requirements-workflow-runtime.md:536; doc inferred"
+confirm = "no"
+recorded_default = "n/a (not confirm-gated)"
+landing_merge = "CS-2"
+must_appear_by = "CS-2"
+
+[[k]]
+id = "K-8"
+rows = ["WR-OWN-3"]
+docs = ["docs/packs.md"]
+docs_source = "requirements-workflow-runtime.md:537"
+confirm = "yes"
+recorded_default = "'no' (processes) waits until B2-C10 amended or maintainer answers F-PLAN-6; never unattended"
+landing_merge = "CK-8"
+must_appear_by = "CK-8"
+
+[[k]]
+id = "K-9"
+rows = ["WR-DEADLINE-1", "WR-DEADLINE-2"]
+docs = ["docs/plugins.md", "docs/agents.md"]
+docs_source = "requirements-workflow-runtime.md:538; doc inferred (ctx.deadline)"
+confirm = "no"
+recorded_default = "n/a (not confirm-gated)"
+landing_merge = "CS-2"
+must_appear_by = "CS-2"
+
+[[k]]
+id = "K-10"
+rows = ["WR-EVID-1"]
+docs = ["docs/agents.md"]
+docs_source = "requirements-workflow-runtime.md:539; doc inferred (run view error field)"
+confirm = "no"
+recorded_default = "n/a (not confirm-gated)"
+landing_merge = "CS-3"
+must_appear_by = "CS-3"
+
+[[k]]
+id = "K-11"
+rows = ["WR-TERM-1"]
+docs = ["docs/agents.md", ".cursor/skills/trestle/SKILL.md", "docs/agent-console-mcp.md"]
+docs_source = "requirements-workflow-runtime.md:540 (verbatim doc list)"
+confirm = "no"
+recorded_default = "n/a (not confirm-gated)"
+landing_merge = "SV-0"
+must_appear_by = "SV-0"
+
+[[k]]
+id = "K-12"
+rows = ["WR-PLAN-7"]
+docs = ["docs/plugins.md"]
+docs_source = "requirements-workflow-runtime.md:541 (verbatim)"
+confirm = "no"
+recorded_default = "n/a (not confirm-gated)"
+landing_merge = "CL-C2"
+must_appear_by = "CL-C2"
+
+[[k]]
+id = "K-13"
+rows = ["WR-EVID-9"]
+docs = ["docs/agents.md"]
+docs_source = "requirements-workflow-runtime.md:542; doc inferred (run-state vocabulary, crashed)"
+confirm = "no"
+recorded_default = "n/a (not confirm-gated)"
+landing_merge = "CL-D1"
+must_appear_by = "CL-D1"
+
+[[k]]
+id = "K-14"
+rows = ["WR-PROOF-8"]
+docs = []
+docs_source = "requirements-workflow-runtime.md:543; no product doc names a CI-only gate -- plan-gap: docs list intentionally empty"
+confirm = "yes (open question)"
+recorded_default = "contradicts frozen SC-2 (mypy=0); needs the user's approval of that SC-2 change; never an unattended step (PC4-4)"
+landing_merge = "CK-14"
+must_appear_by = "CK-14"
+
+[[k]]
+id = "K-15"
+rows = ["WR-ENV-11"]
+docs = ["docs/packs.md"]
+docs_source = "requirements-workflow-runtime.md:544"
+confirm = "no"
+recorded_default = "n/a (not confirm-gated)"
+landing_merge = "NW-1"
+must_appear_by = "NW-1"
+
+[[k]]
+id = "K-16"
+rows = ["WR-COMPAT-1"]
+docs = ["docs/agents.md"]
+docs_source = "requirements-workflow-runtime.md:545; doc inferred (ten tools/tools-list docs)"
+confirm = "yes (conditional)"
+recorded_default = "conditional on a design choice not committed in this plan revision (\"only if design chooses a separate operation for one-call mode\"); no landing_merge exists in plan-workflow-runtime.md"
+landing_merge = ""
+must_appear_by = "n/a (conditional; undetermined in this plan revision)"
+
+[[k]]
+id = "K-17"
+rows = ["WR-EVID-6"]
+docs = ["docs/plugins.md"]
+docs_source = "requirements-workflow-runtime.md:546; doc inferred (artifact staging, Context methods)"
+confirm = "no"
+recorded_default = "n/a (not confirm-gated)"
+landing_merge = "CL-B1"
+must_appear_by = "CL-B1"
+
+[[k]]
+id = "K-18"
+rows = ["WR-EVID-11"]
+docs = ["docs/agents.md"]
+docs_source = "requirements-workflow-runtime.md:547; doc inferred (evidence honesty)"
+confirm = "no"
+recorded_default = "n/a (not confirm-gated)"
+landing_merge = "CS-1"
+must_appear_by = "CS-1"
+
+[[k]]
+id = "K-19"
+rows = ["WR-CANCEL-3", "WR-CANCEL-6"]
+docs = ["docs/agents.md"]
+docs_source = "requirements-workflow-runtime.md:548; leaf text L.P0-0c.3 names landing_merge CL-D1 directly"
+confirm = "no (maintainer-delegated, 2026-09-28)"
+recorded_default = "answered: Q-STRADDLE-ORPHAN option (a); B2-C11 branch (i) is its whole obligation"
+landing_merge = "CL-D1"
+must_appear_by = "CL-D1"
