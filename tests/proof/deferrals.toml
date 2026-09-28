@@ -1,0 +1,11 @@
+# Deferrals (CM-8; MC-28). Created empty by `L.P0-0d.4`; written **once**,
+# by `L.CL-D1.3`. No later leaf edits it. Schema (CM-8; the withdrawn
+# `register_id` is absent, CM-12):
+#
+# [[deferral]]
+# label       = "WR-OWN-8:environment-lease"   # a CSC-1 label id or an MC-03 clause/part id
+# from_step   = "core"                          # the band that defers it
+# closes_at   = "SL-8"                          # the merge whose leaf claims it
+# until       = "PX-n"                          # optional: an open PX precondition (CSC-15)
+# citation    = "design §8.2 …; HYBRID §4.3"
+# declared_by = "L.CL-D1.3"
