@@ -1,0 +1,7 @@
+# Digest-pinned image set for the host-docker preflight (DM-24; L.P0-0d.6).
+# An unpinned entry (empty digest) always records PRECONDITION_UNMET —
+# no pinned image is cached today (PX-3's image half).
+
+[alpine]
+ref = "alpine:3.20"
+digest = ""
