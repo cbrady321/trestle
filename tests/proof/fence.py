@@ -927,15 +927,20 @@ class LandingDeps:
         return (self.clock or _time.time)()
 
 
-def record_return(state_dir: Path, merge_id: str, reason: str) -> None:
+def record_return(state_dir: Path, merge_id: str, reason: str, clock=None) -> None:
     """Apply CM-3 (b)'s `counted`/`escalates` rule for `reason` to the
     entry's READY data, blocking it at `LANDING_RETURNS_MAX` and
     escalating as the table requires."""
+    clock = clock or _time.time
     path = _ready_path(state_dir, merge_id)
     data = json.loads(path.read_text()) if path.exists() else {}
     counted, escalates = _RETURN_RULES.get(reason.split(":")[0], (True, False))
     if reason == "checkpoint rebased: roles 1-2 must re-run":
         data["ckpt_rebases"] = data.get("ckpt_rebases", 0) + 1
+        # P4 checkpoint-first: the hold's lapse clock is anchored to this
+        # (the checkpoint's most recent "checkpoint rebased" return), reset
+        # on every subsequent one, per root CM-3 P4.
+        data["checkpoint_first_since"] = clock()
         if data["ckpt_rebases"] >= LANDING_RETURNS_MAX:
             _escalate(state_dir, f"checkpoint rebased {data['ckpt_rebases']} times")
         data["state"] = "ready"
@@ -970,55 +975,72 @@ def attempt_landing(merge_id: str, deps: LandingDeps) -> str:
     if entry.get("state") != "ready":
         return "skip"
 
+    # P8: the loop writes its progress record at every step boundary, so a
+    # restart (or the executor's stall check, P9) always sees where it was.
+    write_progress(state_dir, merge_id, "step-0", clock=deps.clock)
+
     # Step 0 (restart-safety, P8): a landed merge is never re-landed.
     found = landed_merge_check(merge_id, entry.get("landing_sha"), deps.cwd)
     if found:
         path.unlink(missing_ok=True)
         return "landed"
 
+    write_progress(state_dir, merge_id, "step-1", clock=deps.clock)
     expected_head = entry.get("landing_sha") or entry.get("head_sha")
     if deps.pr_head_sha != expected_head:
-        record_return(state_dir, merge_id, "head moved during landing")
+        record_return(state_dir, merge_id, "head moved during landing", clock=deps.clock)
         return "head moved during landing"
 
     # Steps 2-3: fetch + rebase-if-stale (CM-3 step 3; simplified here to
     # the injected `preflight` outcome — a real rebase runs the actual
     # `git rebase`/merge, out of scope for this leaf's own selftest).
+    write_progress(state_dir, merge_id, "step-2", clock=deps.clock)
     if deps.preflight == "rebase_conflict":
-        record_return(state_dir, merge_id, "rebase conflict")
+        record_return(state_dir, merge_id, "rebase conflict", clock=deps.clock)
         return "rebase conflict"
     if deps.preflight == "checkpoint_rebased":
-        record_return(state_dir, merge_id, "checkpoint rebased: roles 1-2 must re-run")
+        record_return(
+            state_dir, merge_id, "checkpoint rebased: roles 1-2 must re-run", clock=deps.clock
+        )
         return "checkpoint rebased: roles 1-2 must re-run"
     if deps.rebased_head_sha:
         entry["landing_sha"] = deps.rebased_head_sha
         _atomic_write(path, entry)
 
     # Step 4: P11 checks. A PRECONDITION_UNMET host step passes its own
-    # criterion (X2): it is never "checks failed".
+    # criterion (X2): it is never "checks failed". A hung local check (e.g.
+    # ruff/mypy) is bounded by `HOST_RUN_MAX` and killed, same as a HOST
+    # step's own timeout, but returned under its own name (P5).
+    write_progress(state_dir, merge_id, "step-4", clock=deps.clock)
     if deps.preflight.startswith("checks_failed:"):
         name = deps.preflight.split(":", 1)[1]
-        record_return(state_dir, merge_id, f"checks failed: {name}")
+        record_return(state_dir, merge_id, f"checks failed: {name}", clock=deps.clock)
         return f"checks failed: {name}"
     if deps.preflight == "host_timeout":
-        record_return(state_dir, merge_id, "HOST run timed out")
+        record_return(state_dir, merge_id, "HOST run timed out", clock=deps.clock)
         return "HOST run timed out"
+    if deps.preflight == "local_check_timeout":
+        record_return(state_dir, merge_id, "local check timed out", clock=deps.clock)
+        return "local check timed out"
     # "precondition_unmet" and "ok" both proceed: X2, root CM-3 P11.
 
     # Step 5: write landing_sha before any push (P7).
+    write_progress(state_dir, merge_id, "step-5", clock=deps.clock)
     landing_sha = entry.get("landing_sha") or expected_head
     entry["landing_sha"] = landing_sha
     _atomic_write(path, entry)
 
     # Step 6: CI wait.
+    write_progress(state_dir, merge_id, "step-6", clock=deps.clock)
     if deps.ci_wait_result == 8:
-        record_return(state_dir, merge_id, "CI wait exceeded")
+        record_return(state_dir, merge_id, "CI wait exceeded", clock=deps.clock)
         return "CI wait exceeded"
     if deps.ci_wait_result == 2:
-        record_return(state_dir, merge_id, "checks failed: required job")
+        record_return(state_dir, merge_id, "checks failed: required job", clock=deps.clock)
         return "checks failed: required job"
 
     # Step 7: land.
+    write_progress(state_dir, merge_id, "step-7", clock=deps.clock)
     exit_code, message = fence_merge(
         deps.cfg,
         deps.cwd,
@@ -1037,35 +1059,55 @@ def attempt_landing(merge_id: str, deps: LandingDeps) -> str:
         if found:
             path.unlink(missing_ok=True)
             return "landed"
-        record_return(state_dir, merge_id, "master moved outside fence merge")
+        record_return(state_dir, merge_id, "master moved outside fence merge", clock=deps.clock)
         return "master moved outside fence merge"
     if exit_code == FenceMergeExit.REMOTE_UNAVAILABLE:
         found = landed_merge_check(merge_id, landing_sha, deps.cwd)
         if found:
             path.unlink(missing_ok=True)
             return "landed"
-        record_return(state_dir, merge_id, "remote unavailable")
+        record_return(state_dir, merge_id, "remote unavailable", clock=deps.clock)
         return "remote unavailable"
     if exit_code == FenceMergeExit.JOBS_NOT_CONCLUDED:
         return "recheck-ci"
     if exit_code == FenceMergeExit.VERDICT_REFUSED:
-        record_return(state_dir, merge_id, "verdict refused")
+        record_return(state_dir, merge_id, "verdict refused", clock=deps.clock)
         return "verdict refused"
     if exit_code == FenceMergeExit.PUSH_REFUSED:
-        record_return(state_dir, merge_id, "push refused")
+        record_return(state_dir, merge_id, "push refused", clock=deps.clock)
         return "push refused"
     if exit_code == FenceMergeExit.HEAD_MISMATCH:
-        record_return(state_dir, merge_id, "head moved during landing")
+        record_return(state_dir, merge_id, "head moved during landing", clock=deps.clock)
         return "head moved during landing"
-    record_return(state_dir, merge_id, "fence merge crashed")
+    record_return(state_dir, merge_id, "fence merge crashed", clock=deps.clock)
     return "fence merge crashed"
 
 
-def next_fifo_entry(state_dir: Path) -> str | None:
-    """P4: the oldest READY entry by `marked_at`."""
+def next_fifo_entry(state_dir: Path, clock=None) -> str | None:
+    """P4: the oldest READY entry by `marked_at`, except during a bounded
+    checkpoint-first period: a checkpoint whose `ckpt_rebases` reached
+    `LANDING_RETURNS_MAX` holds every other landing until it lands, or
+    until `LANDING_MAX` passes after its most recent "checkpoint rebased"
+    return without a re-mark, which lapses the hold and resumes FIFO
+    (root CM-3 P4, K11K-18)."""
+    clock = clock or _time.time
     ready = [e for e in ready_status(state_dir) if e.get("state") == "ready"]
     if not ready:
         return None
+    for entry in ready:
+        if entry.get("ckpt_rebases", 0) < LANDING_RETURNS_MAX:
+            continue
+        since = entry.get("checkpoint_first_since")
+        if since is None:
+            continue
+        if clock() - since < LANDING_MAX:
+            return entry["_merge_id"]
+        # the hold lapsed: escalate once and clear it so FIFO resumes.
+        _escalate(state_dir, f"{entry['_merge_id']}: checkpoint-first lapsed")
+        path = _ready_path(state_dir, entry["_merge_id"])
+        data = json.loads(path.read_text())
+        data.pop("checkpoint_first_since", None)
+        _atomic_write(path, data)
     ready.sort(key=lambda e: e.get("marked_at", 0))
     return ready[0]["_merge_id"]
 

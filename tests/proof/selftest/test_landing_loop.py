@@ -150,6 +150,34 @@ def test_p1_only_land_invokes_fence_merge(rig):
     assert "fence_merge" not in inspect.getsource(fence_mod.ci_status)
 
 
+# --- P3: up to date / out-of-band push --------------------------------------
+
+
+def test_p3_out_of_band_push_returns_uncounted_and_escalates(rig):
+    """A push made outside the loop (the only other way `origin/master` can
+    move, since the loop is the single writer) defeats R3 and is returned
+    "master moved outside fence merge" — residual 13: not counted toward
+    `LANDING_RETURNS_MAX`, but escalated immediately (root CM-3 P3/P6)."""
+    _mark_ready(rig)
+    # an out-of-band push directly to origin/master, bypassing the loop
+    # entirely (the only way it can move, since the loop is the sole writer)
+    _sh(rig["master"], "fetch", "-q", "origin")
+    _sh(rig["master"], "reset", "-q", "--hard", "origin/master")
+    (rig["master"] / "a" / "outside.txt").write_text("z")
+    _sh(rig["master"], "add", "a/outside.txt")
+    _sh(rig["master"], "commit", "-q", "-m", "pushed outside the loop")
+    _sh(rig["master"], "push", "-q", "origin", "HEAD:refs/heads/master")
+
+    outcome = fence_mod.attempt_landing("M1", _deps(rig))
+    assert outcome == "master moved outside fence merge"
+
+    data = json.loads(fence_mod._ready_path(rig["state_dir"], "M1").read_text())
+    assert data["returns"] == 0  # residual 13: uncounted
+    assert data["state"] == "ready"  # not blocked either
+    log = (rig["state_dir"] / "wr-escalations.log").read_text()
+    assert "master moved outside fence merge" in log  # but escalated
+
+
 # --- P4: FIFO, dead lane, re-marked checkpoint ------------------------------
 
 
@@ -220,6 +248,34 @@ def test_p4_repeated_checkpoint_rebases_escalate_and_checkpoint_first(rig):
         assert outcome == "checkpoint rebased: roles 1-2 must re-run"
     log = (rig["state_dir"] / "wr-escalations.log").read_text()
     assert "checkpoint rebased" in log
+
+
+def test_p4_checkpoint_first_lapses_after_landing_max(rig):
+    """Checkpoint-first holds every other landing once `ckpt_rebases` hits
+    `LANDING_RETURNS_MAX`, but lapses — escalating "checkpoint-first
+    lapsed" and resuming plain FIFO — once `LANDING_MAX` passes after the
+    checkpoint's most recent "checkpoint rebased" return with no re-mark
+    (root CM-3 P4, K11K-18)."""
+    # M1 was marked READY first (earlier `marked_at`); J0 follows.  Plain
+    # FIFO would land M1 first, so J0's hold below is proof of
+    # checkpoint-first overriding FIFO, not a coincidence of ordering.
+    _mark_ready(rig, "M1", marked_at=1.0)
+    _mark_ready(rig, "J0", marked_at=5.0)
+    t = {"now": 0.0}
+    clock = lambda: t["now"]  # noqa: E731
+    for _ in range(fence_mod.LANDING_RETURNS_MAX):
+        outcome = fence_mod.attempt_landing(
+            "J0", _deps(rig, preflight="checkpoint_rebased", clock=clock)
+        )
+        assert outcome == "checkpoint rebased: roles 1-2 must re-run"
+
+    # checkpoint-first: J0 holds M1's landing despite M1's earlier marked_at
+    assert fence_mod.next_fifo_entry(rig["state_dir"], clock=clock) == "J0"
+
+    t["now"] += fence_mod.LANDING_MAX + 1  # no re-mark of J0 in the meantime
+    assert fence_mod.next_fifo_entry(rig["state_dir"], clock=clock) == "M1"
+    log = (rig["state_dir"] / "wr-escalations.log").read_text()
+    assert "checkpoint-first lapsed" in log
 
 
 # --- P5: ready mark / ci-status exits ---------------------------------------
@@ -316,6 +372,56 @@ def test_p5_stalled_step_killed_at_landing_max(rig):
     assert not fence_mod.progress_is_stale(rig["state_dir"], clock=lambda: 10.0)
 
 
+def test_p5_ci_never_starts_in_loop_returns_ci_wait_exceeded(rig):
+    """Within one landing attempt (step 6's CI wait, as opposed to the
+    pre-READY `ci-status --wait` case above), CI that never starts is
+    returned "CI wait exceeded" — counted and escalated immediately
+    (root CM-3 P5/P6)."""
+    _mark_ready(rig)
+    outcome = fence_mod.attempt_landing("M1", _deps(rig, ci_wait_result=8))
+    assert outcome == "CI wait exceeded"
+    data = json.loads(fence_mod._ready_path(rig["state_dir"], "M1").read_text())
+    assert data["returns"] == 1
+    log = (rig["state_dir"] / "wr-escalations.log").read_text()
+    assert "CI wait exceeded" in log
+
+
+def test_p5_ckpt_job_never_concludes_exits_8_ckpt_wait_exceeded(rig):
+    """`fence ci-status --ckpt <name> --wait` bounds the checkpoint job's
+    own wait separately from the branch form, and names its own reason on
+    timeout: "ckpt wait exceeded" (root CM-3 P5)."""
+    clock = {"t": 0.0}
+    rc = fence_mod.ci_status(
+        rig["runner"],
+        ckpt="J0",
+        wait=True,
+        conclusions_reader=lambda sha, cwd: None,
+        clock=lambda: clock["t"],
+        sleep=lambda s: clock.__setitem__("t", clock["t"] + s),
+        ci_wait_max=10,
+        state_dir=rig["state_dir"],
+    )
+    assert rc == 8
+    log = (rig["state_dir"] / "wr-escalations.log").read_text()
+    assert "ckpt wait exceeded" in log
+
+
+def test_p5_hung_local_check_killed_at_host_run_max(rig):
+    """A hung local check (ruff/mypy/etc, as opposed to a HOST-run step) is
+    bounded and killed too, returned under its own name so it is
+    distinguishable from "HOST run timed out" while sharing the same
+    counted/escalates treatment (root CM-3 P5/P6)."""
+    assert fence_mod.HOST_RUN_MAX > 0  # the bound this case is killed at
+    _mark_ready(rig)
+    outcome = fence_mod.attempt_landing("M1", _deps(rig, preflight="local_check_timeout"))
+    assert outcome == "local check timed out"
+    data = json.loads(fence_mod._ready_path(rig["state_dir"], "M1").read_text())
+    assert data["returns"] == 1
+    assert data["state"] == "ready"  # one timeout alone does not yet block
+    log = (rig["state_dir"] / "wr-escalations.log").read_text()
+    assert "local check timed out" in log
+
+
 # --- P6: return counting and escalation -------------------------------------
 
 
@@ -379,6 +485,65 @@ def test_p7_landing_sha_written_before_push(rig):
 
 
 # --- P8: restart safety -----------------------------------------------------
+
+
+def test_p8_restart_at_every_step_boundary(rig, monkeypatch):
+    """The loop writes its progress record at every step boundary (root
+    CM-3 P8), not just once — checked by spying on `write_progress` through
+    one full landing pass, and through a pass that returns early partway,
+    which must stop recording boundaries at the step it actually reached."""
+    seen: list[str] = []
+    orig = fence_mod.write_progress
+
+    def spy(state_dir, merge_id, step, clock=None):
+        seen.append(step)
+        orig(state_dir, merge_id, step, clock=clock)
+
+    monkeypatch.setattr(fence_mod, "write_progress", spy)
+
+    _mark_ready(rig, "M1", marked_at=1.0)
+    outcome = fence_mod.attempt_landing("M1", _deps(rig))
+    assert outcome == "landed"
+    assert seen == ["step-0", "step-1", "step-2", "step-4", "step-5", "step-6", "step-7"]
+
+    seen.clear()
+    _mark_ready(rig, "M2", marked_at=2.0)
+    outcome2 = fence_mod.attempt_landing("M2", _deps(rig, preflight="rebase_conflict"))
+    assert outcome2 == "rebase conflict"
+    # a restart of this attempt would resume from "step-2": no later
+    # boundary was ever reached or recorded.
+    assert seen == ["step-0", "step-1", "step-2"]
+
+
+def test_p8_restart_after_rebase_push_compares_landing_sha(rig):
+    """Once `landing_sha` is set (a prior, killed loop's rebase was already
+    pushed), a restart compares the PR head against `landing_sha`, never
+    the entry's original `head_sha` — so it never returns the loop's own
+    rebase-push as "head moved during landing" (root CM-3 P8, K11K-17)."""
+    _mark_ready(rig, "M1", marked_at=1.0)
+
+    # advance master with a commit the rebase will incorporate
+    (rig["master"] / "a" / "master2.txt").write_text("m2")
+    _sh(rig["master"], "add", "a/master2.txt")
+    _sh(rig["master"], "commit", "-q", "-m", "master moves")
+    _sh(rig["master"], "push", "-q", "origin", "HEAD:refs/heads/master")
+
+    # simulate the killed loop's own already-pushed rebase: a real rebase
+    # of the lane branch onto the new master, pushed under the same ref
+    _sh(rig["lane"], "fetch", "-q", "origin")
+    _sh(rig["lane"], "rebase", "-q", "origin/master")
+    _sh(rig["lane"], "push", "-q", "-f", "origin", "HEAD:refs/heads/wr/x/m1")
+    rebased_sha = _sh(rig["lane"], "rev-parse", "HEAD")
+    assert rebased_sha != rig["head"]
+
+    entry_path = fence_mod._ready_path(rig["state_dir"], "M1")
+    data = json.loads(entry_path.read_text())
+    data["landing_sha"] = rebased_sha  # P7: written before the push, by the killed loop
+    fence_mod._atomic_write(entry_path, data)
+
+    # restart: the PR head (as GitHub now reports it) is the rebased sha
+    outcome = fence_mod.attempt_landing("M1", _deps(rig, pr_head_sha=rebased_sha))
+    assert outcome == "landed"  # not "head moved during landing"
 
 
 def test_p8_restart_after_master_push_before_record_update(rig):
@@ -446,6 +611,64 @@ def test_p8_killed_mid_merge_landed_merge_found_before_exit_3_return(rig):
 def test_p9_stalled_loop_process_group_killed_and_restarted(rig):
     fence_mod.write_progress(rig["state_dir"], "M1", "step-4", clock=lambda: 0.0)
     assert fence_mod.progress_is_stale(rig["state_dir"], clock=lambda: fence_mod.LANDING_MAX + 100)
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def test_p9_killed_loop_leaves_no_child(tmp_path):
+    """The executor kills the *loop's process group*, not just its pid, so
+    no `fence merge`/git child survives a stalled-loop kill (root CM-3 P9,
+    K11K-14) — proven here with a real spawned-and-killed process group,
+    not only the unit-level `progress_is_stale` check above."""
+    import signal
+    import subprocess as sp
+    import time
+
+    marker = tmp_path / "child.pid"
+    script = tmp_path / "fake_loop.py"
+    script.write_text(
+        "import subprocess, time\n"
+        "child = subprocess.Popen(['sleep', '60'])\n"
+        f"open({str(marker)!r}, 'w').write(str(child.pid))\n"
+        "time.sleep(60)\n"
+    )
+    proc = sp.Popen(["python3", str(script)], preexec_fn=os.setsid)
+    try:
+        deadline = time.time() + 5
+        while time.time() < deadline and not (marker.exists() and marker.read_text().strip()):
+            time.sleep(0.05)
+        child_pid = int(marker.read_text().strip())
+        assert _pid_alive(child_pid)
+
+        # the executor's stall-kill: the whole process group, one signal.
+        pgid = os.getpgid(proc.pid)
+        os.killpg(pgid, signal.SIGKILL)
+        proc.wait(timeout=5)
+
+        deadline = time.time() + 5
+        while time.time() < deadline and _pid_alive(child_pid):
+            time.sleep(0.05)
+        assert not _pid_alive(child_pid), "child outlived the killed loop process group"
+    finally:
+        for pid in (getattr(proc, "pid", None),):
+            if pid is None:
+                continue
+            try:
+                os.killpg(os.getpgid(pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            pass
 
 
 def test_p9_idle_loop_refreshes_progress_and_is_not_restarted(rig):
