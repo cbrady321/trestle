@@ -10,8 +10,13 @@ fails loudly rather than silently no-op'ing.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import importlib
 import json
+import os
+import subprocess
+import sys
+import tempfile
 import tomllib
 from pathlib import Path
 
@@ -20,6 +25,16 @@ from tests.proof import normalize as normalize_mod
 ROOT = Path(__file__).resolve().parents[2]
 FACETS_PATH = ROOT / "tests" / "proof" / "facets.toml"
 DIVERGENCE_PATH = ROOT / "tests" / "proof" / "divergence.toml"
+D2_EXCEPTIONS_PATH = ROOT / "tests" / "proof" / "d2_exceptions.toml"
+D2_DRIVER_PATH = ROOT / "tests" / "proof" / "d2_driver.py"
+FOSSILS_ROOT_DEFAULT = ROOT / "tests" / "fixtures" / "fossils"
+
+# CM-9's exact schema: [[exception]] {id, reader, states, declared_by, note?}.
+# `retires_at`, `scope`, `register_id` are withdrawn keys (CM-12) and a load
+# error if present.
+CM9_REQUIRED_KEYS = {"id", "reader", "states", "declared_by"}
+CM9_OPTIONAL_KEYS = {"note"}
+CM9_ALL_KEYS = CM9_REQUIRED_KEYS | CM9_OPTIONAL_KEYS
 
 # Modes this delivery (P0) does not build. Each names its own CSC-5 builder
 # leaf (plan-workflow-runtime.md's differ mode table); `d1`'s closure mode
@@ -106,6 +121,119 @@ def cmd_d1(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def _load_exceptions(path: Path) -> list[dict[str, object]]:
+    """CM-9 named exceptions (L.P0-0c.7). Not a register entry (CM-7):
+    nothing here ever retires, and the withdrawn keys (CM-12) are a load
+    error, never silently ignored."""
+    if not path.exists():
+        return []
+    exceptions = list(tomllib.loads(path.read_text()).get("exception", []))
+    for exc in exceptions:
+        extra = set(exc) - CM9_ALL_KEYS
+        missing = CM9_REQUIRED_KEYS - set(exc)
+        if extra or missing:
+            raise ValueError(
+                f"d2_exceptions.toml: {exc.get('id')}: bad schema "
+                f"(extra={extra}, missing={missing})"
+            )
+    return exceptions
+
+
+def _excused(exceptions: list[dict[str, object]], reader: str, state_path: str) -> bool:
+    """An exception excuses a divergence only in its `states` globs and only
+    when `differ d2` runs with exactly its `reader` (CM-9)."""
+    for exc in exceptions:
+        if exc.get("reader") != reader:
+            continue
+        for pattern in exc.get("states", []):
+            if fnmatch.fnmatch(state_path, str(pattern)):
+                return True
+    return False
+
+
+def cmd_d2(args: argparse.Namespace) -> int:
+    """`python -m tests.proof.differ d2 --reader <git ref|s0> [--fossils <dir>]`
+    (L.P0-0c.7): backward straddle — an older reader (any git ref; `s0` is
+    an alias for `5fbdd2f`) reads today's committed fossil corpus through
+    `d2_driver.py`, run in a subprocess with that reader worktree (and its
+    `packages/trestle-packs`) first on `PYTHONPATH`, never installed."""
+    from tests.proof import fossils as fossils_mod
+
+    reader = args.reader
+    ref = "5fbdd2f" if reader == "s0" else reader
+    fossils_root = Path(args.fossils) if args.fossils else FOSSILS_ROOT_DEFAULT
+
+    states = fossils_mod.load_states(fossils_root)
+    to_check: dict[str, str] = {}
+    for state_id, (band, entry) in states.items():
+        if entry.get("producer") in (None, "pending") or entry.get("absent"):
+            continue
+        to_check[state_id] = str(fossils_root / band / state_id / "home")
+
+    if not to_check:
+        print("d2: no fossil states with a real producer to check")
+        return 0
+
+    with tempfile.TemporaryDirectory() as tmp:
+        worktree = Path(tmp) / "reader"
+        add = subprocess.run(
+            ["git", "worktree", "add", "--detach", str(worktree), ref],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if add.returncode != 0:
+            print(f"d2: git worktree add failed for ref {ref!r}: {add.stderr}")
+            return 1
+        try:
+            states_json = Path(tmp) / "states.json"
+            states_json.write_text(json.dumps(to_check))
+            env = dict(os.environ)
+            env["PYTHONPATH"] = f"{worktree}{os.pathsep}{worktree / 'packages' / 'trestle-packs'}"
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(D2_DRIVER_PATH),
+                    "--reader-root",
+                    str(worktree),
+                    "--states-json",
+                    str(states_json),
+                ],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            if proc.returncode != 0:
+                print(f"d2: driver failed (reader={reader}): {proc.stderr}")
+                return 1
+            report_lines = [line for line in proc.stdout.splitlines() if line.strip()]
+            report = json.loads(report_lines[-1]) if report_lines else {}
+        finally:
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(worktree)],
+                cwd=ROOT,
+                capture_output=True,
+            )
+
+    exceptions = _load_exceptions(D2_EXCEPTIONS_PATH)
+    ok = True
+    for state_id, result in report.items():
+        band, _entry = states[state_id]
+        expected = state_id
+        actual = result.get("projected_state")
+        if actual != expected:
+            state_path = f"{band}/{state_id}"
+            if _excused(exceptions, reader, state_path):
+                continue
+            print(
+                f"d2: UNEXPECTED: state {state_path!r} projected {actual!r}, "
+                f"expected {expected!r} (reader={reader})"
+            )
+            ok = False
+
+    return 0 if ok else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m tests.proof.differ")
     sub = parser.add_subparsers(dest="mode", required=True)
@@ -130,9 +258,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.mode == "d1":
         return cmd_d1(args)
     if args.mode == "d2":
-        from tests.proof import d2_driver
-
-        return d2_driver.cmd_d2(args)
+        return cmd_d2(args)
     if args.mode in UNBUILT_MODES:
         print(f"differ {args.mode}: not built in P0; builder is {UNBUILT_MODES[args.mode]}")
         return 2
