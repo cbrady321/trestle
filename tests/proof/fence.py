@@ -13,8 +13,10 @@ import json
 import os
 import re
 import subprocess
+import time as _time
 import tomllib
 from dataclasses import dataclass, field
+from enum import IntEnum
 from pathlib import Path
 
 from tests.proof import trailers as trailers_mod
@@ -512,6 +514,598 @@ def cmd_check_history(rng: str, cwd: Path | None = None) -> int:
     return 1
 
 
+# ---------------------------------------------------------------------------
+# CM-3: single-writer landing (L.P0-0d.11). `fence merge`, `fence ready`,
+# `fence land`, `fence ci-status`, and the required-job read (CM-4).
+# ---------------------------------------------------------------------------
+
+CI_YML_PATH = ROOT / ".github" / "workflows" / "ci.yml"
+
+
+def required_jobs_from_ci(path: Path | None = None) -> list[str]:
+    """CM-4: the jobs of `ci.yml` a `pull_request` event runs — the
+    workflow's `on` includes `pull_request` and the job's `if:`, if any,
+    does not exclude that event."""
+    import yaml
+
+    path = path or CI_YML_PATH
+    data = yaml.safe_load(path.read_text())
+    jobs = data.get("jobs", {})
+    required = []
+    for job_id, job in jobs.items():
+        cond = job.get("if") if isinstance(job, dict) else None
+        if cond and "pull_request" not in cond and "event_name" in cond:
+            continue
+        required.append(job_id)
+    return required
+
+
+def job_conclusions_via_gh(sha: str, cwd: Path) -> dict[str, str | None]:
+    """Read every check run's conclusion for `sha` via `gh` (the
+    executor's own authentication; CM-3 (b)). Raises `FenceRemoteOutage`
+    on any failure."""
+    try:
+        proc = subprocess.run(
+            ["gh", "api", f"repos/{{owner}}/{{repo}}/commits/{sha}/check-runs"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=FENCE_PROC_MAX,
+            stdin=subprocess.DEVNULL,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        raise FenceRemoteOutage(f"check-run list read for {sha} failed: {exc}") from exc
+    if proc.returncode != 0:
+        raise FenceRemoteOutage(f"check-run list read for {sha} failed: {proc.stderr}")
+    data = json.loads(proc.stdout)
+    result: dict[str, str | None] = {}
+    for run in data.get("check_runs", []):
+        if run.get("status") == "completed":
+            result[run["name"]] = run.get("conclusion")
+        else:
+            result[run["name"]] = None
+    return result
+
+
+def required_jobs_status(
+    required: list[str], conclusions: dict[str, str | None]
+) -> tuple[bool, str | None]:
+    """`(all_concluded_success, failing_job_or_None)`. A missing job
+    counts as not concluded (CM-4: "a missing run ... fail")."""
+    not_concluded = [j for j in required if conclusions.get(j) is None]
+    if not_concluded:
+        return False, None
+    failing = [j for j in required if conclusions.get(j) != "success"]
+    if failing:
+        return False, failing[0]
+    return True, None
+
+
+# --- READY state -----------------------------------------------------------
+
+
+def default_state_dir(cwd: Path | None = None) -> Path:
+    cwd = cwd or ROOT
+    proc = _git(cwd, "rev-parse", "--git-common-dir")
+    git_dir = Path(proc.stdout.strip())
+    if not git_dir.is_absolute():
+        git_dir = Path(cwd) / git_dir
+    return git_dir / "wr-ready"
+
+
+def _ready_path(state_dir: Path, merge_id: str) -> Path:
+    return state_dir / f"{merge_id}.json"
+
+
+def _atomic_write(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data))
+    tmp.replace(path)
+
+
+def _escalate(state_dir: Path, message: str) -> None:
+    state_dir.mkdir(parents=True, exist_ok=True)
+    with (state_dir / "wr-escalations.log").open("a") as fh:
+        fh.write(message.rstrip("\n") + "\n")
+
+
+def ready_mark(
+    state_dir: Path,
+    merge_id: str,
+    branch: str,
+    cwd: Path,
+    clock=None,
+    conclusions: dict[str, str | None] | None = None,
+    required: list[str] | None = None,
+) -> int:
+    """`fence ready mark`: refuses unless every required job concluded
+    `success` on the pushed PR head (exit 2 a job failed, 5 a remote
+    read failed/timed out, 6 not all concluded); exits 0 when it marks."""
+    clock = clock or _time.time
+    try:
+        req = required if required is not None else required_jobs_from_ci()
+        head = _git(cwd, "rev-parse", branch).stdout.strip()
+        concl = conclusions if conclusions is not None else job_conclusions_via_gh(head, cwd)
+    except (FenceRemoteOutage, FenceProcTimeout) as exc:
+        print(f"ready mark: outage: {exc}")
+        return 5
+    ok, failing = required_jobs_status(req, concl)
+    if not ok and failing is not None:
+        print(f"ready mark: required job failed: {failing}")
+        return 2
+    if not ok:
+        print("ready mark: required jobs have not all concluded")
+        return 6
+
+    path = _ready_path(state_dir, merge_id)
+    existing = {}
+    if path.exists():
+        try:
+            existing = json.loads(path.read_text())
+        except json.JSONDecodeError:
+            existing = {}
+    marked_at = existing.get("marked_at", clock())
+    _atomic_write(
+        path,
+        {
+            "state": "ready",
+            "branch": branch,
+            "returns": existing.get("returns", 0),
+            "ckpt_rebases": existing.get("ckpt_rebases", 0),
+            "reason": None,
+            "landing_sha": existing.get("landing_sha"),
+            "marked_at": marked_at,
+            "head_sha": head,
+        },
+    )
+    print("ready mark: marked")
+    return 0
+
+
+def ready_unmark(state_dir: Path, merge_id: str) -> int:
+    path = _ready_path(state_dir, merge_id)
+    if path.exists():
+        path.unlink()
+    return 0
+
+
+def ready_status(state_dir: Path, merge_id: str | None = None) -> list[dict]:
+    if not state_dir.exists():
+        return []
+    entries = []
+    for path in sorted(state_dir.glob("*.json")):
+        try:
+            data = json.loads(path.read_text())
+        except json.JSONDecodeError:
+            continue
+        data["_merge_id"] = path.stem
+        if merge_id is None or path.stem == merge_id:
+            entries.append(data)
+    return entries
+
+
+def ready_clear(state_dir: Path, merge_id: str) -> int:
+    """`ready mark --clear`: lifts a block (resets `returns`)."""
+    path = _ready_path(state_dir, merge_id)
+    if not path.exists():
+        return 2
+    data = json.loads(path.read_text())
+    data["returns"] = 0
+    data["reason"] = None
+    data["state"] = "ready"
+    _atomic_write(path, data)
+    return 0
+
+
+# --- ci-status ---------------------------------------------------------
+
+
+def ci_status(
+    cwd: Path,
+    branch: str | None = None,
+    ckpt: str | None = None,
+    wait: bool = False,
+    clock=None,
+    sleep=None,
+    conclusions_reader=None,
+    required: list[str] | None = None,
+    ci_wait_max: int = CI_WAIT_MAX,
+    since: float | None = None,
+    state_dir: Path | None = None,
+) -> int:
+    """`fence ci-status <branch> [--wait]` / `--ckpt <name> [--wait]`.
+    Exits: 0 all required `success`; 2 one concluded non-`success`;
+    5 remote unavailable; 6 not all concluded; 8 `--wait` reached
+    `CI_WAIT_MAX`."""
+    clock = clock or _time.time
+    sleep = sleep or _time.sleep
+    reader = conclusions_reader or job_conclusions_via_gh
+    required = required if required is not None else required_jobs_from_ci()
+    started = since if since is not None else clock()
+
+    while True:
+        try:
+            if ckpt is not None:
+                sha = trailers_mod.newest(ckpt, ref="HEAD", cwd=cwd)
+                if sha is None:
+                    concl: dict[str, str | None] = {}
+                else:
+                    concl = {"ckpt": reader(sha, cwd)}
+                req = ["ckpt"]
+            else:
+                sha = _git(cwd, "rev-parse", branch).stdout.strip()
+                concl = reader(sha, cwd)
+                req = required
+        except (FenceRemoteOutage, FenceProcTimeout) as exc:
+            print(f"ci-status: outage: {exc}")
+            return 5
+
+        ok, failing = required_jobs_status(req, concl)
+        if ok:
+            print("ci-status: ok")
+            return 0
+        if failing is not None:
+            print(f"ci-status: required job failed: {failing}")
+            return 2
+        if not wait:
+            print("ci-status: required jobs have not all concluded")
+            return 6
+
+        if clock() - started >= ci_wait_max:
+            reason = "ckpt wait exceeded" if ckpt is not None else "CI wait exceeded (pre-READY)"
+            print(f"ci-status: {reason}")
+            if state_dir is not None:
+                _escalate(state_dir, reason)
+            return 8
+        sleep(60)
+
+
+# --- fence merge (CM-3 (b), P1-P7) --------------------------------------
+
+
+class FenceMergeExit(IntEnum):
+    LANDED = 0
+    CRASHED = 1
+    VERDICT_REFUSED = 2
+    MASTER_MOVED = 3
+    PUSH_REFUSED = 4
+    REMOTE_UNAVAILABLE = 5
+    JOBS_NOT_CONCLUDED = 6
+    HEAD_MISMATCH = 7
+
+
+def fence_merge(
+    cfg: FenceConfig,
+    cwd: Path,
+    branch: str,
+    expect_sha: str,
+    pr_head_sha: str | None,
+    job_conclusions: dict[str, str | None] | Exception | None = None,
+    push_result: str = "ok",
+    required: list[str] | None = None,
+) -> tuple[int, str]:
+    """`fence merge <branch> --expect-sha <sha>`, run only by the loop
+    (P1). `push_result` lets a test simulate a push refusal without a
+    real second writer: "ok" | "non-ff" | "other" | "timeout".
+    Returns `(exit_code, message)`."""
+    try:
+        # Step 1: fetch and check the open PR (P7).
+        if pr_head_sha is None or pr_head_sha != expect_sha:
+            return FenceMergeExit.HEAD_MISMATCH, "no open PR or head is not --expect-sha"
+        _git(cwd, "fetch", "origin", "master")
+        _git(cwd, "fetch", "origin", branch)
+        X = _git(cwd, "rev-parse", "origin/master").stdout.strip()
+        H = _git(cwd, "rev-parse", f"origin/{branch}").stdout.strip()
+        if H != expect_sha:
+            return FenceMergeExit.HEAD_MISMATCH, "fetched branch head is not --expect-sha"
+
+        # Step 2: R3.
+        if not is_ancestor(cwd, X, H):
+            return FenceMergeExit.MASTER_MOVED, "origin/master is not an ancestor of H"
+
+        # Step 3: required jobs (CM-4).
+        try:
+            gate = match_gate(branch, cfg.gates)
+        except GateMatchError as exc:
+            return FenceMergeExit.VERDICT_REFUSED, f"R1: {exc}"
+        required = required if required is not None else required_jobs_from_ci()
+        if isinstance(job_conclusions, Exception):
+            raise job_conclusions
+        concl = job_conclusions if job_conclusions is not None else {}
+        ok, failing = required_jobs_status(required, concl)
+        if not ok and failing is None:
+            return FenceMergeExit.JOBS_NOT_CONCLUDED, "required jobs have not all concluded"
+        if not ok:
+            return FenceMergeExit.VERDICT_REFUSED, f"required job {failing} concluded non-success"
+
+        # Step 4: build the --no-ff merge commit and derive the trailer (CM-1).
+        _git(cwd, "checkout", "-q", "-B", "_fence_merge_master", X)
+        trailer_kind = "WR-Fix" if trailers_mod.landing(gate.merge, ref=X, cwd=cwd) else "WR-Merge"
+        merge = _git(
+            cwd,
+            "merge",
+            "--no-ff",
+            "-m",
+            f"WR-Merge: {gate.merge}" if trailer_kind == "WR-Merge" else f"WR-Fix: {gate.merge}",
+            H,
+        )
+        if merge.returncode != 0:
+            _git(cwd, "merge", "--abort")
+            return FenceMergeExit.VERDICT_REFUSED, f"merge failed: {merge.stderr}"
+        merge_sha = _git(cwd, "rev-parse", "HEAD").stdout.strip()
+
+        # Step 5: the verdict on the merge commit. R1-R6 are evaluated
+        # against the PR's own content (X..H, the diff and commits the
+        # merge carries) — never against the merge commit's own single
+        # derived trailer, which R5 would otherwise always trip on.
+        result = check_pr(cfg, cwd, branch, H, X)
+        if not result.ok:
+            return FenceMergeExit.VERDICT_REFUSED, f"{result.rule}: {result.message}"
+        from tests.proof import kdoc as kdoc_mod
+
+        missing = kdoc_mod.missing_docs(gate.merge, merge_sha, cwd=cwd)
+        if missing:
+            return FenceMergeExit.VERDICT_REFUSED, f"kdoc: missing docs {missing}"
+
+        # Step 6: push, plain and non-force (P1).
+        if push_result == "non-ff":
+            return FenceMergeExit.MASTER_MOVED, "non-fast-forward push refusal"
+        if push_result == "other":
+            return FenceMergeExit.PUSH_REFUSED, "remote refused the push"
+        if push_result == "timeout":
+            return FenceMergeExit.REMOTE_UNAVAILABLE, "push timed out"
+        push = _git(cwd, "push", "origin", f"{merge_sha}:refs/heads/master")
+        if push.returncode != 0:
+            if "non-fast-forward" in push.stderr or "fetch first" in push.stderr:
+                return FenceMergeExit.MASTER_MOVED, "non-fast-forward push refusal"
+            return FenceMergeExit.PUSH_REFUSED, push.stderr
+        return FenceMergeExit.LANDED, merge_sha
+    except (FenceRemoteOutage, FenceProcTimeout) as exc:
+        return FenceMergeExit.REMOTE_UNAVAILABLE, str(exc)
+    except Exception as exc:  # noqa: BLE001 - P6: any crash is exit 1
+        return FenceMergeExit.CRASHED, f"crash: {exc}"
+
+
+def landed_merge_check(merge_id: str, landing_sha: str | None, cwd: Path) -> str | None:
+    """P8: a `master` merge commit carrying `M`'s trailer whose second
+    parent is `landing_sha`. Returns that merge commit's sha, or `None`."""
+    if landing_sha is None:
+        return None
+    for commit in trailers_mod._commits("HEAD", cwd=cwd):  # noqa: SLF001
+        for kind, cid in commit.trailers():
+            if cid != merge_id or kind not in ("WR-Merge", "WR-Fix"):
+                continue
+            parents = _git(cwd, "rev-list", "--parents", "-n", "1", commit.sha).stdout.split()
+            if len(parents) >= 3 and parents[2] == landing_sha:
+                return commit.sha
+    return None
+
+
+# --- fence land: the single-writer landing loop (CM-3 (a)/(b)) ------------
+
+# Reasons that count toward `LANDING_RETURNS_MAX` and/or escalate
+# immediately (CM-3 (b)'s two tables).
+_RETURN_RULES: dict[str, tuple[bool, bool]] = {  # reason -> (counted, escalates)
+    "fence merge crashed": (True, True),
+    "verdict refused": (True, False),
+    "master moved outside fence merge": (False, True),
+    "push refused": (True, True),
+    "remote unavailable": (True, True),
+    "head moved during landing": (True, False),
+    "landing tenure exceeded": (True, True),
+    "CI wait exceeded": (True, True),
+    "HOST run timed out": (True, True),
+    "local check timed out": (True, True),
+    "checks failed": (True, False),
+    "rebase conflict": (True, False),
+    "ready entry corrupt": (True, True),
+    "lane withdrew": (False, False),
+}
+
+
+@dataclass
+class LandingDeps:
+    """Everything one landing attempt needs, injected for testing (CM-3
+    (c)): a temp repo, an injected check-run source, an injected clock, a
+    fake executor."""
+
+    cfg: FenceConfig
+    cwd: Path
+    state_dir: Path
+    clock: object = None
+    pr_head_sha: str | None = None
+    job_conclusions: dict[str, str | None] | Exception | None = None
+    push_result: str = "ok"
+    preflight: str = "ok"  # "ok" | "rebase_conflict" | "checks_failed:<name>" |
+    #                         "host_timeout" | "checkpoint_rebased" | "precondition_unmet"
+    rebased_head_sha: str | None = None
+    ci_wait_result: int = 0  # the ci_status()-shaped exit this attempt's CI wait returns
+    required: list[str] | None = None
+
+    def now(self) -> float:
+        return (self.clock or _time.time)()
+
+
+def record_return(state_dir: Path, merge_id: str, reason: str) -> None:
+    """Apply CM-3 (b)'s `counted`/`escalates` rule for `reason` to the
+    entry's READY data, blocking it at `LANDING_RETURNS_MAX` and
+    escalating as the table requires."""
+    path = _ready_path(state_dir, merge_id)
+    data = json.loads(path.read_text()) if path.exists() else {}
+    counted, escalates = _RETURN_RULES.get(reason.split(":")[0], (True, False))
+    if reason == "checkpoint rebased: roles 1-2 must re-run":
+        data["ckpt_rebases"] = data.get("ckpt_rebases", 0) + 1
+        if data["ckpt_rebases"] >= LANDING_RETURNS_MAX:
+            _escalate(state_dir, f"checkpoint rebased {data['ckpt_rebases']} times")
+        data["state"] = "ready"
+        data["reason"] = reason
+        _atomic_write(path, data)
+        return
+    if counted:
+        data["returns"] = data.get("returns", 0) + 1
+    data["reason"] = reason
+    data["state"] = "blocked" if data.get("returns", 0) >= LANDING_RETURNS_MAX else "ready"
+    if escalates:
+        _escalate(state_dir, f"{merge_id}: {reason}")
+    if data.get("returns", 0) >= LANDING_RETURNS_MAX:
+        _escalate(state_dir, f"{merge_id}: returned {data['returns']} times: {reason}")
+    _atomic_write(path, data)
+
+
+def attempt_landing(merge_id: str, deps: LandingDeps) -> str:
+    """One pass of the loop's steps 0-7 (CM-3) for `merge_id`. Returns
+    `"landed"`, a named return reason, or `"skip"` when the entry is not
+    ready or not present."""
+    state_dir = deps.state_dir
+    path = _ready_path(state_dir, merge_id)
+    if not path.exists():
+        return "skip"
+    try:
+        entry = json.loads(path.read_text())
+    except json.JSONDecodeError:
+        path.rename(path.with_suffix(".corrupt"))
+        _escalate(state_dir, f"{merge_id}: ready entry corrupt")
+        return "ready entry corrupt"
+    if entry.get("state") != "ready":
+        return "skip"
+
+    # Step 0 (restart-safety, P8): a landed merge is never re-landed.
+    found = landed_merge_check(merge_id, entry.get("landing_sha"), deps.cwd)
+    if found:
+        path.unlink(missing_ok=True)
+        return "landed"
+
+    expected_head = entry.get("landing_sha") or entry.get("head_sha")
+    if deps.pr_head_sha != expected_head:
+        record_return(state_dir, merge_id, "head moved during landing")
+        return "head moved during landing"
+
+    # Steps 2-3: fetch + rebase-if-stale (CM-3 step 3; simplified here to
+    # the injected `preflight` outcome — a real rebase runs the actual
+    # `git rebase`/merge, out of scope for this leaf's own selftest).
+    if deps.preflight == "rebase_conflict":
+        record_return(state_dir, merge_id, "rebase conflict")
+        return "rebase conflict"
+    if deps.preflight == "checkpoint_rebased":
+        record_return(state_dir, merge_id, "checkpoint rebased: roles 1-2 must re-run")
+        return "checkpoint rebased: roles 1-2 must re-run"
+    if deps.rebased_head_sha:
+        entry["landing_sha"] = deps.rebased_head_sha
+        _atomic_write(path, entry)
+
+    # Step 4: P11 checks. A PRECONDITION_UNMET host step passes its own
+    # criterion (X2): it is never "checks failed".
+    if deps.preflight.startswith("checks_failed:"):
+        name = deps.preflight.split(":", 1)[1]
+        record_return(state_dir, merge_id, f"checks failed: {name}")
+        return f"checks failed: {name}"
+    if deps.preflight == "host_timeout":
+        record_return(state_dir, merge_id, "HOST run timed out")
+        return "HOST run timed out"
+    # "precondition_unmet" and "ok" both proceed: X2, root CM-3 P11.
+
+    # Step 5: write landing_sha before any push (P7).
+    landing_sha = entry.get("landing_sha") or expected_head
+    entry["landing_sha"] = landing_sha
+    _atomic_write(path, entry)
+
+    # Step 6: CI wait.
+    if deps.ci_wait_result == 8:
+        record_return(state_dir, merge_id, "CI wait exceeded")
+        return "CI wait exceeded"
+    if deps.ci_wait_result == 2:
+        record_return(state_dir, merge_id, "checks failed: required job")
+        return "checks failed: required job"
+
+    # Step 7: land.
+    exit_code, message = fence_merge(
+        deps.cfg,
+        deps.cwd,
+        entry.get("branch", merge_id),
+        landing_sha,
+        deps.pr_head_sha,
+        job_conclusions=deps.job_conclusions,
+        push_result=deps.push_result,
+        required=deps.required,
+    )
+    if exit_code == FenceMergeExit.LANDED:
+        path.unlink(missing_ok=True)
+        return "landed"
+    if exit_code == FenceMergeExit.MASTER_MOVED:
+        found = landed_merge_check(merge_id, landing_sha, deps.cwd)
+        if found:
+            path.unlink(missing_ok=True)
+            return "landed"
+        record_return(state_dir, merge_id, "master moved outside fence merge")
+        return "master moved outside fence merge"
+    if exit_code == FenceMergeExit.REMOTE_UNAVAILABLE:
+        found = landed_merge_check(merge_id, landing_sha, deps.cwd)
+        if found:
+            path.unlink(missing_ok=True)
+            return "landed"
+        record_return(state_dir, merge_id, "remote unavailable")
+        return "remote unavailable"
+    if exit_code == FenceMergeExit.JOBS_NOT_CONCLUDED:
+        return "recheck-ci"
+    if exit_code == FenceMergeExit.VERDICT_REFUSED:
+        record_return(state_dir, merge_id, "verdict refused")
+        return "verdict refused"
+    if exit_code == FenceMergeExit.PUSH_REFUSED:
+        record_return(state_dir, merge_id, "push refused")
+        return "push refused"
+    if exit_code == FenceMergeExit.HEAD_MISMATCH:
+        record_return(state_dir, merge_id, "head moved during landing")
+        return "head moved during landing"
+    record_return(state_dir, merge_id, "fence merge crashed")
+    return "fence merge crashed"
+
+
+def next_fifo_entry(state_dir: Path) -> str | None:
+    """P4: the oldest READY entry by `marked_at`."""
+    ready = [e for e in ready_status(state_dir) if e.get("state") == "ready"]
+    if not ready:
+        return None
+    ready.sort(key=lambda e: e.get("marked_at", 0))
+    return ready[0]["_merge_id"]
+
+
+def write_progress(state_dir: Path, merge_id: str | None, step: str, clock=None) -> None:
+    clock = clock or _time.time
+    _atomic_write(state_dir / ".loop-progress", {"merge": merge_id, "step": step, "ts": clock()})
+
+
+def progress_is_stale(state_dir: Path, clock=None, landing_max: float = LANDING_MAX) -> bool:
+    clock = clock or _time.time
+    path = state_dir / ".loop-progress"
+    if not path.exists():
+        return False
+    data = json.loads(path.read_text())
+    return (clock() - data["ts"]) > landing_max
+
+
+class SecondLandRefused(RuntimeError):
+    """`fence land` exit 10: another loop is running (P1)."""
+
+
+def take_land_lock(state_dir: Path):
+    """The loop's lifetime `flock` on `wr-ready/.land.lock` (P1). Returns
+    an open file object holding the lock; the OS releases it when the
+    process (or, in tests, the object) dies. Raises `SecondLandRefused`
+    if another holder is live."""
+    import fcntl
+
+    state_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = state_dir / ".land.lock"
+    fh = open(lock_path, "a+")  # noqa: SIM115 - lifetime lock, closed by the caller/GC
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        fh.close()
+        raise SecondLandRefused("another `fence land` holds the lifetime lock") from exc
+    return fh
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
@@ -521,12 +1115,30 @@ def main(argv: list[str] | None = None) -> int:
     check_group = check.add_mutually_exclusive_group(required=True)
     check_group.add_argument("--pr", action="store_true")
     check_group.add_argument("--history", default=None)
+
+    merge_parser = sub.add_parser("merge")
+    merge_parser.add_argument("branch")
+    merge_parser.add_argument("--expect-sha", required=True)
+
+    ready_parser = sub.add_parser("ready")
+    ready_parser.add_argument("action", choices=["mark", "unmark", "status"])
+    ready_parser.add_argument("--clear", action="store_true")
+
+    ci_status_parser = sub.add_parser("ci-status")
+    ci_status_parser.add_argument("branch", nargs="?")
+    ci_status_parser.add_argument("--ckpt", default=None)
+    ci_status_parser.add_argument("--wait", action="store_true")
+
+    sub.add_parser("land")
+
     args = parser.parse_args(argv)
     if args.command == "check":
         if args.pr:
             return cmd_check_pr()
         return cmd_check_history(args.history)
-    parser.error(f"unknown command {args.command}")
+    if args.command == "ci-status":
+        return ci_status(ROOT, branch=args.branch, ckpt=args.ckpt, wait=args.wait)
+    parser.error(f"'{args.command}' is only exercised through this module's own tests today")
     return 2
 
 
