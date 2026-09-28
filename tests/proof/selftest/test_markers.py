@@ -40,7 +40,15 @@ def _run_planted(tmp_path: Path, body: str) -> subprocess.CompletedProcess[str]:
 def test_s0_nodeids_still_collected() -> None:
     ids = {line for line in NODEIDS_PATH.read_text().splitlines() if line.strip()}
     root_proc = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "--collect-only", "--ignore=tests/proof"],
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "--collect-only",
+            "--ignore=tests/proof",
+            "--ignore-glob=packages/trestle-packs/*",
+        ],
         cwd=ROOT,
         capture_output=True,
         text=True,

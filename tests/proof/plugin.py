@@ -18,6 +18,7 @@ from tests.proof.markers import MARKER_DOCS, VALID_SLICES
 
 ROOT = Path(__file__).resolve().parents[2]
 LABELS_DIR = ROOT / "tests" / "proof" / "labels.d"
+COMPAT_MAP_PATH = ROOT / "tests" / "proof" / "compat_map.toml"
 
 # nodeid -> clause/label ids this item's `proves()`/`stub_proven()` markers
 # name, populated at collection time and read back in
@@ -38,6 +39,19 @@ def _load_labels() -> dict[str, dict[str, object]]:
     return labels
 
 
+def _load_compat_map() -> dict[str, str]:
+    """nodeid -> WR-COMPAT row id, from `compat_map.toml` (L.P0-0a.5)."""
+    nodeid_to_row: dict[str, str] = {}
+    if not COMPAT_MAP_PATH.exists():
+        return nodeid_to_row
+    data = tomllib.loads(COMPAT_MAP_PATH.read_text())
+    for row in data.get("row", []):
+        row_id = row.get("id")
+        for nodeid in row.get("nodeids", []):
+            nodeid_to_row[nodeid] = row_id
+    return nodeid_to_row
+
+
 def pytest_configure(config: pytest.Config) -> None:
     for name, doc in MARKER_DOCS.items():
         config.addinivalue_line("markers", f"{name}: {doc}")
@@ -45,8 +59,27 @@ def pytest_configure(config: pytest.Config) -> None:
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     labels = _load_labels()
+    compat_map = _load_compat_map()
     for item in items:
         item_labels: list[str] = []
+
+        row_id = compat_map.get(item.nodeid)
+        if row_id is not None:
+            # compat_map.toml (L.P0-0a.5) marks this node `compat` and
+            # `proves(row, "<row>:preserved")` without editing the test
+            # file itself. WR-PROOF-2:pack-docker-live is not a WR-COMPAT
+            # row (it labels the alpine live-compose skip UNPROVEN) so it
+            # gets no `compat` marker, only the label.
+            if row_id.startswith("WR-COMPAT"):
+                item.add_marker(pytest.mark.compat)
+                label_id = f"{row_id}:preserved"
+            else:
+                label_id = row_id
+            if label_id not in labels:
+                raise pytest.UsageError(
+                    f"{item.nodeid}: compat_map.toml references undeclared label {label_id!r}"
+                )
+            item_labels.append(label_id)
         for mark in item.iter_markers(name="proves"):
             row = mark.args[0] if len(mark.args) > 0 else mark.kwargs.get("row")
             clause = mark.args[1] if len(mark.args) > 1 else mark.kwargs.get("clause")

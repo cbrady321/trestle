@@ -1,0 +1,67 @@
+# WR-COMPAT preservation map (L.P0-0a.5). Maps each WR-COMPAT row to
+# existing S0 node ids: the plugin marks each mapped node `compat` and
+# `proves(row, "<row>:preserved", "core", ...)` at collection time, without
+# editing the test files themselves.
+#
+# Schema: [[row]] {id, nodeids = [...]}
+
+[[row]]
+id = "WR-COMPAT-1"
+nodeids = [
+    "tests/test_ver_serialization.py::test_tools_list_stays_within_byte_budget",
+    "tests/test_ver_serialization.py::test_ten_tool_names_registered_in_server_module",
+]
+
+[[row]]
+id = "WR-COMPAT-3"
+nodeids = [
+    "tests/test_m4_waiting.py::test_run_wait_ms_timeout_returns_running_frame",
+    "tests/test_m4_waiting.py::test_no_tasks_mapper_in_server",
+]
+
+[[row]]
+id = "WR-COMPAT-6"
+nodeids = [
+    "tests/test_m5_query.py::test_all_nine_views_conform",
+]
+
+[[row]]
+id = "WR-COMPAT-7"
+nodeids = [
+    "tests/test_m1_smoke.py::test_unknown_plugin_refusal_has_no_run_id",
+]
+
+[[row]]
+id = "WR-COMPAT-8"
+nodeids = [
+    "tests/test_user_stories.py::test_us03_terminal_states_are_distinct",
+]
+
+[[row]]
+id = "WR-COMPAT-9"
+nodeids = [
+    "tests/test_plugin_schema.py::test_describe_plugin_echo_exposes_schemas",
+]
+
+[[row]]
+id = "WR-COMPAT-10"
+nodeids = [
+    "tests/test_plugin_schema.py::test_list_plugins_has_no_input_schema",
+]
+
+[[row]]
+id = "WR-COMPAT-11"
+nodeids = [
+    "tests/test_plugin_packs_catalog.py::test_pack_plugins_valid_when_trestle_packs_installed",
+    "tests/test_local_bind.py::test_cli_serve_rejects_host_flag",
+    "tests/test_local_bind.py::test_cli_ops_serve_rejects_host_flag",
+    "tests/test_local_bind.py::test_run_server_uses_loopback",
+    "tests/test_local_bind.py::test_run_ops_server_uses_loopback",
+    "tests/test_local_bind.py::test_loopback_host_constant",
+]
+
+[[row]]
+id = "WR-PROOF-2:pack-docker-live"
+nodeids = [
+    "packages/trestle-packs/tests/test_docker_integration.py::test_stack_runner_live_compose",
+]
