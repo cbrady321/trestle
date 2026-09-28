@@ -1,0 +1,15 @@
+# Proof-court gate vocabulary (L.P0-0a.3). A gate must be declared here, or
+# in a tests/proof/gates.d/<phase>.toml fragment (CSC-13), before results
+# recorded under it count toward the derived ledger (MC-02).
+
+[gates]
+names = [
+    "ci-test",
+    "ci-compat",
+    "ci-ancestry-linux",
+    "ci-ancestry-macos",
+    "ci-guards",
+    "ci-d2",
+    "host-proc",
+    "host-docker",
+]

@@ -150,10 +150,62 @@ def cmd_baseline(_args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+def cmd_report(args: argparse.Namespace) -> int:
+    """Render the derived proof ledger (MC-02): text, or `--json`."""
+    from tests.proof import ledger as ledger_mod
+
+    try:
+        report = ledger_mod.render()
+    except ledger_mod.VacuousLedgerError as exc:
+        print(f"error: {exc}")
+        return 1
+
+    if args.json:
+        print(json.dumps(report, sort_keys=True, indent=2))
+        return 0
+
+    for clause in sorted(report):
+        entry = report[clause]
+        corroborating = " (corroborating 3.14 pass)" if entry["corroborating_314"] else ""
+        print(f"{clause}: {entry['status']}{corroborating} [{entry['n_results']} result(s)]")
+    return 0
+
+
+def cmd_enforce(args: argparse.Namespace) -> int:
+    """Report mode only (L.P0-0a.3): prints what enforcement would refuse
+    and exits 0. `--print-mode` prints just the mode name and exits 0 —
+    TM-P0-6's probe, removed once L.CZ.1 builds the scoped enforcement
+    mode."""
+    if args.print_mode:
+        print("report")
+        return 0
+
+    from tests.proof import ledger as ledger_mod
+
+    try:
+        report = ledger_mod.render()
+    except ledger_mod.VacuousLedgerError as exc:
+        print(f"error: {exc}")
+        return 1
+
+    unproven = {c: e for c, e in report.items() if e["status"] != ledger_mod.PROVEN}
+    if unproven:
+        print("[report mode] enforcement would refuse on:")
+        for clause in sorted(unproven):
+            print(f"  {clause}: {unproven[clause]['status']}")
+    else:
+        print("[report mode] enforcement would pass")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m tests.proof.meta")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("baseline")
+    report_parser = sub.add_parser("report")
+    report_parser.add_argument("--json", action="store_true")
+    enforce_parser = sub.add_parser("enforce")
+    enforce_parser.add_argument("--print-mode", action="store_true", dest="print_mode")
     return parser
 
 
@@ -162,6 +214,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "baseline":
         return cmd_baseline(args)
+    if args.command == "report":
+        return cmd_report(args)
+    if args.command == "enforce":
+        return cmd_enforce(args)
     parser.error(f"unknown command {args.command}")
     return 2
 

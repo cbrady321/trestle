@@ -13,10 +13,16 @@ from pathlib import Path
 
 import pytest
 
+from tests.proof import results as results_mod
 from tests.proof.markers import MARKER_DOCS, VALID_SLICES
 
 ROOT = Path(__file__).resolve().parents[2]
 LABELS_DIR = ROOT / "tests" / "proof" / "labels.d"
+
+# nodeid -> clause/label ids this item's `proves()`/`stub_proven()` markers
+# name, populated at collection time and read back in
+# `pytest_runtest_logreport` (L.P0-0a.3).
+_ITEM_LABELS: dict[str, list[str]] = {}
 
 
 def _load_labels() -> dict[str, dict[str, object]]:
@@ -40,6 +46,7 @@ def pytest_configure(config: pytest.Config) -> None:
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     labels = _load_labels()
     for item in items:
+        item_labels: list[str] = []
         for mark in item.iter_markers(name="proves"):
             row = mark.args[0] if len(mark.args) > 0 else mark.kwargs.get("row")
             clause = mark.args[1] if len(mark.args) > 1 else mark.kwargs.get("clause")
@@ -68,6 +75,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
                     f"{item.nodeid}: label {label_id!r} is declared slice={declared_slice!r}, "
                     f"marker says slice={slice_!r}"
                 )
+            item_labels.append(label_id)
 
         for mark in item.iter_markers(name="target"):
             gap = mark.args[0] if mark.args else mark.kwargs.get("gap")
@@ -91,3 +99,43 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
                 raise pytest.UsageError(
                     f"{item.nodeid}: stub_proven() references undeclared label {label_id!r}"
                 )
+            item_labels.append(label_id)
+
+        if item_labels:
+            _ITEM_LABELS[item.nodeid] = item_labels
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    """Write one MC-P0-05 JSONL record per test outcome, only when
+    `TRESTLE_PROOF_GATE` is set (L.P0-0a.3). Only the `call` phase is
+    recorded for a normal pass/fail/skip; a `setup`/`teardown` failure is
+    recorded as `error` (it never reaches `call`)."""
+    gate = results_mod.current_gate()
+    if gate is None:
+        return
+
+    if report.when == "call":
+        if report.skipped and getattr(report, "wasxfail", None) is not None:
+            outcome = "xfailed"
+        elif report.passed and getattr(report, "wasxfail", None) is not None:
+            outcome = "xpassed"
+        else:
+            outcome = report.outcome  # passed | failed | skipped
+    elif report.when in ("setup", "teardown") and not report.passed:
+        outcome = "error"
+    else:
+        return
+
+    labels = _ITEM_LABELS.get(report.nodeid, [])
+    if not labels:
+        return
+
+    record = results_mod.Record(
+        nodeid=report.nodeid,
+        outcome=outcome,
+        gate=gate,
+        venue=results_mod.venue_for_gate(gate),
+        interpreter=results_mod.current_interpreter(),
+        labels=labels,
+    )
+    results_mod.write_record(record)
