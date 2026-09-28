@@ -471,6 +471,19 @@ def cmd_mypy_ratchet(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_register(args: argparse.Namespace) -> int:
+    """`python -m tests.proof.meta register[, --probe <id>, --final]`
+    (L.P0-0d.1): exactly CM-7's register rule, probe and `--final` commands,
+    implemented in `tests/proof/register.py`."""
+    from tests.proof import register as register_mod
+
+    if args.final:
+        return register_mod.cmd_final()
+    if args.probe:
+        return register_mod.cmd_probe(args.probe)
+    return register_mod.cmd_register()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m tests.proof.meta")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -488,6 +501,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("check-map")
     sub.add_parser("audit-rows")
     sub.add_parser("open-questions")
+    register_parser = sub.add_parser("register")
+    register_parser.add_argument("--probe", default=None)
+    register_parser.add_argument("--final", action="store_true")
     return parser
 
 
@@ -510,6 +526,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_audit_rows(args)
     if args.command == "open-questions":
         return cmd_open_questions(args)
+    if args.command == "register":
+        return cmd_register(args)
     parser.error(f"unknown command {args.command}")
     return 2
 
