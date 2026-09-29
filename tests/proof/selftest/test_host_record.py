@@ -225,6 +225,7 @@ def test_proc_gate_select_adds_to_default_set(tmp_path):
         record_dir=tmp_path / "records",
         pytest_runner=fake_runner,
         pip_runner=lambda *a: None,
+        lock_path=tmp_path / "host.lock",
     )
     assert rc == 0
     assert "tests/x.py::test_y" in calls[0]
@@ -261,6 +262,7 @@ def test_proc_gate_runs_under_host_lock(tmp_path):
         record_dir=tmp_path / "records2",
         pytest_runner=fake_runner,
         pip_runner=lambda *a: None,
+        lock_path=tmp_path / "host.lock",
     )
     assert rc == 0
     assert held_during_run["held"] is True
