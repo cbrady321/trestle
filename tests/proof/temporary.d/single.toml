@@ -14,3 +14,14 @@ probe             = "grep -q TRESTLE_ADMISSION_AUDIT trestle/server/admission.py
 removal_condition = "J-SINGLE evaluated (its conditions never re-run, DM-11)"
 removed_by        = "L.TR-1.1"
 permanent         = false
+
+[[entry]]
+id                = "release-executable-allowlist-empty"   # plan id TM-B2-2
+mechanism         = "TrestleConfig.operator_limits.release_executables defaults to frozenset() (F-11(b) neutral)"
+introduced_by     = "L.SV-3.7"
+serves            = []
+probe             = "python -c \"import sys;from trestle.server.config import TrestleConfig as C;sys.exit(0 if not C.defaults().operator_limits.release_executables else 1)\""
+removal_condition = "none while F-11(b) (allowlist owner/default) is open; RB-0 populates only the reference operator config"
+removed_by        = "named-not-removed"
+permanent         = false
+citation          = "root C.9 F-11(a/b); design §10 F-11(b)"

@@ -103,3 +103,51 @@ def test_stop_bound_is_release_slice_grace_kill(sa: str) -> None:
     assert names == {"release_slice", "grace", "kill"}  # composed from the three, no literal
     # the tolerances module reads every one of them with no edit (DM-60)
     assert tolerances.finalization_reserve_s() == clock.FINALIZATION_RESERVE_S
+
+
+CONFIG = ROOT / "trestle" / "server" / "config.py"
+TIMING_FIELDS = (
+    "deadline_ceiling",
+    "release_slice",
+    "grace",
+    "kill",
+    "finalization_margin",
+    "sweep_parallelism",
+)
+
+
+@pytest.mark.parametrize("sa", ["SA-05"])
+def test_operator_limits_timing_fields_from_clock(sa: str) -> None:
+    """L.SV-3.7: `OperatorLimits`' timing fields read `clock.py`'s one definition of each (no
+    timing literal in `config.py`), when the config is built."""
+    tree = ast.parse(CONFIG.read_text(encoding="utf-8"))
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "OperatorLimits")
+    fields = {
+        n.target.id: n.value
+        for n in cls.body
+        if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.value is not None
+    }
+    for name in TIMING_FIELDS:
+        value = fields[name]
+        assert isinstance(value, ast.Call), name
+        (factory,) = [k.value for k in value.keywords if k.arg == "default_factory"]
+        assert isinstance(factory, ast.Lambda), name
+        body = factory.body
+        assert isinstance(body, ast.Attribute) and body.attr == name, name
+        assert isinstance(body.value, ast.Name) and body.value.id == "clock", name
+    # and no numeric literal defines a stop-bound name anywhere in config.py
+    assigned = {
+        t.id
+        for n in tree.body
+        if isinstance(n, (ast.Assign, ast.AnnAssign))
+        for t in (n.targets if isinstance(n, ast.Assign) else [n.target])
+        if isinstance(t, ast.Name)
+    }
+    assert not assigned & set(TIMING_FIELDS)
+
+    from trestle.server.config import TrestleConfig
+
+    limits = TrestleConfig.defaults().operator_limits
+    for name in TIMING_FIELDS:
+        assert getattr(limits, name) == getattr(clock, name), name
+    assert limits.release_executables == frozenset()
