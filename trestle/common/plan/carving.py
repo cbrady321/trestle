@@ -237,9 +237,25 @@ def carve(
             if max(chain, width) > effective[path]:
                 return _misfit(path, "budget under its needs-chain or its width")
 
+    end = _ends(plan, graph, contrib, reserve_s, root_end)
+    return {
+        path: Slice(budget_s=carve_of[path], end_s=end[path])
+        for path in graph.down
+        if path != ROOT_PATH
+    }
+
+
+def _ends(
+    plan: AdmittedPlan,
+    graph: _Graph,
+    contrib: dict[str, float],
+    reserve_s: float,
+    root_end: float,
+) -> dict[str, float]:
+    """Every vertex's end, `root_end` for the root: a child ends `reserve_s` before each parent,
+    and early enough for every dependent sibling to run its whole budget after it (backwards
+    from the root deadline, B2-C5)."""
     end: dict[str, float] = {}
-    # ends: a child ends `reserve_s` before each parent, and early enough for every dependent
-    # sibling to run its whole budget after it (backwards from the root deadline, B2-C5)
     succ: dict[str, list[str]] = {p: [] for p in graph.by_path}
     for path, v in graph.by_path.items():
         for child in v.children:
@@ -255,11 +271,19 @@ def carve(
         bounds = [end[p] - reserve_s for p in graph.parents[path] if p in end]
         bounds += [end[d] - contrib[d] for d in graph.dependents[path] if d in end]
         end[path] = min(bounds)
-    return {
-        path: Slice(budget_s=carve_of[path], end_s=end[path])
-        for path in graph.down
-        if path != ROOT_PATH
-    }
+    return end
+
+
+def slice_ends(plan: AdmittedPlan, reserve_s: float) -> dict[str, float]:
+    """Every vertex's carved end in seconds relative to the root deadline (never positive): the
+    root ends at `-plan.release_slice` (its release point), a child earlier by its carve. The
+    child process recomputes ends from the admitted plan with this (`RunServices.slice_end`,
+    B2-C5), because `attach` stores only each slice's budget: `carve(plan, D, ...)` gives
+    `end_s == D + slice_ends(plan, ...)[path]` for every non-root path. Pure."""
+    if reserve_s < 0:
+        raise ValueError("reserve must not be negative")
+    graph = _Graph(plan)
+    return _ends(plan, graph, _needs(plan, graph, reserve_s), reserve_s, -plan.release_slice)
 
 
 def attach(plan: AdmittedPlan, slices: dict[str, Slice], release_slice_s: float) -> AdmittedPlan:

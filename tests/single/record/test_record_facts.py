@@ -145,9 +145,10 @@ def test_applied_past_offset_counts_only_applied_non_release_entries(tmp_path: P
 
 
 def test_only_writer_fold_import_codec() -> None:
-    """The product codec has three readers: itself, the writer and the fold. The proof seam and
-    the record facts import none of it (a codec defect and a product defect must not hide each
-    other)."""
+    """The product codec has four readers: itself, the writer, the fold and the child's
+    run-services adapter (L.SV-5.2: it converts the lane's records into the workflow package's
+    record view, which cannot import the codec). The proof seam and the record facts import none
+    of it (a codec defect and a product defect must not hide each other)."""
 
     def imports_codec(path: Path) -> bool:
         for node in ast.walk(ast.parse(path.read_text())):
@@ -165,6 +166,10 @@ def test_only_writer_fold_import_codec() -> None:
     importers = sorted(
         str(p.relative_to(REPO)) for p in (REPO / "trestle").rglob("*.py") if imports_codec(p)
     )
-    assert importers == ["trestle/child/attempt_lane.py", "trestle/server/fold.py"], importers
+    assert importers == [
+        "trestle/child/attempt_lane.py",
+        "trestle/child/run_services.py",
+        "trestle/server/fold.py",
+    ], importers
     for seam in ("records.py", "record_facts.py"):
         assert not imports_codec(REPO / "tests" / "proof" / seam), seam
