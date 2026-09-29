@@ -44,3 +44,13 @@ tier = "MCP+PROC"
 venue = "CI"
 posture = "claim"
 declared_by = "L.P0-1A.4"
+
+[[label]]
+id = "WR-CANCEL-3:s0-straddle-stop-unconfirmed-never-clean"
+row = "WR-CANCEL-3"
+step = "core"
+slice = "core"
+tier = "PROC"
+venue = "BOTH"
+posture = "claim"
+declared_by = "L.P0-1A.6"

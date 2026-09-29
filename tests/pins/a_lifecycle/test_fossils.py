@@ -19,8 +19,6 @@ from trestle.server.ledger import RunLedger, ledger_path
 
 S0 = fp.FOSSILS_ROOT / fp.BAND
 SPINE_TERMINALS = {"succeeded": "succeeded", "failed": "failed"}
-# States a later leaf of this lane commits; required present once it lands.
-LATER_LEAF_STATES: set[str] = {"straddle"}
 
 
 def _run_dir(state: str) -> Path:
@@ -35,14 +33,11 @@ def _meta(state: str) -> dict[str, object]:
 
 def test_s0_projection_matches_manifest() -> None:
     states = fossils.load_states(fp.FOSSILS_ROOT)
-    assert {sid for sid, (band, _e) in states.items() if band == fp.BAND} == set(
-        fp.STATE_IDS
-    ) | set(SPINE_TERMINALS) | LATER_LEAF_STATES | {"crashed"}
+    declared = {sid for sid, (band, _e) in states.items() if band == fp.BAND}
+    assert declared == set(fp.STATE_IDS) | set(SPINE_TERMINALS) | {"crashed"}
     for sid, (_band, entry) in states.items():
         if entry.get("absent"):
             assert not (S0 / sid).exists(), f"{sid}: declared absent (K-13) but a fossil exists"
-            continue
-        if sid in LATER_LEAF_STATES and not (S0 / sid).exists():
             continue
         if sid in SPINE_TERMINALS:
             assert records.node_record(_run_dir(sid)).terminal == SPINE_TERMINALS[sid]
@@ -59,7 +54,7 @@ def test_seam_reads_every_s0_fossil() -> None:
         records.ledger_rows(run_dir)
         records.node_record(run_dir)
         read += 1
-    assert read >= len(fp.STATE_IDS) + len(SPINE_TERMINALS)
+    assert read == len(fp.STATE_IDS) + len(SPINE_TERMINALS)
 
 
 def test_state_specific_evidence() -> None:

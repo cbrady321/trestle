@@ -1,4 +1,4 @@
-"""Producers for the 16 lane-A S0 fossil states (L.P0-1A.5; MC-11).
+"""Producers for the lane-A S0 fossil states (L.P0-1A.5, .6; MC-11).
 
 Each `produce_<state>(home)` builds one committed S0 run directory under
 `home` by driving today's kernel (never a hand-typed ledger, except where a
@@ -122,6 +122,13 @@ DECLARED: dict[str, dict[str, Any]] = {
         "torn": False,
         "meta": True,
     },
+    # L.P0-1A.6: a non-terminal S0-shaped run with no recorded process identity.
+    "straddle": {
+        "kinds": ["created", "admitted", "started"],
+        "terminal": None,
+        "torn": False,
+        "meta": False,
+    },
 }
 
 STATE_IDS = list(DECLARED)
@@ -206,6 +213,12 @@ def produce_admitted(home: Path) -> None:
 def produce_started(home: Path) -> None:
     _kernel_, run_id = _admitted(home)
     RunLedger.open(ledger_path(_run_dir_of_only(home))).append("started", run_id=run_id)
+
+
+def produce_straddle(home: Path) -> None:
+    """F-E4-1: a run S0 started (`started` row, no terminal row) whose
+    directory records no process identity; recovery has only the ledger."""
+    produce_started(home)
 
 
 def produce_execution_ended(home: Path) -> None:
