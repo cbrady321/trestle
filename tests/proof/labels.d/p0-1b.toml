@@ -10,3 +10,23 @@ tier = "must"
 venue = "CI"
 posture = "proven"
 declared_by = "L.P0-1B.1"
+
+[[label]]
+id = "WR-COMPAT-4:preserved"
+row = "WR-COMPAT-4"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-1B.2"
+
+[[label]]
+id = "WR-PLAN-9:dataclass-arg-typed"
+row = "WR-PLAN-9"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-1B.2"
