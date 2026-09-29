@@ -15,6 +15,7 @@ pass. P0 lane modules are the `tests/pins/<lane>/` directories.
 from __future__ import annotations
 
 import ast
+import sys
 import tomllib
 from pathlib import Path
 
@@ -110,6 +111,28 @@ def test_workflow_imports_only_plugin_and_core() -> None:
                 if name == "trestle" or name.startswith("trestle.workflow"):
                     continue
                 raise AssertionError(f"{path}:{lineno}: trestle.workflow may only import {allowed}")
+
+
+# The `trestle_packs` subpackages built for the workflow loop (L.SV-5.16 fakes, L.SL-3.2/3.3
+# real adapters): each imports only the standard library, itself and `trestle.workflow` (BFD-47).
+WORKFLOW_PACK_SUBPACKAGES = ("fakes", "process")
+
+
+def test_new_packs_subpackages_import_only_stdlib_and_workflow() -> None:
+    packs_dir = ROOT / "packages" / "trestle-packs" / "trestle_packs"
+    for sub in WORKFLOW_PACK_SUBPACKAGES:
+        directory = packs_dir / sub
+        if not directory.exists():
+            continue  # not-applicable(absent)
+        allowed = ("trestle.workflow", f"trestle_packs.{sub}")
+        for path in sorted(directory.rglob("*.py")):
+            for name, lineno in _imported_names(path.read_text()):
+                if name.split(".")[0] in sys.stdlib_module_names or name == "__future__":
+                    continue
+                assert _starts_with_any(name, allowed), (
+                    f"{path.relative_to(ROOT)}:{lineno}: trestle_packs.{sub} may import only "
+                    f"stdlib, trestle.workflow and itself, not {name!r}"
+                )
 
 
 def test_lane_modules_import_no_other_lane() -> None:
