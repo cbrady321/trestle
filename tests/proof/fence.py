@@ -340,13 +340,15 @@ CKPT_SUCCESS_MARK: dict[str, tuple[str, str]] = {
 def _default_check_run_reader(cwd: Path, sha: str, name: str) -> str:
     """Read a check run's conclusion via `gh` (the executor's existing
     authentication; never a new credential, CM-3 (b)). Raises
-    `FenceRemoteOutage` on any failure or timeout — never a refusal."""
+    `FenceRemoteOutage` on any failure or timeout — never a refusal.
+    `per_page=100`: the API's default page is 30 check runs, and a landed
+    sha carries its PR run's and its push run's (about 20 each)."""
     try:
         result = subprocess.run(
             [
                 "gh",
                 "api",
-                f"repos/{{owner}}/{{repo}}/commits/{sha}/check-runs",
+                f"repos/{{owner}}/{{repo}}/commits/{sha}/check-runs?per_page=100",
                 "--jq",
                 f'.check_runs[] | select(.name=="{name}") | .conclusion',
             ],
@@ -801,10 +803,10 @@ def pr_head_via_gh(branch: str, cwd: Path) -> str | None:
 def job_conclusions_via_gh(sha: str, cwd: Path) -> dict[str, str | None]:
     """Read every check run's conclusion for `sha` via `gh` (the
     executor's own authentication; CM-3 (b)). Raises `FenceRemoteOutage`
-    on any failure."""
+    on any failure. One page of up to 100 (the API default is 30)."""
     try:
         proc = subprocess.run(
-            ["gh", "api", f"repos/{{owner}}/{{repo}}/commits/{sha}/check-runs"],
+            ["gh", "api", f"repos/{{owner}}/{{repo}}/commits/{sha}/check-runs?per_page=100"],
             cwd=cwd,
             capture_output=True,
             text=True,
