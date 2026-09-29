@@ -9,3 +9,69 @@
 # until       = "PX-n"                          # optional: an open PX precondition (CSC-15)
 # citation    = "design §8.2 …; HYBRID §4.3"
 # declared_by = "L.CL-D1.3"
+
+# Core deferrals: written once by L.CL-D1.3 (plans/core.md ## Coverage (c)). No later leaf edits or deletes an
+# entry; each closing leaf claims its label. None carries `until` (no upstream precondition is open, CSC-15).
+
+[[deferral]]
+label       = "WR-OWN-8:environment-lease"
+from_step   = "core"
+closes_at   = "SL-8"
+citation    = "design-workflow-runtime.md §8.2 'Capacity and dispatch before the lease'; HYBRID §4.3"
+declared_by = "L.CL-D1.3"
+
+[[deferral]]
+label       = "A1.3:single"
+from_step   = "core"
+closes_at   = "SL-9"
+citation    = "root MC-03 A1.3 single part; HYBRID §4.3"
+declared_by = "L.CL-D1.3"
+
+[[deferral]]
+label       = "WR-OWN-1:created-container-released"
+from_step   = "core"
+closes_at   = "RB-12"
+citation    = "requirements WR-OWN-1 tag 'core+B … runtime workflows for other resources'"
+declared_by = "L.CL-D1.3"
+
+[[deferral]]
+label       = "WR-OWN-3:created-container-stopped-on-success"
+from_step   = "core"
+closes_at   = "RB-12"
+citation    = "requirements WR-OWN-3 tag 'core+B'; K-8"
+declared_by = "L.CL-D1.3"
+
+[[deferral]]
+label       = "WR-TERM-5:tree-size"
+from_step   = "core"
+closes_at   = "TR-6"
+citation    = "root MC-03 A1.6 (tree)"
+declared_by = "L.CL-D1.3"
+
+[[deferral]]
+label       = "WR-PROOF-10:slice-row-doc-syncs"
+from_step   = "core"
+closes_at   = "CZ"
+citation    = "root Stage 0 B5 'K-doc sync'"
+declared_by = "L.CL-D1.3"
+
+[[deferral]]
+label       = "WR-CANCEL-3:later-run-admitted-after-answer"
+from_step   = "core"
+closes_at   = "SL-8"
+citation    = "root DM-19; design §8.2 rule 2; hld-wr-run-control Constraint (f)"
+declared_by = "L.CL-D1.3"
+
+[[deferral]]
+label       = "WR-CANCEL-5:adapter-contract-suite"
+from_step   = "core"
+closes_at   = "NW-2"
+citation    = "root DM-19; root MC-25"
+declared_by = "L.CL-D1.3"
+
+[[deferral]]
+label       = "WR-OWN-6:docker-inventory"
+from_step   = "core"
+closes_at   = "RB-12"
+citation    = "root DM-19; WR-PROOF-6 inventory diff"
+declared_by = "L.CL-D1.3"
