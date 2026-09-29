@@ -30,3 +30,13 @@ tier = "must"
 venue = "CI"
 posture = "proven"
 declared_by = "L.P0-1B.2"
+
+[[label]]
+id = "WR-EVID-1:sentinel-in-runview-error"
+row = "WR-EVID-1"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-1B.3"
