@@ -12,6 +12,7 @@ from typing import Any
 from trestle.common.bind import LOOPBACK_HOST
 from trestle.common.types import PublishView, RequestOutcome, RunView
 from trestle.query.catalog import VIEW_CATALOG_URI, view_catalog
+from trestle.server import lease
 from trestle.server.admission import Admission
 from trestle.server.conductor import Conductor
 from trestle.server.config import ProfileConfig, load_config
@@ -68,6 +69,9 @@ def create_kernel(
         scheduler=scheduler,
         service_epoch=service_epoch,
         profile=config.profile,
+        # WR-OWN-8: the lease is defined over the ledgers, so the holder index is rebuilt from
+        # them after recovery (there is no lease store file)
+        holders=lease.rebuild_holders(trestle_home),
     )
     conductor = Conductor(
         home=trestle_home,

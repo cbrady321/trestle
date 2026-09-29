@@ -8,7 +8,7 @@ import math
 import os
 import platform
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -29,6 +29,7 @@ from trestle.common.types import (
     RequestOutcome,
     RunSpec,
 )
+from trestle.server import lease
 from trestle.server.config import ProfileConfig, load_config
 from trestle.server.idempotency import IdempotencyStore
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, run_dir_for, work_dir
@@ -61,6 +62,8 @@ class Admission:
     scheduler: Scheduler
     service_epoch: str
     profile: ProfileConfig = ProfileConfig()
+    # the runs that may hold an environment lease (WR-OWN-8), rebuilt from the ledgers at startup
+    holders: lease.Holders = field(default_factory=lease.Holders)
 
     def admit(self, req: AdmitRequest) -> AdmitResult:
         # The restricted profile's allowlist comes first: a refusal here mints nothing (no run id,
@@ -198,6 +201,12 @@ class Admission:
         admitted = write_admitted_run(
             self.home, snap, req, planned, service_epoch=self.service_epoch
         )
+        if admitted.lease_key is not None:
+            self.holders.prune()
+            self.holders.add(
+                lease.Holder(admitted.run_id, admitted.lease_key, admitted.deadline_epoch),
+                admitted.run_dir,
+            )
         self.scheduler.mint(admitted.run_id, snap.snapshot_id, admitted.spec_hash)
         # the real values travel in memory to the run's WorkOrder and no further
         return AdmitResultAdmitted(tag="admitted", run_id=admitted.run_id, secrets=admitted.secrets)
@@ -263,6 +272,11 @@ def plan_for_admission(
     declared = load_declared_tree(snap)
     if declared is None:
         plan = compiler.implicit_depth1_plan(snap.plugin)
+        # WR-OWN-8: a plain plugin naming an environment argument holds that environment's lease
+        # (a tree's `lease_set` is compiled from its root's `env_key_field`, equal to `env_arg`)
+        key = lease.request_key(load_declared(snap).env_arg, req.args)
+        if key is not None:
+            plan = replace(plan, lease_set=(key,))
     else:
         compiled = compiler.compile(declared, req.args)
         if isinstance(compiled, compiler.Refusal):
@@ -295,10 +309,14 @@ def plan_for_admission(
 class AdmittedRun:
     """What `write_admitted_run` minted: the run id, the hash of its spec (the run's identity,
     which the plan digest is part of), and the real values of its declared secrets (in memory
-    only, MC-CORE-13)."""
+    only, MC-CORE-13). `lease_key` is the environment key recorded in the `created` row (None when
+    the run holds no lease) and `deadline_epoch` its admitted deadline, wall clock."""
 
     run_id: str
     spec_hash: str
+    lease_key: str | None = None
+    deadline_epoch: float = 0.0
+    run_dir: Path = Path()
     secrets: dict[str, object] = field(default_factory=dict, repr=False, compare=False)
 
 
@@ -376,6 +394,11 @@ def write_admitted_run(
     }
     if req.idempotency_key is not None:
         created_fields["idempotency_key"] = req.idempotency_key
+    # WR-OWN-8: the environment key the run holds a lease on, when it holds one; absent otherwise,
+    # so a run that declares no environment writes the same row as before
+    lease_key = plan.lease_set[0] if plan.lease_set else None
+    if lease_key is not None:
+        created_fields[lease.LEASE_KEY_FIELD] = lease_key
     ledger.append("created", **created_fields)
     fsync_dir(run_dir)
 
@@ -409,5 +432,8 @@ def write_admitted_run(
     return AdmittedRun(
         run_id=run_id,
         spec_hash=spec_hash,
+        lease_key=lease_key,
+        deadline_epoch=deadline.timestamp(),
+        run_dir=run_dir,
         secrets=secret_values(req.args, declared.secrets),
     )
