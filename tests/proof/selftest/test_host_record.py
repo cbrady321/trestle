@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from tests.proof import fence as fence_mod
+from tests.proof import tolerances
 from tests.proof.host import proc_gate
 from tests.proof.host import record as record_mod
 
@@ -307,7 +308,7 @@ def test_hung_gate_run_killed_at_host_run_max_lock_freed(tmp_path, monkeypatch):
                 os.kill(grandchild, 0)
             except ProcessLookupError:
                 break
-            time.sleep(0.05)
+            time.sleep(tolerances.POLL_FINE_S)
         with pytest.raises(ProcessLookupError):
             os.kill(grandchild, 0)
     finally:
@@ -326,7 +327,7 @@ def test_hung_gate_run_killed_at_host_run_max_lock_freed(tmp_path, monkeypatch):
                 break
             except BlockingIOError:
                 assert time.time() < deadline, "host lock not freed"
-                time.sleep(0.05)
+                time.sleep(tolerances.POLL_FINE_S)
 
 
 def test_live_record_check_on_planted_repo(tmp_path, monkeypatch):

@@ -37,6 +37,7 @@ CI_WAIT_MAX = 7 * 60 * 60
 FENCE_REMOTE_OUTAGE_MAX = 2 * 60 * 60
 LANDING_MAX = 13 * 60 * 60
 LANDING_RETURNS_MAX = 3
+CI_POLL_S = 60  # ci-status --wait poll interval
 
 # CM-3 (b): every git and GitHub process runs with no prompts.
 NO_PROMPT_ENV = {
@@ -758,7 +759,7 @@ def ci_status(
             if state_dir is not None:
                 _escalate(state_dir, reason)
             return 8
-        sleep(60)
+        sleep(CI_POLL_S)
 
 
 # --- fence merge (CM-3 (b), P1-P7) --------------------------------------

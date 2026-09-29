@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from tests.proof import fence as fence_mod
+from tests.proof import tolerances
 
 ENV = {
     **os.environ,
@@ -140,7 +141,7 @@ def test_p1_new_land_starts_after_first_dies_without_reclaim(rig):
     try:
         import time as _t
 
-        _t.sleep(0.3)
+        _t.sleep(tolerances.SETTLE_S)
         with pytest.raises(fence_mod.SecondLandRefused):
             fence_mod.take_land_lock(rig["state_dir"])
     finally:
@@ -654,18 +655,18 @@ def test_p9_killed_loop_leaves_no_child(tmp_path):
     try:
         deadline = time.time() + 5
         while time.time() < deadline and not (marker.exists() and marker.read_text().strip()):
-            time.sleep(0.05)
+            time.sleep(tolerances.POLL_FINE_S)
         child_pid = int(marker.read_text().strip())
         assert _pid_alive(child_pid)
 
         # the executor's stall-kill: the whole process group, one signal.
         pgid = os.getpgid(proc.pid)
         os.killpg(pgid, signal.SIGKILL)
-        proc.wait(timeout=5)
+        proc.wait(timeout=tolerances.PROC_WAIT_S)
 
         deadline = time.time() + 5
         while time.time() < deadline and _pid_alive(child_pid):
-            time.sleep(0.05)
+            time.sleep(tolerances.POLL_FINE_S)
         assert not _pid_alive(child_pid), "child outlived the killed loop process group"
     finally:
         for pid in (getattr(proc, "pid", None),):
@@ -676,7 +677,7 @@ def test_p9_killed_loop_leaves_no_child(tmp_path):
             except (ProcessLookupError, PermissionError):
                 pass
         try:
-            proc.wait(timeout=5)
+            proc.wait(timeout=tolerances.PROC_WAIT_S)
         except Exception:
             pass
 
