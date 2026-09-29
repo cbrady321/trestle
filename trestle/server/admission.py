@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import platform
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from trestle.common import codes
+from trestle.common import clock, codes
 from trestle.common.canonical import args_hash
 from trestle.common.fsutil import atomic_write_json, fsync_dir
 from trestle.common.ids import generate_run_id
@@ -31,7 +32,7 @@ from trestle.server.plugin_validate import validate_plugin_imports
 from trestle.server.recovery import find_run_dir
 from trestle.server.registry import Registry
 from trestle.server.scheduler import Scheduler
-from trestle.server.snapshots import load_declared, load_snapshot_schema
+from trestle.server.snapshots import deadline_of, load_declared, load_snapshot_schema
 
 
 @dataclass
@@ -108,6 +109,22 @@ class Admission:
                 ),
             )
 
+        deadline_s, _ = deadline_of(snap)
+        if deadline_s > clock.deadline_ceiling:
+            # B2-C2 (4): the admitted deadline may not exceed the ceiling; nothing is minted
+            return AdmitResultRefused(
+                tag="refused",
+                outcome=RequestOutcome(
+                    code=codes.BUDGET_DOES_NOT_FIT,
+                    message=(
+                        f"declared deadline {deadline_s:g}s exceeds the ceiling "
+                        f"{clock.deadline_ceiling:g}s"
+                    ),
+                    retryable=False,
+                    origin="admission",
+                ),
+            )
+
         cfg = load_config(self.home)
         if req.idempotency_key is not None:
             store = IdempotencyStore.open(self.home)
@@ -151,7 +168,7 @@ class Admission:
         (w_dir / "artifact-staging").mkdir(parents=True, exist_ok=True)
         fsync_dir(run_dir)
 
-        deadline = datetime.now(tz=UTC) + timedelta(seconds=snap.timeout_s)
+        deadline = datetime.now(tz=UTC) + timedelta(seconds=deadline_s)
         spec = RunSpec(
             plugin=snap.plugin,
             version=snap.version,
@@ -164,7 +181,7 @@ class Admission:
             python_version=sys.version.split()[0],
             platform=platform.platform(),
             summary_budget=snap.summary_budget,
-            timeout_s=snap.timeout_s,
+            timeout_s=math.ceil(deadline_s),
             deadline=deadline.isoformat(),
             # what publication recorded for the declared packages; the child checks it first
             provenance={"packages": dict(load_declared(snap).package_digests)},

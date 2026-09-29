@@ -800,6 +800,18 @@ due_checkpoint = "CS-4 (leaf L.CS-4.1)"
 direction = "additive"
 authorized_by = "plan-workflow-runtime.md:979 (MC-06: projection.{terminal_wait_exceeded, outside_window, not_owner, cancel_not_root}); plans/core.md MC-16 (L.CS-4.1)"
 
+# L.CL-C1.5: a declared deadline above the ceiling is refused at admission (B2-C2 (4), V-11 closed).
+
+[[entry]]
+id = "ADD-code-admission-budget-does-not-fit"
+facet = "refusal_codes"
+row_or_k = "B2-C2"
+codes = ["admission.budget_does_not_fit"]
+docs = []
+due_checkpoint = "CL-C1 (leaf L.CL-C1.5)"
+direction = "additive"
+authorized_by = "interfaces/interface-host-run-services.md B2-C2 (4); plans/core.md L.CL-C1.5 (DM-16, V-11 closed)"
+
 # The core bundle's named additive diffs of the S0 goldens (keys/items/grows selectors, see the
 # L.P0-0d.20 schema comment above): one entry per change, attributed to its leaf.
 

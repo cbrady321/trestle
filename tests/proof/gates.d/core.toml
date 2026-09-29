@@ -1,5 +1,6 @@
 # CSC-13: a leaf that adds a CI job adds its gate declaration in the same commit. Gate `ci-spine`
 # is CI job `spine` (`pytest -m spine`, MC-29, L.CS-4.4); results recorded under it count toward
-# the derived ledger (MC-02). Later core leaves that add a gate append to `names`.
+# the derived ledger (MC-02). Gate `ci-long` is CI job `long-gate` (`pytest -m long`,
+# L.CL-C1.5). Later core leaves that add a gate append to `names`.
 [gates]
-names = ["ci-spine"]
+names = ["ci-spine", "ci-long"]

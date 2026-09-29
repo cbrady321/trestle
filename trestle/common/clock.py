@@ -41,3 +41,10 @@ _FINALIZATION_WRITES_S: float = 10.0
 finalization_margin: float = float(
     os.environ.get("TRESTLE_FINALIZATION_MARGIN_S", str(stop_bound + _FINALIZATION_WRITES_S))
 )
+
+# The longest deadline a call may be admitted with (B2 `OperatorLimits` name, MC-09; published by
+# L.CL-C1.5, DM-46). A plugin that declares a longer deadline is refused at admission with
+# `admission.budget_does_not_fit`, before any run id (B2-C2 (4)). One hour: a plan default
+# disclosed for the maintainer, not a requirement (an operator override belongs to the phase that
+# owns `OperatorLimits`, MC-B2-04, so this is a constant and not a config field).
+deadline_ceiling: float = 3600.0

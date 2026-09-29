@@ -65,6 +65,20 @@ def load_declared(snap: PluginSnapshot) -> DeclaredMetadata:
     return DeclaredMetadata()
 
 
+DEADLINE_DECLARED = "declared"
+DEADLINE_DEFAULT = "default"
+
+
+def deadline_of(snap: PluginSnapshot) -> tuple[float, str]:
+    """The deadline, in seconds, a call to this snapshot is admitted with, and where it comes from:
+    the plugin's declared deadline (MC-18) or, for a plugin that declares none, the snapshot's
+    default (300 s, WR-COMPAT-10)."""
+    declared = load_declared(snap).deadline_s
+    if declared is not None:
+        return float(declared), DEADLINE_DECLARED
+    return float(snap.timeout_s), DEADLINE_DEFAULT
+
+
 def discover_plugin_name_from_source(source: str) -> str | None:
     try:
         fn = find_trestle_function(ast.parse(source))

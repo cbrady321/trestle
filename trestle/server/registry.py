@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import math
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -32,6 +33,7 @@ from trestle.server.plugin_schema import (
 )
 from trestle.server.plugin_validate import PluginValidationError, validate_plugin_imports
 from trestle.server.snapshots import (
+    deadline_of,
     discover_plugin_name,
     discover_plugin_name_from_source,
     load_snapshot_return_schema,
@@ -238,13 +240,16 @@ class Registry:
         snap = self.get(plugin_id)
         if snap is None:
             return None
+        deadline_s, deadline_source = deadline_of(snap)
         return {
             "name": snap.plugin,
             "version": snap.version,
             "snapshot_id": snap.snapshot_id,
             "source_sha256": snap.source_sha256,
             "summary_budget": snap.summary_budget,
-            "timeout_s": snap.timeout_s,
+            "timeout_s": math.ceil(deadline_s),
+            "deadline_s": deadline_s,
+            "deadline_source": deadline_source,
             "input_schema": load_snapshot_schema(snap),
             "return_schema": load_snapshot_return_schema(snap),
         }

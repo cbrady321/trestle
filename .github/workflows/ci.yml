@@ -180,6 +180,29 @@ jobs:
           path: tests/proof/results/
           if-no-files-found: ignore
 
+  # A5.2 (L.CL-C1.5): a plugin that declares a deadline above 300 s is not killed at 300 s. The test
+  # outlives the default session, so it is deselected there (marker `long`) and runs here alone.
+  # Runs on pull_request, so it is a required job (CM-4); its results count under gate ci-long
+  # (tests/proof/gates.d/core.toml, CSC-13).
+  long-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev,packs]"
+      - run: python -m tests.proof.guards clean-path --github-env
+      - run: pytest -q -m long tests/core/contract/test_cl_c1_deadline.py
+        env:
+          TRESTLE_PROOF_GATE: ci-long
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proof-results-ci-long
+          path: tests/proof/results/
+          if-no-files-found: ignore
+
   ancestry:
     strategy:
       matrix:
@@ -230,7 +253,7 @@ jobs:
 
   proof-ledger:
     runs-on: ubuntu-latest
-    needs: [test, compat, guards, spine, ancestry, d2-straddle]
+    needs: [test, compat, guards, spine, long-gate, ancestry, d2-straddle]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -323,7 +346,7 @@ jobs:
   ckpt:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test-shard, test, compat, guards, spine, ancestry, d2-straddle, proof-ledger, ck-drill, ck-isolation]
+    needs: [lint, typecheck, test-shard, test, compat, guards, spine, long-gate, ancestry, d2-straddle, proof-ledger, ck-drill, ck-isolation]
     permissions:
       contents: write
       checks: read
