@@ -60,3 +60,13 @@ tier = "must"
 venue = "CI"
 posture = "proven"
 declared_by = "L.P0-1B.4"
+
+[[label]]
+id = "WR-COMPAT-5:preserved"
+row = "WR-COMPAT-5"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-1B.5"
