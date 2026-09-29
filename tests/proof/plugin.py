@@ -1,9 +1,10 @@
 """Root proof plugin (MC-01, MC-33): registers the marker vocabulary and
 validates `proves()` markers against the CSC-1 labels registry at
-collection time (L.P0-0a.2).
+collection time (L.P0-0a.2), and against the MC-03 matrix map for A*/B*
+clause ids (L.P0-0c.1).
 
-Later leaves extend collection-time validation here (the matrix-id switch
-at L.P0-0c.1; the CSC-9 deselection hook at L.P0-0d.9).
+Later leaves extend collection-time validation here (the CSC-9 deselection
+hook at L.P0-0d.9).
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from tests.proof import results as results_mod
+from tests.proof import transcribe as transcribe_mod
 from tests.proof.markers import MARKER_DOCS, VALID_SLICES
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -87,14 +89,27 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             label_id = clause or row
             if label_id is None:
                 continue
+            if slice_ is not None and slice_ not in VALID_SLICES:
+                raise pytest.UsageError(
+                    f"{item.nodeid}: proves() slice={slice_!r} is not one of {VALID_SLICES}"
+                )
+            base_clause_id = label_id.split(":", 1)[0]
+            if transcribe_mod.MATRIX_CLAUSE_RE.match(base_clause_id):
+                # MC-03 matrix clause/part id (L.P0-0c.1): validated against
+                # matrix_map.toml, never against the CSC-1 labels registry
+                # (a clause is not a label; it names the matrix cell text
+                # itself).
+                if label_id not in transcribe_mod.matrix_ids():
+                    raise pytest.UsageError(
+                        f"{item.nodeid}: proves() references undeclared matrix clause "
+                        f"{label_id!r} (not in matrix_map.toml)"
+                    )
+                item_labels.append(label_id)
+                continue
             if label_id not in labels:
                 raise pytest.UsageError(
                     f"{item.nodeid}: proves() references undeclared label {label_id!r}"
                     f" (not in {LABELS_DIR}/*.toml)"
-                )
-            if slice_ is not None and slice_ not in VALID_SLICES:
-                raise pytest.UsageError(
-                    f"{item.nodeid}: proves() slice={slice_!r} is not one of {VALID_SLICES}"
                 )
             declared_slice = labels[label_id].get("slice")
             if declared_slice == "compat":

@@ -103,9 +103,32 @@ jobs:
           path: tests/proof/results/
           if-no-files-found: ignore
 
+  d2-straddle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: python -m tests.proof.guards clean-path --github-env
+      - run: python -m tests.proof.fossils generate --checkpoint s0 --states succeeded,failed
+      - run: pytest -q tests/proof/drift/test_sa15_d2_surfaces.py tests/proof/selftest/test_d2.py
+        env:
+          TRESTLE_PROOF_GATE: ci-d2
+      - run: python -m tests.proof.differ d2 --reader s0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proof-results-ci-d2
+          path: tests/proof/results/
+          if-no-files-found: ignore
+
   proof-ledger:
     runs-on: ubuntu-latest
-    needs: [test, compat, guards, ancestry]
+    needs: [test, compat, guards, ancestry, d2-straddle]
     steps:
       - uses: actions/checkout@v4
         with:

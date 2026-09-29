@@ -1,0 +1,8 @@
+# tests/proof/d2_exceptions.toml (L.P0-0c.7, CM-9). Created empty here.
+#
+# Schema: [[exception]] {id, reader, states, declared_by, note?}. `states`
+# are fossil-state globs under tests/fixtures/fossils/. An exception
+# excuses a divergence only in its `states` and only when `differ d2` runs
+# with exactly its `reader`. Withdrawn CM-9 keys (CM-12) -- `retires_at`,
+# `scope`, `register_id` -- are load errors; an exception is not a register
+# entry (CM-7) and nothing here retires it.

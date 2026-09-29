@@ -1,0 +1,670 @@
+# divergence.toml (L.P0-0c.5): the divergence ledger's P0 seed, exactly the
+# root MC-06 seed list (plan-workflow-runtime.md:979) -- requirements Part 2
+# survey items 1-16, K-1..K-19 (K-19 included), design §8.3 D-a..D-v, and the
+# root-named additive diffs. Schema: [[entry]] {id, facet, row_or_k, docs,
+# due_checkpoint, direction, authorized_by}. No entry names a keep or cleanup
+# parameter (B2-C2, B4-C6): none of the rows_or_k values below is a keep
+# argument or a new refusal code. WR-COMPAT-row-touching entries (K-16, BF2-8)
+# are additive-only per WR-COMPAT-{1..12}:no-unnamed-change.
+# PLAN-GAP: individual due_checkpoint values for the Part 2/D-item entries are
+# not enumerated anywhere in the P0 read-only packet (only K-19's landing_merge
+# is given verbatim, CL-D1); every other post-P0 entry here records
+# due_checkpoint as a deliberately-not-yet-due placeholder string so d1's
+# `_due()` check does not treat it as missing today.
+
+[[entry]]
+id = "K-1"
+facet = "internal"
+row_or_k = "K-1"
+docs = ["docs/agents.md"]
+due_checkpoint = "CK-1"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-2"
+facet = "internal"
+row_or_k = "K-2"
+docs = ["docs/agents.md"]
+due_checkpoint = "CL-C1"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-3"
+facet = "internal"
+row_or_k = "K-3"
+docs = ["docs/plugins.md"]
+due_checkpoint = "CK-3/4"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-4"
+facet = "internal"
+row_or_k = "K-4"
+docs = ["docs/plugins.md"]
+due_checkpoint = "CK-3/4"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-5"
+facet = "internal"
+row_or_k = "K-5"
+docs = ["docs/plugins.md"]
+due_checkpoint = "CL-C1"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-6"
+facet = "internal"
+row_or_k = "K-6"
+docs = ["docs/packs.md"]
+due_checkpoint = "NW-1"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-7"
+facet = "internal"
+row_or_k = "K-7"
+docs = ["docs/agents.md"]
+due_checkpoint = "CS-2"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-8"
+facet = "internal"
+row_or_k = "K-8"
+docs = ["docs/packs.md"]
+due_checkpoint = "CK-8"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-9"
+facet = "internal"
+row_or_k = "K-9"
+docs = ["docs/plugins.md"]
+due_checkpoint = "CS-2"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-10"
+facet = "internal"
+row_or_k = "K-10"
+docs = ["docs/agents.md"]
+due_checkpoint = "CS-3"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-11"
+facet = "internal"
+row_or_k = "K-11"
+docs = ["docs/agents.md"]
+due_checkpoint = "SV-0"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-12"
+facet = "internal"
+row_or_k = "K-12"
+docs = ["docs/plugins.md"]
+due_checkpoint = "CL-C2"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-13"
+facet = "internal"
+row_or_k = "K-13"
+docs = ["docs/agents.md"]
+due_checkpoint = "CL-D1"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-14"
+facet = "internal"
+row_or_k = "K-14"
+docs = []
+due_checkpoint = "CK-14"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-15"
+facet = "internal"
+row_or_k = "K-15"
+docs = ["docs/packs.md"]
+due_checkpoint = "NW-1"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-16"
+facet = "internal"
+row_or_k = "K-16"
+docs = ["docs/agents.md"]
+due_checkpoint = "none (conditional, unbuilt)"
+direction = "additive"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-17"
+facet = "internal"
+row_or_k = "K-17"
+docs = ["docs/plugins.md"]
+due_checkpoint = "CL-B1"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-18"
+facet = "internal"
+row_or_k = "K-18"
+docs = ["docs/agents.md"]
+due_checkpoint = "CS-1"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-19"
+facet = "internal"
+row_or_k = "K-19"
+docs = ["docs/agents.md"]
+due_checkpoint = "CL-D1"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "BF2-1"
+facet = "internal"
+row_or_k = "WR-CANCEL-1, WR-CANCEL-2, WR-CANCEL-3, WR-OWN-1, WR-OWN-3"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 1"
+
+[[entry]]
+id = "BF2-2"
+facet = "internal"
+row_or_k = "WR-EVID-1, WR-EVID-2, WR-TERM-3"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 2"
+
+[[entry]]
+id = "BF2-3"
+facet = "internal"
+row_or_k = "WR-DEADLINE-1, WR-DEADLINE-2, WR-TERM-2"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 3"
+
+[[entry]]
+id = "BF2-4"
+facet = "internal"
+row_or_k = "WR-EVID-4"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 4"
+
+[[entry]]
+id = "BF2-5"
+facet = "internal"
+row_or_k = "WR-PLAN-4"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 5"
+
+[[entry]]
+id = "BF2-6"
+facet = "internal"
+row_or_k = "WR-PLAN-5, WR-PLAN-6"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 6"
+
+[[entry]]
+id = "BF2-7"
+facet = "internal"
+row_or_k = "WR-IDEM-1, WR-IDEM-2"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 7"
+
+[[entry]]
+id = "BF2-8"
+facet = "internal"
+row_or_k = "WR-TERM-1, WR-TERM-2, WR-COMPAT-1"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 8"
+
+[[entry]]
+id = "BF2-9"
+facet = "internal"
+row_or_k = "WR-TERM-7"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 9"
+
+[[entry]]
+id = "BF2-10"
+facet = "internal"
+row_or_k = "WR-TERM-5"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 10"
+
+[[entry]]
+id = "BF2-11"
+facet = "internal"
+row_or_k = "WR-PLAN-7, WR-PLAN-8, WR-PLAN-9, WR-PLAN-4"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 11"
+
+[[entry]]
+id = "BF2-12"
+facet = "internal"
+row_or_k = "WR-EVID-5"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 12"
+
+[[entry]]
+id = "BF2-13"
+facet = "internal"
+row_or_k = "WR-EVID-6"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 13"
+
+[[entry]]
+id = "BF2-14"
+facet = "internal"
+row_or_k = "WR-ENV-1, WR-VERIFY-4, WR-ENV-11"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 14"
+
+[[entry]]
+id = "BF2-15"
+facet = "internal"
+row_or_k = "WR-EVID-7"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 15"
+
+[[entry]]
+id = "BF2-16"
+facet = "internal"
+row_or_k = "WR-PROOF-8, WR-PROOF-7, WR-EVID-9"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 16"
+
+[[entry]]
+id = "D-a"
+facet = "internal"
+row_or_k = "D-a"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Environment-argument declaration on the decorator)"
+
+[[entry]]
+id = "D-b"
+facet = "internal"
+row_or_k = "D-b"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Declaration required for port importers)"
+
+[[entry]]
+id = "D-c"
+facet = "internal"
+row_or_k = "D-c"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Key derivation, lease acquire/enqueue/refuse)"
+
+[[entry]]
+id = "D-d"
+facet = "internal"
+row_or_k = "D-d"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Environment key durability)"
+
+[[entry]]
+id = "D-e"
+facet = "internal"
+row_or_k = "D-e"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Per-key capacity dimension and FIFO)"
+
+[[entry]]
+id = "D-f"
+facet = "internal"
+row_or_k = "D-f"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Index release on every path)"
+
+[[entry]]
+id = "D-g"
+facet = "internal"
+row_or_k = "D-g"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Reserved ownership evidence lane)"
+
+[[entry]]
+id = "D-h"
+facet = "internal"
+row_or_k = "D-h"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Created/claimed ids folded into the record)"
+
+[[entry]]
+id = "D-i"
+facet = "internal"
+row_or_k = "D-i"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Declared-priority byte-range projection)"
+
+[[entry]]
+id = "D-j"
+facet = "internal"
+row_or_k = "D-j"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Self-verifying record framing)"
+
+[[entry]]
+id = "D-k"
+facet = "internal"
+row_or_k = "D-k"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Summary budget read from the run's own spec)"
+
+[[entry]]
+id = "D-l"
+facet = "internal"
+row_or_k = "D-l"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "design-workflow-runtime.md §8.3 (Shared contract suite and proof ledger (this proof court itself))"
+
+[[entry]]
+id = "D-m"
+facet = "internal"
+row_or_k = "D-m"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Declared-tree extraction at publication; digest in snapshot identity)"
+
+[[entry]]
+id = "D-n"
+facet = "internal"
+row_or_k = "D-n"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Whole-tree compile and refusal before the run id)"
+
+[[entry]]
+id = "D-o"
+facet = "internal"
+row_or_k = "D-o"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Lineage-keyed entries and one terminal verdict per path)"
+
+[[entry]]
+id = "D-p"
+facet = "internal"
+row_or_k = "D-p"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Attempt entries with release descriptors, failing closed)"
+
+[[entry]]
+id = "D-q"
+facet = "internal"
+row_or_k = "D-q"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Recovery-time lane fold)"
+
+[[entry]]
+id = "D-r"
+facet = "internal"
+row_or_k = "D-r"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Plan-rank host sweep interpreting three descriptor forms, operator executable allowlist)"
+
+[[entry]]
+id = "D-s"
+facet = "internal"
+row_or_k = "D-s"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Stop row carrying the lane offset, for cancel and the release point)"
+
+[[entry]]
+id = "D-t"
+facet = "internal"
+row_or_k = "D-t"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Tree roll-up and child run views)"
+
+[[entry]]
+id = "D-u"
+facet = "internal"
+row_or_k = "D-u"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (The S-8 loop, slices, selection and attempt measure)"
+
+[[entry]]
+id = "D-v"
+facet = "internal"
+row_or_k = "D-v"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Shared core module: plan compiler, carving, precedence)"
+
+[[entry]]
+id = "ADD-run-completion"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-terminal-answer-field"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-runview-fields"
+facet = "runview_shape"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-ledger-kinds"
+facet = "ledger_kinds"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-spec-json-keys"
+facet = "spec_keys"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-manifest-json-keys"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-snapshot-declaration"
+facet = "snapshot_manifest"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-release-point-flag"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-describe-duration-codes"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-execution-codes"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-admission-codes"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-projection-codes"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-publication-codes"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-restricted-profile-tools-list"
+facet = "tools_list"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-context-event-method"
+facet = "context_surface"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-adapter-environment-codes"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"

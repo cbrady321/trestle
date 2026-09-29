@@ -38,7 +38,15 @@ def test_full_history_checkout(job_name: str) -> None:
 
 def test_ci_yml_parses_and_has_expected_jobs() -> None:
     workflow = _load_ci_yml()
-    assert set(workflow["jobs"]) == {"lint", "test", "compat", "guards", "ancestry", "proof-ledger"}
+    assert set(workflow["jobs"]) == {
+        "lint",
+        "test",
+        "compat",
+        "guards",
+        "ancestry",
+        "d2-straddle",
+        "proof-ledger",
+    }
 
 
 def test_lint_job_runs_mypy_ratchet() -> None:
@@ -62,6 +70,7 @@ def test_proof_ledger_needs_test_and_compat() -> None:
         "compat",
         "guards",
         "ancestry",
+        "d2-straddle",
     }
 
 

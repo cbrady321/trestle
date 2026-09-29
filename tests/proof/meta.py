@@ -260,6 +260,184 @@ def cmd_inventory(args: argparse.Namespace) -> int:
     return 0
 
 
+MATRIX_MAP_PATH = ROOT / "tests" / "proof" / "matrix_map.toml"
+
+
+def cmd_check_map(_args: argparse.Namespace) -> int:
+    """`python -m tests.proof.meta check-map` (L.P0-0c.1): validate
+    `matrix_map.toml`'s schema and the frozen MC-03 shape (65 clause ids,
+    18 cells, 69 clause-parts, 3 stub-label-required, 2 adversary-stub)."""
+    from tests.proof import transcribe as transcribe_mod
+
+    data = tomllib.loads(MATRIX_MAP_PATH.read_text())
+    clauses = data.get("clause", [])
+
+    ok = True
+    ids = []
+    cells = set()
+    n_parts = 0
+    n_stub_req = 0
+    n_adversary = 0
+    id_re = transcribe_mod.MATRIX_CLAUSE_RE
+    required_keys = {
+        "id",
+        "cell",
+        "fragment",
+        "rows",
+        "rows_source",
+        "stub_label_required",
+        "adversary_stub",
+    }
+    for clause in clauses:
+        missing = required_keys - set(clause)
+        if missing or not ("step" in clause or "parts" in clause):
+            print(f"check-map: {clause.get('id')}: missing key(s) {missing or {'step|parts'}}")
+            ok = False
+            continue
+        cid = clause["id"]
+        if not id_re.match(cid):
+            print(f"check-map: {cid!r} does not match MC-03 clause id shape")
+            ok = False
+        ids.append(cid)
+        cells.add(clause["cell"])
+        n_parts += len(clause["parts"]) if "parts" in clause else 1
+        if clause["stub_label_required"]:
+            n_stub_req += 1
+        if clause["adversary_stub"]:
+            n_adversary += 1
+
+    if len(ids) != len(set(ids)):
+        print("check-map: duplicate clause id")
+        ok = False
+    if len(ids) != 65:
+        print(f"check-map: {len(ids)} clause ids, expected 65")
+        ok = False
+    if len(cells) != 18:
+        print(f"check-map: {len(cells)} cells, expected 18")
+        ok = False
+    if n_parts != 69:
+        print(f"check-map: {n_parts} clause-parts, expected 69")
+        ok = False
+    if n_stub_req != 3:
+        print(f"check-map: {n_stub_req} stub_label_required, expected 3")
+        ok = False
+    if n_adversary != 2:
+        print(f"check-map: {n_adversary} adversary_stub, expected 2")
+        ok = False
+
+    return 0 if ok else 1
+
+
+ROW_OWNERS_PATH = ROOT / "tests" / "proof" / "row_owners.toml"
+
+# CSC-1 labels registry schema (exact key set; L.P0-0c.2). `id` and `row` are
+# always required; every other key is optional.
+CSC1_REQUIRED_KEYS = {"id", "row", "step", "slice", "tier", "venue", "posture", "declared_by"}
+CSC1_OPTIONAL_KEYS = {"composes", "oq", "reason"}
+CSC1_ALL_KEYS = CSC1_REQUIRED_KEYS | CSC1_OPTIONAL_KEYS
+
+
+def _load_all_labels() -> list[dict[str, object]]:
+    labels = []
+    labels_dir = ROOT / "tests" / "proof" / "labels.d"
+    for path in sorted(labels_dir.glob("*.toml")):
+        data = tomllib.loads(path.read_text())
+        labels.extend(data.get("label", []))
+    return labels
+
+
+def cmd_audit_rows(_args: argparse.Namespace) -> int:
+    """`python -m tests.proof.meta audit-rows` (L.P0-0c.2, report mode):
+    validate the CSC-1 label schema exactly, then report every one of the
+    129 rows with no registered clause (a direct `<row>:<label>`, or credit
+    through one of MC-03's nine matrix-credited rows, `matrix_map.toml`'s
+    `rows` field). Report mode: always exits 0; `--enforce` is a later
+    leaf's addition (plan-workflow-runtime.md L1712)."""
+    from tests.proof import transcribe as transcribe_mod
+
+    labels = _load_all_labels()
+    errors: list[str] = []
+    for label in labels:
+        extra = set(label) - CSC1_ALL_KEYS
+        missing = CSC1_REQUIRED_KEYS - set(label)
+        if extra or missing:
+            errors.append(f"{label.get('id')}: bad schema (extra={extra}, missing={missing})")
+            continue
+        if label.get("posture") == "gated_on" and not label.get("oq"):
+            errors.append(f"{label.get('id')}: posture=gated_on requires an 'oq' field")
+        composes = label.get("composes")
+        if composes is not None:
+            matrix_ids = transcribe_mod.matrix_ids()
+            if composes not in matrix_ids and composes not in {
+                c["id"] for c in transcribe_mod.load_matrix_map()
+            }:
+                errors.append(
+                    f"{label.get('id')}: composes={composes!r} does not name an MC-03 clause/part"
+                )
+
+    if errors:
+        print("audit-rows: label schema errors:")
+        for e in errors:
+            print(f"  {e}")
+        return 1
+
+    matrix_credited_rows: set[str] = set()
+    for clause in tomllib.loads((ROOT / "tests" / "proof" / "matrix_map.toml").read_text()).get(
+        "clause", []
+    ):
+        matrix_credited_rows.update(clause.get("rows", []))
+
+    labeled_rows = {label["row"] for label in labels if "row" in label}
+    rows = tomllib.loads(ROW_OWNERS_PATH.read_text()).get("row", [])
+    uncovered = [
+        r["id"] for r in rows if r["id"] not in labeled_rows and r["id"] not in matrix_credited_rows
+    ]
+
+    print(f"audit-rows: {len(rows)} rows, {len(uncovered)} with no registered clause (report mode)")
+    if uncovered:
+        for rid in uncovered:
+            print(f"  unowned: {rid}")
+    return 0
+
+
+K_DOC_MAP_PATH = ROOT / "tests" / "proof" / "k_doc_map.toml"
+OPEN_QUESTIONS_PATH = ROOT / "tests" / "proof" / "open_questions.toml"
+
+
+def load_open_questions() -> list[dict[str, object]]:
+    return list(tomllib.loads(OPEN_QUESTIONS_PATH.read_text()).get("oq", []))
+
+
+def cmd_open_questions(_args: argparse.Namespace) -> int:
+    """`python -m tests.proof.meta open-questions` (L.P0-0c.3): exit 0 iff
+    every label bound to a listed open-question id carries posture
+    `gated_on` or `both_variant` and no claimed label or `proves` marker
+    decides one. A label whose `oq` names an id outside `open_questions.toml`
+    is a load error."""
+    oq_ids = {o["id"] for o in load_open_questions()}
+    labels = _load_all_labels()
+
+    for label in labels:
+        oq = label.get("oq")
+        if oq is None:
+            continue
+        if oq not in oq_ids:
+            print(
+                f"open-questions: load error: {label.get('id')} names oq={oq!r}, "
+                "not in open_questions.toml"
+            )
+            return 1
+        posture = label.get("posture")
+        if posture not in ("gated_on", "both_variant"):
+            print(
+                f"open-questions: {label.get('id')} is bound to open question {oq!r} but "
+                f"posture={posture!r} decides it (must be gated_on or both_variant)"
+            )
+            return 1
+
+    return 0
+
+
 def mypy_error_sites() -> list[str]:
     """`file:line` for every current `mypy trestle` error."""
     proc = _run([sys.executable, "-m", "mypy", "trestle"])
@@ -307,6 +485,9 @@ def build_parser() -> argparse.ArgumentParser:
     inventory_parser.add_argument("--lane", default=None)
     ratchet_parser = sub.add_parser("mypy-ratchet")
     ratchet_parser.add_argument("--max", type=int, required=True)
+    sub.add_parser("check-map")
+    sub.add_parser("audit-rows")
+    sub.add_parser("open-questions")
     return parser
 
 
@@ -323,6 +504,12 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_inventory(args)
     if args.command == "mypy-ratchet":
         return cmd_mypy_ratchet(args)
+    if args.command == "check-map":
+        return cmd_check_map(args)
+    if args.command == "audit-rows":
+        return cmd_audit_rows(args)
+    if args.command == "open-questions":
+        return cmd_open_questions(args)
     parser.error(f"unknown command {args.command}")
     return 2
 
