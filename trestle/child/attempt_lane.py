@@ -73,12 +73,13 @@ class AttemptLane:
         self,
         run_dir: Path,
         lane_entries: int,
-        scope: Iterable[tuple[str, ...]],
+        scope: Iterable[Any],
         *,
         now: Callable[[], datetime] | None = None,
         append: Callable[[Path, dict[str, Any]], None] | None = None,
     ) -> None:
-        self._scope = frozenset(tuple(p) for p in scope)
+        # a node path is a tuple of names, or any object with `.segments` (B2's NodePath)
+        self._scope = frozenset(tuple(getattr(p, "segments", p)) for p in scope)
         if lane_entries < len(self._scope) + 1:
             raise ValueError(
                 f"lane_entries {lane_entries} < |scope| + 1 = {len(self._scope) + 1}: the plan "
