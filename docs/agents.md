@@ -171,6 +171,31 @@ Every `BoundedView` includes `backend`, `as_of`, `items`, `truncated`, `next_cur
 
 ---
 
+## Run states
+
+A run is always in exactly one of these states. The same vocabulary is in
+[`agent-console-mcp.md`](agent-console-mcp.md) §3. Each state names the code
+that produces it; a state with no producer is **reserved** and is never written.
+
+<!-- K-13 -->
+| State | Kind | Producer |
+|-------|------|----------|
+| `queued` | projected | Admission writes the `created` and `admitted` ledger rows; the run is `queued` until the `started` row exists. |
+| `running` | projected | The conductor writes `started` when the worker begins; the run is `running` until evidence is finalized. |
+| `succeeded` | terminal | The conductor, when the worker exits 0. |
+| `failed` | terminal | The conductor, when the worker exits 1 (the plugin raised) or reports nothing usable. |
+| `cancelled` | terminal | The conductor, when it observes the run's cancel request. |
+| `timed_out` | terminal | The wrapper and conductor, when the run outlives its deadline. |
+| `worker_exit` | terminal | The wrapper, when the worker exits with a code other than 0 or 1 (for example 3). |
+| `interrupted` | terminal | Recovery, at the next start, for a run whose ledger has no terminal row. |
+| `crashed` | terminal | **Reserved.** It stays in the ledger's terminal-kind set so old readers keep working, but no code path writes it. |
+<!-- /K-13 -->
+
+`crashed` is reserved (K-13), not a state a run can reach. A run whose worker dies
+abnormally is `worker_exit`; a run whose server died is `interrupted`.
+
+---
+
 ## Wait and long jobs
 
 `run` admits work, starts execution on a background thread, then waits up to `wait_ms`:
