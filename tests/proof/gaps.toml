@@ -13,21 +13,21 @@ id = "G-A1"
 lane = "A"
 flip_merge = "CS-2"
 target = "required"
-entry = "pending"
+entry = "tests.pins.a_lifecycle.test_g_a1:test_target_no_attributable_survivor_after_terminal_row"
 
 [[gap]]
 id = "G-A2"
 lane = "A"
 flip_merge = "CS-2"
 target = "required"
-entry = "pending"
+entry = "tests.pins.a_lifecycle.test_g_a2:test_target_run_driven_after_admitted_deadline_times_out"
 
 [[gap]]
 id = "G-A3"
 lane = "A"
 flip_merge = "CS-2"
 target = "required"
-entry = "pending"
+entry = "tests.pins.a_lifecycle.test_g_a3:test_target_restart_leaves_no_attributable_survivor"
 
 [[gap]]
 id = "G-A4"
