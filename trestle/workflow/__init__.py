@@ -25,6 +25,10 @@ from trestle.workflow.declarations import (
     WorkflowEntry,
 )
 
+# Submodules a plugin may import from (`import trestle.workflow.<m>`); every other module of the
+# package, and every name that starts with an underscore, is refused at publication (L.SV-2.3).
+PUBLIC_MODULES: tuple[str, ...] = ("declarations",)
+
 __all__ = [
     "AllDeclaration",
     "Alternative",

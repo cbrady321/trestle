@@ -10,9 +10,11 @@ import shutil
 from pathlib import Path
 
 import trestle
+from trestle.common import codes
 from trestle.common.canonical import canonical_json
 from trestle.common.fsutil import atomic_write, sha256_file
-from trestle.common.ids import generate_snapshot_id
+from trestle.common.ids import DECLARED_TREE_SLOT_EMPTY, generate_snapshot_id
+from trestle.common.plan.declared import DeclaredTree
 from trestle.common.types import DeclaredMetadata, PluginSnapshot
 from trestle.server.plugin_schema import (
     EntryError,
@@ -21,7 +23,12 @@ from trestle.server.plugin_schema import (
     schema_digest,
     schemas_from_source,
 )
-from trestle.server.plugin_validate import PluginValidationError, validate_and_digest
+from trestle.server.plugin_validate import (
+    DeclarationInvalid,
+    PluginValidationError,
+    PublicationRefused,
+    validate_and_extract,
+)
 
 
 def load_snapshot_schema(snap: PluginSnapshot) -> dict[str, object]:
@@ -65,6 +72,18 @@ def load_declared(snap: PluginSnapshot) -> DeclaredMetadata:
     return DeclaredMetadata()
 
 
+DECLARATION_FILE = "declaration.json"
+
+
+def load_declared_tree(snap: PluginSnapshot) -> DeclaredTree | None:
+    """The declared tree of a published workflow snapshot (MC-34): `declaration.json` beside the
+    snapshot's source. None for a plain plugin, which declares no tree. The only reader."""
+    path = Path(snap.source_path).with_name(DECLARATION_FILE)
+    if not path.is_file():
+        return None
+    return DeclaredTree.from_json(path.read_text(encoding="utf-8"))
+
+
 DEADLINE_DECLARED = "declared"
 DEADLINE_DEFAULT = "default"
 
@@ -105,11 +124,17 @@ def materialize_snapshot(
     source = source_path.read_text(encoding="utf-8")
     schema, return_schema = schemas_from_source(source, source_path=source_path)
     declared = declared_from_source(source)
-    error, package_digests = validate_and_digest(
-        source_path, entry=declared.entry, packages=declared.packages
+    outcome = validate_and_extract(
+        source_path, entry=declared.entry, packages=declared.packages, env_arg=declared.env_arg
     )
-    if error is not None:
-        raise PluginValidationError(error)
+    if outcome.error is not None:
+        if outcome.code == codes.PUBLICATION_DECLARATION_INVALID:
+            raise DeclarationInvalid(outcome.error)
+        if outcome.code is not None:
+            raise PublicationRefused(outcome.error, outcome.code)
+        raise PluginValidationError(outcome.error)
+    package_digests = outcome.package_digests
+    tree = outcome.declaration
     declared = dataclasses.replace(declared, package_digests=package_digests)
     schema_bytes = canonical_json(schema)
     return_schema_bytes = canonical_json(return_schema)
@@ -125,6 +150,7 @@ def materialize_snapshot(
         declared=identity_declared,
         summary_budget=summary_budget,
         runtime_version=trestle.__version__,
+        declared_tree=DECLARED_TREE_SLOT_EMPTY if tree is None else tree.digest,
     )
     snap_dir = home / "snapshots" / snapshot_id
     snap_dir.mkdir(parents=True, exist_ok=True)
@@ -138,6 +164,8 @@ def materialize_snapshot(
     ):
         if not (snap_dir / name).exists():
             atomic_write(snap_dir / name, content)
+    if tree is not None and not (snap_dir / DECLARATION_FILE).exists():
+        atomic_write(snap_dir / DECLARATION_FILE, tree.to_json().encode("utf-8"))
     manifest = {
         "plugin": plugin_id,
         "version": version,
@@ -146,6 +174,8 @@ def materialize_snapshot(
         "declared": declared.declared_dict(),
         "entry": declared.entry,
     }
+    if tree is not None:
+        manifest["declaration_digest"] = tree.digest
     manifest_sha256 = hashlib.sha256(
         json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
