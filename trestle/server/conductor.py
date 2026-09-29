@@ -22,6 +22,12 @@ from trestle.server.procident import Attribution, GroupStop, Identity, ProcessSo
 from trestle.server.runs import RunRegistry, cancel_flag_path
 from trestle.server.scheduler import Scheduler
 
+# K-8 (OQ-5 recorded default; MC-CORE-12's switch): a run that ended succeeded has its attributable
+# processes stopped before finalization, like every other terminal path (B2-C10). The decline
+# patch flips this to False; that contradicts B2-C10, so it is applied only after B2-C10 is
+# amended, never unattended (F-PLAN-6).
+REAP_ON_SUCCESS: bool = True
+
 
 @dataclass
 class Conductor:
@@ -103,7 +109,21 @@ class Conductor:
             # stop still in flight finishes first (one stop at a time), and nothing signals after.
             with attribution.lock:
                 if stop is None:
-                    stop = self.stopper(attribution)
+                    if REAP_ON_SUCCESS:
+                        stop = self.stopper(attribution)
+                    else:  # K-8 declined: a run that ended succeeded is observed, never signalled
+                        try:
+                            wrapper_report = evidence_dir(run_dir) / "wrapper_report.json"
+                            ended = json.loads(wrapper_report.read_text(encoding="utf-8"))
+                            succeeded = ended.get("classification") == "succeeded"
+                        except (OSError, ValueError, AttributeError):
+                            succeeded = False
+                        if succeeded and first_observed_cause is None:
+                            stop = GroupStop(
+                                confirmed_gone=not attribution.observe(), signalled=False
+                            )
+                        else:
+                            stop = self.stopper(attribution)
                 attribution.close()
             if proc.stdout is not None:
                 proc.stdout.close()
