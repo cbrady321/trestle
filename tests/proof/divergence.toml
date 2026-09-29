@@ -981,3 +981,16 @@ docs = []
 due_checkpoint = "SV-2 (leaf L.SV-2.3)"
 direction = "additive"
 authorized_by = "interfaces/interface-host-run-services.md B2-C1 (an extraction failure refuses publication with a stable code); plans/a1-single-level.md L.SV-2.3 (DM-16, V-11 closed)"
+
+# L.SV-2.4 (WR-OWN-8, B1-E1 D-b): a plugin importing a port module must declare env_arg, and a
+# workflow root's env_key_field must equal it; the refusal is publication.env_arg_missing.
+
+[[entry]]
+id = "ADD-code-publication-env-arg-missing"
+facet = "refusal_codes"
+row_or_k = "B1-E1"
+codes = ["publication.env_arg_missing"]
+docs = []
+due_checkpoint = "SV-2 (leaf L.SV-2.4)"
+direction = "additive"
+authorized_by = "interfaces/interface-work-unit.md B1-E1 (D-b: a root entry importing the environment or process ports names an env_key_field); plans/a1-single-level.md L.SV-2.4 (DM-16, V-11 closed)"
