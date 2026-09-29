@@ -113,27 +113,45 @@ def group_stop_row(run_dir: Path) -> dict[str, Any]:
     "BOTH",
 )
 def test_injected_confirmation_failure_keeps_primary() -> None:
+    """The cancel and the deadline; the pass (its stop goes through the stopper only under K-8)
+    is `test_injected_confirmation_failure_keeps_primary_on_the_pass`, a CK-8 node."""
     for case in CASES:
-        confirmed = drive(None, case)
-        withheld = drive(unconfirmed_after_real_stop, case)
+        if case.label != "passed":
+            _confirmation_failure_keeps_primary(case)
 
-        # the class is what a confirmed stop gives, for the pass, the cancel and the deadline
-        assert confirmed.view.state == withheld.view.state == case.state, case.label
-        assert confirmed.view.outcome is not None and withheld.view.outcome is not None
-        assert withheld.view.outcome["class"] == confirmed.view.outcome["class"], case.label
-        assert withheld.view.outcome == confirmed.view.outcome, case.label
-        assert withheld.view.outcome["class"] == case.klass, case.label
-        assert withheld.view.error == confirmed.view.error, case.label
-        assert support.kinds(withheld.run_dir)[-1] == case.state
 
-        # the disposition is relayed beside it: released when confirmed, unknown when not
-        assert confirmed.view.cleanup is not None
-        assert confirmed.view.cleanup.processes == "released", case.label
-        assert withheld.view.cleanup is not None
-        assert withheld.view.cleanup.processes == "unknown", case.label
-        assert group_stop_row(withheld.run_dir)["confirmed_gone"] is False
-        # the failed confirmation is one more key, not a change to the answer's own fields
-        assert withheld.view.to_dict()["cleanup"] == {"processes": "unknown"}
+@pytest.mark.proves(
+    "WR-OWN-6", "WR-OWN-6:cleanup-failure-beside-primary", "core", "core", "LOGIC+PROC", "BOTH"
+)
+@pytest.mark.proves("WR-OWN-3", "WR-OWN-3:success-no-survivor", "core", "core", "PROC", "BOTH")
+def test_injected_confirmation_failure_keeps_primary_on_the_pass() -> None:
+    """K-8 (REAP_ON_SUCCESS): a succeeded run's stop goes through the stopper, so a withheld
+    confirmation projects `unknown` beside the unchanged `passed`."""
+    (passed,) = [case for case in CASES if case.label == "passed"]
+    _confirmation_failure_keeps_primary(passed)
+
+
+def _confirmation_failure_keeps_primary(case: Case) -> None:
+    confirmed = drive(None, case)
+    withheld = drive(unconfirmed_after_real_stop, case)
+
+    # the class is what a confirmed stop gives, for the pass, the cancel and the deadline
+    assert confirmed.view.state == withheld.view.state == case.state, case.label
+    assert confirmed.view.outcome is not None and withheld.view.outcome is not None
+    assert withheld.view.outcome["class"] == confirmed.view.outcome["class"], case.label
+    assert withheld.view.outcome == confirmed.view.outcome, case.label
+    assert withheld.view.outcome["class"] == case.klass, case.label
+    assert withheld.view.error == confirmed.view.error, case.label
+    assert support.kinds(withheld.run_dir)[-1] == case.state
+
+    # the disposition is relayed beside it: released when confirmed, unknown when not
+    assert confirmed.view.cleanup is not None
+    assert confirmed.view.cleanup.processes == "released", case.label
+    assert withheld.view.cleanup is not None
+    assert withheld.view.cleanup.processes == "unknown", case.label
+    assert group_stop_row(withheld.run_dir)["confirmed_gone"] is False
+    # the failed confirmation is one more key, not a change to the answer's own fields
+    assert withheld.view.to_dict()["cleanup"] == {"processes": "unknown"}
 
 
 def table_holds_a_process_of(run_dir: Path) -> bool:

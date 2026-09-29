@@ -284,9 +284,12 @@ jobs:
   # need full history (trailers, the landing diff, `git log <landing>..HEAD`).
   # C-ck: each present decline's real-history drill runs in one `ck-drill` part (the
   # declines' collected node ids, dealt round-robin over the parts), so declines run in
-  # parallel on separate runners; a part with no decline passes at once.
+  # parallel on separate runners; a part with no decline passes at once. A drill nests a
+  # full REG (~10 min); a hang (a test blocked with no timeout of its own) fails the part at
+  # the job bound instead of GitHub's 6 h default.
   ck-drill:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:

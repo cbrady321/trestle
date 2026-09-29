@@ -61,7 +61,7 @@ class FilesystemQueryBackend:
                 origin="projection",
             )
 
-        runs, scan_truncated = self._load_runs()
+        runs, window_incomplete = self._load_runs()
         as_of = _now_iso()
         offset = 0
         token = self._cache_token or ""
@@ -95,6 +95,13 @@ class FilesystemQueryBackend:
                 )
             record = self._find_run(runs, run_id)
             if record is None:
+                if window_incomplete and self._run_dir_exists(run_id):
+                    return RequestOutcome(
+                        code=codes.OUTSIDE_WINDOW,
+                        message=f"run is outside the loaded window: {run_id}",
+                        retryable=False,
+                        origin="projection",
+                    )
                 return RequestOutcome(
                     code=codes.INVALID_HANDLE,
                     message=f"unknown run: {run_id}",
@@ -140,7 +147,7 @@ class FilesystemQueryBackend:
             view=view,
             items=items,
             next_cursor=next_cursor,
-            truncated=page_truncated or scan_truncated,
+            truncated=page_truncated or window_incomplete,
             as_of=as_of,
         )
         errors = validate_envelope(view, envelope)
@@ -149,6 +156,11 @@ class FilesystemQueryBackend:
         return envelope
 
     def _load_runs(self) -> tuple[list[RunRecord], bool]:
+        """Load the recency window; the flag is True when a run was left out of it.
+
+        A run is left out when the scan budget (time or bytes) stopped the scan, or when the
+        recency cap was hit with runs remaining (one more run than the cap was found).
+        """
         runs_root = self.home / "runs"
         if not runs_root.exists():
             self._cache_token = "empty"
@@ -158,6 +170,7 @@ class FilesystemQueryBackend:
         candidates: list[tuple[str, Path]] = []
         scan_bytes = 0
         scan_truncated = False
+        cap = view_defs.RECENCY_CACHE_SIZE
         deadline = time.monotonic() + (self.limits.max_scan_time_ms / 1000.0)
 
         for month_dir in sorted(runs_root.iterdir(), reverse=True):
@@ -178,9 +191,12 @@ class FilesystemQueryBackend:
                     scan_truncated = True
                     break
                 candidates.append((run_dir.name, run_dir))
-                if len(candidates) >= view_defs.RECENCY_CACHE_SIZE:
+                if len(candidates) > cap:
+                    # One run beyond the cap exists: the window is incomplete.
+                    candidates.pop()
+                    scan_truncated = True
                     break
-            if scan_truncated or len(candidates) >= view_defs.RECENCY_CACHE_SIZE:
+            if scan_truncated:
                 break
 
         candidates.sort(key=lambda item: item[0], reverse=True)
@@ -200,6 +216,18 @@ class FilesystemQueryBackend:
         self._cache_token = token
         self._cache_runs = records
         return records, scan_truncated
+
+    def _run_dir_exists(self, run_id: str) -> bool:
+        """Existence check beyond the loaded set: the run's directory by id, no run scan."""
+        if run_id in {".", ".."} or Path(run_id).name != run_id:
+            return False
+        runs_root = self.home / "runs"
+        if not runs_root.is_dir():
+            return False
+        for month_dir in runs_root.iterdir():
+            if ledger_path(month_dir / run_id).exists():
+                return True
+        return False
 
     @staticmethod
     def _find_run(runs: list[RunRecord], run_id: str) -> RunRecord | None:

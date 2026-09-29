@@ -138,7 +138,7 @@ The full profile (default) is unchanged: ten tools, any published plugin, any ru
 3. **Evidence is post-finalize.** `query(run_tail|last_error|run_events, …)` on a running run → `projection.not_finalized` (`retryable: true`). Wait for terminal state or use `await_runs`.
 4. **A run that did not succeed explains itself (K-10).** `RunView.error` is `{code, phase, message}`: `code` is one of the stable `execution.*` codes (`import_failed`, `bind_failed`, `plugin_raised`, `result_unencodable`, `provenance_mismatch`, `cancelled`, `deadline_exceeded`, `worker_exit`, `interrupted`), `phase` says where it happened, and `message` is bounded (512 bytes) with host paths replaced by `<home>`, `<run>`, `<cwd>` and `<user-home>`. `query(last_error)` returns the same message; before this it said only `failed`, and `RunView.error` was never set. Both read one ledger record, `error_record`, so they agree, and they keep agreeing after a restart. Older runs, recorded before the record existed, keep the old `last_error` text and no `error`.
 5. **Check `limits_exceeded`.** When output exceeds caps, `RunView` marks suppressed streams — evidence is honestly incomplete. There is one marker per (stream, limit), however many events or artifacts it dropped; its `bytes_suppressed` is the total. Artifact caps (`stream: "artifacts"`, `max_artifact_count`, `max_artifact_bytes`) mark artifacts that were not stored.
-6. **Fetch truncation is success.** `truncated: true` with `scan_bytes` means narrow the window and continue — not an error.
+6. **Fetch truncation is success.** `truncated: true` with `scan_bytes` means narrow the window and continue — not an error. On `query`, `truncated: true` with `next_cursor` set means follow the cursor. With `next_cursor` null the recency window (500 runs) or the scan budget left runs out: reaching past it is not offered, and a run-scoped view of such a run by id answers `projection.outside_window` (an id with no run stays `projection.invalid_handle`).
 7. **Small MCP surface.** Plugin JSON schemas are **not** on `tools/list`. Pull one schema via `describe_plugin` when needed. When-to-pick for `query`/`fetch` lives on MCP resource `trestle://views` (not a second schema dump).
 
 ---
@@ -301,6 +301,7 @@ See [`plugins.md`](plugins.md) for authoring, filesystem drop-in, and `publish_p
 | Plugin name as MCP tool | unknown-tool | `run(plugin=…)` |
 | `fetch("/tmp/…")` | `projection.invalid_handle` | Use handle from `RunView` / `query` |
 | `query` before finalize | `projection.not_finalized` | `await_runs` or wait for terminal |
+| Run-scoped `query` for an older run | `projection.outside_window` | The run exists but lies past the recency window; it cannot be reached by `query` |
 | Unknown view name | `projection.invalid_view` | Read `trestle://views`; do not invent names or send SQL |
 | Empty catalog | `admission.plugin_not_found` | `trestle init` or `publish_plugin` |
 | Bad plugin args (including a naive or malformed date/datetime) | `admission.invalid_args` | `describe_plugin` then retry `run` |

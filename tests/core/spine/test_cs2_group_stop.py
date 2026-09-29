@@ -76,59 +76,88 @@ def _assert_row_position(run_dir: Path) -> None:
     assert kinds[-1] in {"succeeded", "failed", "cancelled", "timed_out", "worker_exit"}
 
 
+def _stopped_terminal_path(
+    label: str, plugin: str, args: dict[str, object], deadline: bool
+) -> tuple[Path, RunView, str]:
+    """One terminal path through the spy-wrapped real stopper: the row after the stop, the group
+    confirmed gone, `released` on the answer and in the table. Returns (run dir, view, method)."""
+    kernel = support.spine_kernel()
+    spy = SpyStopper(lambda k=kernel: k.home / "runs")
+    kernel.control.conductor.stopper = spy
+    run_dir, view = _run(kernel, plugin, args, deadline=deadline)
+    _assert_row_position(run_dir)
+    (row,) = _group_stops(run_dir)
+    # the row came after the stop was called: no group_stop stood when the stopper ran
+    assert spy.before and all("group_stop" not in kinds for kinds in spy.before)
+    assert row["confirmed_gone"] is True
+    assert view.cleanup is not None and view.cleanup.processes == "released"
+    assert "cleanup" in view.to_dict() and view.to_dict()["cleanup"] == {"processes": "released"}
+    assert support.marked(run_dir.name) == set(), label  # the projection agrees with the table
+    return run_dir, view, row["method"]
+
+
 @pytest.mark.proves(
     "WR-OWN-6", "WR-OWN-6:gone-group-reports-released", "core", "core", "PROC", "BOTH"
 )
 def test_group_stop_row_on_every_terminal_path() -> None:
+    """The non-success terminal paths; the pass path (the stopper called on a succeeded run, K-8)
+    is `test_group_stop_row_on_the_pass_path`, a CK-8 node the K-8 decline drill deselects."""
     outcomes: dict[str, tuple[Path, RunView, str]] = {}
     for label, plugin, args, deadline in (
-        ("pass", "echo", {"message": "gs"}, False),
         ("fail", "leaver", {"seconds": tolerances.JOIN_WAIT_S * 6, "fail": True}, False),
         ("cancel", "tree", {"seconds": tolerances.JOIN_WAIT_S * 6}, False),
         ("deadline", "slow", {"seconds": tolerances.JOIN_WAIT_S * 6}, True),
     ):
-        kernel = support.spine_kernel()
-        spy = SpyStopper(lambda k=kernel: k.home / "runs")
-        kernel.control.conductor.stopper = spy
-        run_dir, view = _run(kernel, plugin, args, deadline=deadline)
-        _assert_row_position(run_dir)
-        (row,) = _group_stops(run_dir)
-        # the row came after the stop was called: no group_stop stood when the stopper ran
-        assert spy.before and all("group_stop" not in kinds for kinds in spy.before)
-        outcomes[label] = (run_dir, view, row["method"])
-        assert row["confirmed_gone"] is True
-        assert view.cleanup is not None and view.cleanup.processes == "released"
-        assert "cleanup" in view.to_dict() and view.to_dict()["cleanup"] == {
-            "processes": "released"
-        }
-        assert support.marked(run_dir.name) == set(), label  # the projection agrees with the table
-    # a plugin that starts nothing was not signalled; every path that left a process was
-    assert outcomes["pass"][2] == "exit"
+        outcomes[label] = _stopped_terminal_path(label, plugin, args, deadline)
+    # every path that left a process was signalled
     assert outcomes["fail"][2] == outcomes["cancel"][2] == outcomes["deadline"][2] == "signal"
-    assert outcomes["pass"][1].state == "succeeded"
     assert outcomes["fail"][1].state == "failed"
     assert outcomes["cancel"][1].state == "cancelled"
     assert outcomes["deadline"][1].state == "timed_out"
 
 
+@pytest.mark.proves(
+    "WR-OWN-6", "WR-OWN-6:gone-group-reports-released", "core", "core", "PROC", "BOTH"
+)
+@pytest.mark.proves("WR-OWN-3", "WR-OWN-3:success-no-survivor", "core", "core", "PROC", "BOTH")
+def test_group_stop_row_on_the_pass_path() -> None:
+    """K-8 (REAP_ON_SUCCESS): a succeeded run's group is stopped through the stopper too."""
+    _, view, method = _stopped_terminal_path("pass", "echo", {"message": "gs"}, False)
+    # a plugin that starts nothing was not signalled
+    assert method == "exit"
+    assert view.state == "succeeded"
+
+
+def _unconfirmed_projects_unknown(plugin: str, args: dict[str, object], deadline: bool) -> None:
+    kernel = support.spine_kernel()
+    kernel.control.conductor.stopper = SpyStopper(lambda k=kernel: k.home / "runs", UNCONFIRMED)
+    run_dir, view = _run(kernel, plugin, args, deadline=deadline)
+    try:
+        (row,) = _group_stops(run_dir)
+        assert row["confirmed_gone"] is False
+        assert view.cleanup is not None and view.cleanup.processes == "unknown"
+    finally:
+        # the injected stopper killed nothing: clean up what the plugin left
+        from tests.proof import ancestry
+
+        ancestry.reap(support.marked(run_dir.name))
+
+
 def test_unconfirmed_stopper_projects_unknown_on_every_path_pass_included() -> None:
+    """The fail and deadline paths; the pass path (K-8) is
+    `test_unconfirmed_stopper_projects_unknown_on_the_pass_path`, a CK-8 node."""
     for plugin, args, deadline in (
-        ("echo", {"message": "gs"}, False),
         ("leaver", {"seconds": support.SHORT_DEADLINE_S, "fail": True}, False),
         ("slow", {"seconds": tolerances.JOIN_WAIT_S * 6}, True),
     ):
-        kernel = support.spine_kernel()
-        kernel.control.conductor.stopper = SpyStopper(lambda k=kernel: k.home / "runs", UNCONFIRMED)
-        run_dir, view = _run(kernel, plugin, args, deadline=deadline)
-        try:
-            (row,) = _group_stops(run_dir)
-            assert row["confirmed_gone"] is False
-            assert view.cleanup is not None and view.cleanup.processes == "unknown"
-        finally:
-            # the injected stopper killed nothing: clean up what the plugin left
-            from tests.proof import ancestry
+        _unconfirmed_projects_unknown(plugin, args, deadline)
 
-            ancestry.reap(support.marked(run_dir.name))
+
+@pytest.mark.proves("WR-OWN-3", "WR-OWN-3:success-no-survivor", "core", "core", "PROC", "BOTH")
+def test_unconfirmed_stopper_projects_unknown_on_the_pass_path() -> None:
+    """K-8 (REAP_ON_SUCCESS): the success path's stop goes through the stopper, so an
+    unconfirmed stop on a succeeded run projects `unknown`."""
+    _unconfirmed_projects_unknown("echo", {"message": "gs"}, False)
 
 
 def test_a_plugin_that_starts_nothing_ends_released_never_nothing_created() -> None:

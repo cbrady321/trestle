@@ -229,6 +229,121 @@ def test_drill_on_the_cks_own_pr_derives_the_scope_from_the_pr_diff(tmp_path: Pa
     assert report.touched == report.patch.scope
 
 
+LATER_DOCS = "\nthe later chunk's text\n"
+
+
+def _marker(repo: Path, gate: str) -> str:
+    _git(repo, "commit", "-q", "--allow-empty", "-m", f"Bundle-Merge: {gate}")
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _plant_bundle(tmp_path: Path, *, later_marker: bool = True) -> tuple[Path, dict[str, str]]:
+    """master: base (no switch module); bundle branch, first-parent: chunk A adds pkg/core.py (as
+    CL-C2 adds `_codec.py`) + `Bundle-Merge: A`; the CK-9 chunk + `Bundle-Merge: CK-9`; a LATER
+    chunk editing docs/agents.md (a CK chunk file) + `Bundle-Merge: LATER` unless not yet written.
+    origin/master stays at the base. Returns (repo, shas by name)."""
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True)
+    _git(repo, "init", "-q", "-b", "master")
+    _git(repo, "config", "user.name", "t")
+    _git(repo, "config", "user.email", "t@t")
+    _write(repo, "docs/agents.md", BASE_DOCS)
+    _write(repo, "tests/proof/temporary.toml", ENTRY_T9 + "\n" + ENTRY_OTHER)
+    _write(repo, "tests/proof/labels.d/core.toml", LABELS)
+    _write(repo, "other.py", "x = 1\n")
+    shas = {"base": _commit(repo, "base")}
+    _git(repo, "update-ref", "refs/remotes/origin/master", shas["base"])
+    _git(repo, "checkout", "-q", "-b", "wr/core-bundle/x")
+    _write(repo, "pkg/core.py", BASE_CORE)
+    _write(repo, "other.py", "x = 2\n")
+    _commit(repo, "L.A.1: an earlier gate adds the switch module")
+    shas["A"] = _marker(repo, "A")
+    _write(repo, "pkg/core.py", CK_CORE)
+    _write(repo, "docs/agents.md", CK_DOCS)
+    _write(repo, "tests/proof/temporary.toml", ENTRY_OTHER)
+    _write(repo, "tests/core/test_ck9.py", "def test_ck9():\n    pass\n")
+    _commit(repo, "L.CK-9.1: the CK leaf")
+    shas["CK-9"] = _marker(repo, "CK-9")
+    _write(repo, "docs/agents.md", CK_DOCS + LATER_DOCS)
+    shas["later"] = _commit(repo, "L.LATER.1: a later gate edits a file of the CK's chunk")
+    if later_marker:
+        shas["LATER"] = _marker(repo, "LATER")
+    return repo, shas
+
+
+def test_bundle_pr_drill_scopes_each_ck_to_its_own_chunk(tmp_path: Path) -> None:
+    repo, shas = _plant_bundle(tmp_path)
+    span = ck_drill.span_for(repo, "CK-9")
+    # the chunk between the previous gate's marker and CK-9's own; the marker is its landing
+    assert (span.base, span.head, span.landing) == (shas["A"], shas["CK-9"], shas["CK-9"])
+    report = ck_drill.drill(repo, DECLINE, lane_globs=LANE_GLOBS)
+    assert report.problems == []
+    patch = report.patch
+    # only the chunk's own files: chunk A's other.py / pkg/core.py creation is not the CK's
+    assert "other.py" not in patch.scope
+    assert patch.reverted == {"pkg/core.py", "tests/core/test_ck9.py", "tests/proof/temporary.toml"}
+    assert patch.edits["pkg/core.py"] == BASE_CORE  # the pre-chunk text, not deleted
+    assert patch.edits["tests/core/test_ck9.py"] is None
+    # a chunk file a later chunk changed is left in place: the later edit survives the decline
+    assert patch.left == {"docs/agents.md"}
+    docs = patch.edits["docs/agents.md"]
+    assert docs is not None and "K-9" not in docs and docs.endswith(LATER_DOCS)
+    assert report.touched == patch.scope
+
+
+def test_bundle_span_whole_pr_diff_deletes_an_earlier_gates_switch_module(tmp_path: Path) -> None:
+    """The CK-3/4 failure at H: over merge-base..HEAD the switch module an earlier gate added is
+    reverted to the base, i.e. deleted; over the CK's own chunk it goes back to that gate's text."""
+    repo, shas = _plant_bundle(tmp_path)
+    whole = ck_drill.Span(base=shas["base"], head="HEAD", landing=None)
+    with pytest.raises(ck_drill.DrillFailure, match="has no file at HEAD"):
+        ck_drill.drill(repo, DECLINE, lane_globs=LANE_GLOBS, span=whole)
+    assert ck_drill.drill(repo, DECLINE, lane_globs=LANE_GLOBS).problems == []
+
+
+def test_bundle_span_trailing_chunk_and_pr_merge_ref(tmp_path: Path) -> None:
+    repo, shas = _plant_bundle(tmp_path, later_marker=False)
+    # a gate whose marker is not written yet is the trailing chunk: last marker..HEAD
+    span = ck_drill.span_for(repo, "LATER")
+    assert (span.base, span.head, span.landing) == (shas["CK-9"], "HEAD", None)
+    _marker(repo, "LATER")
+    # actions/checkout on a PR: HEAD merges the bundle head into an advanced master
+    _git(repo, "checkout", "-q", "master")
+    _write(repo, "unrelated.txt", "master moved on\n")
+    master = _commit(repo, "master moves on")
+    _git(repo, "update-ref", "refs/remotes/origin/master", master)
+    _git(repo, "checkout", "-q", "--detach", master)
+    _git(repo, "merge", "--no-ff", "-q", "wr/core-bundle/x", "-m", "Merge into master")
+    span = ck_drill.span_for(repo, "CK-9")
+    assert (span.base, span.head, span.landing) == (shas["A"], shas["CK-9"], shas["CK-9"])
+    assert ck_drill.span_for(repo, "A").base == shas["base"]  # the first gate: the fork point
+
+
+def test_ordinary_pr_without_markers_keeps_the_whole_pr_diff(tmp_path: Path) -> None:
+    repo, base = _plant(tmp_path)
+    _git(repo, "update-ref", "refs/remotes/origin/master", base)
+    _git(repo, "checkout", "-q", "wr/x/ck-9")
+    assert ck_drill.span_for(repo, "CK-9") == ck_drill.Span(base=base, head="HEAD", landing=None)
+
+
+def test_regression_runs_the_declined_tree_and_skips_the_baseline_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[list[str], dict[str, str]]] = []
+
+    def fake_run(root: Path, cmd: list[str], env: dict[str, str]) -> subprocess.CompletedProcess:
+        calls.append((cmd, env))
+        return subprocess.CompletedProcess(cmd, 0, stdout="{}\n", stderr="")
+
+    monkeypatch.setattr(ck_drill, "_run", fake_run)
+    _write(tmp_path, ".github/workflows/ci.yml", "jobs: {}\n")
+    assert ck_drill.run_regression(tmp_path, DECLINE).failures == []
+    pytest_cmd, env = next((c, e) for c, e in calls if any(a.startswith("--deselect") for a in c))
+    # spawned `python -P` children import trestle from the path: the declined scratch tree first
+    assert env["PYTHONPATH"].split(os.pathsep)[0] == str(tmp_path)
+    assert "--deselect=tests/proof/selftest/test_baseline.py" in pytest_cmd
+
+
 def test_switch_isolation_fails_when_a_changed_call_site_ignores_the_switch(
     tmp_path: Path,
 ) -> None:
