@@ -39,6 +39,7 @@ from trestle.workflow.units import (
     ActContext,
     Acted,
     EffectFacets,
+    NoAction,
     ObserveContext,
     ReadFacets,
     Step,
@@ -87,6 +88,8 @@ class RigCancel:
     def __init__(self, clock: ManualClock) -> None:
         self._clock = clock
         self.stop: StopCause | None = None
+        self.stop_on_wait: int | None = None  # raise the stop flag during the n-th wait (1-based)
+        self.stop_cause = StopCause.CANCEL
         self.waits: list[timedelta] = []
 
     @property
@@ -98,6 +101,8 @@ class RigCancel:
 
     def wait(self, timeout: timedelta) -> bool:
         self.waits.append(timeout)
+        if self.stop_on_wait is not None and len(self.waits) >= self.stop_on_wait:
+            self.stop = self.stop_cause
         if self.stop is not None:
             return True
         self._clock.advance(timeout.total_seconds())
@@ -132,7 +137,9 @@ class RigServices:
         deadline: datetime,
         release_slice_s: float,
         plan: compiler.AdmittedPlan | None = None,
+        slice_end: datetime | None = None,
     ) -> None:
+        self._slice_end = slice_end
         self._inner = inner
         self._clock = clock
         self._cancel = cancel
@@ -164,6 +171,8 @@ class RigServices:
         )
 
     def slice_end(self, path: NodePath) -> datetime:
+        if self._slice_end is not None:
+            return self._slice_end
         return self._inner.slice_end(path)
 
     def cancellation(self) -> RigCancel:
@@ -250,6 +259,7 @@ def observation(
     code: str | None = None,
     detail: str = "",
     preconditions: tuple[str, ...] | None = None,
+    currency: tuple[Any, ...] = (),
 ) -> Observation:
     """A well-formed observation whose preconditions are named `pre0`.. unless told otherwise."""
     from trestle.workflow.values import FoundRef
@@ -267,7 +277,7 @@ def observation(
         preconditions=tuple(
             (n, CheckResult(ok, None, "")) for n, ok in zip(names, pre, strict=False)
         ),
-        currency=(),
+        currency=currency,
         found=refs,
         code=code,
         payload=None,
@@ -313,7 +323,7 @@ class Unit:
         self.releases += 1
         self.log.append("release")
         if self._release is None:
-            return Acted()
+            return NoAction("unit.no_release")
         return self._release(self, params, handle, effects, ctx)
 
 
@@ -321,9 +331,9 @@ class Unit:
 
 
 class Marker:
-    """An in-memory marker behind `ResourceReads`, `ResourceCreate` and `ResourceOwned`: created by
-    `create`, ready after `ready_after` observations, gone `absent_after` observations after a
-    `stop` (never, if `stop_holds`)."""
+    """An in-memory marker behind `ResourceReads`, `ResourceCreate` and `ResourceOwned`: each
+    `create` makes one instance (keyed by its effect id), ready after `ready_after` observations;
+    an instance is gone `absent_after` observations after its `stop` (never, if `stop_holds`)."""
 
     def __init__(
         self,
@@ -343,11 +353,15 @@ class Marker:
         self.stop_holds = stop_holds
         self.create_status = create_status
         self.create_code = create_code
-        self.present = False
-        self.stopped = False
+        self.live: set[str] = set()
+        self.stopped_at: dict[str, int] = {}  # effect -> observation count at its stop
         self.observations = 0
-        self.since_stop = 0
         self.calls: list[str] = []
+        self.stops: list[str] = []  # the effect of each handle `stop` was called with
+
+    @property
+    def present(self) -> bool:
+        return bool(self.live)
 
     # ResourceReads
     def observe(
@@ -355,10 +369,11 @@ class Marker:
     ) -> ports.ResourceObservation:
         self.calls.append("observe")
         self.observations += 1
-        if self.stopped:
-            self.since_stop += 1
-            if self.since_stop > self.absent_after and not self.stop_holds:
-                self.present = False
+        if not self.stop_holds:
+            for name, at in list(self.stopped_at.items()):
+                if self.observations - at > self.absent_after:
+                    self.live.discard(name)
+                    del self.stopped_at[name]
         ref = (
             SelectorRef(lineage, effect or EFFECT, f"sel-{lineage.root_run_id}", NOW)
             if self.present
@@ -391,16 +406,20 @@ class Marker:
     def create(self, spec: ports.ResourceSpec, ticket: AttemptTicket) -> Confirmation:
         self.calls.append("create")
         if self.create_status is ConfirmationStatus.APPLIED:
-            self.present = not self.vanish_after_create
+            if not self.vanish_after_create:
+                self.live.add(ticket.effect)
             return Confirmation(
-                ConfirmationStatus.APPLIED, None, f"sel-{ticket.lineage.root_run_id}"
+                ConfirmationStatus.APPLIED,
+                None,
+                f"sel-{ticket.lineage.root_run_id}-{ticket.effect}",
             )
         return Confirmation(self.create_status, self.create_code, None)
 
     # ResourceOwned
     def stop(self, target: CreatedHandle, ticket: AttemptTicket) -> Confirmation:
         self.calls.append("stop")
-        self.stopped = True
+        self.stops.append(target.effect)
+        self.stopped_at[target.effect] = self.observations
         return Confirmation(ConfirmationStatus.APPLIED, None, None)
 
     def restart(self, target: OwnedHandle, ticket: AttemptTicket) -> Confirmation:
@@ -463,10 +482,17 @@ def marker_unit(
         effects.create(ports.ResourceCreate).create(SPEC, EFFECT)
         return Acted()
 
+    def release(
+        unit: Unit, params: Any, handle: CreatedHandle, effects: Any, ctx: ActContext
+    ) -> Step:
+        effects.owned(ports.ResourceOwned).stop(handle, STOP_EFFECT)
+        return Acted()
+
     return Unit(
         decl or declaration(effects=MARKER_EFFECTS),
         observe,
         advance or default_advance,
+        release,
     )
 
 
@@ -502,9 +528,15 @@ class Rig:
     sink: Sink
     ports: dict[type, object] = field(default_factory=dict)
     intent: dict[str, Any] = field(default_factory=dict)
+    sleeps: list[float] = field(default_factory=list)
+
+    def sleep(self, seconds: float) -> None:
+        """The RELEASE wait: a plain clock wait that only moves the manual clock."""
+        self.sleeps.append(seconds)
+        self.clock.advance(seconds)
 
     def loop(self) -> loop.Loop:
-        return loop.Loop(self.services, self.entry, self.intent, self.ports)
+        return loop.Loop(self.services, self.entry, self.intent, self.ports, sleep=self.sleep)
 
     def run(self) -> None:
         self.loop().run()
@@ -533,6 +565,7 @@ def build(
     shown: Callable[[compiler.AdmittedPlan], compiler.AdmittedPlan] | None = None,
     entry: WorkflowEntry | None = None,
     intent: Mapping[str, Any] | None = None,
+    slice_end_s: float | None = None,
 ) -> Rig:
     """A rig around `unit`. `plan` transforms the admitted (written) plan, `shown` only the plan
     the loop is shown (a tampered copy), `entry` overrides the entry the loop walks."""
@@ -572,6 +605,7 @@ def build(
         deadline=deadline,
         release_slice_s=admitted.release_slice,
         plan=shown_plan,
+        slice_end=None if slice_end_s is None else NOW + timedelta(seconds=slice_end_s),
     )
     return Rig(
         run_dir=run_dir,

@@ -208,6 +208,16 @@ class NodeRecordView:
     tickets: tuple[TicketView, ...] = ()
     steps: tuple[StepView, ...] = ()
 
+    def release_set(self) -> tuple[CreatedHandle, ...]:
+        """This node's part of the root's release set (V-4.4), in issue order: each
+        `CreatedHandle` of a `RUN` ticket not yet recorded released. `FOUND` and `DURABLE` entries
+        are not in it by construction. A record query, not a branch of the loop (B1-I1)."""
+        return tuple(
+            t.handle
+            for t in self.tickets
+            if t.handle is not None and t.released_at is None and t.lifetime is Lifetime.RUN
+        )
+
     def with_held(self, steps: Iterable[StepView]) -> NodeRecordView:
         """The view with the loop's in-process held steps appended after the durable ones
         (V-4.5, A1c3-1). The durable part is unchanged."""
