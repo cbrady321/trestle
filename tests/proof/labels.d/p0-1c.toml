@@ -1,0 +1,12 @@
+# CSC-1 labels registry fragment for lane P0-1C (MC-04). Declared once here;
+# other fragments do not redeclare these ids.
+
+[[label]]
+id = "WR-TERM-2:budget-edge-never-running"
+row = "WR-TERM-2"
+step = "core"
+slice = "core"
+tier = "PROC"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-1C.1"
