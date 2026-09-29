@@ -26,9 +26,11 @@ from datetime import timedelta
 from enum import StrEnum
 from typing import Protocol, final
 
+from trestle.workflow import codes
 from trestle.workflow.declarations import (
     CheckRef,
     EffectId,
+    HostScopeRef,
     HumanAction,
     Lifetime,
     RealizationKind,
@@ -54,7 +56,7 @@ from trestle.workflow.values import (
 
 type CatalogEntry = str  # trusted catalog id; never agent-supplied content (WR-AUTH-3)
 
-# ======================================================================= V-10 release descriptors
+# ==================== V-10 release descriptors
 
 
 @final
@@ -177,7 +179,7 @@ def as_descriptor(release: object) -> ReleaseDescriptor:
     raise DescriptorError(f"not a release descriptor: {type(release).__name__}")
 
 
-# ======================================================================= V-5 facet markers
+# ==================== V-5 facet markers
 
 
 @final
@@ -224,7 +226,7 @@ class HasRecordedResult(Protocol):
     def recorded(self) -> RecordedResult: ...  # V-5.5
 
 
-# ======================================================================= resource port
+# ==================== resource port
 
 
 @final
@@ -329,7 +331,137 @@ class ResourceOwned(OwnedEffectFacet, Protocol):
     def stop(self, target: CreatedHandle, ticket: AttemptTicket) -> Confirmation: ...
 
 
-# ======================================================================= execution port (events)
+class ResourceSafeStart(SafeStartFacet, Protocol):
+    def start(self, target: FoundRef | OwnedHandle, ticket: AttemptTicket) -> Confirmation: ...
+
+    # stopped -> running only (B3-C6): never restart, recreate, reconfigure or delete (WR-OWN-10)
+
+
+# ==================== grant port (demo credentials only)
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class GrantObservation:
+    identity: str  # <= TOKEN_MAX (V-13)
+    expires_at: Instant
+    generation: str  # <= TOKEN_MAX (V-13)
+    interactive_required: bool
+    found: FoundRef  # the host demo credential; the only value GrantRefresh.refresh accepts
+    code: StableCode | None  # GRANT_ISSUER_UNREACHABLE when the issuer cannot be read (B3-C8)
+    # no field can hold a secret value (WR-EVID-12)
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class ConsumerCurrency:
+    authenticated: bool  # one authenticated call made from inside the consumer (WR-VERIFY-6)
+    generation_seen: str | None  # <= TOKEN_MAX (V-13)
+    code: StableCode | None  # CREDENTIAL_STALE only when the port proved generation_seen older
+
+
+def grant_currency(consumer: ConsumerCurrency, host: GrantObservation) -> CurrencyFact | None:
+    """Fixed by the contract, not by an adapter (B3-C19): None iff the consumer did not
+    authenticate, saw no generation, or the host observation carries a code; else
+    `CurrencyFact(DEMO_CREDENTIAL, generation_seen, host.expires_at, older)` with `older` the
+    stale code exactly when the port reported it."""
+    if not consumer.authenticated or consumer.generation_seen is None or host.code is not None:
+        return None
+    return CurrencyFact(
+        subject=HostScopeRef.DEMO_CREDENTIAL,
+        observed_generation=consumer.generation_seen,
+        valid_until=host.expires_at,
+        older=codes.CREDENTIAL_STALE if consumer.code == codes.CREDENTIAL_STALE else None,
+    )
+
+
+class GrantReads(ReadFacet, Protocol):
+    def observe_host(self) -> GrantObservation: ...
+
+    def observe_in_consumer(
+        self, consumer: CreatedHandle | OwnedHandle | FoundRef | SelectorRef
+    ) -> ConsumerCurrency: ...
+
+
+class GrantRefresh(SafeStartFacet, Protocol):
+    def refresh(self, grant: FoundRef, ticket: AttemptTicket) -> Confirmation: ...
+
+
+class GrantDelivery(OwnedEffectFacet, Protocol):
+    def deliver(self, consumer: OwnedHandle, ticket: AttemptTicket) -> Confirmation: ...
+
+
+# ==================== resolver ports (read-only)
+
+
+def toolchain_currency(resolved: Resolved) -> CurrencyFact:
+    """Fixed by the contract (B3-C19): a fingerprint is either current or STALE."""
+    return CurrencyFact(
+        subject=HostScopeRef.TOOLCHAIN_INSTALLS,
+        observed_generation=resolved.adoption_fingerprint,
+        valid_until=None,
+        older=None,
+    )
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class HostScopeUnreadable:
+    """The subject's source could not be read; the subject has no reading (V-9.7, B3-C18)."""
+
+    subject: HostScopeRef
+    code: StableCode  # HOST_SCOPE_UNREADABLE
+
+
+class HostScopeReads(ReadFacet, Protocol):
+    def read(
+        self, subject: HostScopeRef
+    ) -> tuple[HostScopeRef, str, Instant] | HostScopeUnreadable: ...
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class Unresolved:
+    code: StableCode  # TOOLCHAIN_MISSING | TOOLCHAIN_INTERFACE_DRIFT | ADOPTION_STALE
+    tool: str  # <= NAME_MAX (V-13)
+    pin: str  # <= TOKEN_MAX (V-13)
+    human_action: HumanAction  # <= HUMAN_ACTION_MAX (V-13)
+
+
+class ToolchainResolver(ReadFacet, Protocol):
+    def resolve(self, project: CatalogEntry, tool: str) -> Resolved | Unresolved: ...
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class Closure:
+    services: frozenset[str]  # <= IDSET_MAX members (V-13)
+    edges: frozenset[tuple[str, str]]  # <= 4 x IDSET_MAX (V-13)
+    definition_fingerprint: str  # <= TOKEN_MAX (V-13)
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class ClosureRefused:
+    code: StableCode  # UNKNOWN_IDENTIFIER | COMPOSE_DEFINITION_INVALID | BOUND_EXCEEDED
+    subject: BoundedText
+
+
+class ComposeResolver(ReadFacet, Protocol):
+    def closure(
+        self, project: CatalogEntry, selected: frozenset[str]
+    ) -> Closure | ClosureRefused: ...
+
+
+class ToolchainProvisioning(SafeStartFacet, Protocol):  # durable, host-scoped; not a resolver
+    def refresh_adoption(self, project: CatalogEntry, ticket: AttemptTicket) -> Confirmation: ...
+
+    def install_pinned(
+        self, project: CatalogEntry, tool: str, ticket: AttemptTicket
+    ) -> Confirmation: ...
+
+
+# ==================== execution port (events)
 
 
 class ExecutionClass(StrEnum):
@@ -370,3 +502,39 @@ class ExecutionPort(EventFacet, Protocol):
         cancel: CancelSignal,  # the only port member that takes cancel or a deadline (B3-C22)
         until: Instant,
     ) -> tuple[Confirmation, ExecutionResult | None]: ...  # None only with NOT_APPLIED (V-5.5)
+
+
+# ==================== incidental write sets (V-5.1 (c))
+
+INCIDENTAL_WRITES: Mapping[str, frozenset[str]] = {
+    # read operation -> path patterns; ${ENVELOPE} and ${CONSUMER_EPHEMERAL} are declared roots.
+    # A contract value (B3-C20), not an adapter setting: an implementation may not widen it.
+    "ResourceReads.observe": frozenset(),
+    "ResourceReads.check": frozenset(),
+    "ResourceReads.endpoint": frozenset(),
+    "ComposeResolver.closure": frozenset(),
+    "GrantReads.observe_host": frozenset(),
+    "GrantReads.observe_in_consumer": frozenset({"${CONSUMER_EPHEMERAL}/**"}),
+    "ToolchainResolver.resolve": frozenset({"${ENVELOPE}/cache/**", "${ENVELOPE}/state/**"}),
+    "HostScopeReads.read": frozenset({"${ENVELOPE}/cache/**", "${ENVELOPE}/state/**"}),
+}
+
+# ==================== port families (B3-C21)
+
+FAMILIES: Mapping[str, tuple[type, ...]] = {
+    # The one map from the seven adapter families to this boundary's protocols. A family is a
+    # grouping of implementations, never a port of its own; there is no TestRun port (TestRun is
+    # ExecutionPort) and no provisioning-submit port (a submit is ResourceCreate.create with
+    # RealizationKind.PROVISIONED).
+    "Command Execution": (ExecutionPort,),
+    "Toolchain Resolution & Provisioning": (
+        ToolchainResolver,
+        ToolchainProvisioning,
+        HostScopeReads,
+    ),
+    "Container Control": (ResourceReads, ResourceCreate, ResourceOwned, ResourceSafeStart),
+    "Local Process Supervision": (ResourceReads, ResourceCreate, ResourceOwned),
+    "Demo Credential Serving": (GrantReads, GrantRefresh, GrantDelivery, HostScopeReads),
+    "Provisioning & Testing": (ResourceCreate, ResourceReads, ExecutionPort),
+    "Read-Only Probes": (ResourceReads, ComposeResolver),
+}
