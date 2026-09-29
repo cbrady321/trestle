@@ -19,6 +19,7 @@ from trestle.workflow.declarations import (
     LoopFlags,
     WorkflowEntry,
 )
+from trestle.workflow.registration import check_declaration
 
 # The spelling of the wire code `publication.declaration_invalid` (L.SV-2.3 adds the constant to
 # `trestle/common/codes.py`; `trestle.workflow` may not import it).
@@ -183,8 +184,16 @@ def resolve_root(entry: WorkflowEntry) -> LeafDeclaration | AllDeclaration | Cho
 
 
 def extract_declared_tree(entry: WorkflowEntry) -> DeclaredTree:
-    """Extract `entry`'s declared tree, or raise `ExtractionRefused`."""
+    """Extract `entry`'s declared tree, or raise `ExtractionRefused`.
+
+    The root declaration must pass `check_declaration` (B1-E1, L.SL-7.1) first: the refusal
+    carries the first registration refusal's stable code and names its element."""
     decl = resolve_root(entry)
+    refusals = check_declaration(decl)
+    if refusals:
+        first = refusals[0]
+        extra = f" (+{len(refusals) - 1} more)" if len(refusals) > 1 else ""
+        raise ExtractionRefused(entry.root, first.message + extra, code=first.code)
     try:
         return DeclaredTree.build(entry.root, {ROOT_PATH: declaration_node(decl)})
     except DeclaredTreeInvalid as exc:
