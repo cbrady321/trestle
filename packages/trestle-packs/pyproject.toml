@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Pre-built workflow packs for Trestle plugins — Docker, pytest, migrations"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["trestle"]
 
 [project.optional-dependencies]
 docker = ["python-on-whales>=0.76"]
