@@ -15,5 +15,5 @@ authorized_by = "root '## Rollback posture': CS-1 (K-18, forward-only, isolated,
 [[boundary]]
 merge = "SV-3"
 class = "drain"
-evidence = "pending:SV-3"
+evidence = "tests/single/control/test_drain_check.py::test_drain_check_counts_nonterminal_plan_bearing_roots"
 authorized_by = "root '## Rollback posture': SV-3 (first plan-bearing version - drain first)"

@@ -6,3 +6,10 @@
 # with exactly its `reader`. Withdrawn CM-9 keys (CM-12) -- `retires_at`,
 # `scope`, `register_id` -- are load errors; an exception is not a register
 # entry (CM-7) and nothing here retires it.
+
+[[exception]]
+id = "E-SV3-1"
+reader = "wr-ckpt/core"
+states = ["single/inflight-plan-bearing"]
+declared_by = "L.SV-3.8"
+note = "drain rule: readers before SV-3 do not fold or sweep a non-terminal plan-bearing root"
