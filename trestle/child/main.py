@@ -25,6 +25,7 @@ from trestle.common.errtext import sanitize
 from trestle.common.fsutil import atomic_write, atomic_write_json
 from trestle.common.limits import capture_limits
 from trestle.common.types import DeclaredMetadata, RunSpec
+from trestle.plugin._codec import hydrate
 
 CHILD_ERROR = "child_error.json"
 _EXC_TYPE_MAX = 128
@@ -148,10 +149,28 @@ def _bind_args(
         if name == "ctx":
             continue
         if name in args:
-            bound[name] = args[name]
+            bound[name] = _hydrate_arg(fn, param, args[name])
         elif param.default is inspect.Parameter.empty:
             raise TypeError(f"missing required arg: {name}")
     return bound
+
+
+def _hydrate_arg(fn: Callable[..., object], param: inspect.Parameter, value: object) -> object:
+    """One admitted JSON value as its annotation (the codec, MC-CORE-08).
+
+    A postponed annotation is evaluated in the plugin module's own namespace;
+    one that cannot be evaluated leaves the value as it arrived (today's
+    behaviour), since admission has already accepted it.
+    """
+    annotation = param.annotation
+    if annotation is inspect.Parameter.empty:
+        return value
+    if isinstance(annotation, str):
+        try:
+            annotation = eval(annotation, getattr(fn, "__globals__", {}))  # noqa: S307
+        except Exception:
+            return value
+    return hydrate(annotation, value)
 
 
 if __name__ == "__main__":
