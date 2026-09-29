@@ -17,7 +17,7 @@ from trestle.common.fsutil import atomic_write_json
 from trestle.common.ids import generate_artifact_id
 from trestle.common.pyenv import build_child_env, python_argv
 from trestle.common.types import WorkOrder
-from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, work_dir
+from trestle.server.ledger import RunLedger, count_events, evidence_dir, ledger_path, work_dir
 from trestle.server.procident import Attribution, GroupStop, Identity, ProcessSource, stop_group
 from trestle.server.runs import RunRegistry, cancel_flag_path
 from trestle.server.scheduler import Scheduler
@@ -80,6 +80,7 @@ class Conductor:
             run_id=order.run_id,
             completeness="complete",
             result_state="absent",
+            event_count=0,
         )
         ledger.append(classification, run_id=order.run_id)
         return classification
@@ -266,6 +267,7 @@ class Conductor:
             run_id=order.run_id,
             completeness=completeness,
             result_state=result_state,
+            event_count=count_events(evidence_dir(run_dir)),
         )
         ledger.append(classification, run_id=order.run_id)
 

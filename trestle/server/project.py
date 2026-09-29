@@ -25,7 +25,13 @@ from trestle.common.types import (
     RunView,
 )
 from trestle.query.fs import FilesystemQueryBackend
-from trestle.server.ledger import TERMINAL_KINDS, RunLedger, evidence_dir, ledger_path
+from trestle.server.ledger import (
+    TERMINAL_KINDS,
+    RunLedger,
+    count_events,
+    evidence_dir,
+    ledger_path,
+)
 from trestle.server.pins import PinStore
 from trestle.server.projection import (
     build_summary,
@@ -349,15 +355,15 @@ class Project:
                 1 for record in ledger.records if record.get("kind") == "artifact_available"
             )
 
+        # MC-12: a finalized run's count is on its `evidence_finalized` row, read with no file
+        # scan; a run still in flight (or one finalized before the field existed) is counted live
         event_count = 0
-        if evidence is not None:
-            events_path = evidence / "events.ndjson"
-            if events_path.exists():
-                event_count = sum(
-                    1
-                    for line in events_path.read_text(encoding="utf-8").splitlines()
-                    if line.strip()
-                )
+        finalized = ledger.last_kind("evidence_finalized")
+        recorded = finalized.get("event_count") if finalized is not None else None
+        if isinstance(recorded, int) and not isinstance(recorded, bool):
+            event_count = recorded
+        elif evidence is not None:
+            event_count = count_events(evidence)
 
         summary = None
         truncated = False

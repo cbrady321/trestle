@@ -4,16 +4,20 @@ a declared field that cannot fit says so (WR-TERM-5)."""
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from tests.proof import harness, tolerances
+from tests.core.answer.plugins import hundred_services
+from tests.proof import harness, mcp_host, tolerances
 from trestle.child.index import Index
+from trestle.common import codes
 from trestle.common.types import DeclaredMetadata, PublishView, RunView
 from trestle.server import project as project_module
 from trestle.server import projection
-from trestle.server.ledger import run_dir_for
+from trestle.server.ledger import RunLedger, count_events, ledger_path, run_dir_for
 
 MIB = 1024 * 1024
 
@@ -246,3 +250,158 @@ def test_declared_fields_read_only_via_load_declared(
 def view_snapshot_id(kernel, view: RunView) -> str:  # type: ignore[no-untyped-def]
     spec = run_dir_for(kernel.home, view.run_id) / "evidence" / "spec.json"
     return str(json.loads(spec.read_text("utf-8"))["snapshot_id"])
+
+
+# ---- L.CL-B1.2: event_count on the ledger; the one-vertex hundred-service answer -------------
+
+HUNDRED_DIR = Path(__file__).resolve().parent / "plugins"
+MAX_PAGES = 200  # a bound on following a cursor, far above what ~10 MiB of logs needs
+
+
+def _host_run(host: mcp_host.McpHost, mode: str) -> dict[str, Any]:
+    shutil.copy(HUNDRED_DIR / "hundred_services.py", host.home / "plugins")
+    answer = host.call(
+        "run",
+        {
+            "plugin": "hundred_services",
+            "args": {"mode": mode},
+            "wait_ms": tolerances.HARNESS_WAIT_MS,
+            "completion": "terminal",
+        },
+    )
+    assert isinstance(answer, dict) and "run_id" in answer, answer
+    return answer
+
+
+def _run_dir(host: mcp_host.McpHost, run_id: str) -> Path:
+    (found,) = sorted((host.home / "runs").glob(f"*/{run_id}"))
+    return found
+
+
+def _log_volume(run_dir: Path) -> int:
+    evidence = run_dir / "evidence"
+    files = [evidence / "events.ndjson", *(evidence / "console").glob("*.log")]
+    files += [p for p in (evidence / "artifacts").glob("*") if p.is_file()]
+    return sum(p.stat().st_size for p in files if p.exists())
+
+
+def _pages(host: mcp_host.McpHost, view: str, run_id: str) -> list[dict[str, Any]]:
+    """Every row of a run-scoped view, following `next_cursor` until it ends."""
+    rows: list[dict[str, Any]] = []
+    cursor: str | None = None
+    for _ in range(MAX_PAGES):
+        args: dict[str, Any] = {"view": view, "params": {"run_id": run_id}}
+        if cursor is not None:
+            args["cursor"] = cursor
+        page = host.call("query", args)
+        assert "items" in page, page
+        rows.extend(page["items"])
+        cursor = page.get("next_cursor")
+        if not cursor:
+            return rows
+    raise AssertionError(f"{view} did not end within {MAX_PAGES} pages")
+
+
+def _assert_every_handle_fetches(
+    host: mcp_host.McpHost, answer: dict[str, Any], run_dir: Path
+) -> None:
+    run_id = answer["run_id"]
+    # the answer's own handle (only a run that returned a result has one)
+    if answer.get("next"):
+        fetched = host.call(
+            "fetch", {"target": answer["next"], "window": {"kind": "jsonpath", "expr": "$.verdict"}}
+        )
+        assert fetched.get("values") == ["pass"], fetched
+    # every artifact handle
+    artifacts = _pages(host, "run_artifacts", run_id)
+    assert len(artifacts) == hundred_services.ARTIFACT_COUNT
+    for row in artifacts:
+        assert row["state"] == "available"
+        fetched = host.call(
+            "fetch", {"target": row["artifact_id"], "window": {"kind": "head", "count": 16}}
+        )
+        assert "tag" in fetched and "code" not in fetched, fetched
+    # the console and the events resolve to bounded pages that end
+    assert _pages(host, "run_tail", run_id)
+    assert _pages(host, "run_events", run_id)
+
+
+@pytest.mark.proves(
+    "WR-TERM-5", "WR-TERM-5:hundred-service-decisive-in-budget", "core", "core", "MCP", "CI"
+)
+@pytest.mark.proves("WR-TERM-5", "WR-TERM-5:every-handle-fetches", "core", "core", "MCP", "CI")
+def test_hundred_service_answer_pass_and_fail(tmp_path: Path) -> None:
+    with mcp_host.McpHost(home=tmp_path / "host-home") as host:
+        passed = _host_run(host, "pass")
+        failed = _host_run(host, "fail")
+        pass_dir = _run_dir(host, passed["run_id"])
+        fail_dir = _run_dir(host, failed["run_id"])
+
+        # the fixture leaves about ten MiB of logs, across console, events and artifacts
+        for run_dir in (pass_dir, fail_dir):
+            assert _log_volume(run_dir) >= 9 * MIB
+            for stream in (run_dir / "evidence" / "events.ndjson",):
+                assert stream.stat().st_size > MIB
+            assert sum(p.stat().st_size for p in (run_dir / "evidence" / "console").glob("*")) > MIB
+            assert (
+                sum(p.stat().st_size for p in (run_dir / "evidence" / "artifacts").glob("*")) > MIB
+            )
+
+        # pass: the class and the decisive fields, within the run's own budget
+        assert passed["state"] == "succeeded"
+        assert passed["outcome"]["class"] == "passed"
+        summary = passed["summary"]
+        assert summary["verdict"] == "pass"
+        assert summary["failed_services"] == []
+        assert summary["service_count"] == hundred_services.SERVICE_COUNT
+        assert "services" not in summary  # the hundred records stay behind the handle
+        assert passed["truncated"] is True and "services" in passed["omitted"]
+        spec = json.loads((pass_dir / "evidence" / "spec.json").read_text("utf-8"))
+        assert (
+            len(json.dumps(summary, separators=(",", ":")).encode("utf-8"))
+            <= spec["summary_budget"]
+        )
+        frame_bytes = len(json.dumps(passed, separators=(",", ":")).encode("utf-8"))
+        assert frame_bytes < 16 * 1024  # the whole answer is small next to ten MiB of logs
+
+        # fail: the class, the code and a bounded explanation
+        assert failed["state"] == "failed"
+        assert failed["outcome"]["class"] == "execution_error"
+        assert failed["outcome"]["code"] == codes.EXECUTION_PLUGIN_RAISED
+        assert hundred_services.service_name(hundred_services.UNHEALTHY) in json.dumps(
+            failed["error"]
+        )
+        assert len(json.dumps(failed, separators=(",", ":")).encode("utf-8")) < 16 * 1024
+
+        # every handle either answer names fetches
+        _assert_every_handle_fetches(host, passed, pass_dir)
+        _assert_every_handle_fetches(host, failed, fail_dir)
+
+
+def test_event_count_is_recorded_on_evidence_finalized_and_read_from_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    kernel = harness.fresh_kernel(home=tmp_path / "home")
+    view = kernel.control.run(
+        plugin="echo", args={"message": "count"}, wait_ms=tolerances.HARNESS_WAIT_MS
+    )
+    assert isinstance(view, RunView) and view.state == "succeeded"
+    run_dir = run_dir_for(kernel.home, view.run_id)
+    lines = [
+        line
+        for line in (run_dir / "evidence" / "events.ndjson").read_text("utf-8").splitlines()
+        if line.strip()
+    ]
+    row = RunLedger.open(ledger_path(run_dir)).last_kind("evidence_finalized")
+    assert row is not None
+    assert (
+        row["event_count"] == len(lines) == count_events(run_dir / "evidence") == view.event_count
+    )
+
+    # once finalized, a poll reads the count from the row: it never opens the events file
+    def refuse(_evidence: Path) -> int:
+        raise AssertionError("event_count must come from the ledger row, not a file scan")
+
+    monkeypatch.setattr(project_module, "count_events", refuse)
+    again = kernel.control.project.status(view.run_id)
+    assert isinstance(again, RunView) and again.event_count == view.event_count
