@@ -219,7 +219,7 @@ abnormally is `worker_exit`; a run whose server died is `interrupted`.
 - `wait_ms>0` on a slow plugin → returns a **`running` frame** when the deadline elapses; join with `await_runs`.
 - Terminal within `wait_ms` → terminal `RunView` in one call.
 
-**Long jobs:** use a short `wait_ms` to get `run_id` quickly, then `await_runs` with a longer `timeout_ms`.
+**Long jobs:** call `run(plugin="…", args={…}, wait_ms=<above zero>, completion="terminal")`. One call returns the finished run, bounded by the run's own deadline plus a published margin, and no follow-up call is needed. Polling is for bounded mode only: with the default `completion="bounded"`, a run that outlives `wait_ms` returns a `running` frame and `await_runs` joins it.
 
 **`completion` (optional, default `"bounded"`, which is everything above unchanged).** Pass `completion="terminal"` to make one `run` call return only a finished run: the response follows the run's finalized terminal row (evidence finalized, then `succeeded`, `failed`, `cancelled`, `timed_out` or `interrupted`), never a `running` frame. The call is bounded by the run's own deadline plus a published finalization margin, not by `wait_ms`: a `wait_ms` above zero is accepted and ignored, and `wait_ms=0` (or below) is refused `admission.invalid_args` because a terminal call has to wait; so is any `completion` value other than `bounded` or `terminal`. If the run is somehow not terminal by that bound, the call answers `projection.terminal_wait_exceeded` (a refusal, not a run state; the run itself is unaffected and `await_runs` still joins it). While a `terminal` call is held, other calls (`cancel`, `query`, `await_runs`) are still answered.
 
