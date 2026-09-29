@@ -243,6 +243,19 @@ class CreatedHandle(OwnedHandle):
 
 @final
 @dataclass(frozen=True, slots=True)
+class SelectorRef:
+    """A read-only address of the instance a run-scoped selector names (V-4.6, L.SV-5.6).
+    Produced only by `ResourceReads.observe`, accepted only by read members; nothing converts it
+    to a `FoundRef`, `OwnedHandle` or `CreatedHandle`, and the join never reads it."""
+
+    lineage: Lineage
+    effect: EffectId
+    selector: str  # this root's run-scoped selector for (lineage, effect) (V-10.1); <= TOKEN_MAX
+    observed_at: Instant
+
+
+@final
+@dataclass(frozen=True, slots=True)
 class Verdict:
     provenance: Provenance
     condition: Condition
