@@ -176,7 +176,15 @@ Full stack test in one `run`:
 }
 ```
 
-Then `await_runs(timeout_ms=600000)`. On pytest failure the stack is torn down automatically (`teardown` policy from `stack_spec`).
+Then `await_runs(timeout_ms=600000)`. The stack is stopped exactly once on every path (`teardown` policy from `stack_spec`; volumes are kept, see Teardown above):
+
+| Path | Teardown |
+|------|----------|
+| `up` fails | `up` tears the stack down itself, once; the pipeline does not tear down again |
+| migrate or pytest fails | once, after the failing stage |
+| success | once, after pytest passes (earlier releases left the stack running) |
+
+`teardown: none` means no effect on every path.
 
 ---
 

@@ -1,7 +1,8 @@
 """G-E3: (a) the legacy pytest runner never counts setup errors (BFD-46);
-(b) `integration_pipeline` tears the stack down twice when `up` fails and
-never when everything succeeds. Both run in a subprocess driver against a
-lane-local fake ComposeBackend (never an engine)."""
+(b) `integration_pipeline` stops its stack exactly once on every path (K-15),
+flipped by L.NW-1.2 (it used to tear down twice when `up` fails and never on
+success). Both run in a subprocess driver against a lane-local fake ComposeBackend
+(never an engine)."""
 
 from __future__ import annotations
 
@@ -65,24 +66,14 @@ def test_target_setup_error_counted_not_passed() -> None:
     )
 
 
-@pytest.mark.pin("G-E3")
-def test_pin_pipeline_down_twice_on_failure_zero_on_success() -> None:
-    failed = _drive("pipeline_fail")
-    assert failed["raised"]
-    assert failed["down"] == 2
-    ok = _drive("pipeline_ok")
-    assert ok["raised"] == ""
-    assert ok["down"] == 0
-
-
-@pytest.mark.target("G-E3")
 @pytest.mark.proves(
     "WR-ENV-11", "WR-ENV-11:pipeline-one-teardown@fake", "core", "core", "must", "CI"
 )
-@pytest.mark.xfail(strict=True, reason="defect:G-E3")
 def test_target_pipeline_down_exactly_once() -> None:
     failed = _drive("pipeline_fail")
+    assert failed["raised"]
     ok = _drive("pipeline_ok")
+    assert ok["raised"] == ""
     target_check(
         failed["down"] == 1 and ok["down"] == 1,
         "G-E3",
