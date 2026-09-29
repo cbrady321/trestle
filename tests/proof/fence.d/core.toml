@@ -61,7 +61,7 @@ globs         = ["trestle/plugin/**", "trestle/server/plugin_schema.py", "trestl
                  "tests/proof/drift/core/test_sa02_*.py", "tests/core/tooling/declines/ck_3_4.py", "tests/proof/labels.d/core.toml",
                  "tests/proof/labels.d/p0-1b.toml",
                  "tests/proof/gates.d/core.toml", "tests/proof/temporary.toml",
-                 "tests/pins/b_contract/facets.py", "tests/pins/b_contract/test_g_b1.py", "tests/pins/b_contract/test_g_b2.py", "tests/pins/b_contract/test_g_b4.py",
+                 "tests/proof/fence.d/core.toml", "tests/pins/b_contract/facets.py", "tests/pins/b_contract/test_g_b1.py", "tests/pins/b_contract/test_g_b2.py", "tests/pins/b_contract/test_g_b4.py",
                  "tests/pins/b_contract/test_g_b5.py"]
 
 [[lane]]
