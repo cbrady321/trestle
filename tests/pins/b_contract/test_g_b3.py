@@ -1,6 +1,7 @@
-"""G-B3 (BFD-04, BFD-15): a plugin exception leaves no explanation in the
-run view. Inverted by L.CS-3.1: the child now writes `evidence/child_error.json`, the one run
-file that holds the message; `RunView.error` stays empty until L.CS-3.3 reads the ledger row."""
+"""G-B3 (BFD-04, BFD-15), flipped by L.CS-3.3: a plugin exception is explained in the run view.
+
+The child writes `evidence/child_error.json` (L.CS-3.1), the conductor folds it into the ledger's
+`error_record` row (L.CS-3.2), and `RunView.error` reads that row."""
 
 from __future__ import annotations
 
@@ -13,30 +14,13 @@ from tests.pins.b_contract.plugins.raises import SENTINEL
 from tests.proof.markers import target_check
 
 
-def _run(tmp_path: Path):
-    view, run_dir = run_plugin(tmp_path, "raises")
-    assert view.state == "failed"
-    return view, run_dir
-
-
-@pytest.mark.pin("G-B3")
-def test_pin_only_child_error_file_holds_message(tmp_path: Path) -> None:
-    view, run_dir = _run(tmp_path)
-    files = [p for p in run_dir.rglob("*") if p.is_file()]
-    assert files
-    holders = [p for p in files if SENTINEL.encode() in p.read_bytes()]
-    assert [p.name for p in holders] == ["child_error.json"]
-    assert view.error is None
-
-
-@pytest.mark.target("G-B3")
 @pytest.mark.proves("A9.1", "A9.1", "A", "core", "must", "CI")
 @pytest.mark.proves(
     "WR-EVID-1", "WR-EVID-1:sentinel-in-runview-error", "core", "core", "must", "CI"
 )
-@pytest.mark.xfail(strict=True, reason="defect:G-B3")
 def test_target_runview_error_carries_message(tmp_path: Path) -> None:
-    view, _run_dir = _run(tmp_path)
+    view, _run_dir = run_plugin(tmp_path, "raises")
+    assert view.state == "failed"
     target_check(
         view.error is not None and SENTINEL in str(view.error),
         "G-B3",

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -16,9 +17,10 @@ import pytest
 
 from tests.core.spine import support
 from tests.core.spine.plugins.raiser import SENTINEL as RAISER_SENTINEL
-from tests.proof import harness, records, tolerances
+from tests.proof import harness, mcp_host, records, tolerances
 from trestle.common import clock, codes, errtext
 from trestle.common.types import RunView
+from trestle.query.fs import FilesystemQueryBackend
 from trestle.server.ledger import RunLedger, ledger_path
 from trestle.server.recovery import recover_run_dir, seed_interrupted_run
 
@@ -294,3 +296,79 @@ def test_recovery_keeps_the_error_the_run_already_wrote(tmp_path: Path) -> None:
         "phase": "call",
         "message": "kept",
     }
+
+
+# ---- L.CS-3.3: RunView.error and last_error read the ledger row -----------------------------
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+@pytest.mark.proves("A9.1", "A9.1", "A", "core", "MCP", "CI")
+@pytest.mark.proves(
+    "WR-EVID-1", "WR-EVID-1:sentinel-in-error-field-and-last-error", "core", "core", "MCP", "CI"
+)
+def test_e1_replay_sentinel_in_answer_error_field_and_last_error(tmp_path: Path) -> None:
+    with mcp_host.McpHost(home=tmp_path / "host-home") as host:
+        shutil.copy(support.SPINE_PLUGIN_DIR / "raiser.py", host.home / "plugins")
+        view = host.call("run", {"plugin": "raiser", "wait_ms": tolerances.HARNESS_WAIT_MS})
+        assert view["state"] == "failed", view
+        error = view["error"]
+        assert set(error) == {"code", "phase", "message"}
+        assert error["code"] == codes.EXECUTION_PLUGIN_RAISED and error["phase"] == "call"
+        assert RAISER_SENTINEL in error["message"]
+        last = host.call("query", {"view": "last_error", "params": {"run_id": view["run_id"]}})
+        (row,) = last["items"]
+        assert set(row) == {
+            "run_id",
+            "event_seq",
+            "kind",
+            "message",
+            "at",
+        }  # the shape is unchanged
+        assert RAISER_SENTINEL in row["message"] and row["message"] != "failed"
+        assert row["kind"] == "failed" and row["run_id"] == view["run_id"]
+        # a run that succeeded has neither
+        ok = host.call("run", {"plugin": "echo", "args": {"message": "x"}, "wait_ms": 5000})
+        assert ok["state"] == "succeeded" and "error" not in ok
+        none = host.call("query", {"view": "last_error", "params": {"run_id": ok["run_id"]}})
+        assert none["items"] == []
+
+
+def test_run_view_has_no_error_while_running(short_stop: None) -> None:
+    kernel = support.spine_kernel()
+    order = support.admit_order(kernel, "tree", {"seconds": tolerances.JOIN_WAIT_S * 6})
+    thread = support.drive_in_thread(kernel, order)
+    run_dir = support.run_dir_of(kernel, order.run_id)
+    try:
+        support.wait_ready(run_dir)
+        live = kernel.control.project.status(order.run_id)
+        assert isinstance(live, RunView) and live.state == "running" and live.error is None
+    finally:
+        kernel.control.cancel(order.run_id)
+        thread.join(timeout=tolerances.JOIN_WAIT_S + clock.stop_bound + support.SHORT_DEADLINE_S)
+    done = kernel.control.project.status(order.run_id)
+    assert isinstance(done, RunView) and done.state == "cancelled"
+    assert done.error is not None and done.error["code"] == codes.EXECUTION_CANCELLED
+
+
+def test_last_error_keeps_the_old_text_for_a_run_with_no_error_record(tmp_path: Path) -> None:
+    """A run recorded before `error_record` existed reads as it did: the terminal row's text."""
+    run_dir = seed_interrupted_run(tmp_path / "home", "r_cs3_old", last_kind="execution_ended")
+    ledger = RunLedger.open(ledger_path(run_dir))
+    ledger.append(
+        "evidence_finalized", run_id="r_cs3_old", completeness="partial", result_state="absent"
+    )
+    ledger.append("failed", run_id="r_cs3_old")
+    out = FilesystemQueryBackend(tmp_path / "home").query("last_error", {"run_id": "r_cs3_old"})
+    assert isinstance(out, dict)
+    (row,) = out["items"]
+    assert row["message"] == "failed"
+
+
+@pytest.mark.proves("WR-PROOF-10", "WR-PROOF-10:K-10", "core", "core", "INSPECT", "CI")
+def test_k10_documented() -> None:
+    for name in ("agents.md", "agent-console-mcp.md", "operator-sessions-telemetry.md"):
+        doc = (REPO_ROOT / "docs" / name).read_text(encoding="utf-8")
+        assert "K-10" in doc, name
+    agents = (REPO_ROOT / "docs" / "agents.md").read_text(encoding="utf-8")
+    assert "explains itself (K-10)" in agents and "`RunView.error`" in agents

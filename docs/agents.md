@@ -121,9 +121,10 @@ Or persist paths in `$TRESTLE_HOME/config.toml` under `[plugins].paths`.
 1. **Refusals are not runs.** `admission.*` and `publication.*` outcomes have no `run_id`. Do not treat them as failed runs.
 2. **Handles, not paths.** `fetch("/tmp/foo")` → `projection.invalid_handle`. Use handles from `RunView` or `query`.
 3. **Evidence is post-finalize.** `query(run_tail|last_error|run_events, …)` on a running run → `projection.not_finalized` (`retryable: true`). Wait for terminal state or use `await_runs`.
-4. **Check `limits_exceeded`.** When output exceeds caps, `RunView` marks suppressed streams — evidence is honestly incomplete.
-5. **Fetch truncation is success.** `truncated: true` with `scan_bytes` means narrow the window and continue — not an error.
-6. **Small MCP surface.** Plugin JSON schemas are **not** on `tools/list`. Pull one schema via `describe_plugin` when needed. When-to-pick for `query`/`fetch` lives on MCP resource `trestle://views` (not a second schema dump).
+4. **A run that did not succeed explains itself (K-10).** `RunView.error` is `{code, phase, message}`: `code` is one of the stable `execution.*` codes (`import_failed`, `bind_failed`, `plugin_raised`, `result_unencodable`, `provenance_mismatch`, `cancelled`, `deadline_exceeded`, `worker_exit`, `interrupted`), `phase` says where it happened, and `message` is bounded (512 bytes) with host paths replaced by `<home>`, `<run>`, `<cwd>` and `<user-home>`. `query(last_error)` returns the same message; before this it said only `failed`, and `RunView.error` was never set. Both read one ledger record, `error_record`, so they agree, and they keep agreeing after a restart. Older runs, recorded before the record existed, keep the old `last_error` text and no `error`.
+5. **Check `limits_exceeded`.** When output exceeds caps, `RunView` marks suppressed streams — evidence is honestly incomplete.
+6. **Fetch truncation is success.** `truncated: true` with `scan_bytes` means narrow the window and continue — not an error.
+7. **Small MCP surface.** Plugin JSON schemas are **not** on `tools/list`. Pull one schema via `describe_plugin` when needed. When-to-pick for `query`/`fetch` lives on MCP resource `trestle://views` (not a second schema dump).
 
 ---
 
@@ -134,7 +135,7 @@ Live catalog: MCP resource **`trestle://views`** (when to pick each named view v
 | Question | Tool | View / target |
 |----------|------|---------------|
 | What did the plugin return? | `fetch` | `{run_id}/result` + `jsonpath` or `range` |
-| Why did it fail? | `query` | `last_error` + `{run_id}` |
+| Why did it fail? | `RunView.error`, or `query` | `last_error` + `{run_id}` |
 | Wrapper stdout lines? | `query` | `run_tail` + `{run_id}` (post-finalize) |
 | Run metadata? | `query` | `run` + `{run_id}` |
 | Event timeline? | `query` | `run_events` + `{run_id}` |

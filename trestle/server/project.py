@@ -7,6 +7,7 @@ import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from trestle.common import codes
 from trestle.common.types import (
@@ -332,6 +333,7 @@ class Project:
             next=next_handle,
             limits_exceeded=limits_exceeded if isinstance(limits_exceeded, list) else None,
             cleanup=_cleanup_view(ledger, state),
+            error=_error_view(ledger, state),
         )
 
     def _summary_budget(self, ledger: RunLedger) -> int:
@@ -341,6 +343,18 @@ class Project:
         if snap is not None:
             return snap.summary_budget
         return 4096
+
+
+def _error_view(ledger: RunLedger, state: str) -> dict[str, Any] | None:
+    """The run's explanation, read from the ledger's `error_record` row (MC-15, the sole
+    authority): {code, phase, message}. A run that has not ended carries none, so a row written
+    just before the terminal row is not shown on a run still reported as running."""
+    if state in _NON_TERMINAL_STATES:
+        return None
+    row = ledger.last_kind("error_record")
+    if row is None:
+        return None
+    return {key: row.get(key) for key in ("code", "phase", "message")}
 
 
 def _cleanup_view(ledger: RunLedger, state: str) -> CleanupView | None:

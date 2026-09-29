@@ -388,14 +388,18 @@ def _last_error_rows(record: RunRecord) -> list[dict[str, object]]:
             )
     if not rows and record.state in _FAILURE_STATES:
         ledger = RunLedger.open(ledger_path(record.run_dir))
-        terminal = ledger.last_kind(record.state)
+        # MC-15: the run's explanation is the ledger's error_record row; a run recorded before
+        # that row existed falls back to its terminal row, as before
+        explained = ledger.last_kind("error_record")
+        terminal = explained if explained is not None else ledger.last_kind(record.state)
         if terminal is not None:
+            field = "message" if explained is not None else "classification"
             rows.append(
                 {
                     "run_id": record.run_id,
                     "event_seq": int(terminal.get("seq", 0)),
                     "kind": record.state,
-                    "message": str(terminal.get("classification", record.state)),
+                    "message": str(terminal.get(field, record.state)),
                     "at": str(terminal.get("at", "")),
                 }
             )
