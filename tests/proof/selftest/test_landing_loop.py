@@ -354,9 +354,27 @@ def test_p5_ci_status_exits_2_5_6_8_branch_and_ckpt(rig):
     # --ckpt form
     _sh(rig["runner"], "fetch", "-q", "origin")
     rc = fence_mod.ci_status(
-        rig["runner"], ckpt="J0", conclusions_reader=lambda sha, cwd: "success"
+        rig["runner"], ckpt="J0", conclusions_reader=lambda sha, cwd: {"ckpt": "success"}
     )
     assert rc == 6  # no WR-Merge: J0 carrier exists yet in this repo
+
+
+def test_ci_status_ckpt_reads_the_ckpt_job_conclusion(rig, monkeypatch):
+    """`--ckpt` reads the carrier's `ckpt` check run from the same
+    name -> conclusion map the branch form reads."""
+    monkeypatch.setattr(fence_mod.trailers_mod, "newest", lambda *a, **k: "c0ffee")
+    codes = {
+        "success": 0,
+        "failure": 2,
+        None: 6,
+    }
+    for conclusion, expected in codes.items():
+        rc = fence_mod.ci_status(
+            rig["runner"],
+            ckpt="J0",
+            conclusions_reader=lambda sha, cwd, c=conclusion: {"ckpt": c, "lint": "success"},
+        )
+        assert rc == expected, conclusion
 
 
 def test_p5_ci_never_starts_pre_ready_exits_8_and_escalates(rig):
