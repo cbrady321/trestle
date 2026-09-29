@@ -21,24 +21,9 @@ def _write_labels(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, labels_toml: 
     return labels_dir
 
 
-def test_planted_unowned_row_reported(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_planted_unowned_row_reported(capsys: pytest.CaptureFixture[str]) -> None:
     from argparse import Namespace
 
-    # This test is about row coverage, not the posture vocabulary (the live
-    # posture check is `meta audit-rows` itself, J0-9): read the live labels
-    # with any pre-C.9 posture spelling normalized so the coverage report
-    # is reached whatever state the lane fragments are in.
-    real = meta._load_all_labels
-    monkeypatch.setattr(
-        meta,
-        "_load_all_labels",
-        lambda: [
-            {**lbl, "posture": "claim"} if lbl.get("posture") in ("proven", "unproven") else lbl
-            for lbl in real()
-        ],
-    )
     rc = meta.cmd_audit_rows(Namespace())
     assert rc == 0
     out = capsys.readouterr().out
