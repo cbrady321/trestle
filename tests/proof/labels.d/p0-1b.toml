@@ -1,0 +1,12 @@
+# Lane B (P0-1B) labels registry fragment (MC-04). One label per clause a
+# lane-B target or compat pin proves.
+
+[[label]]
+id = "WR-PLAN-4:described-callable-runs"
+row = "WR-PLAN-4"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-1B.1"
