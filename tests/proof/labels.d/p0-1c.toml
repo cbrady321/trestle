@@ -30,3 +30,13 @@ tier = "PROC"
 venue = "CI"
 posture = "claim"
 declared_by = "L.P0-1C.3"
+
+[[label]]
+id = "WR-COMPAT-2:preserved"
+row = "WR-COMPAT-2"
+step = "core"
+slice = "compat"
+tier = "PROC"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-1C.6"
