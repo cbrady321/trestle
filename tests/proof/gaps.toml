@@ -34,7 +34,7 @@ id = "G-A4"
 lane = "A"
 flip_merge = "CL-A1"
 target = "required"
-entry = "pending"
+entry = "tests.pins.a_lifecycle.test_g_a4:test_target_query_answered_before_probe_ends"
 
 [[gap]]
 id = "G-B1"

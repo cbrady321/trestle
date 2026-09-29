@@ -34,3 +34,13 @@ tier = "PROC"
 venue = "BOTH"
 posture = "claim"
 declared_by = "L.P0-1A.3"
+
+[[label]]
+id = "WR-TERM-7:status-during-slow-admission"
+row = "WR-TERM-7"
+step = "core"
+slice = "core"
+tier = "MCP+PROC"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-1A.4"
