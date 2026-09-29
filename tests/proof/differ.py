@@ -60,6 +60,38 @@ def load_divergence() -> list[dict[str, object]]:
     return list(tomllib.loads(DIVERGENCE_PATH.read_text()).get("entry", []))
 
 
+CODES_FACET = "refusal_codes"
+
+
+def permitted_additive_codes() -> list[str]:
+    """Wire-value patterns (fnmatch) of refusal/projection codes the ledger
+    names as deliberate additive divergences: every entry with facet
+    `refusal_codes`, direction `additive`, and a `codes` list. One entry per
+    code (or per plan-named family such as `execution.*`), citing its row."""
+    patterns: list[str] = []
+    for entry in load_divergence():
+        if entry.get("facet") == CODES_FACET and entry.get("direction") == "additive":
+            patterns.extend(str(c) for c in entry.get("codes", []))
+    return patterns
+
+
+def drop_named_additive_codes(unexpected: list[str], current: object) -> list[str]:
+    """Remove from a refusal_codes `unexpected` list the `$.codes.<NAME>`
+    paths whose wire value is named by `permitted_additive_codes()`. Nothing
+    else is excused; `missing` (a removed or renamed S0 code) is never
+    filtered."""
+    codes = current.get("codes", {}) if isinstance(current, dict) else {}
+    patterns = permitted_additive_codes()
+    kept = []
+    for path in unexpected:
+        name = path.removeprefix("$.codes.") if path.startswith("$.codes.") else None
+        value = codes.get(name) if name is not None else None
+        if isinstance(value, str) and any(fnmatch.fnmatch(value, p) for p in patterns):
+            continue
+        kept.append(path)
+    return kept
+
+
 def _resolve_extractor(spec: str):
     module_name, func_name = spec.split(":")
     module = importlib.import_module(module_name)
@@ -105,6 +137,8 @@ def cmd_d1(args: argparse.Namespace) -> int:
         missing, unexpected = normalize_mod.structural_diff(
             golden, current, policy=str(facet.get("additive", "named"))
         )
+        if fid == CODES_FACET:
+            unexpected = drop_named_additive_codes(unexpected, current)
         if missing or unexpected:
             print(f"d1: UNEXPECTED DIFF: facet {fid!r}: missing={missing} unexpected={unexpected}")
             ok = False

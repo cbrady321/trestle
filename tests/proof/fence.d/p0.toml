@@ -13,6 +13,8 @@ globs = [
   "tests/__init__.py",
   "tests/pins/__init__.py",
   "tests/proof/**",
+  "tests/core/tooling/test_core_fence.py",
+  "tests/pins/c_surface/test_goldens.py",
   "!tests/proof/labels.d/p0-1*.toml",
   "tests/fixtures/golden/s0/nodeids.txt",
   "tests/fixtures/fossils/s0/MANIFEST.toml",
