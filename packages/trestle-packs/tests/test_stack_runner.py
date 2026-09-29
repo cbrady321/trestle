@@ -106,5 +106,20 @@ def test_stack_runner_teardown_on_failure(workdir: Path) -> None:
         runner.up(_stack_spec(), cwd=workdir)
 
     assert [call.services for call in backend.up_calls] == [["postgres", "redis"]]
-    assert backend.down_calls == [True]
+    # K-6: the default and failure-path `down` teardown keeps volumes
+    assert backend.down_calls == [False]
     assert "teardown: compose down complete" in ctx.logs
+
+
+def test_stack_runner_explicit_reset_removes_volumes(workdir: Path) -> None:
+    backend = FakeComposeBackend()
+    ctx = FakePackContext(work=workdir)
+    runner = StackRunner(ctx, backend=backend)
+    spec = _stack_spec()
+
+    runner.down(spec, cwd=workdir)
+    assert backend.down_calls == [False]  # default: containers + networks, volumes kept
+
+    runner.down(spec, cwd=workdir, reset_volumes=True)
+    assert backend.down_calls == [False, True]  # the only volume-removing path
+    assert backend.stop_calls == 0

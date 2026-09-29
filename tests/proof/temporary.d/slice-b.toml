@@ -1,0 +1,51 @@
+# tests/proof/temporary.d/slice-b.toml — phase SLICE-B (plans/b-slice-b.md). CM-7 shape exactly.
+# Written by L.NW-1.1 / L.NW-2.1 (byte-identical). Deferrals (CM-8) are not register entries.
+[[entry]]
+id                = "TM-B4-1.1"
+mechanism         = "toolchain stubs stub_mise, stub_tool, fetch_logger (absolute path only, never on PATH)"
+introduced_by     = "L.RB-4.1"
+serves            = []
+probe             = "test -f tests/fixtures/stubs/stub_mise.py"
+removal_condition = "a promotion trigger fires: real mise conformance (gated_on OPEN-MISE-HOST, D-1) or real Gradle (D-19)"
+removed_by        = "named-not-removed"
+permanent         = false
+citation          = "C.9 toolchain row (stub implementation only, OPEN-MISE-HOST); requirements D-1, D-19; the STUB-PROVEN disclosure is the stub_proven label posture (CSC-1, CM-7), MC-B-05"
+[[entry]]
+id                = "TM-B4-1.2"
+mechanism         = "stub_engine_starter (engine start stand-in)"
+introduced_by     = "L.RB-7.2"
+serves            = []
+probe             = "test -f tests/fixtures/stubs/stub_engine_starter.py"
+removal_condition = "real engine start is admitted (D-8)"
+removed_by        = "named-not-removed"
+permanent         = false
+citation          = "requirements D-8 (real engine start deferred); WR-CON-3; disclosure in stub_proven labels (MC-B-05)"
+[[entry]]
+id                = "TM-B4-1.3"
+mechanism         = "demo credential stubs stub_cloud, stub_issuer"
+introduced_by     = "L.RB-9.1"
+serves            = []
+probe             = "test -f tests/fixtures/stubs/stub_cloud.py"
+removal_condition = "never: real AWS is out of scope (D-9, WR-CON-1)"
+removed_by        = "named-not-removed"
+permanent         = false
+citation          = "requirements D-9 (real AWS never); WR-CON-1; frozen constraint (4) AWS fake/demo only; disclosure in stub_proven labels (MC-B-05)"
+[[entry]]
+id                = "TM-B4-1.4"
+mechanism         = "stub_gradle (build-daemon patterns)"
+introduced_by     = "L.RB-10.2"
+serves            = []
+probe             = "test -f tests/fixtures/stubs/stub_gradle.py"
+removal_condition = "real Gradle conformance is admitted (D-19)"
+removed_by        = "named-not-removed"
+permanent         = false
+citation          = "requirements D-19; OQ-23 answer (JVM/Gradle STUB-PROVEN only); disclosure in stub_proven labels (MC-B-05)"
+[[entry]]
+id                = "TM-B4-3"
+mechanism         = "CATALOG_V0 hard-coded one-service catalog"
+introduced_by     = "L.RB-0.2"
+serves            = ["B2.2", "WR-AUTH-3:unknown-id-zero-effects"]
+probe             = "grep -rq CATALOG_V0 packages/trestle-env"
+removal_condition = "catalog wired (MC-B-09)"
+removed_by        = "L.RB-1.1"
+permanent         = false

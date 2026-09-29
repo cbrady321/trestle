@@ -79,11 +79,18 @@ Copy-paste into `run(plugin="docker_stack", args={…})`:
 
 ### Teardown
 
-| Value | On failure or `down()` |
-|-------|------------------------|
-| `down` | `docker compose down` (removes containers + networks) |
-| `stop` | `docker compose stop` (containers preserved) |
-| `none` | No automatic cleanup |
+| Value | On failure or `down()` | Removes |
+|-------|------------------------|---------|
+| `down` | `docker compose down` (containers and networks; volumes are kept) | containers, networks |
+| `stop` | `docker compose stop` (containers are stopped and kept) | nothing |
+| `none` | No automatic cleanup | nothing |
+| `reset_volumes=True` | `StackRunner.down(spec, reset_volumes=True)`: `docker compose down --volumes`, whatever the declared policy | containers, networks, volumes |
+
+No default or failure-path teardown deletes a volume, the legacy pack's included. Removing volumes is
+an explicit, non-default choice: `reset_volumes=True` is a Python-only argument of `StackRunner.down`,
+and no entry-point schema (`docker_stack`, `integration_pipeline`) exposes it. Earlier releases removed
+the stack's volumes on every `down` teardown; that changed (K-6), so state kept in named volumes now
+survives a stack teardown.
 
 ### Evidence
 
