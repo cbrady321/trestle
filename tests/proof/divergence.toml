@@ -812,6 +812,18 @@ due_checkpoint = "CL-C1 (leaf L.CL-C1.5)"
 direction = "additive"
 authorized_by = "interfaces/interface-host-run-services.md B2-C2 (4); plans/core.md L.CL-C1.5 (DM-16, V-11 closed)"
 
+# L.CL-A2.1: the restricted profile's allowlist refusal (MC-CORE-07, WR-AUTH-2).
+
+[[entry]]
+id = "ADD-code-admission-not-allowlisted"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-07"
+codes = ["admission.not_allowlisted"]
+docs = []
+due_checkpoint = "CL-A2 (leaf L.CL-A2.1)"
+direction = "additive"
+authorized_by = "plans/core.md MC-CORE-07 (L.CL-A2.1: a non-allowlisted plugin is refused admission.not_allowlisted before the run id)"
+
 # The core bundle's named additive diffs of the S0 goldens (keys/items/grows selectors, see the
 # L.P0-0d.20 schema comment above): one entry per change, attributed to its leaf.
 

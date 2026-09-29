@@ -14,7 +14,7 @@ from trestle.common.types import PublishView, RequestOutcome, RunView
 from trestle.query.catalog import VIEW_CATALOG_URI, view_catalog
 from trestle.server.admission import Admission
 from trestle.server.conductor import Conductor
-from trestle.server.config import load_config
+from trestle.server.config import ProfileConfig, load_config
 from trestle.server.control import ControlSurface
 from trestle.server.mcp_schema import FetchWindowArg, QueryViewArg
 from trestle.server.plugin_paths import resolve_plugin_dirs
@@ -34,6 +34,7 @@ class Kernel:
     home: Path
     control: ControlSurface
     registry: Registry
+    profile: ProfileConfig = ProfileConfig()
 
 
 def create_kernel(
@@ -66,6 +67,7 @@ def create_kernel(
         registry=registry,
         scheduler=scheduler,
         service_epoch=service_epoch,
+        profile=config.profile,
     )
     conductor = Conductor(
         home=trestle_home,
@@ -83,7 +85,7 @@ def create_kernel(
         conductor=conductor,
         scheduler=scheduler,
     )
-    return Kernel(home=trestle_home, control=control, registry=registry)
+    return Kernel(home=trestle_home, control=control, registry=registry, profile=config.profile)
 
 
 def _wire_result(value: RequestOutcome | RunView | PublishView | dict[str, Any]) -> dict[str, Any]:
@@ -214,13 +216,16 @@ def run_server(
             return result.to_dict()
         return result
 
-    @mcp.tool
     def publish_plugin(
         source: str,
         name: str | None = None,
     ) -> dict[str, Any]:
         """Publish or update a plugin from Python source at runtime."""
         return _wire_result(kernel.control.publish_plugin(source, name=name))
+
+    # The restricted profile does not register the tool at all: it is neither listed nor callable.
+    if not kernel.profile.restricted:
+        mcp.tool(publish_plugin)
 
     @mcp.resource(
         VIEW_CATALOG_URI,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 _GB = 1024**3
@@ -15,6 +15,28 @@ _GB = 1024**3
 CAPACITY_DEFAULT_PROVISIONAL = True
 MAX_RUNNING_RUNS_DEFAULT = 8
 QUEUE_DEPTH_DEFAULT = 256
+
+
+# The service profile (MC-CORE-07, WR-AUTH-1/2): `full` registers all ten tools and admits any
+# published plugin; `restricted` drops `publish_plugin`, admits only allowlisted plugins and lets a
+# session cancel only the runs it started. Read once at start, from the operator's config.toml
+# only: no tool argument, plugin intent or environment value can change it.
+PROFILE_FULL = "full"
+PROFILE_RESTRICTED = "restricted"
+PROFILE_MODES = (PROFILE_FULL, PROFILE_RESTRICTED)
+
+
+@dataclass(frozen=True)
+class ProfileConfig:
+    mode: str = PROFILE_FULL
+    allowlist: tuple[str, ...] = ()
+
+    @property
+    def restricted(self) -> bool:
+        return self.mode == PROFILE_RESTRICTED
+
+    def allows(self, plugin: str) -> bool:
+        return not self.restricted or plugin in self.allowlist
 
 
 @dataclass(frozen=True)
@@ -32,6 +54,7 @@ class TrestleConfig:
     service_log: Path | None = None
     max_running_runs: int = MAX_RUNNING_RUNS_DEFAULT
     queue_depth: int = QUEUE_DEPTH_DEFAULT
+    profile: ProfileConfig = ProfileConfig()
 
     @classmethod
     def defaults(cls) -> TrestleConfig:
@@ -62,6 +85,7 @@ class TrestleConfig:
             service_log=self.service_log,
             max_running_runs=max(1, _env_int("TRESTLE_MAX_RUNNING_RUNS", self.max_running_runs)),
             queue_depth=max(0, _env_int("TRESTLE_QUEUE_DEPTH", self.queue_depth)),
+            profile=self.profile,
         )
 
 
@@ -96,15 +120,26 @@ def load_config(home: Path) -> TrestleConfig:
                 max_running_runs=int(raw.get("max_running_runs", cfg.max_running_runs)),
                 queue_depth=int(raw.get("queue_depth", cfg.queue_depth)),
             )
+        cfg = replace(cfg, profile=_load_profile(raw.get("profile")))
     if cfg.service_log is None:
-        cfg = TrestleConfig(
-            retention=cfg.retention,
-            idempotency_ttl_s=cfg.idempotency_ttl_s,
-            service_log=home / "service.log",
-            max_running_runs=cfg.max_running_runs,
-            queue_depth=cfg.queue_depth,
-        )
+        cfg = replace(cfg, service_log=home / "service.log")
     return cfg.with_env_overrides()
+
+
+def _load_profile(raw: object) -> ProfileConfig:
+    """`[profile] mode = "full" | "restricted"`, `allowlist = [plugin names]`. An unknown mode or a
+    malformed allowlist stops the load: a config that means to restrict must never run as full."""
+    if raw is None:
+        return ProfileConfig()
+    if not isinstance(raw, dict):
+        raise ValueError("config.toml [profile] must be a table")
+    mode = raw.get("mode", PROFILE_FULL)
+    if mode not in PROFILE_MODES:
+        raise ValueError(f"config.toml [profile] mode must be one of {PROFILE_MODES}, got {mode!r}")
+    allowlist = raw.get("allowlist", [])
+    if not isinstance(allowlist, list) or not all(isinstance(item, str) for item in allowlist):
+        raise ValueError("config.toml [profile] allowlist must be a list of plugin names")
+    return ProfileConfig(mode=mode, allowlist=tuple(allowlist))
 
 
 def _env_int(name: str, default: int) -> int:
