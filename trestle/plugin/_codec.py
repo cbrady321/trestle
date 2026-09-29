@@ -6,11 +6,12 @@ this module because its allowlist is exact (`trestle.plugin`,
 
 `hydrate(annotation, value)` turns one admitted JSON value into its
 annotation: Enum, Literal, set/frozenset, tuple, Path, date/datetime, two-way
-unions, Sequence/Mapping. `dict` and `TypedDict` pass through as dicts, and so
-do dataclass and Pydantic records (a typed-record return is a later,
-switch-guarded step). A value that does not fit its annotation is returned
-unchanged: publication and admission decide what is admitted, so hydration
-never invents a refusal of its own.
+unions, Sequence/Mapping, and (behind `TYPED_RECORDS`, K-3) dataclass records,
+recursively. `dict` and `TypedDict` pass through as dicts, and so do Pydantic
+records and, with `TYPED_RECORDS` cleared, dataclasses (S0). A value that does
+not fit its annotation is returned unchanged: publication and admission decide
+what is admitted, so hydration never invents a refusal of its own (a record's
+own `__post_init__` is the plugin's code and may raise).
 
 `encode(value, declared_return)` is the one encoder for a plugin's return
 (WR-EVID-5). It accepts exactly JSON values plus the admitted-subset types that
@@ -18,15 +19,19 @@ have a JSON form: an Enum member (its value), a `Path` (its string), an aware
 `datetime` and a `date` (ISO 8601), and a set/frozenset only where the
 declared return names one (written as a sorted array, so the bytes never depend
 on hash order). Anything else (a non-string key, a generator, an undeclared set,
-`bytes`, a record) raises `Unencodable`, which the child records as
-`execution.result_unencodable`.
+`bytes`, a Pydantic record) raises `Unencodable`, which the child records as
+`execution.result_unencodable`. Behind `TYPED_RECORDS` (K-4) a dataclass
+instance also encodes, as the JSON object of its fields; with it cleared a
+dataclass is refused like any other non-JSON value.
 """
 
 from __future__ import annotations
 
 import collections.abc
+import dataclasses
 import enum
 import json
+import sys
 import types
 import typing
 from datetime import date, datetime
@@ -35,6 +40,11 @@ from pathlib import Path, PurePath
 _LIST_ORIGINS = (list, collections.abc.Sequence, collections.abc.MutableSequence)
 _DICT_ORIGINS = (dict, collections.abc.Mapping, collections.abc.MutableMapping)
 _SET_ORIGINS = (set, collections.abc.Set, collections.abc.MutableSet)
+
+# MC-CORE-12 switch of the CK-3/4 merge (K-3, OQ-3 recorded default). Set: a
+# dataclass-annotated argument arrives as that dataclass. Cleared: it arrives
+# as a dict, as at S0. Every behaviour the merge adds here reads it.
+TYPED_RECORDS: bool = True
 
 
 class _NoFit(Exception):
@@ -157,7 +167,48 @@ def _plain(tp: type, value: object) -> object:
         return list(_sequence(value))
     if tp is tuple:
         return tuple(_sequence(value))
+    if TYPED_RECORDS and dataclasses.is_dataclass(tp):
+        return _dataclass(tp, value)
     return value
+
+
+def _dataclass(tp: type, value: object) -> object:
+    """One admitted JSON object as the dataclass `tp`, each field hydrated to its annotation."""
+    if not TYPED_RECORDS:
+        return value
+    if not isinstance(value, dict):
+        raise _NoFit
+    fields = {f.name: f for f in dataclasses.fields(tp) if f.init}
+    if not set(value) <= set(fields):
+        raise _NoFit
+    for name, field in fields.items():
+        no_default = field.default is dataclasses.MISSING
+        if name not in value and no_default and field.default_factory is dataclasses.MISSING:
+            raise _NoFit
+    types_by_name = _field_types(tp)
+    return tp(**{name: _hydrate(types_by_name[name], item) for name, item in value.items()})
+
+
+def _field_types(tp: type) -> dict[str, object]:
+    """Resolved annotation per init field; a field whose annotation cannot be resolved (a
+    TYPE_CHECKING-only import) is `Any`, so its value arrives as admitted."""
+    if not TYPED_RECORDS:
+        return {}
+    try:
+        hints: dict[str, object] = dict(typing.get_type_hints(tp))
+    except Exception:  # noqa: BLE001 - one bad forward reference must not fail the record
+        hints = {}
+    namespace = dict(vars(sys.modules[tp.__module__])) if tp.__module__ in sys.modules else {}
+    resolved: dict[str, object] = {}
+    for field in dataclasses.fields(tp):
+        annotation = hints.get(field.name, field.type)
+        if isinstance(annotation, str):
+            try:
+                annotation = eval(annotation, namespace, {tp.__name__: tp})  # noqa: S307
+            except Exception:  # noqa: BLE001
+                annotation = typing.Any
+        resolved[field.name] = annotation
+    return resolved
 
 
 def _enum(tp: type[enum.Enum], value: object) -> object:
