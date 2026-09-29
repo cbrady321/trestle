@@ -1,0 +1,2 @@
+{"seq":1,"kind":"created","at":"2026-09-29T07:04:53Z","run_id":"r_aaaadihl7mgz4erst6u","spec_hash":"8ed93e6eb90dab72852d2d1ff3d4a7d5a9dce428fed639c8185d5a2d86c01a86","service_epoch":"epoch_sk6ilnx3qswgq","plugin":"echo","version":"0.1.0","snapshot_id":"snap_ad6145e7316cff68","args_hash":"4c20abce701df7e9da744651ab41c9231731962ecb626c28c56570ee053ed642"}
+{"seq":2,"kind":"admitted","at":"2026-09-29T07:04:53Z","run_id":"r_aaaadihl7mgz4erst6u","snapshot_id":"snap_ad6145e7316cff68"}
