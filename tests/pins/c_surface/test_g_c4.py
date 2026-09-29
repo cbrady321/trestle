@@ -1,11 +1,11 @@
-"""G-C4 (BFD-25, D-i): preserve pins only, no target.
+"""G-C4 (BFD-25, D-i): preserve pins, and the target flipped by L.CL-B1.1.
 
-An undeclaring plugin gets a greedy fill of its result's fields in sorted-key
+An undeclaring plugin still gets a greedy fill of its result's fields in sorted-key
 order that skips a field that does not fit and continues; an index over
-`MAX_INDEX_BYTES` (64 KiB) coarsens the summary to a field count. The target
-needs a declared summary field, which does not exist at S0, so it is written
-as the first step of L.CL-B1.1 (DM-20): `test_target_declared_field_survives_budget`. The pins
-carry no matrix `proves`; the target carries the clause it targets.
+`MAX_INDEX_BYTES` (64 KiB) coarsens the summary to a field count. Those pins carry no matrix
+`proves`. The target needed a declared summary field, which did not exist at S0, so it was
+written as the first step of L.CL-B1.1 (DM-20): `test_target_declared_field_survives_budget`,
+which now passes because declared fields are reserved before the greedy fill.
 """
 
 from __future__ import annotations
@@ -81,11 +81,9 @@ def declared_fill(ctx: Context, width: int = 200) -> dict[str, str]:
 """
 
 
-@pytest.mark.target(GAP)
 @pytest.mark.proves(
     "WR-TERM-5", "WR-TERM-5:early-sorted-large-result-no-hide", "core", "core", "PROC", "CI"
 )
-@pytest.mark.xfail(strict=True, reason="defect:G-C4")
 def test_target_declared_field_survives_budget(tmp_path: Path) -> None:
     """A declared `summary_fields` entry is reserved before the greedy fill, so a large
     early-sorted field cannot hide it. Alone it fits the budget; after two `FIELD_WIDTH` fields

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -48,6 +49,12 @@ class SummaryProjection:
     omitted: list[str] | None
     next_handle: str | None
     result_bytes: int | None
+    # One entry per declared field the summary could not carry (WR-TERM-5: the answer says so).
+    markers: list[dict[str, object]] | None = None
+
+
+# Bytes of a summary that no field accounts for (the frame around the fields).
+SUMMARY_FRAME_BYTES = 80
 
 
 def load_index(evidence: Path) -> Index | None:
@@ -57,13 +64,39 @@ def load_index(evidence: Path) -> Index | None:
     return Index.from_json(index_path.read_bytes())
 
 
+def _field_bytes(rec: dict[str, Any]) -> int:
+    """What one object field costs in a summary: its key, its value range and the separators.
+    Read off the index range, so a field that will not fit is never read."""
+    return len(json.dumps(rec["name"]).encode()) + int(rec["end"]) - int(rec["start"]) + 4
+
+
+def _unfit_marker(name: str, needed: int | None, budget: int, reason: str) -> dict[str, object]:
+    marker: dict[str, object] = {
+        "stream": "summary",
+        "limit": "summary_budget",
+        "field": name,
+        "reason": reason,
+        "budget": budget,
+    }
+    if needed is not None:
+        marker["bytes_needed"] = needed
+    return marker
+
+
 def build_summary(
     *,
     run_id: str,
     result_path: Path,
     index: Index,
     budget: int,
+    declared_fields: Sequence[str] = (),
 ) -> SummaryProjection:
+    """The bounded summary of a finished run's result.
+
+    `declared_fields` is the plugin's declared `summary_fields` (MC-18), in priority order. For
+    an object result they are reserved by index byte range before the greedy fill, so a large
+    early-sorted field cannot hide one. A declared field that does not fit even so is omitted
+    and named by a marker. A plugin that declares nothing gets the unchanged greedy fill."""
     if index.byte_length <= budget and not index.index_truncated:
         blob = pread_range(result_path, 0, index.byte_length)
         value = json.loads(blob.decode("utf-8"))
@@ -87,7 +120,7 @@ def build_summary(
 
     if index.root_type == "array":
         sample: list[Any] = []
-        used = 80
+        used = SUMMARY_FRAME_BYTES
         if index.array_element_ranges:
             for rec in index.array_element_ranges:
                 blob = pread_range(result_path, rec["start"], rec["end"])
@@ -105,30 +138,60 @@ def build_summary(
 
     if index.root_type == "object":
         if index.index_truncated or not index.fields:
+            # The index is coarsened to a count, so no declared field can be located.
+            coarse_markers = [
+                _unfit_marker(name, None, budget, "index_coarsened")
+                for name in dict.fromkeys(declared_fields)
+            ]
             return SummaryProjection(
                 summary={"field_count": index.field_count},
                 truncated=True,
                 omitted=["*"],
                 next_handle=handle,
                 result_bytes=index.byte_length,
+                markers=coarse_markers or None,
             )
+        by_name: dict[str, dict[str, Any]] = {}
+        for rec in index.fields:
+            by_name.setdefault(rec["name"], rec)
+        used = SUMMARY_FRAME_BYTES
+        taken: set[str] = set()
+        unfit: set[str] = set()
+        markers: list[dict[str, object]] = []
+        for name in dict.fromkeys(declared_fields):
+            declared = by_name.get(name)
+            if declared is None:
+                continue
+            piece = _field_bytes(declared)
+            if used + piece > budget:
+                markers.append(_unfit_marker(name, piece, budget, "does_not_fit"))
+                unfit.add(name)
+                continue
+            taken.add(name)
+            used += piece
+        for rec in index.fields:
+            if rec["name"] in taken or rec["name"] in unfit:
+                continue
+            piece = _field_bytes(rec)
+            if used + piece > budget:
+                continue
+            taken.add(rec["name"])
+            used += piece
         out: dict[str, Any] = {}
         omitted: list[str] = []
-        used = 80
         for rec in index.fields:
-            blob = pread_range(result_path, rec["start"], rec["end"])
-            piece = len(json.dumps(rec["name"]).encode()) + len(blob) + 4
-            if used + piece > budget:
+            if rec["name"] in taken:
+                blob = pread_range(result_path, rec["start"], rec["end"])
+                out[rec["name"]] = json.loads(blob.decode("utf-8"))
+            else:
                 omitted.append(rec["name"])
-                continue
-            out[rec["name"]] = json.loads(blob.decode("utf-8"))
-            used += piece
         return SummaryProjection(
             summary=out,
             truncated=True,
             omitted=omitted,
             next_handle=handle,
             result_bytes=index.byte_length,
+            markers=markers or None,
         )
 
     return SummaryProjection(
@@ -141,7 +204,12 @@ def build_summary(
 
 
 def write_summary_json(evidence: Path, projection: SummaryProjection, budget: int) -> None:
-    payload = {
+    """Record the projection of a finished run once. The budget is the run's own, so later reads
+    project the same summary and never rewrite the file."""
+    path = evidence / "summary.json"
+    if path.exists():
+        return
+    payload: dict[str, Any] = {
         "summary": projection.summary,
         "truncated": projection.truncated,
         "omitted": projection.omitted,
@@ -150,7 +218,9 @@ def write_summary_json(evidence: Path, projection: SummaryProjection, budget: in
         "summary_budget": budget,
         "algorithm": "index+pread-v1",
     }
-    atomic_write_json(evidence / "summary.json", payload)
+    if projection.markers:
+        payload["markers"] = projection.markers
+    atomic_write_json(path, payload)
 
 
 def _invalid_handle(message: str) -> RequestOutcome:
