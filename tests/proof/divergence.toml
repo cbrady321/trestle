@@ -968,3 +968,29 @@ direction = "additive"
 keys = ["$.views.run_provenance.observed.*.row_shape.packages"]
 items = [{ path = "$.views.run_provenance.declared_fields", value = "packages" }]
 authorized_by = "plans/core.md MC-18 (L.CL-C1.4: identity digest full-shape; packages recorded); WR-PLAN-5:provenance-lists-imported-code"
+
+# L.SV-2.3 (MC-34): a workflow plugin whose declared tree cannot be extracted is refused at
+# publication with its own code (B2-C1: never a partial declaration; no snapshot is promoted).
+
+[[entry]]
+id = "ADD-code-publication-declaration-invalid"
+facet = "refusal_codes"
+row_or_k = "B2-C1"
+codes = ["publication.declaration_invalid"]
+docs = []
+due_checkpoint = "SV-2 (leaf L.SV-2.3)"
+direction = "additive"
+authorized_by = "interfaces/interface-host-run-services.md B2-C1 (an extraction failure refuses publication with a stable code); plans/a1-single-level.md L.SV-2.3 (DM-16, V-11 closed)"
+
+# L.SV-2.4 (WR-OWN-8, B1-E1 D-b): a plugin importing a port module must declare env_arg, and a
+# workflow root's env_key_field must equal it; the refusal is publication.env_arg_missing.
+
+[[entry]]
+id = "ADD-code-publication-env-arg-missing"
+facet = "refusal_codes"
+row_or_k = "B1-E1"
+codes = ["publication.env_arg_missing"]
+docs = []
+due_checkpoint = "SV-2 (leaf L.SV-2.4)"
+direction = "additive"
+authorized_by = "interfaces/interface-work-unit.md B1-E1 (D-b: a root entry importing the environment or process ports names an env_key_field); plans/a1-single-level.md L.SV-2.4 (DM-16, V-11 closed)"
