@@ -21,3 +21,13 @@ tier = "must"
 venue = "CI"
 posture = "proven"
 declared_by = "L.P0-1D.1"
+
+[[label]]
+id = "WR-EVID-1:sentinel-in-last-error"
+row = "WR-EVID-1"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-1D.2"

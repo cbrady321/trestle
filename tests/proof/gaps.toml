@@ -118,7 +118,7 @@ id = "G-D3"
 lane = "D"
 flip_merge = "CS-3"
 target = "required"
-entry = "pending"
+entry = "tests.pins.d_evidence.test_g_d3:test_target_last_error_contains_exception_message"
 
 [[gap]]
 id = "G-D4"
