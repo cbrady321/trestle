@@ -10,3 +10,13 @@ tier = "PROC"
 venue = "CI"
 posture = "claim"
 declared_by = "L.P0-1C.1"
+
+[[label]]
+id = "WR-TERM-5:budget-from-own-spec"
+row = "WR-TERM-5"
+step = "core"
+slice = "core"
+tier = "PROC"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-1C.2"
