@@ -170,8 +170,19 @@ def test_ckpt_idempotent_on_evaluated_commit(tmp_path, monkeypatch):
 
 
 def test_ckpt_job_not_on_pull_request():
-    pytest.skip(
-        "the ckpt CI job itself could not be added to .github/workflows/ci.yml in this "
-        "delivery (blocked by a tool permission denial on editing that shared workflow "
-        "file, not by a hard rule) — see P0-0d-RETURN.md"
-    )
+    """CM-4/CM-5: the `ckpt` job runs on push and workflow_dispatch only, so
+    it is outside the required-job list; its checkout sees full history."""
+    yaml = pytest.importorskip("yaml")
+    from tests.proof import fence as fence_mod
+
+    ci_path = Path(__file__).resolve().parents[3] / ".github" / "workflows" / "ci.yml"
+    workflow = yaml.safe_load(ci_path.read_text())
+    triggers = workflow.get("on", workflow.get(True))
+    assert "workflow_dispatch" in triggers
+    job = workflow["jobs"]["ckpt"]
+    assert "pull_request" not in job["if"]
+    assert "push" in job["if"] and "workflow_dispatch" in job["if"]
+    assert "ckpt" not in fence_mod.required_jobs_from_ci(ci_path)
+    others = set(workflow["jobs"]) - {"ckpt"}
+    assert set(job["needs"]) == others
+    assert job["permissions"] == {"contents": "write", "checks": "read"}
