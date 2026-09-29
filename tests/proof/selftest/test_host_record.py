@@ -200,6 +200,13 @@ def test_live_record_check_applies_pass_set():
     assert not any("t::c" in v for v in violations)
 
 
+def test_pass_set_allows_skip_for_c9_na_posture():
+    rec = _record(
+        "a" * 40, results=[{"nodeid": "t::n", "outcome": "SKIPPED", "labels": ["lbl-na"]}]
+    )
+    assert record_mod.pass_set_violations(rec, {"lbl-na": {"posture": "na"}}) == []
+
+
 def test_proc_gate_default_set_is_venue_both_union_host_only():
     args = proc_gate.default_select_args()
     assert "host_only" in " ".join(args)

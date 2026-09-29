@@ -136,6 +136,7 @@ def pass_set_violations(record: dict, labels: dict[str, dict] | None = None) -> 
             node_labels = result.get("labels", [])
             allowed = any(
                 labels.get(lbl, {}).get("posture") in ("gated_on", "both_variant")
+                or labels.get(lbl, {}).get("posture") == "na"  # C.9 spelling (reason field)
                 or str(labels.get(lbl, {}).get("posture", "")).startswith("na(")
                 for lbl in node_labels
             )
