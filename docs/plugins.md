@@ -78,6 +78,44 @@ transport. They are inside the run's cancellable scope, so a daemon a plugin lea
 stopped when the run ends, on every terminal path. A process that double-forks between two looks of
 the supervisor can escape attribution; that limit is disclosed, not hidden.
 
+## Supported types
+
+A plugin's parameters and return are described to agents by the JSON Schema Trestle derives from its type hints; plugins never author a schema. A hint outside this list is refused at publication with a pointer to this section. Every parameter needs a hint, and the entry point must declare a return hint.
+
+| Annotation | Accepted JSON | The plugin receives |
+|------------|---------------|---------------------|
+| `str`, `int`, `float`, `bool`, `None` | the same JSON type (a `bool` is not an `int`) | that value |
+| `Path` | string | `pathlib.Path` (a filesystem path, not an artifact handle) |
+| `datetime` | string: ISO 8601 date-time **with a timezone** | timezone-aware `datetime` |
+| `date` | string: a valid ISO 8601 calendar date | `date` |
+| `ArtifactRef` | string handle | the string |
+| `Enum`, `StrEnum`, `IntEnum`, `Flag`, `IntFlag` classes | one of the member values (the member name when a member is not a constant) | the member |
+| `Literal[...]` | one of the constants (no `bytes`) | that constant |
+| `list[T]`, `List[T]`, `Sequence[T]` | array of `T` | `list` |
+| `tuple[T, ...]`, `Tuple[T, ...]` | array of `T` | `tuple` |
+| `set[T]`, `Set[T]` | array of unique `T` | `set` |
+| `frozenset[T]`, `FrozenSet[T]` | array of unique `T` | `frozenset` |
+| `dict[str, T]`, `Dict[str, T]`, `Mapping[str, T]`, `MutableMapping[str, T]` | object with string keys | `dict` |
+| `TypedDict` class | object with the declared keys | `dict` |
+| `@dataclass` class, Pydantic `BaseModel` | object with the declared fields | `dict` |
+| `Optional[T]`, `T \| None` | `T` or `null` | `T` or `None` |
+| `Union[A, B]`, `A \| B` (at most two non-`None` types) | either | the option the value fits |
+| `Annotated[T, ...]` | as `T` | as `T` |
+
+Aliases (`TypeAlias`) and classes imported from a sibling file resolve to the forms above. A dict-annotated parameter always arrives as a `dict`; only an annotation naming one of the types above changes what the plugin receives.
+
+Not supported, and refused at publication: `bytes`, `bytearray`, `memoryview`, `Any`, `object`, `Callable`, `*args` and `**kwargs`, unparameterized `list`, `dict`, `set` or `tuple`, `tuple` with fixed mixed element types, `dict` keys that are not `str`, unions of more than two non-`None` types, recursive types, records nested more than 5 deep, arbitrary classes, and missing hints.
+
+### Dates and datetimes
+
+A `datetime` argument must be an ISO 8601 date-time with a timezone (`2026-01-01T00:00:00Z`, `2026-01-01T09:00:00+02:00`); a `date` argument must be a valid ISO 8601 date (`2026-01-01`). A naive date-time (`2026-01-01T00:00:00`), a date-time sent where a date is declared, or a malformed value is refused with `admission.invalid_args` before a run id exists, so no run is recorded. Send the offset explicitly; Trestle does not assume a local timezone.
+
+### Return values
+
+A return is written as JSON, and only a value that has a JSON form is written. These encode: `None`, `bool`, `int`, `float` (finite), `str`, `list` and `tuple` (as arrays), `dict` with `str` keys, an `Enum` member (its value), a `Path` (its string), a `date` and a timezone-aware `datetime` (ISO 8601), and a `set` or `frozenset` **when the return hint names one** (`-> set[str]`), written as an array in sorted order so the bytes never depend on hash order.
+
+Anything else ends the run as `execution.result_unencodable`, with a message naming the offending type: a `set` the return hint does not declare, a `dict` with non-`str` keys, a generator or other iterator (return a `list`), `bytes`, a naive `datetime`, a non-finite float, and, for now, a dataclass or Pydantic record. The run has no `result.json` and no partial file; before this rule such values could be written as invalid JSON and marked complete, or crash the run with no code. Results that already encoded (dicts, lists, scalars) keep the same bytes.
+
 ---
 
 ## Publish paths

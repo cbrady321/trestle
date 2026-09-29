@@ -14,6 +14,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import cast
 
+import trestle.plugin as _plugin_package
 from trestle.common.fsutil import sha256_file
 from trestle.plugin.surface import is_trestle_plugin
 
@@ -27,7 +28,11 @@ FORBIDDEN_PREFIXES = (
     "fastmcp",
     "mcp",
 )
-ALLOWED_TRESTLE_PREFIXES = ("trestle.plugin",)
+# Exact module names, not prefixes: the codec (trestle.plugin._codec) lives under
+# trestle.plugin and must stay unimportable by plugins (MC-CORE-08).
+ALLOWED_TRESTLE_PREFIXES = ("trestle.plugin", "trestle.plugin.surface")
+# `from trestle.plugin import X` may name only the package's exports and `surface`.
+_PLUGIN_PACKAGE_NAMES = frozenset({*_plugin_package.__all__, "surface"})
 
 
 def forbidden_import_error(source: str) -> str | None:
@@ -38,6 +43,12 @@ def forbidden_import_error(source: str) -> str | None:
             names.extend(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
             names.append(node.module)
+            if node.module == "trestle.plugin":
+                names.extend(
+                    f"trestle.plugin.{alias.name}"
+                    for alias in node.names
+                    if alias.name not in _PLUGIN_PACKAGE_NAMES
+                )
         for name in names:
             if _is_forbidden(name):
                 return (
@@ -49,9 +60,7 @@ def forbidden_import_error(source: str) -> str | None:
 
 def _is_forbidden(name: str) -> bool:
     if name == "trestle" or name.startswith("trestle."):
-        return not any(
-            name == prefix or name.startswith(f"{prefix}.") for prefix in ALLOWED_TRESTLE_PREFIXES
-        )
+        return name not in ALLOWED_TRESTLE_PREFIXES
     return any(name == prefix or name.startswith(f"{prefix}.") for prefix in FORBIDDEN_PREFIXES)
 
 

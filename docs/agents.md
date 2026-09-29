@@ -96,6 +96,8 @@ Or persist paths in `$TRESTLE_HOME/config.toml` under `[plugins].paths`.
 
 **Param naming:** `run` uses `plugin`; `describe_plugin` uses `plugin_id` — same string value.
 
+**Dates in `args`:** a datetime must carry a timezone (`2026-01-01T00:00:00Z`); a naive or malformed date or datetime is refused with `admission.invalid_args` and no run id. Supported argument types: [`plugins.md`](plugins.md#supported-types).
+
 ---
 
 ## Ten tools (frozen — do not invent more)
@@ -288,7 +290,7 @@ See [`plugins.md`](plugins.md) for authoring, filesystem drop-in, and `publish_p
 | `query` before finalize | `projection.not_finalized` | `await_runs` or wait for terminal |
 | Unknown view name | `projection.invalid_view` | Read `trestle://views`; do not invent names or send SQL |
 | Empty catalog | `admission.plugin_not_found` | `trestle init` or `publish_plugin` |
-| Bad plugin args | `admission.invalid_args` | `describe_plugin` then retry `run` |
+| Bad plugin args (including a naive or malformed date/datetime) | `admission.invalid_args` | `describe_plugin` then retry `run` |
 | Pack plugin `valid: false` | `admission.import_failed` | `pip install -e ".[packs]"`; check `catalog_hint` |
 | Reused idempotency key, different args | `admission.idempotency_key_conflict` | New key or same args |
 
