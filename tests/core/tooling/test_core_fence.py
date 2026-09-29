@@ -24,7 +24,10 @@ def test_core_fence_fragment_lanes_and_gates(tmp_path: Path) -> None:
 
     # every core lane's prefix belongs to [phases].core; every gate sits under a core lane
     prefixes = cfg.phases["core"]
-    assert {lane.branch_prefix for lane in lanes} == set(prefixes)
+    lane_prefixes = {lane.branch_prefix for lane in lanes}
+    assert lane_prefixes <= set(prefixes)
+    # a bundle prefix (`wr/core-bundle/`) may be listed in [phases] before or without its lane
+    assert set(prefixes) - lane_prefixes <= {p for p in prefixes if p.endswith("-bundle/")}
     for gate in gates:
         assert any(gate.branch.startswith(p) for p in prefixes), gate.branch
 
