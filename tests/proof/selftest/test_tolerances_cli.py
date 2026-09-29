@@ -38,8 +38,9 @@ def test_grace_and_kill_resolve_from_clock_and_s0_names_read_through() -> None:
 
 
 def test_unpublished_bound_raises_on_read() -> None:
+    # `deadline_ceiling` is published (L.CL-C1.5); `sweep_parallelism` still has no owner
     with pytest.raises(tolerances.ToleranceUnpublished):
-        tolerances.deadline_ceiling()
+        tolerances.sweep_parallelism()
 
 
 def test_published_in_clock_module_is_picked_up_without_editing_tolerances(
