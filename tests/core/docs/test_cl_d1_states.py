@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.proof import harness, records, tolerances
+from tests.proof import harness, kdoc, records, tolerances
 from trestle.server.ledger import TERMINAL_KINDS, RunLedger, ledger_path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -192,3 +192,14 @@ def test_planted_documentation_gaps_fail() -> None:
     assert violations(unreserved, produced, set()) == [
         "documented state 'crashed' has no fixture producing it and is not reserved"
     ]
+
+
+@pytest.mark.proves("WR-PROOF-10", "WR-PROOF-10:K-13", "core", "core", "INSPECT", "CI")
+def test_k13_documented_in_each_mapped_doc() -> None:
+    """K-13 (the run-state vocabulary, `crashed` reserved) is stated in the doc MC-05 maps it to."""
+    k13 = next(k for k in kdoc.load_k_doc_map() if k["id"] == "K-13")
+    assert k13["landing_merge"] == "CL-D1"
+    for doc in k13["docs"]:
+        text = re.sub(r"\s+", " ", (REPO_ROOT / doc).read_text(encoding="utf-8"))
+        assert "reserved (K-13)" in text, doc
+        assert "<!-- K-13 -->" in text and "<!-- /K-13 -->" in text, doc
