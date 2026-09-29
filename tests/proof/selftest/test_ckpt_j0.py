@@ -79,3 +79,56 @@ def test_j0_dry_lists_only_pending_lane_and_host_record_reasons(monkeypatch):
     results = ckpt_mod.evaluate(FakeModule, "deadbeef", preview=False)
     pending = [r.id for r in results if not r.ok]
     assert set(pending) == {"lane-a", "lane-b", "lane-c", "lane-d", "lane-e", "host-record"}
+
+
+def test_planted_skip_without_reason_rejected():
+    reports = [j0_mod.AuditReport("t::test_target_x", "G-B1", "skipped", None, None, False)]
+    ok, reason = j0_mod.audit_report(reports)
+    assert not ok
+    assert "reason" in reason
+
+
+def _node(nodeid, gap, has_reason=False):
+    return {
+        "nodeid": nodeid,
+        "gap": gap,
+        "labels": [],
+        "strict_xfail": True,
+        "has_reason": has_reason,
+    }
+
+
+def _out(outcome, exc=None, gap=None):
+    return {"outcome": outcome, "exc_type": exc, "unmet_gap": gap}
+
+
+def test_audit_run_reads_real_per_node_outcomes():
+    data = {
+        "nodes": [_node("a", "G-A1"), _node("b", "G-A2"), _node("plain", None)],
+        "outcomes": {
+            "a": _out("failed", "TargetUnmet", "G-A1"),
+            "b": _out("failed", "TargetUnmet", "G-A2"),
+            "plain": _out("passed"),
+        },
+    }
+    assert j0_mod.audit_run(data, ["G-A1", "G-A2"]) == (True, "")
+
+
+def test_audit_run_rejects_other_exception_pass_and_missing_gap():
+    data = {
+        "nodes": [_node("a", "G-A1"), _node("b", "G-A2"), _node("c", "G-A3")],
+        "outcomes": {
+            "a": _out("failed", "ImportError"),
+            "b": _out("passed"),
+            "c": _out("failed", "TargetUnmet", "G-A3"),
+        },
+    }
+    ok, reason = j0_mod.audit_run(data, ["G-A1", "G-A2", "G-A3", "G-A4"])
+    assert not ok
+    assert "ImportError" in reason and "XPASS" in reason and "G-A4" in reason
+
+
+def test_audit_run_node_with_no_outcome_fails():
+    data = {"nodes": [_node("a", "G-A1")], "outcomes": {}}
+    ok, _reason = j0_mod.audit_run(data, [])
+    assert not ok

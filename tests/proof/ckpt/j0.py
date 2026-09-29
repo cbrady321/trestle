@@ -34,22 +34,30 @@ class AuditReport:
     """One `-m target --runxfail` node's outcome, for J0-2's audit.
     `exc_type` is the raised exception's class name (e.g. `TargetUnmet`,
     `ImportError`); `gap`/`unmet_gap` compare the node's declared gap
-    against the one a `TargetUnmet` actually names."""
+    against the one a `TargetUnmet` actually names. `has_reason` is False
+    for a skipped node carrying no `gated_on`/`na` reason."""
 
     def __init__(
-        self, nodeid: str, gap: str, outcome: str, exc_type: str | None, unmet_gap: str | None
+        self,
+        nodeid: str,
+        gap: str,
+        outcome: str,
+        exc_type: str | None,
+        unmet_gap: str | None,
+        has_reason: bool = True,
     ):
         self.nodeid = nodeid
         self.gap = gap
         self.outcome = outcome
         self.exc_type = exc_type
         self.unmet_gap = unmet_gap
+        self.has_reason = has_reason
 
 
 def audit_report(reports: list[AuditReport]) -> tuple[bool, str]:
     """J0-2: accepts only a `TargetUnmet` naming the target's own gap
-    (MC-P0-04). An XPASS, an ImportError-caused failure, or a
-    `TargetUnmet` naming the wrong gap each fail the audit."""
+    (MC-P0-04). An XPASS, an ImportError-caused failure, a `TargetUnmet`
+    naming the wrong gap or a skip with no reason each fail the audit."""
     bad = []
     for r in reports:
         if r.outcome == "xfailed":
@@ -60,7 +68,8 @@ def audit_report(reports: list[AuditReport]) -> tuple[bool, str]:
         elif r.outcome == "xpassed":
             bad.append(f"{r.nodeid}: XPASS (target gap {r.gap!r} appears fixed; flip it)")
         elif r.outcome in ("skipped",):
-            continue  # gated_on/na targets are legitimately skipped
+            if not r.has_reason:
+                bad.append(f"{r.nodeid}: skipped without a gated_on/na reason")
         elif r.outcome == "failed":
             bad.append(f"{r.nodeid}: failed outright (not even a strict xfail)")
     if bad:
@@ -68,20 +77,98 @@ def audit_report(reports: list[AuditReport]) -> tuple[bool, str]:
     return True, ""
 
 
+def reports_from_run(data: dict) -> list[AuditReport]:
+    """Turn `audit_plugin`'s JSON (a `-m target --runxfail` run) into
+    `AuditReport`s. Under `--runxfail` a target's red outcome is a plain
+    failure carrying its exception: `failed` becomes the audit's
+    `xfailed` (red for a reason), `passed` its `xpassed`. A target node
+    that recorded no outcome at all is `failed` (it never ran to an end)."""
+    outcomes = data.get("outcomes", {})
+    reports = []
+    for node in data.get("nodes", []):
+        gap = node.get("gap")
+        if gap is None:
+            continue
+        got = outcomes.get(node["nodeid"])
+        if got is None:
+            reports.append(AuditReport(node["nodeid"], gap, "failed", None, None))
+            continue
+        outcome = {"failed": "xfailed", "passed": "xpassed"}.get(got["outcome"], got["outcome"])
+        reports.append(
+            AuditReport(
+                node["nodeid"],
+                gap,
+                outcome,
+                got.get("exc_type"),
+                got.get("unmet_gap"),
+                bool(node.get("has_reason")),
+            )
+        )
+    return reports
+
+
+def audit_run(data: dict, required_gaps: list[str]) -> tuple[bool, str]:
+    """J0-2 over one run's data: every node passes `audit_report`, and
+    every required gap has >=1 node that failed with `TargetUnmet` naming
+    it."""
+    reports = reports_from_run(data)
+    ok, reason = audit_report(reports)
+    missing = [
+        g
+        for g in required_gaps
+        if not any(
+            r.gap == g and r.outcome == "xfailed" and r.exc_type == "TargetUnmet" for r in reports
+        )
+    ]
+    if missing:
+        ok = False
+        reason = (reason + "; " if reason else "") + f"no TargetUnmet-red target for {missing}"
+    return ok, reason
+
+
 def _run_red_reason_audit(_commit: str) -> tuple[bool, str]:
-    """Live J0-2: `pytest -m target --runxfail`. Best-effort — this
-    delivery's own selftest exercises `audit_report` directly with
-    planted reports rather than parsing a real run's rich exception
-    metadata."""
-    proc = subprocess.run(
-        [sys.executable, "-m", "pytest", "-m", "target", "--runxfail", "-q"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    )
-    if proc.returncode not in (0, 5):  # 5 = no tests collected (no lanes yet)
-        return False, proc.stdout[-2000:]
-    return True, ""
+    """Live J0-2: `pytest -m target --runxfail` with `audit_plugin`
+    recording each node's exception; the run itself is expected to exit
+    non-zero (every target fails by design), so the verdict is the audit
+    of the recorded per-node outcomes, never the exit status."""
+    import json
+    import os
+    import tempfile
+
+    from tests.proof import meta as meta_mod
+    from tests.proof import tolerances as tol
+
+    gaps, _facets, _states = meta_mod._load_inventories()
+    required = [g["id"] for g in gaps if g.get("target") == "required"]
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "audit.json"
+        env = dict(os.environ, TRESTLE_AUDIT_OUT=str(out))
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "-m",
+                    "target",
+                    "--runxfail",
+                    "-q",
+                    "-p",
+                    "tests.proof.audit_plugin",
+                    "-p",
+                    "no:cacheprovider",
+                ],
+                cwd=ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=tol.JOIN_WAIT_S * len(gaps),
+            )
+        except subprocess.TimeoutExpired:
+            return False, "red-reason audit: pytest run timed out"
+        if not out.exists():
+            return False, "red-reason audit: the run recorded no per-node outcomes"
+        return audit_run(json.loads(out.read_text()), required)
 
 
 def _history_check(commit: str) -> tuple[bool, str]:
@@ -167,4 +254,13 @@ CONDITIONS = [
 
 assert len(CONDITIONS) == 12, "J0-1..J0-12"
 
-__all__ = ["TRIGGER_MERGE", "TAG", "CONDITIONS", "AuditReport", "audit_report", "TargetUnmet"]
+__all__ = [
+    "TRIGGER_MERGE",
+    "TAG",
+    "CONDITIONS",
+    "AuditReport",
+    "audit_report",
+    "audit_run",
+    "reports_from_run",
+    "TargetUnmet",
+]
