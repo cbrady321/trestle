@@ -43,6 +43,10 @@ from trestle.server.config import OperatorLimits
 from trestle.server.ledger import RunLedger
 
 SWEEP_DISPOSITION_KIND = "sweep_disposition"
+# Written instead of a sweep when recovery must not sweep (a plan of an unknown format): the run's
+# cleanup is unknown, and nothing was released.
+SWEEP_SKIPPED_KIND = "sweep_skipped"
+SKIPPED_UNKNOWN_PLAN_FORMAT = "unknown_plan_format"
 
 FORM_GROUP = "in_run_group"
 FORM_ARGV = "argv_release"

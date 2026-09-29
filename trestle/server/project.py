@@ -537,6 +537,14 @@ def _cleanup_view(ledger: RunLedger, state: str) -> CleanupView | None:
         return CleanupView(processes="nothing_created")
     row = ledger.last_kind("group_stop")
     released = row is not None and row.get("confirmed_gone") is True
+    # B2-C9, B2-C11: a release sweep that left a target unknown, or recovery declining to sweep a
+    # plan of an unknown format, makes the cleanup unknown whatever the group stop says; the
+    # answer (L.SV-4.2) composes the rest from the same rows
+    if ledger.has_kind("sweep_skipped") or any(
+        r.get("kind") == "sweep_disposition" and r.get("disposition") == "unknown"
+        for r in ledger.records
+    ):
+        released = False
     return CleanupView(processes="released" if released else "unknown")
 
 
