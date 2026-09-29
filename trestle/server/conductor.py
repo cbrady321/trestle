@@ -13,7 +13,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from trestle.common import clock
+from trestle.common import clock, codes
+from trestle.common.errtext import sanitize
 from trestle.common.fsutil import atomic_write_json
 from trestle.common.ids import generate_artifact_id
 from trestle.common.types import WorkOrder
@@ -167,6 +168,11 @@ class Conductor:
         elif proc.returncode == 0:
             classification = "succeeded"
 
+        # MC-15: the run's one explanation, in the ledger, before the row that ends execution
+        error = _error_fields(self.home, run_dir, classification, exit_code)
+        if error is not None:
+            ledger.append("error_record", run_id=order.run_id, **error)
+
         artifact_ids = self._promote_outputs(run_dir, ledger, order.run_id)
         child_limits = _read_ndjson(evidence_dir(run_dir) / "capture_limits.ndjson")
         limits_exceeded = _merge_limit_markers(wrapper_limits + child_limits)
@@ -191,6 +197,8 @@ class Conductor:
             "artifact_count": len(artifact_ids),
             "limits_exceeded": limits_exceeded or None,
         }
+        if error is not None:  # derived from the ledger row, never a second source
+            meta["error"] = error
         atomic_write_json(evidence_dir(run_dir) / "meta.json", meta)
 
         ledger.append(
@@ -264,6 +272,62 @@ def _monotonic_deadline(spec: dict[str, object]) -> float:
                 fixed = fixed.replace(tzinfo=UTC)
             return time.monotonic() + (fixed - datetime.now(tz=UTC)).total_seconds()
     return time.monotonic() + _as_int(spec.get("timeout_s", 300), 300)
+
+
+def _error_fields(
+    home: Path, run_dir: Path, classification: str, exit_code: int
+) -> dict[str, str] | None:
+    """The `error_record` fields {code, phase, message} for a run that did not succeed (MC-15).
+
+    A cancel and a deadline are the supervisor's own first cause, so their code comes from the
+    class whatever the child managed to write while it was being stopped. A child that ended by
+    itself hands over `evidence/child_error.json`, folded here; a child that failed without one
+    (or with one that does not parse) is a `worker_exit`.
+    """
+    if classification == "succeeded":
+        return None
+    if classification == "cancelled":
+        return _composed(codes.EXECUTION_CANCELLED, "stop", "the run was cancelled")
+    if classification == "timed_out":
+        return _composed(
+            codes.EXECUTION_DEADLINE_EXCEEDED,
+            "stop",
+            "the run reached its deadline and was stopped",
+        )
+    folded = _read_child_error(home, run_dir)
+    if folded is not None:
+        return folded
+    return _composed(
+        codes.EXECUTION_WORKER_EXIT,
+        "exit",
+        f"the child exited with status {exit_code} and wrote no error record",
+    )
+
+
+def _composed(code: str, phase: str, message: str) -> dict[str, str]:
+    return {"code": code, "phase": phase, "message": message}
+
+
+def _read_child_error(home: Path, run_dir: Path) -> dict[str, str] | None:
+    """The child's error handoff, or None when it is absent or not one. The child sanitized the
+    message; it crosses a trust boundary (a plugin process wrote it), so it is bounded again."""
+    path = evidence_dir(run_dir) / "child_error.json"
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(loaded, dict):
+        return None
+    code, phase, message = loaded.get("code"), loaded.get("phase"), loaded.get("message")
+    if code not in codes.EXECUTION_CODES or not isinstance(phase, str):
+        return None
+    if not isinstance(message, str):
+        return None
+    return {
+        "code": str(code),
+        "phase": sanitize(phase, {}),  # bounded like the message (PATH_MAX = 512 B)
+        "message": sanitize(message, {"home": home, "run": run_dir}),
+    }
 
 
 def _record_identity(ledger: RunLedger, run_id: str, ident: Identity) -> None:

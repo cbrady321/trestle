@@ -12,8 +12,15 @@ import textwrap
 from pathlib import Path
 from typing import Any
 
-from tests.proof import tolerances
-from trestle.common import codes, errtext
+import pytest
+
+from tests.core.spine import support
+from tests.core.spine.plugins.raiser import SENTINEL as RAISER_SENTINEL
+from tests.proof import harness, records, tolerances
+from trestle.common import clock, codes, errtext
+from trestle.common.types import RunView
+from trestle.server.ledger import RunLedger, ledger_path
+from trestle.server.recovery import recover_run_dir, seed_interrupted_run
 
 REPO = Path(__file__).resolve().parents[3]
 SENTINEL = "SENTINEL-cs3-child-failure-5e2a"
@@ -163,3 +170,127 @@ def test_sanitize_bounds_and_replaces_roots(tmp_path: Path) -> None:
     assert errtext.sanitize("short", roots) == "short"
     # a bare-slash root never rewrites every slash
     assert errtext.sanitize("/a/b", {"home": Path("/")}) == "/a/b"
+
+
+# ---- L.CS-3.2: the ledger's `error_record` row is the sole authority ------------------------
+
+
+@pytest.fixture
+def short_stop(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(clock, "grace", support.TEST_GRACE_S)
+    monkeypatch.setattr(clock, "kill", support.TEST_KILL_S)
+
+
+def _drive(kernel: Any, plugin: str, args: dict[str, Any], *, how: str = "end") -> Path:
+    """Run to the terminal row: `end` lets the plugin finish, `cancel` cancels a live tree,
+    `deadline` runs a slow plugin under a short deadline. Returns the run directory."""
+    if how == "deadline":
+        with harness.patch_snapshot(kernel, plugin, timeout_s=support.SHORT_DEADLINE_S):
+            order = support.admit_order(kernel, plugin, args)
+    else:
+        order = support.admit_order(kernel, plugin, args)
+    thread = support.drive_in_thread(kernel, order)
+    run_dir = support.run_dir_of(kernel, order.run_id)
+    if how == "cancel":
+        support.wait_ready(run_dir)
+        kernel.control.cancel(order.run_id)
+    thread.join(timeout=tolerances.JOIN_WAIT_S + clock.stop_bound + support.SHORT_DEADLINE_S)
+    assert not thread.is_alive(), "the conductor never returned"
+    return run_dir
+
+
+def _row(run_dir: Path) -> dict[str, Any]:
+    (row,) = support.rows_of(run_dir, "error_record")
+    return row
+
+
+def _meta_error(run_dir: Path) -> Any:
+    meta = json.loads((run_dir / "evidence" / "meta.json").read_text(encoding="utf-8"))
+    return meta.get("error")
+
+
+def _fields(row: dict[str, Any]) -> dict[str, Any]:
+    return {key: row[key] for key in ("code", "phase", "message")}
+
+
+def test_error_record_is_ledger_authority_and_survives_restart(short_stop: None) -> None:
+    kernel = support.spine_kernel()
+    run_dir = _drive(kernel, "raiser", {})
+    row = _row(run_dir)
+    assert row["code"] == codes.EXECUTION_PLUGIN_RAISED and row["phase"] == "call"
+    assert RAISER_SENTINEL in row["message"]
+    kinds = support.kinds(run_dir)
+    # the explanation is in the ledger before the row that ends execution, after the group stop
+    assert kinds.index("group_stop") < kinds.index("error_record") < kinds.index("execution_ended")
+    assert records.node_record(run_dir).terminal == "failed"  # an older reader ignores the kind
+    assert RunLedger.open(ledger_path(run_dir)).projected_state() == "failed"
+    assert _meta_error(run_dir) == _fields(row)
+    # a restart rebuilds meta.json from the ledger: the same error, and no second row
+    (run_dir / "evidence" / "meta.json").unlink()
+    before = support.kinds(run_dir)
+    recover_run_dir(run_dir)
+    assert support.kinds(run_dir) == before
+    assert _meta_error(run_dir) == _fields(row)
+    assert _fields(_row(run_dir)) == _fields(row)
+
+
+def test_error_record_codes_for_cancel_deadline_and_worker_exit(short_stop: None) -> None:
+    long_run = {"seconds": tolerances.JOIN_WAIT_S * 6}
+    cases = (
+        ("cancel", "tree", long_run, "cancel", codes.EXECUTION_CANCELLED, "cancelled"),
+        ("deadline", "slow", long_run, "deadline", codes.EXECUTION_DEADLINE_EXCEEDED, "timed_out"),
+        ("exit", "exiter", {"status": 3}, "end", codes.EXECUTION_WORKER_EXIT, "worker_exit"),
+    )
+    seen = set()
+    for label, plugin, args, how, code, terminal in cases:
+        kernel = support.spine_kernel()
+        run_dir = _drive(kernel, plugin, args, how=how)
+        assert records.node_record(run_dir).terminal == terminal, label
+        row = _row(run_dir)
+        assert row["code"] == code and row["code"] in codes.EXECUTION_CODES, label
+        assert row["message"] and _meta_error(run_dir) == _fields(row), label
+        seen.add(row["code"])
+    assert len(seen) == len(cases)
+
+
+def test_success_writes_no_error_record(short_stop: None) -> None:
+    kernel = support.spine_kernel()
+    run_dir = _drive(kernel, "echo", {"message": "fine"})
+    assert "error_record" not in support.kinds(run_dir)
+    assert _meta_error(run_dir) is None
+    view = kernel.control.project.status(run_dir.name)
+    assert isinstance(view, RunView) and view.state == "succeeded"
+
+
+def test_recovery_appends_interrupted_error_record_when_absent(tmp_path: Path) -> None:
+    run_dir = seed_interrupted_run(tmp_path / "home", "r_cs3_interrupted")
+    recover_run_dir(run_dir)
+    row = _row(run_dir)
+    assert row["code"] == codes.EXECUTION_INTERRUPTED and row["phase"] == "recovery"
+    kinds = support.kinds(run_dir)
+    assert (
+        kinds.index("error_record") < kinds.index("evidence_finalized") < kinds.index("interrupted")
+    )
+    assert _meta_error(run_dir) == _fields(row)
+    again = support.kinds(run_dir)
+    recover_run_dir(run_dir)  # a second pass finds the terminal row and adds nothing
+    assert support.kinds(run_dir) == again
+
+
+def test_recovery_keeps_the_error_the_run_already_wrote(tmp_path: Path) -> None:
+    run_dir = seed_interrupted_run(tmp_path / "home", "r_cs3_kept", last_kind="execution_ended")
+    ledger = RunLedger.open(ledger_path(run_dir))
+    ledger.append(
+        "error_record",
+        run_id="r_cs3_kept",
+        code=codes.EXECUTION_PLUGIN_RAISED,
+        phase="call",
+        message="kept",
+    )
+    recover_run_dir(run_dir)
+    assert _row(run_dir)["message"] == "kept"
+    assert _meta_error(run_dir) == {
+        "code": codes.EXECUTION_PLUGIN_RAISED,
+        "phase": "call",
+        "message": "kept",
+    }
