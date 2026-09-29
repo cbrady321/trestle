@@ -52,7 +52,12 @@ def my_tool(ctx: Context, arg: str) -> dict:
     return {"result": arg}
 ```
 
-PluginSurface only — no Kernel, FastMCP, or ledger imports.
+PluginSurface only — no Kernel, FastMCP, or ledger imports. Call form for metadata:
+`@trestle(deadline=..., packages=[...])` (literals only; `async def` entries are refused). A declared
+`deadline` above 300 s is honoured and shown by `describe_plugin` (`deadline_s`, `deadline_source`);
+above the ceiling it is refused with `admission.budget_does_not_fit`. Declared `packages` are
+recorded, not snapshotted: editing one after admission stops the run with
+`execution.provenance_mismatch`.
 
 ## When stuck
 

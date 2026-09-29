@@ -16,14 +16,51 @@ def echo(ctx: Context, message: str = "hello") -> dict[str, str]:
 
 Worked example: [`examples/plugins/echo.py`](../examples/plugins/echo.py).
 
+<!-- K-5 -->
+The decorator has two forms with the same runtime effect: bare `@trestle`, and the call form
+`@trestle(deadline=..., summary_fields=..., packages=..., env_arg=..., secrets=...)`. The call form
+is read statically from the source at publication, so every value must be a literal; an unknown
+keyword or a non-literal value is refused at publication (`publication.validation_failed`). The
+entry point must be a plain `def`: an `async def` entry is refused at publication with a message
+saying so, never accepted and left to fail at run time.
+<!-- /K-5 -->
+
+### Declared metadata
+
+<!-- K-9 -->
+`deadline` (seconds, or a `timedelta`) is the plugin's declared deadline. A plugin that declares
+none keeps the 300 s default. The declared value is what admission mints as the run's deadline
+(`ctx.deadline`), and it is enforced like any other, so a plugin that declares 310 s and works for
+305 s is not stopped at 300 s. A declared deadline above the ceiling (`deadline_ceiling` in
+`trestle.common.clock`, 3600 s) is refused at admission with `admission.budget_does_not_fit`,
+before any run id exists. `describe_plugin` shows the deadline in force (`deadline_s`) and whether it was
+`declared` or the `default` (`deadline_source`); `timeout_s` carries the same duration, rounded up
+to whole seconds.
+<!-- /K-9 -->
+
+`summary_fields`, `env_arg` and `secrets` are declared and recorded in the snapshot's
+`manifest.json` (`declared`) and count toward its identity; nothing acts on them yet.
+
+`packages` names the modules or packages the plugin imports from outside its own file, and is
+**recorded, not snapshotted** (R-J). Publication resolves each name on the import path the child
+process will use, without importing it, and records a digest of its files in the manifest; the
+digests are part of the snapshot's identity. Trestle does not copy the package into the snapshot:
+the code that runs is whatever is on the import path when the run starts. At run start the child
+compares each declared package with the recorded digest, before it loads the plugin, and a
+mismatch (the package was edited, moved or removed after publication) stops the run with
+`execution.provenance_mismatch` instead of running different code under the same snapshot id.
+Republish to accept the edit. A module the plugin imports but does not declare is not covered:
+it is neither recorded nor checked. `query(run_provenance)` lists the recorded `packages` and
+their digests for each run.
+
 - Return a small mapping that fits the default agent summary.
 - Use `ctx.log` for structured events; wrapper stdout/`print` appears in `query(run_tail)`.
 - Write keepers under `outputs/` — the foundation attaches them as artifacts.
 
 ## Deadlines, cancel and subprocesses
 
-`ctx.deadline` is the run's deadline, fixed at admission (`timeout_s` from admission, queue time
-included), and it is **enforced**: when it passes, the supervisor stops the run's whole process
+`ctx.deadline` is the run's deadline, fixed at admission (the plugin's declared `deadline`, else
+300 s, counted from admission, queue time included), and it is **enforced**: when it passes, the supervisor stops the run's whole process
 tree, whether or not the plugin ever reads `ctx.deadline` or `ctx.cancelled`. It is no longer a hint
 a plugin may ignore. Reading `ctx.cancelled` still lets a plugin stop cooperatively and cleanly
 first.
