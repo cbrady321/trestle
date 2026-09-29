@@ -1,5 +1,7 @@
 """Stable error codes."""
 
+from trestle.common.plan import vocabulary as _vocab
+
 SERVICE_DRAINING = "admission.service_draining"
 PLUGIN_NOT_FOUND = "admission.plugin_not_found"
 IMPORT_FAILED = "admission.import_failed"
@@ -28,6 +30,8 @@ PUBLICATION_NO_ENTRYPOINT = "publication.no_entrypoint"
 PUBLICATION_NAME_MISMATCH = "publication.name_mismatch"
 PUBLICATION_SOURCE_TOO_LARGE = "publication.source_too_large"
 PUBLICATION_VALIDATION_FAILED = "publication.validation_failed"
+PUBLICATION_DECLARATION_INVALID = "publication.declaration_invalid"
+PUBLICATION_ENV_ARG_MISSING = "publication.env_arg_missing"
 
 # MC-CORE-04: the execution-code vocabulary, additive only (DM-16). A run that started and ended
 # without an answer carries exactly one of these in its `error_record` (MC-15).
@@ -41,6 +45,39 @@ EXECUTION_DEADLINE_EXCEEDED = "execution.deadline_exceeded"
 EXECUTION_WORKER_EXIT = "execution.worker_exit"
 EXECUTION_INTERRUPTED = "execution.interrupted"
 
+
+# L.SV-4.2 (DM-16): the single-level node and publication codes of `trestle.common.plan.vocabulary`
+# (V-11; each the snake of its V-11 name), re-exported here so one module lists every wire code.
+# The vocabulary defines the values; core's own spellings (EXECUTION_WORKER_EXIT,
+# EXECUTION_INTERRUPTED, EXECUTION_CANCELLED, EXECUTION_DEADLINE_EXCEEDED,
+# EXECUTION_RESULT_UNENCODABLE, BUDGET_DOES_NOT_FIT) are the same strings and stay as they are.
+DECLARATION_STALE = _vocab.DECLARATION_STALE
+TICKET_REFUSED = _vocab.TICKET_REFUSED
+UNIT_RAISED = _vocab.UNIT_RAISED
+LANE_UNAVAILABLE = _vocab.LANE_UNAVAILABLE
+STOP_SEEN = _vocab.STOP_SEEN
+EFFECT_UNCONFIRMED = _vocab.EFFECT_UNCONFIRMED
+PLAN_PRECONDITION_UNCOVERED = _vocab.PLAN_PRECONDITION_UNCOVERED
+PRECONDITION_UNSATISFIED = _vocab.PRECONDITION_UNSATISFIED
+POSTCONDITION_TIMEOUT = _vocab.POSTCONDITION_TIMEOUT
+REMEDY_EXHAUSTED = _vocab.REMEDY_EXHAUSTED
+REMEDY_NO_PROGRESS = _vocab.REMEDY_NO_PROGRESS
+FOUND_UNHEALTHY = _vocab.FOUND_UNHEALTHY
+FOUND_INCOMPATIBLE = _vocab.FOUND_INCOMPATIBLE
+CARVE_EXCEEDED = _vocab.CARVE_EXCEEDED
+CURRENCY_UNCONFIRMED = _vocab.CURRENCY_UNCONFIRMED
+VERTEX_UNENDED = _vocab.VERTEX_UNENDED
+PLAN_CONTRACT_MISSING = _vocab.PLAN_CONTRACT_MISSING
+SAFE_START_VERB_INVALID = _vocab.SAFE_START_VERB_INVALID
+FACET_LIFETIME_MISMATCH = _vocab.FACET_LIFETIME_MISMATCH
+RELEASE_TIMEOUT_MISSING = _vocab.RELEASE_TIMEOUT_MISSING
+MAX_ATTEMPTS_INVALID = _vocab.MAX_ATTEMPTS_INVALID
+RELEASE_EFFECT_ONCE = _vocab.RELEASE_EFFECT_ONCE
+FLAGS_CONTRADICT_TYPE = _vocab.FLAGS_CONTRADICT_TYPE
+RECORDED_WITH_REMEDIES = _vocab.RECORDED_WITH_REMEDIES
+OWNED_REMEDY_ON_FOUND = _vocab.OWNED_REMEDY_ON_FOUND
+BUDGET_EXCEEDS_LEAF = _vocab.BUDGET_EXCEEDS_LEAF
+
 EXECUTION_CODES: frozenset[str] = frozenset(
     {
         EXECUTION_IMPORT_FAILED,
@@ -52,5 +89,24 @@ EXECUTION_CODES: frozenset[str] = frozenset(
         EXECUTION_DEADLINE_EXCEEDED,
         EXECUTION_WORKER_EXIT,
         EXECUTION_INTERRUPTED,
+    }
+) | frozenset(
+    {
+        DECLARATION_STALE,
+        TICKET_REFUSED,
+        UNIT_RAISED,
+        LANE_UNAVAILABLE,
+        STOP_SEEN,
+        EFFECT_UNCONFIRMED,
+        PLAN_PRECONDITION_UNCOVERED,
+        PRECONDITION_UNSATISFIED,
+        POSTCONDITION_TIMEOUT,
+        REMEDY_EXHAUSTED,
+        REMEDY_NO_PROGRESS,
+        FOUND_UNHEALTHY,
+        FOUND_INCOMPATIBLE,
+        CARVE_EXCEEDED,
+        CURRENCY_UNCONFIRMED,
+        VERTEX_UNENDED,
     }
 )

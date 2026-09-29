@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import json
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 
 from trestle.common import codes
 from trestle.common.fsutil import atomic_write, atomic_write_json, fsync_dir
 from trestle.common.ids import generate_service_epoch
-from trestle.server import procident
+from trestle.common.plan.compiler import AdmittedPlan
+from trestle.common.plan.formats import PlanInvalid, UnknownPlanFormat
+from trestle.server import answer, fold, procident, sweep
+from trestle.server.config import OperatorLimits, load_config
 from trestle.server.ledger import (
     TERMINAL_KINDS,
     RunLedger,
@@ -56,8 +60,16 @@ def recover_all_runs(
 
 
 def recover_run_dir(
-    run_dir: Path, *, source: ProcessSource | None = None, signaller: Signaller | None = None
+    run_dir: Path,
+    *,
+    source: ProcessSource | None = None,
+    signaller: Signaller | None = None,
+    limits: OperatorLimits | None = None,
+    sweep_io: sweep.SweepIO | None = None,
 ) -> None:
+    """Recover one run directory (B2-C11). `limits` and `sweep_io` are test seams for the release
+    sweep (the operator's limits, the command runner and the clock); a caller passing neither
+    (the server at startup, the d2 driver) gets the configured limits and real commands."""
     path = ledger_path(run_dir)
     if not path.exists():
         sweep_run_dir(run_dir)
@@ -82,18 +94,31 @@ def recover_run_dir(
         if terminal is not None:
             rematerialize_meta(run_dir, ledger)
         else:
-            append_recovery_suffix(run_dir, ledger, source=source, signaller=signaller)
+            append_recovery_suffix(
+                run_dir,
+                ledger,
+                source=source,
+                signaller=signaller,
+                limits=limits,
+                sweep_io=sweep_io,
+            )
         return
 
     if last_kind == "execution_ended":
-        append_recovery_suffix(run_dir, ledger, source=source, signaller=signaller)
+        append_recovery_suffix(
+            run_dir, ledger, source=source, signaller=signaller, limits=limits, sweep_io=sweep_io
+        )
         return
 
     if last_kind in {"created", "admitted", "started"} or last_kind in _MID_EXECUTION_KINDS:
-        append_recovery_suffix(run_dir, ledger, source=source, signaller=signaller)
+        append_recovery_suffix(
+            run_dir, ledger, source=source, signaller=signaller, limits=limits, sweep_io=sweep_io
+        )
         return
 
-    append_recovery_suffix(run_dir, ledger, source=source, signaller=signaller)
+    append_recovery_suffix(
+        run_dir, ledger, source=source, signaller=signaller, limits=limits, sweep_io=sweep_io
+    )
 
 
 def sweep_run_dir(run_dir: Path) -> None:
@@ -124,11 +149,31 @@ def append_recovery_suffix(
     *,
     source: ProcessSource | None = None,
     signaller: Signaller | None = None,
+    limits: OperatorLimits | None = None,
+    sweep_io: sweep.SweepIO | None = None,
 ) -> None:
     run_id = str(ledger.records[0].get("run_id", run_dir.name))
     # B2-C11: the run's processes are dealt with before anything is finalized
-    _record_group_stop(ledger, run_id, source=source, signaller=signaller)
+    group_confirmed = _record_group_stop(ledger, run_id, source=source, signaller=signaller)
     sweep_tmp_partial(run_dir)
+    # B2-C11: the lane is folded, and swept in plan release rank, before anything is finalized and
+    # before `interrupted`; a run with no lane (or one already folded before the restart) writes
+    # no row. The recovery error below stays the class's own (a restart is the supervisor's cause,
+    # like a cancel).
+    plan, plan_known = _plan_of(run_dir)
+    folded = fold.fold_into_ledger(run_dir, ledger, plan)
+    if group_confirmed is not None:  # a run that never started spawned nothing: no target
+        _sweep_after_restart(
+            run_dir,
+            ledger,
+            run_id,
+            folded,
+            group_confirmed,
+            plan,
+            plan_known,
+            limits=limits,
+            sweep_io=sweep_io,
+        )
     # MC-15: a run finalized here has an explanation; the one it already wrote (before the restart)
     # stands, and none is made up for a run that ends by any other means
     if ledger.terminal_state() is None and not ledger.has_kind("error_record"):
@@ -151,10 +196,76 @@ def append_recovery_suffix(
         )
 
     if ledger.terminal_state() is None:
+        # B4 Ordering (B2-C11): the answer is projected from the durable inputs, `recovered`,
+        # before the terminal row
+        answer.write_finalized(
+            run_dir,
+            answer.answer_for_run(run_dir, ledger.records, "interrupted", _read_spec(run_dir)),
+        )
         ledger.append("interrupted", run_id=run_id)
 
     fsync_dir(evidence_dir(run_dir))
     rematerialize_meta(run_dir, ledger)
+
+
+def _read_spec(run_dir: Path) -> dict[str, object]:
+    try:
+        loaded = json.loads((evidence_dir(run_dir) / "spec.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _plan_of(run_dir: Path) -> tuple[AdmittedPlan | None, bool]:
+    """The run's admitted plan and whether its format is one this reader knows: a spec with no
+    plan is the implicit depth-1 plan (`None`, known, B2-C1); a plan of another format, or one
+    that does not verify, is unknown (`None`, unknown): recovery finalizes such a run interrupted
+    with its cleanup unknown and releases nothing."""
+    try:
+        return fold.plan_of_spec(_read_spec(run_dir)), True
+    except (UnknownPlanFormat, PlanInvalid):
+        return None, False
+
+
+def _sweep_after_restart(
+    run_dir: Path,
+    ledger: RunLedger,
+    run_id: str,
+    folded: fold.FoldedRecord,
+    group_confirmed: bool,
+    plan: AdmittedPlan | None,
+    plan_known: bool,
+    *,
+    limits: OperatorLimits | None,
+    sweep_io: sweep.SweepIO | None,
+) -> None:
+    """B2-C11: sweep the folded lane with the recovery's `GroupStop`, in plan release rank; an
+    unconfirmed target is never `nothing_created` here (B2-C9). A plan of an unknown format is
+    never swept and never released: one `sweep_skipped` row makes its cleanup unknown. A run whose
+    sweep already wrote its rows (the conductor, or an earlier recovery) is not swept twice."""
+    if ledger.has_kind(sweep.SWEEP_DISPOSITION_KIND) or ledger.has_kind(sweep.SWEEP_SKIPPED_KIND):
+        return
+    if not plan_known:
+        ledger.append(
+            sweep.SWEEP_SKIPPED_KIND, run_id=run_id, reason=sweep.SKIPPED_UNKNOWN_PLAN_FORMAT
+        )
+        return
+    effective = limits or load_config(run_dir.parents[2]).operator_limits
+    result = sweep.sweep_detailed(
+        folded,
+        _RecoveredGroup(group_confirmed),
+        sweep.budget_for(effective),
+        effective,
+        plan,
+        recovery=True,
+        io=sweep_io,
+    )
+    sweep.write_rows(ledger, run_id, result)
+
+
+@dataclass(frozen=True)
+class _RecoveredGroup:
+    confirmed_gone: bool
 
 
 def _record_group_stop(
@@ -163,12 +274,16 @@ def _record_group_stop(
     *,
     source: ProcessSource | None,
     signaller: Signaller | None,
-) -> None:
+) -> bool | None:
     """One `group_stop` for a run that was started and has none: take B2-C11's branch from the
     run's identity rows. A run that never started spawned nothing and has no process-group
-    target. A run that already has its row (the conductor died after it) is not stopped twice."""
-    if not ledger.has_kind("started") or ledger.has_kind("group_stop"):
-        return
+    target (None). A run that already has its row (the conductor died after it) is not stopped
+    twice: its recorded `confirmed_gone` stands. Returns whether the group is confirmed gone."""
+    if not ledger.has_kind("started"):
+        return None
+    existing = ledger.last_kind("group_stop")
+    if existing is not None:
+        return existing.get("confirmed_gone") is True
     decision = procident.recovery_decision(ledger.records, source)
     if decision.branch == "iii":
 
@@ -180,6 +295,7 @@ def _record_group_stop(
     else:
         confirmed = bool(decision.confirmed_gone)
     ledger.append("group_stop", run_id=run_id, confirmed_gone=confirmed, method=decision.method)
+    return confirmed
 
 
 def rematerialize_meta(run_dir: Path, ledger: RunLedger) -> None:
