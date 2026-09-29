@@ -97,7 +97,7 @@ def _evidence(run_dir: Path) -> Path:
         pytest.param("list[int]", "return b'raw'", id="bytes"),
         pytest.param("dict[str, int]", "return {'k': {1, 2}}", id="nested-undeclared-set"),
         pytest.param("datetime", "return datetime(2026, 1, 1)", id="naive-datetime"),
-        pytest.param("Point", "return Point(1)", id="dataclass"),
+        pytest.param("Point", "return object()", id="arbitrary-object"),
         pytest.param("float", "return float('nan')", id="nan"),
     ],
 )

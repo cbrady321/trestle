@@ -279,6 +279,8 @@ def _norm(value: object, ann: object) -> object:
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
     ann = _resolve(ann, value)
+    if TYPED_RECORDS and dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return _record(value)
     if isinstance(value, dict):
         inner = _arg(ann, 1)
         for key in value:
@@ -300,6 +302,18 @@ def _norm(value: object, ann: object) -> object:
     if isinstance(value, PurePath):
         return str(value)
     raise Unencodable(f"{type(value).__name__} has no JSON form")
+
+
+def _record(value: object) -> dict[str, object]:
+    """A dataclass instance as the JSON object of its fields (K-4), each field written
+    against its own annotation so a declared set field is written as a sorted array."""
+    if not TYPED_RECORDS:
+        raise Unencodable(f"{type(value).__name__} has no JSON form")
+    types_by_name = _field_types(type(value))
+    return {
+        f.name: _norm(getattr(value, f.name), _unwrap(types_by_name.get(f.name)))
+        for f in dataclasses.fields(value)  # type: ignore[arg-type]
+    }
 
 
 def _resolve(ann: object, value: object) -> object:

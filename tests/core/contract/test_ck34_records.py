@@ -1,6 +1,7 @@
 """L.CK-3/4.1 (BFD-13; K-3, OQ-3 recorded default): a dataclass-annotated argument arrives as
 that dataclass, recursively, behind the `_codec.TYPED_RECORDS` switch; dict-annotated plugins
-are unchanged."""
+are unchanged. L.CK-3/4.2 (K-4 typed half): a dataclass return encodes to its JSON form behind
+the same switch."""
 
 from __future__ import annotations
 
@@ -17,10 +18,12 @@ from typing import Any
 import pytest
 
 from tests.pins.b_contract.kit import PLUGINS, run_plugin
-from tests.proof import harness
+from tests.proof import harness, tolerances
 from trestle.child.main import _bind_args
+from trestle.child.serialize import write_result
 from trestle.common.types import RunView
 from trestle.plugin import _codec
+from trestle.server.ledger import run_dir_for
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -107,6 +110,99 @@ def test_dataclass_through_a_real_child(tmp_path: Path) -> None:
     assert view.state == "succeeded"
     assert isinstance(view.summary, dict)
     assert view.summary["received"] == "Point"
+
+
+# ---------------------------------------------------------------------------
+# L.CK-3/4.2: a typed-record return succeeds as its JSON form (K-4 typed half)
+# ---------------------------------------------------------------------------
+
+_RETURN_PLUGIN = """
+from __future__ import annotations
+
+import enum
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+
+from trestle.plugin.surface import Context, trestle
+
+
+class Color(enum.Enum):
+    RED = "red"
+
+
+@dataclass
+class Leg:
+    name: str
+    at: datetime | None = None
+    color: Color = Color.RED
+
+
+@dataclass
+class Route:
+    origin: str
+    legs: list[Leg] = field(default_factory=list)
+    tags: set[str] = field(default_factory=set)
+    home: Leg | None = None
+
+
+@trestle
+def fn(ctx: Context) -> Route:
+    return Route(
+        "a",
+        [Leg("l1", datetime(2026, 1, 1, tzinfo=UTC)), Leg("l2")],
+        {"pear", "apple"},
+        Leg("h"),
+    )
+"""
+
+_RETURN_JSON = (
+    b'{"home":{"at":null,"color":"red","name":"h"},'
+    b'"legs":[{"at":"2026-01-01T00:00:00+00:00","color":"red","name":"l1"},'
+    b'{"at":null,"color":"red","name":"l2"}],"origin":"a","tags":["apple","pear"]}'
+)
+
+
+@pytest.mark.proves(
+    "WR-PLAN-9", "WR-PLAN-9:dataclass-return-succeeds", "core", "core", "PROC", "CI"
+)
+def test_dataclass_return_serializes(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    (plugin_dir / "fn.py").write_text(_RETURN_PLUGIN, encoding="utf-8")
+    kernel = harness.fresh_kernel([plugin_dir], home=tmp_path / "home")
+    view = kernel.control.run(plugin="fn", args={}, wait_ms=tolerances.HARNESS_WAIT_MS)
+    assert isinstance(view, RunView), view
+    assert view.state == "succeeded", view
+    evidence = run_dir_for(kernel.home, view.run_id) / "evidence"
+    assert (evidence / "result.json").read_bytes() == _RETURN_JSON
+    assert not list(evidence.glob("*.tmp"))
+
+
+def test_dataclass_return_containers_and_encode_shape() -> None:
+    assert _codec.encode(Pin(1, 2)) == b'{"x":1,"y":2}'
+    assert _codec.encode([Pin(1, 2)], list[Pin]) == b'[{"x":1,"y":2}]'
+    assert _codec.encode({"k": Pin(3, 4)}, dict[str, Pin]) == b'{"k":{"x":3,"y":4}}'
+    assert _codec.encode(Route("a")) == (
+        b'{"extra":{},"home":null,"legs":[],"origin":"a","tags":[]}'
+    )
+    with pytest.raises(_codec.Unencodable):  # the class itself is not an instance
+        _codec.encode(Pin)
+    with pytest.raises(_codec.Unencodable):  # an undecodable field still refuses
+        _codec.encode(Leg("n", b"raw"))  # type: ignore[arg-type]
+
+
+def test_dataclass_return_switch_cleared_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(_codec, "TYPED_RECORDS", False)
+    with pytest.raises(_codec.Unencodable):
+        _codec.encode(Pin(1, 2))
+    target = tmp_path / "result.json"
+    with pytest.raises(_codec.Unencodable):
+        write_result(target, Pin(1, 2), declared_return=Pin)
+    assert not target.exists()
+    assert not list(tmp_path.glob("*.tmp"))
+    assert _codec.encode({"x": 1}) == b'{"x":1}'  # today's shapes keep their bytes
 
 
 # ---------------------------------------------------------------------------
