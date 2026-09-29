@@ -12,6 +12,9 @@ IDEMPOTENCY_KEY_CONFLICT = "admission.idempotency_key_conflict"
 BUDGET_DOES_NOT_FIT = "admission.budget_does_not_fit"
 # L.SV-3.5 (TM-B2-1): temporary, refused only in `Admission.admit` before any run id.
 ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED = "admission.plan_multi_vertex_unsupported"
+# L.SL-8.2 (MC-06 seed, retryable): the environment's lease holder leaves too little time before
+# this request's would-be deadline; refused before any run id.
+ADMISSION_ENVIRONMENT_BUSY = "admission.environment_busy"
 NOT_IMPLEMENTED = "projection.not_implemented"
 INVALID_HANDLE = "projection.invalid_handle"
 NOT_OWNER = "projection.not_owner"

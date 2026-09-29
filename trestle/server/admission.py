@@ -8,6 +8,7 @@ import math
 import os
 import platform
 import sys
+import time
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -198,6 +199,9 @@ class Admission:
         planned = plan_for_admission(snap, req, deadline_s)
         if isinstance(planned, AdmitResultRefused):
             return planned
+        busy = self._environment_busy(planned, deadline_s)
+        if busy is not None:
+            return busy
         admitted = write_admitted_run(
             self.home, snap, req, planned, service_epoch=self.service_epoch
         )
@@ -210,6 +214,35 @@ class Admission:
         self.scheduler.mint(admitted.run_id, snap.snapshot_id, admitted.spec_hash)
         # the real values travel in memory to the run's WorkOrder and no further
         return AdmitResultAdmitted(tag="admitted", run_id=admitted.run_id, secrets=admitted.secrets)
+
+    def _environment_busy(self, plan: AdmittedPlan, deadline_s: float) -> AdmitResultRefused | None:
+        """B2 ordering step 2, the lease pre-check (WR-OWN-8, B2-C5): a request whose environment
+        is held is queued FIFO within its deadline (`ControlSurface`), unless the holders'
+        recorded deadlines leave it less than the plan's worst case plus release slice before its
+        own would-be deadline: then it is refused `admission.environment_busy` (retryable) with no
+        run id, since waiting could not end in a run that fits."""
+        if not plan.lease_set:
+            return None
+        free_at = self.holders.latest_deadline(plan.lease_set[0])
+        if free_at is None:
+            return None
+        worst_case = carving.worst_case_s(plan, clock.FINALIZATION_RESERVE_S)
+        if not lease.leaves_too_little(
+            free_at, time.time() + deadline_s, worst_case, plan.release_slice
+        ):
+            return None
+        return AdmitResultRefused(
+            tag="refused",
+            outcome=RequestOutcome(
+                code=codes.ADMISSION_ENVIRONMENT_BUSY,
+                message=(
+                    "the environment is held by a run whose deadline leaves this request too "
+                    "little time; retry after it ends"
+                ),
+                retryable=True,
+                origin="admission",
+            ),
+        )
 
 
 def _plan_refusal(refusal: compiler.Refusal) -> AdmitResultRefused:

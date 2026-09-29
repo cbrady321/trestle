@@ -56,7 +56,10 @@ class Conductor:
         try:
             return self._drive(order)
         finally:
-            # the scheduler's slot is released on every exit, a raised exception included
+            # the scheduler's slot, and with it the run's environment key (WR-OWN-8), is released on
+            # every exit, a raised exception included: on a normal exit after the terminal row
+            # (which ends the lease even when the stop was unconfirmed, OQ-34), so the next run
+            # waiting on the key starts only after this run's answer is durable
             self.scheduler.complete(order.run_id)
 
     def admitted_deadline(self, order: WorkOrder) -> float:
