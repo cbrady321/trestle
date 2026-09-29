@@ -1,4 +1,4 @@
-"""The converge loop (L.SV-5.7; B1-C7, B1-C9..C11, B1-E4..E7, B1-O3..O5; MC-24).
+"""The converge loop (L.SV-5.7, L.SV-5.8; B1-C7, B1-C9..C11, B1-E4..E7, B1-O3..O8; MC-24).
 
 `run_tree(ctx, entry, intent)` is the plugin callable's one call. It reads B2's run services from
 `ctx.run_services`, proves the two admitted digests and the dispatch budget before anything else,
@@ -17,6 +17,10 @@ each change one method:
   `decide` call and the commands it returns, in order (B1-C10). `converge` runs steps until the walk
   ends. The join is the only producer of a verdict (B1-I2); `advance` and `observe` are the unit's,
   called through facets bound for that call alone (B1-C6).
+* `run` writes the vertex's `NodeEnd` when its walk ends, then runs the release pass (B1-O6): for
+  each `CreatedHandle` in the node's release set, in reverse issue order, `release` once, then wait
+  on a plain clock until the unit observes the selector absent, and only then `record_released`. A
+  handle not observed absent stays unrecorded and is the host sweep's (B2-C9).
 * The record the join reads is `lane.node_record(path)` plus the steps the lane refused to hold,
   which the loop keeps in process for the life of the root (V-4.5, A1c3-1). Held steps are never
   written to the lane, so the fold and the sweep never see them.
@@ -33,7 +37,8 @@ needs beyond B2's surface come through `services.FinalizationBounds`.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
@@ -52,7 +57,13 @@ from trestle.workflow.declarations import (
     WorkflowEntry,
 )
 from trestle.workflow.extract import ExtractionRefused, extract_root
-from trestle.workflow.facets import EffectBinder, FacetContext, ReadBinder
+from trestle.workflow.facets import (
+    EffectBinder,
+    FacetContext,
+    ReadBinder,
+    ReleaseBinder,
+    declared_effect,
+)
 from trestle.workflow.join import join
 from trestle.workflow.units import (
     Acted,
@@ -67,6 +78,7 @@ from trestle.workflow.values import (
     CancelSignal,
     ClockReading,
     Condition,
+    CreatedHandle,
     EvidenceSink,
     Goal,
     HostScopeReading,
@@ -196,6 +208,11 @@ def _step_problem(step: object) -> str | None:
     return None
 
 
+def _observed_absent(observation: Observation) -> bool:
+    """V-3.8: absent only when the selector is not present and the port could observe."""
+    return not observation.selector_present and observation.code is None
+
+
 class LeafWalk:
     """One leaf vertex's walk (B1-O5 for a leaf). Not thread-safe; the loop walks one leaf at one
     vertex. A later gate that runs leaves concurrently gives each its own `LeafWalk`."""
@@ -218,6 +235,7 @@ class LeafWalk:
         self._observation: Observation | None = None
         self._refusal_seen = False  # a facet refused or recorded UNKNOWN in the current call
         self.verdict: Verdict | None = None
+        self._reached = False  # the walk ended at a condition the node reached itself
         self._terms = NodeTerms(
             flags=declaration.flags,
             retryable=declaration.retryable,
@@ -233,39 +251,78 @@ class LeafWalk:
     # ------------------------------------------------------------------ the walk
 
     def converge(self) -> None:
-        """Walk to STOP, or until the goal leaves CONVERGE."""
+        """Walk to STOP, or until the goal leaves CONVERGE. A stop that is already up starts
+        nothing: the node is then NOT_STARTED (B1-C11)."""
+        if self._stopped():
+            return
         self.start()
         while self.step():
             pass
 
+    def _stopped(self) -> bool:
+        """A cancel or the release point (`CancelSignal.requested`, B2-C6) flips the goal to
+        RELEASE for every node at once; so has an uncaught raise or a facet's stop (B1-E6)."""
+        if self._loop.goal is Goal.CONVERGE and self._loop.services.cancellation().requested:
+            self._loop.flip_goal()
+        return self._loop.goal is not Goal.CONVERGE
+
     def start(self) -> None:
         """B1-C2: observe once before the first join, then join."""
-        self._observe()
+        self._observation = self._observe() or self._observation
         self._rejoin()
 
     def step(self) -> bool:
         """One `decide` call and the commands it returns, in order (B1-C10). After the last
         command the loop joins again. False when the walk is over: STOP, or the goal is no longer
         CONVERGE."""
-        verdict = self.verdict
-        if verdict is None or self._loop.goal is not Goal.CONVERGE:
+        if self.verdict is None or self._stopped():
             return False
-        for command in decide(self._decl.flags, verdict.condition, Goal.CONVERGE):
-            if command is Command.STOP:
-                return False
+        commands = decide(self._decl.flags, self.verdict.condition, Goal.CONVERGE)
+        if commands == (Command.STOP,):
+            self._reached = True
+            return False
+        if self._slice_ended():
+            self._carve_exceeded()
+            self._reached = True
+            return False
+        for command in commands:
             self._run(command)
-            if self._loop.goal is not Goal.CONVERGE:
+            if self._stopped():
                 break
         self._rejoin()
         return self._loop.goal is Goal.CONVERGE
 
+    def _slice_ended(self) -> bool:
+        return self._loop.now() >= self._terms.slice_end
+
+    def _carve_exceeded(self) -> None:
+        """B1-O8: the slice ended with a non-terminal verdict. A STALE verdict joins once more
+        first and yields CURRENCY_UNCONFIRMED (V-3.5); otherwise the loop records
+        `StepEntry(FAILED, CARVE_EXCEEDED)` and joins once (J-2)."""
+        assert self.verdict is not None
+        if self.verdict.condition is Condition.STALE:
+            self._rejoin()
+            if self._reached_stop(self.verdict):
+                return
+        self._record_step(StepKind.FAILED, codes.CARVE_EXCEEDED)
+        self._rejoin()
+
     def end(self) -> None:
-        """Write the vertex's `NodeEnd` when its walk reached STOP (B1-C11): the last verdict's
+        """Write the vertex's `NodeEnd` (B1-C11), once. A node that reached its condition itself
+        (its walk reached STOP, its slice ended, or its own unit raised) carries its last verdict's
         condition, code, provenance and, exactly when V-3.7's presence rule requires them, human
-        action and re-send; `cut` is None because the node reached this condition itself."""
+        action and re-send, `cut` None. A walk the goal cut short is `STOPPED` with its last
+        verdict, or `NOT_STARTED` with nothing when no ticket was ever issued."""
         verdict = self.verdict
-        if verdict is None or not self._reached_stop(verdict):
+        own = self._reached or (verdict is not None and verdict.code == codes.UNIT_RAISED)
+        if own:
+            cut = None
+        elif not self._loop.lane.node_record(self.path).tickets:
+            self._loop.end_vertex(self.path, condition=None, code=None, cut=svc.Cut.NOT_STARTED)
             return
+        else:
+            cut = svc.Cut.STOPPED
+        assert verdict is not None
         self._loop.end_vertex(
             self.path,
             condition=verdict.condition,
@@ -273,6 +330,7 @@ class LeafWalk:
             human_action=verdict.human_action,
             resend=verdict.resend,
             provenance=verdict.provenance,
+            cut=cut,
         )
 
     def _reached_stop(self, verdict: Verdict) -> bool:
@@ -324,26 +382,29 @@ class LeafWalk:
     def _note_refusal(self) -> None:
         self._refusal_seen = True
 
-    def _observe(self) -> None:
-        """Call the unit's `observe` through read facets only (B1-C2); a raise or a malformed
-        observation is UNIT_RAISED (B1-E6), and the previous observation stays."""
+    def _observe(self, handle: CreatedHandle | None = None) -> Observation | None:
+        """Call the unit's `observe` through read facets only (B1-C2). A raise or a malformed
+        observation is UNIT_RAISED (B1-E6; from the release pass, that handle's cleanup outcome)
+        and gives None."""
         context = _CallContext(self._lineage, self._loop.services)
         try:
             observation = self._unit.observe(self._params, ReadBinder(self._facets(None)), context)
         except Exception as exc:  # noqa: BLE001 (plugin code: any raise is the unit's, B1-E6)
-            self._unit_raised(f"observe raised {type(exc).__name__}: {exc}")
-            return
+            self._unit_raised(f"observe raised {type(exc).__name__}: {exc}", handle)
+            return None
         problem = _observation_problem(observation, self._decl)
         if problem is not None:
-            self._unit_raised(problem)
-            return
-        self._observation = observation
+            self._unit_raised(problem, handle)
+            return None
+        assert isinstance(observation, Observation)
+        return observation
 
     def _poll(self) -> None:
         """POLL under CONVERGE: wait the policy's interval through `CancelSignal.wait`, then
         observe (V-3.5); never `advance` (B1-C10). The join follows the tuple."""
         self._loop.services.cancellation().wait(self._decl.wait.poll_every)
-        self._observe()
+        if not self._stopped():
+            self._observation = self._observe() or self._observation
 
     # ------------------------------------------------------------------ advance
 
@@ -380,30 +441,92 @@ class LeafWalk:
             # repeat the same join forever, so it ends the node instead
             self._unit_raised("an advance that recorded nothing and changed nothing")
 
-    def _receive(self, step: object, issued: tuple[Any, ...], remedy: RemedyGrant | None) -> None:
-        """Record the `Step` `advance` returned (B1-C7), after the receipt checks (B1-E5)."""
+    def _receive(
+        self,
+        step: object,
+        issued: tuple[Any, ...],
+        remedy: RemedyGrant | None,
+        handle: CreatedHandle | None = None,
+    ) -> None:
+        """Record the `Step` `advance` (or, with `handle`, `release`) returned (B1-C7), after the
+        receipt checks (B1-E5). A step from `release` is that handle's cleanup outcome."""
         if self._refusal_seen:
             # refusal precedence (V-3.7): the facet recorded the outcome; the step is evidence only
             self._evidence(_EVIDENCE_STEP, {"step": type(step).__name__})
             if remedy is not None and not any(t.effect == remedy.effect for t in issued):
-                self._unit_raised("a ticketless re-advance under a granted remedy")
+                self._unit_raised("a ticketless re-advance under a granted remedy", handle)
             return
         problem = _step_problem(step)
         if problem is not None:
-            self._unit_raised(problem)
+            self._unit_raised(problem, handle)
         elif isinstance(step, Acted):
             if not issued:
-                self._unit_raised("Acted from a call that issued no ticket")
+                self._unit_raised("Acted from a call that issued no ticket", handle)
         elif isinstance(step, NoAction):
-            if self._decl.flags.completion is CompletionSource.RECORDED:
-                self._unit_raised("NoAction from the advance of a RECORDED leaf")
+            if self._decl.flags.completion is CompletionSource.RECORDED and handle is None:
+                self._unit_raised("NoAction from the advance of a RECORDED leaf", handle)
             else:
-                self._record_step(StepKind.NO_ACTION, step.reason)
+                self._record_step(StepKind.NO_ACTION, step.reason, handle=handle)
         elif isinstance(step, Blocked):
-            self._record_step(StepKind.BLOCKED, step.code, step.human_action, step.resend)
+            self._record_step(StepKind.BLOCKED, step.code, step.human_action, step.resend, handle)
         elif isinstance(step, Failed):
             self._evidence(_EVIDENCE_FAILED, {"code": step.code, "detail": step.detail})
-            self._record_step(StepKind.FAILED, step.code)
+            self._record_step(StepKind.FAILED, step.code, handle=handle)
+
+    # ------------------------------------------------------------------ release (B1-O6, B1-C10)
+
+    def release_all(self) -> None:
+        """The release pass, on RELEASE and on done alike: the goal becomes RELEASE (so a
+        non-release effect is refused from here, B1-E4), then `decide` gives `RELEASE_HANDLES`."""
+        self._loop.flip_goal()
+        condition = self.verdict.condition if self.verdict is not None else Condition.UNSATISFIED
+        for command in decide(self._decl.flags, condition, Goal.RELEASE):
+            if command is not Command.RELEASE_HANDLES:
+                raise RuntimeError(f"{command.value} is not a leaf command under RELEASE")
+            self._release_handles()
+
+    def _release_handles(self) -> None:
+        """RELEASE_HANDLES (B1-C10): each `CreatedHandle` of this node in the root's release set
+        (V-4.4), in reverse issue order. The release set is read from the record, never from an
+        observation (V-2.2)."""
+        for handle in reversed(self.record().release_set()):
+            self._release_call(handle)
+            self._await_absence(handle)
+
+    def _release_call(self, handle: CreatedHandle) -> None:
+        """Call `release` once for `handle` (B1-C4). Whatever it returns, or a facet records, is
+        the handle's cleanup outcome (`StepEntry.handle` set), never the node's condition; a raise
+        is UNIT_RAISED as a cleanup outcome too (B1-E6)."""
+        before = self._loop.lane.node_record(self.path)
+        self._refusal_seen = False
+        context = _CallContext(self._lineage, self._loop.services)
+        facets = ReleaseBinder(self._facets(None), handle)
+        try:
+            returned = self._unit.release(self._params, handle, facets, context)
+        except EffectRefused:
+            return  # the facet recorded the outcome before raising (B1-E4)
+        except Exception as exc:  # noqa: BLE001 (plugin code: any raise is the unit's, B1-E6)
+            self._unit_raised(f"release raised {type(exc).__name__}: {exc}", handle)
+            return
+        issued = self._loop.lane.node_record(self.path).tickets[len(before.tickets) :]
+        self._receive(returned, issued, None, handle)
+
+    def _await_absence(self, handle: CreatedHandle) -> None:
+        """POLL under RELEASE: wait the policy's interval on a plain clock, ignoring
+        cancellation (a cancel that already arrived would end every wait at once), then observe,
+        bounded by the effect's `release_timeout` and the root deadline. Only an observed absence
+        (V-3.8) writes `record_released`; otherwise the handle stays unrecorded and is the host
+        sweep's (B2-C9), never reported released by the loop (WR-OWN-6)."""
+        loop = self._loop
+        declared = declared_effect(self._decl, handle.effect)
+        timeout = declared.release_timeout if declared is not None else None
+        give_up = min(loop.now() + (timeout or timedelta(0)), loop.services.clock().root_deadline)
+        while (remaining := give_up - loop.now()) > timedelta(0):
+            loop.sleep(min(self._decl.wait.poll_every, remaining).total_seconds())
+            observation = self._observe(handle)
+            if observation is not None and _observed_absent(observation):
+                loop.lane.record_released(handle, None)
+                return
 
     # ------------------------------------------------------------------ steps and evidence
 
@@ -413,12 +536,11 @@ class LeafWalk:
         code: StableCode,
         human_action: str | None = None,
         resend: Resend | None = None,
+        handle: CreatedHandle | None = None,
     ) -> None:
         """`record_step`; FULL or UNAVAILABLE keeps the step in process (V-4.5, A1c3-1). Any other
-        refusal is a loop defect (B2-C7)."""
-        step = StepView(
-            self._lineage, self._loop.now(), kind, code, human_action, resend, handle=None
-        )
+        refusal is a loop defect (B2-C7). `handle` marks a release's cleanup outcome (V-3.7)."""
+        step = StepView(self._lineage, self._loop.now(), kind, code, human_action, resend, handle)
         refused = self._loop.lane.record_step(step)
         if refused is None:
             return
@@ -427,12 +549,12 @@ class LeafWalk:
             return
         raise RuntimeError(f"the lane refused a loop step: {refused.value}")
 
-    def _unit_raised(self, reason: str) -> None:
+    def _unit_raised(self, reason: str, handle: CreatedHandle | None = None) -> None:
         """A contract violation or an uncaught raise: the goal flips first, then the node's
         `StepEntry(FAILED, UNIT_RAISED)` is recorded, so every later entry saw the flip (B1-E6)."""
         self._loop.flip_goal()
         self._evidence(_EVIDENCE_UNIT_RAISED, {"reason": reason})
-        self._record_step(StepKind.FAILED, codes.UNIT_RAISED)
+        self._record_step(StepKind.FAILED, codes.UNIT_RAISED, handle=handle)
 
     def _evidence(self, kind: str, fields: dict[str, JsonValue]) -> None:
         self._loop.services.evidence().event(kind, {"path": _path_text(self.path), **fields})
@@ -448,7 +570,10 @@ class Loop:
         entry: WorkflowEntry,
         intent: Mapping[str, JsonValue],
         ports: Mapping[type, object] | None = None,
+        *,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
+        self.sleep = sleep  # the RELEASE wait is a plain clock wait: it ignores cancellation
         self.services = services
         self.entry = entry
         self.intent = intent
@@ -475,7 +600,8 @@ class Loop:
     # ------------------------------------------------------------------ the root
 
     def run(self) -> None:
-        """B1-O3, B1-O4 for one vertex, then the walk (B1-C9)."""
+        """B1-O3, B1-O4 for one vertex, the walk, the vertex's `NodeEnd`, then the release pass
+        (B1-C9): every vertex has its end before anything is given back."""
         plan = self.services.admitted().accepted
         declaration, tree = self._derive()
         stop = self._proof_stop(plan, tree.digest if tree is not None else None)
@@ -488,7 +614,8 @@ class Loop:
         unit = self.entry.units[self.entry.root]
         walk = LeafWalk(self, ROOT, unit, declaration, self.intent)
         walk.converge()
-        walk.end()
+        walk.end()  # before the release pass: the run has "ended" once every vertex has its end
+        walk.release_all()
 
     def _derive(self) -> tuple[Declaration | None, DeclaredTree | None]:
         """B1-O3: re-derive the declaration in-run. A `declare()` that no longer yields a

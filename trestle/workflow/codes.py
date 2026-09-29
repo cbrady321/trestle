@@ -28,6 +28,7 @@ LANE_UNAVAILABLE: Final = "execution.lane_unavailable"
 UNIT_RAISED: Final = "execution.unit_raised"
 STOP_SEEN: Final = "execution.stop_seen"
 DECLARATION_STALE: Final = "execution.declaration_stale"
+CARVE_EXCEEDED: Final = "execution.carve_exceeded"
 # one spelling for admission and for the in-run dispatch re-check (V-11 `BUDGET_DOES_NOT_FIT`)
 BUDGET_DOES_NOT_FIT: Final = "admission.budget_does_not_fit"
 
