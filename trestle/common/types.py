@@ -127,6 +127,19 @@ class PluginSnapshot:
 
 
 @dataclass
+class CleanupView:
+    """The cleanup disposition of a spawned run's process-group target (B2-C9, B4-C7): `released`
+    only when the supervisor confirmed every process attributable to the run gone, else
+    `unknown`. It is never `nothing_created` (the run spawned a process), never clean by
+    default."""
+
+    processes: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"processes": self.processes}
+
+
+@dataclass
 class RunView:
     run_id: Handle
     state: str
@@ -141,6 +154,7 @@ class RunView:
     error: dict[str, Any] | None = None
     next: Handle | None = None
     limits_exceeded: list[dict[str, Any]] | None = None
+    cleanup: CleanupView | None = None
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -165,6 +179,8 @@ class RunView:
             out["next"] = self.next
         if self.limits_exceeded is not None:
             out["limits_exceeded"] = self.limits_exceeded
+        if self.cleanup is not None:
+            out["cleanup"] = self.cleanup.to_dict()
         return out
 
 

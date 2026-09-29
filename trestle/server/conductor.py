@@ -8,14 +8,18 @@ import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
+from trestle.common import clock
 from trestle.common.fsutil import atomic_write_json
 from trestle.common.ids import generate_artifact_id
 from trestle.common.types import WorkOrder
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, work_dir
-from trestle.server.runs import RunRegistry, cancel_flag_path, terminate_process_group
+from trestle.server.procident import Attribution, GroupStop, Identity, ProcessSource, stop_group
+from trestle.server.runs import RunRegistry, cancel_flag_path
 from trestle.server.scheduler import Scheduler
 
 
@@ -24,18 +28,27 @@ class Conductor:
     home: Path
     scheduler: Scheduler
     run_registry: RunRegistry
+    process_source: ProcessSource | None = None
+    # B2-C10's kill: the one stopper, at both call sites; a test injects its own
+    stopper: Callable[[Attribution], GroupStop] = stop_group
 
     def drive(self, order: WorkOrder) -> str:
+        try:
+            return self._drive(order)
+        finally:
+            # the scheduler's slot is released on every exit, a raised exception included
+            self.scheduler.complete(order.run_id)
+
+    def _drive(self, order: WorkOrder) -> str:
         run_dir = self._find_run_dir(order.run_id)
         ledger = RunLedger.open(ledger_path(run_dir))
         ledger.append("admitted", run_id=order.run_id, snapshot_id=order.snapshot_id)
         ledger.append("started", run_id=order.run_id)
 
         spec_path = evidence_dir(run_dir) / "spec.json"
-        timeout_s = 300
+        spec: dict[str, object] = {}
         if spec_path.exists():
             spec = json.loads(spec_path.read_text(encoding="utf-8"))
-            timeout_s = int(spec.get("timeout_s", timeout_s))
 
         wrapper_cmd = [
             sys.executable,
@@ -47,31 +60,68 @@ class Conductor:
         started = time.monotonic()
         proc = subprocess.Popen(
             wrapper_cmd,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             env=_subprocess_env(self.home),
             start_new_session=True,
         )
-        self.run_registry.register(order.run_id, proc)
+        # B2-C16: the leader's identity row goes down after spawn and before the first liveness
+        # poll; the wrapper does not wait on it.
+        attribution = Attribution(
+            group=proc.pid,
+            record=lambda ident: _record_identity(ledger, order.run_id, ident),
+            source=self.process_source,
+        )
+        attribution.attribute_leader(proc.pid)
+        self.run_registry.register(order.run_id, proc, attribution)
         cancel_flag = cancel_flag_path(run_dir)
-        deadline = time.monotonic() + timeout_s
+        deadline = _monotonic_deadline(spec)
+        first_observed_cause: str | None = None
+        stop: GroupStop | None = None
         try:
             while proc.poll() is None:
+                attribution.observe()
                 if cancel_flag.exists():
-                    terminate_process_group(proc, grace_s=0.0, kill_s=1.0)
+                    first_observed_cause = "cancel"
+                    stop = self.stopper(attribution)
                     break
                 if time.monotonic() > deadline:
-                    terminate_process_group(proc, grace_s=0.0, kill_s=1.0)
+                    first_observed_cause = "deadline"
+                    stop = self.stopper(attribution)
                     break
-                time.sleep(0.05)
+                time.sleep(clock.poll_interval)
+            if first_observed_cause is None:  # the exit was observed: check once more (B2-C10)
+                if cancel_flag.exists():
+                    first_observed_cause = "cancel"
+                elif time.monotonic() > deadline:
+                    first_observed_cause = "deadline"
         finally:
             self.run_registry.unregister(order.run_id)
+            # B2-C10: the kill runs on every terminal path, a normal exit included. A request-path
+            # stop still in flight finishes first (one stop at a time), and nothing signals after.
+            with attribution.lock:
+                if stop is None:
+                    stop = self.stopper(attribution)
+                attribution.close()
             if proc.stdout is not None:
                 proc.stdout.close()
             if proc.stderr is not None:
                 proc.stderr.close()
-            proc.wait()
+            try:  # after the stop the leader is gone, or could not be killed (never waited on)
+                proc.wait(timeout=clock.kill)
+            except subprocess.TimeoutExpired:
+                pass
+
+        assert stop is not None
+        # MC-32: one group_stop per spawned run, after the kill and before evidence_finalized
+        ledger.append(
+            "group_stop",
+            run_id=order.run_id,
+            confirmed_gone=stop.confirmed_gone,
+            method=stop.method,
+        )
 
         duration_ms = int((time.monotonic() - started) * 1000)
 
@@ -79,18 +129,21 @@ class Conductor:
         classification = "failed"
         exit_code = proc.returncode if proc.returncode is not None else 1
         wrapper_limits: list[dict[str, object]] = []
-        timed_out = time.monotonic() > deadline and not cancel_flag.exists()
-        if cancel_flag.exists():
+        report: dict[str, object] = {}
+        if report_path.exists():
+            loaded = json.loads(report_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                report = loaded
+        raw_limits = report.get("limits_exceeded", [])
+        if isinstance(raw_limits, list):
+            wrapper_limits = [item for item in raw_limits if isinstance(item, dict)]
+        if first_observed_cause == "cancel":
             classification = "cancelled"
-        elif report_path.exists():
-            report = json.loads(report_path.read_text(encoding="utf-8"))
-            classification = str(report.get("classification", classification))
-            exit_code = int(report.get("exit_code", exit_code))
-            raw_limits = report.get("limits_exceeded", [])
-            if isinstance(raw_limits, list):
-                wrapper_limits = [item for item in raw_limits if isinstance(item, dict)]
-        elif timed_out:
+        elif first_observed_cause == "deadline":
             classification = "timed_out"
+        elif report:
+            classification = str(report.get("classification", classification))
+            exit_code = _as_int(report.get("exit_code", exit_code), exit_code)
         elif proc.returncode == 0:
             classification = "succeeded"
 
@@ -137,7 +190,6 @@ class Conductor:
         )
         ledger.append(classification, run_id=order.run_id)
 
-        self.scheduler.complete(order.run_id)
         return classification
 
     async def drive_async(self, order: WorkOrder) -> str:
@@ -175,6 +227,27 @@ class Conductor:
             if candidate.is_dir():
                 return candidate
         raise FileNotFoundError(run_id)
+
+
+def _monotonic_deadline(spec: dict[str, object]) -> float:
+    """The moment, on the monotonic clock, the run's admitted deadline falls (B2-C5): the deadline
+    `spec.deadline` fixed at admission, not a fresh timeout taken from spawn, so time spent
+    queued or held counts against it. A spec with no deadline falls back to its `timeout_s`."""
+    raw = spec.get("deadline")
+    if isinstance(raw, str):
+        try:
+            fixed = datetime.fromisoformat(raw)
+        except ValueError:
+            fixed = None
+        if fixed is not None:
+            if fixed.tzinfo is None:
+                fixed = fixed.replace(tzinfo=UTC)
+            return time.monotonic() + (fixed - datetime.now(tz=UTC)).total_seconds()
+    return time.monotonic() + _as_int(spec.get("timeout_s", 300), 300)
+
+
+def _record_identity(ledger: RunLedger, run_id: str, ident: Identity) -> None:
+    ledger.append("process_identity", run_id=run_id, **ident.fields())
 
 
 def _read_ndjson(path: Path) -> list[dict[str, object]]:

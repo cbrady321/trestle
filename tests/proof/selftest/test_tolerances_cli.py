@@ -13,29 +13,28 @@ from tests.proof import tolerances
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_list_s0_literal_sites_exits_0_iff_site_remains() -> None:
+def test_list_s0_literal_sites_exits_nonzero_once_both_stop_sites_read_clock() -> None:
+    """CS-2 (L.CS-2.2) moved both `grace_s=`/`kill_s=` literals in the conductor onto clock.py."""
     proc = subprocess.run(
         [sys.executable, "-m", "tests.proof.tolerances", "--list-s0-literal-sites"],
         cwd=ROOT,
         capture_output=True,
         text=True,
     )
-    assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "trestle/server/conductor.py" in proc.stdout
+    assert proc.returncode != 0, proc.stdout + proc.stderr
+    assert proc.stdout.strip() == ""
 
 
-def test_conductor_literal_sites_found_at_known_lines() -> None:
-    sites = tolerances.find_s0_literal_sites()
-    files_lines = {(f, ln) for f, ln in sites}
-    assert ("trestle/server/conductor.py", 62) in files_lines
-    assert ("trestle/server/conductor.py", 65) in files_lines
+def test_no_literal_site_remains_in_the_conductor() -> None:
+    assert tolerances.find_s0_literal_sites() == []
 
 
-def test_grace_and_kill_resolve_from_s0_runs_module() -> None:
+def test_grace_and_kill_resolve_from_clock_and_s0_names_read_through() -> None:
+    from trestle.common import clock
     from trestle.server.runs import CANCEL_GRACE_S, CANCEL_KILL_S
 
-    assert tolerances.grace() == CANCEL_GRACE_S
-    assert tolerances.kill() == CANCEL_KILL_S
+    assert tolerances.grace() == clock.grace == CANCEL_GRACE_S
+    assert tolerances.kill() == clock.kill == CANCEL_KILL_S
 
 
 def test_unpublished_bound_raises_on_read() -> None:

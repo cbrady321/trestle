@@ -53,8 +53,14 @@ def test_every_clock_bound_is_read_through_tolerances(sa: str) -> None:
 
     # the tolerances module resolves the bound from clock.py with no edit (DM-60)
     assert tolerances.append_cost_ratio() == float(clock.APPEND_COST_RATIO)
-    known = set(tolerances._S0_FALLBACKS)  # noqa: SLF001
-    assert set(_published()) <= known, sorted(set(_published()) - known)
+    # every published bound is readable through tolerances under its own name, with no edit there:
+    # `_resolve` reads clock.py first, so a bound tolerances has no accessor for (the supervisor's
+    # `poll_interval`, CB-9) is still read from the one definition
+    for name in _published():
+        assert tolerances._resolve(name) == float(getattr(clock, name)), name  # noqa: SLF001
+    # the stop bound is grace + kill + the (not yet published) release slice, as B2-C10 defines it
+    assert clock.stop_bound == clock.grace + clock.kill
+    assert tolerances.stop_bound() == clock.stop_bound
 
 
 @pytest.mark.parametrize("sa", ["SA-05"])

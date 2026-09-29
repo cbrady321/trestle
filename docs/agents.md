@@ -182,6 +182,39 @@ Every `BoundedView` includes `backend`, `as_of`, `items`, `truncated`, `next_cur
 
 ---
 
+## Cancel, deadlines and cleanup
+
+A run has one deadline, fixed when it is admitted: `timeout_s` counted from admission, so time spent
+queued or held counts against it. `cancel` and the deadline are the two ways a run is stopped, and
+both stop the **whole process tree**, not just the plugin's own process. The supervisor sends
+SIGTERM to every process attributable to the run at once, waits at most `grace`, sends SIGKILL,
+and waits at most `kill` for confirmation. Attributable means the run's process group, and every
+descendant by parent id of a process already attributable, whatever session or group it has moved
+to (a plugin's `setsid` child is still the run's). The run's class comes from whichever came first,
+the cancel or the deadline; if both hold at the first look, cancel.
+
+| Published bound (`trestle.common.clock`) | Default | Meaning |
+|---|---|---|
+| `grace` (10 s) | `TRESTLE_CANCEL_GRACE_S` | SIGTERM to SIGKILL |
+| `kill` (5 s) | `TRESTLE_CANCEL_KILL_S` | SIGKILL to confirmed gone |
+| `stop_bound` (15 s, `grace` + `kill`) | derived | from the stop decision to the tree gone |
+| `poll_interval` (0.05 s) | fixed | how often the supervisor looks for a cancel |
+
+A cancel is seen within one `poll_interval`, so a stop completes within `stop_bound` plus
+`poll_interval` of the request. By the terminal row every process the run started is gone, or the
+answer says it could not be confirmed: `cleanup.processes` on the run frame is `released` only
+when the supervisor confirmed the group gone, otherwise `unknown` (never a clean claim without
+confirmation, and never `nothing_created` for a run that spawned a process). The evidence and the
+result are written only after that confirmation, so nothing changes them after the terminal row on
+a stop path.
+
+After a server crash, recovery reads the run's recorded process identities before it marks the run
+`interrupted`: it stops the run's processes when the recorded leader is still alive, and it never
+signals a pid that now belongs to another process. A run started before identities were recorded
+gets no signal at all; its answer reports the stop as unconfirmed.
+
+---
+
 ## Publishing plugins
 
 See [`plugins.md`](plugins.md) for authoring, filesystem drop-in, and `publish_plugin`.

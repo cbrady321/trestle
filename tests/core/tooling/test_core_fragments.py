@@ -34,9 +34,13 @@ def test_core_fragments_parse_and_match_plan() -> None:
         assert label["step"] == "core", label["id"]
         assert label["venue"] in ("CI", "HOST", "BOTH"), label["id"]
         assert LEAF_ID.match(label["declared_by"]), label["id"]
-        # no core-declared label is gated or both-variant (no `oq`), and none is `na`
+        # no core-declared label is gated or both-variant (no `oq`); `na` only as a CK decline
+        # patch writes it (CM-7 step 5): reason "K-n declined"
         assert "oq" not in label and "composes" not in label, label["id"]
-        assert label["posture"] in ("claim", "shape"), label["id"]
+        if label["posture"] == "na":
+            assert re.fullmatch(r"K-\d+ declined", label.get("reason", "")), label["id"]
+        else:
+            assert label["posture"] in ("claim", "shape"), label["id"]
         # the two WR-COMPAT rows carry slice compat; every other row slice core
         expected_slice = "compat" if label["row"].startswith("WR-COMPAT-") else "core"
         assert label["slice"] == expected_slice, label["id"]

@@ -182,8 +182,16 @@ def test_terminal_row_without_newline_recovers_as_terminal(tmp_path: Path) -> No
     with ledger_path(torn_dir).open("ab") as fh:
         fh.write(_encode({"seq": 2, "kind": "started", "run_id": "r_cs1_torn"}))  # no newline
     recover_run_dir(torn_dir)
-    kinds = [row["kind"] for row in read_ndjson(ledger_path(torn_dir))]
-    assert kinds == ["created", "started", "evidence_finalized", "interrupted"]
+    rows = read_ndjson(ledger_path(torn_dir))
+    # a started run records its stop before it is finalized (CS-2): no identity row, so branch (i)
+    assert [row["kind"] for row in rows] == [
+        "created",
+        "started",
+        "group_stop",
+        "evidence_finalized",
+        "interrupted",
+    ]
+    assert (rows[2]["confirmed_gone"], rows[2]["method"]) == (False, "no_identity")
     assert records.ledger_rows(torn_dir).merged is False
 
 

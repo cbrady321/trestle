@@ -695,3 +695,58 @@ authorized_by = "plan-workflow-runtime.md:979 (MC-06: projection.{terminal_wait_
 #   grows = [{ path = "$.tools_bytes", max = 8192 }]            an int grows, <= max
 # `*` matches one path segment. A selector that matches nothing on the head is
 # stale and fails d1. An additive entry without selectors excuses nothing.
+
+# The core bundle's named additive diffs of the S0 goldens (keys/items/grows selectors, see the
+# L.P0-0d.20 schema comment above): one entry per change, attributed to its leaf.
+
+# L.CS-2.1 (MC-14): process_identity rows between `started` and `execution_ended`.
+# ledger_kinds: $.sequences.<state>[3..] (two process_identity rows inserted after `started`).
+
+[[entry]]
+id = "ADD-ledger-kind-process-identity"
+facet = "ledger_kinds"
+row_or_k = "MC-14"
+docs = []
+due_checkpoint = "CS-2 (leaf L.CS-2.1)"
+direction = "additive"
+items = [{ path = "$.sequences.*", value = "process_identity" }]
+authorized_by = "plans/core.md MC-14 (L.CS-2.1: the leader's process identity after spawn, every attributed descendant)"
+
+# L.CS-2.6 (MC-32): a group_stop row on every terminal path, and after recovery.
+# ledger_kinds: $.sequences.<state>[n] (group_stop before execution_ended / error_record).
+# fossil_projection: $.<state>.reader.after_recovery.kinds (group_stop on execution_ended,
+# finalized_no_terminal, started, straddle, torn_tail).
+
+[[entry]]
+id = "ADD-ledger-kind-group-stop"
+facet = "ledger_kinds"
+row_or_k = "MC-32"
+docs = []
+due_checkpoint = "CS-2 (leaf L.CS-2.6)"
+direction = "additive"
+items = [{ path = "$.sequences.*", value = "group_stop" }]
+authorized_by = "plans/core.md MC-32 (L.CS-2.6: GroupStop row on every terminal path)"
+
+[[entry]]
+id = "ADD-fossil-recovery-group-stop"
+facet = "fossil_projection"
+row_or_k = "MC-32"
+docs = []
+due_checkpoint = "CS-2 (leaves L.CS-2.4, L.CS-2.6)"
+direction = "additive"
+items = [{ path = "$.*.reader.after_recovery.kinds", value = "group_stop" }]
+authorized_by = "plans/core.md MC-32 (L.CS-2.6) and L.CS-2.4 (recovery takes B2-C11's branch and writes the stop row)"
+
+# L.CS-2.6 (MC-32): RunView.cleanup, the stop report's projection.
+# runview_shape: $.fields[13], $.frames.{succeeded,truncated_array,truncated_object}.cleanup.
+
+[[entry]]
+id = "ADD-runview-cleanup"
+facet = "runview_shape"
+row_or_k = "MC-32"
+docs = ["docs/agents.md"]
+due_checkpoint = "CS-2 (leaf L.CS-2.6)"
+direction = "additive"
+keys = ["$.frames.*.cleanup"]
+items = [{ path = "$.fields", value = ["cleanup", "CleanupView | None"] }]
+authorized_by = "plans/core.md MC-32 (L.CS-2.6: the cleanup projection on RunView)"
