@@ -8,7 +8,7 @@ import time
 import uuid
 from pathlib import Path
 
-from tests.proof import ancestry
+from tests.proof import ancestry, tolerances
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -39,7 +39,7 @@ def test_planted_unrelated_process_not_attributed() -> None:
     root = _spawn_marked_sleeper(2.0, marker, new_session=True)
     other = _spawn_unrelated_sleeper(2.0)
     try:
-        time.sleep(0.3)
+        time.sleep(tolerances.SETTLE_S)
         snap = ancestry.snapshot()
         root_info = next(p for p in snap if p.pid == root.pid)
         attributed = ancestry.attribute(root_info, snap, marker=marker)
@@ -47,21 +47,21 @@ def test_planted_unrelated_process_not_attributed() -> None:
     finally:
         root.kill()
         other.kill()
-        root.wait(timeout=5)
-        other.wait(timeout=5)
+        root.wait(timeout=tolerances.PROC_WAIT_S)
+        other.wait(timeout=tolerances.PROC_WAIT_S)
 
 
 def test_reap_leaves_no_marker_process() -> None:
     marker = f"trestle-anc-{uuid.uuid4().hex[:12]}"
     proc = _spawn_marked_sleeper(30.0, marker)
     try:
-        time.sleep(0.3)
+        time.sleep(tolerances.SETTLE_S)
         before = ancestry.snapshot()
         planted = {p for p in before if marker in p.argv}
         assert len(planted) == 1
 
         ancestry.reap(planted)
-        proc.wait(timeout=5)
+        proc.wait(timeout=tolerances.PROC_WAIT_S)
 
         deadline = time.monotonic() + 3
         remaining = planted
@@ -70,12 +70,12 @@ def test_reap_leaves_no_marker_process() -> None:
             remaining = ancestry.survivors(planted, after)
             if not remaining:
                 break
-            time.sleep(0.1)
+            time.sleep(tolerances.POLL_S)
         assert not remaining
     finally:
         if proc.poll() is None:
             proc.kill()
-            proc.wait(timeout=5)
+            proc.wait(timeout=tolerances.PROC_WAIT_S)
 
 
 def test_start_is_zone_and_locale_free() -> None:
@@ -89,7 +89,7 @@ def test_start_is_zone_and_locale_free() -> None:
         assert first == second
     finally:
         proc.kill()
-        proc.wait(timeout=5)
+        proc.wait(timeout=tolerances.PROC_WAIT_S)
 
 
 def test_start_never_parsed_from_ps_text() -> None:
@@ -110,11 +110,11 @@ def test_survivors_cli_exit_status() -> None:
     marker = f"trestle-anc-{uuid.uuid4().hex[:12]}"
     proc = _spawn_marked_sleeper(3.0, marker)
     try:
-        time.sleep(0.3)
+        time.sleep(tolerances.SETTLE_S)
         assert ancestry.main(["survivors", "--marker", marker]) == 1
 
         proc.kill()
-        proc.wait(timeout=5)
+        proc.wait(timeout=tolerances.PROC_WAIT_S)
 
         deadline = time.monotonic() + 3
         code = 1
@@ -122,12 +122,12 @@ def test_survivors_cli_exit_status() -> None:
             code = ancestry.main(["survivors", "--marker", marker])
             if code == 0:
                 break
-            time.sleep(0.1)
+            time.sleep(tolerances.POLL_S)
         assert code == 0
     finally:
         if proc.poll() is None:
             proc.kill()
-            proc.wait(timeout=5)
+            proc.wait(timeout=tolerances.PROC_WAIT_S)
 
 
 def test_no_marker_reports_nothing() -> None:

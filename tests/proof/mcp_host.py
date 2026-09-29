@@ -33,6 +33,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from tests.proof import tolerances
+
 REPO = Path(__file__).resolve().parents[2]
 PROTOCOL_VERSION = "2025-06-18"
 
@@ -229,7 +231,7 @@ class McpHost:
         """Kill the subprocess outright (no graceful shutdown)."""
         if self.proc.poll() is None:
             self.proc.kill()
-        self.proc.wait(timeout=5)
+        self.proc.wait(timeout=tolerances.PROC_WAIT_S)
 
     def restart(self) -> None:
         """Spawn a new `trestle serve` subprocess on the same
@@ -256,10 +258,10 @@ class McpHost:
             try:
                 if self.proc.stdin:
                     self.proc.stdin.close()
-                self.proc.wait(timeout=5)
+                self.proc.wait(timeout=tolerances.PROC_WAIT_S)
             except Exception:
                 self.proc.kill()
-                self.proc.wait(timeout=5)
+                self.proc.wait(timeout=tolerances.PROC_WAIT_S)
         if self.proc.stdout:
             self.proc.stdout.close()
         if self.proc.stderr:
