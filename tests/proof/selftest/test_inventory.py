@@ -48,10 +48,32 @@ def test_g_c4_target_is_none_others_required() -> None:
             assert entry["target"] == "required", gap_id
 
 
+def _pending_total() -> int:
+    gaps = tomllib.loads(GAPS_PATH.read_text())["gap"]
+    facets = tomllib.loads(FACETS_PATH.read_text())["facet"]
+    states = tomllib.loads(MANIFEST_PATH.read_text())["state"]
+    return (
+        sum(1 for g in gaps if g.get("entry") == "pending")
+        + sum(1 for f in facets if f.get("extractor") == "pending")
+        + sum(1 for s in states if s.get("producer") == "pending" and not s.get("absent"))
+    )
+
+
 def test_count_pending_exits_0_iff_pending() -> None:
+    # TM-P0-8 is removed once every pending state is discharged, so the
+    # expected count is read from the inventory, not frozen at >= 1.
+    expected = _pending_total()
     proc = _run("--count-pending")
-    assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert int(proc.stdout.strip()) >= 1
+    assert int(proc.stdout.strip()) == expected
+    assert proc.returncode == (0 if expected else 1), proc.stdout + proc.stderr
+
+
+def test_absent_state_is_never_pending() -> None:
+    from tests.proof import meta
+
+    assert meta._state_pending({"producer": "pending", "absent": True}) is False
+    assert meta._state_pending({"producer": "pending", "absent": False}) is True
+    assert meta._state_pending({"producer": "m:f", "absent": False}) is False
 
 
 def test_count_pending_lane_filter() -> None:
@@ -69,4 +91,4 @@ def test_count_pending_lane_filter() -> None:
 
 def test_strict_fails_on_pending() -> None:
     proc = _run("--strict")
-    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert proc.returncode == (1 if _pending_total() else 0), proc.stdout + proc.stderr
