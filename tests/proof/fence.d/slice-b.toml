@@ -67,7 +67,8 @@ globs         = ["tests/fixtures/fossils/slice-b/**", "tests/proof/reviews/*-sli
 # removals), tests/proof/divergence.toml (named ADD-code-* entries for the new adapter codes), tests/proof/ci_shards.py
 # and tests/proof/selftest/test_ci_checkout.py (if RB-0.1's ci.yml change trips them), the drift/b and proof/b package
 # markers, the G-E3 pin's helper modules, docker_gate/__init__.py, and core's deferral test (B declares the four
-# deferred core labels it claims as `claim`, as A-1's bundle lane does).
+# deferred core labels it claims as `claim`, as A-1's bundle lane does), and the MC-B-02 host-record keys L.NW-2.2 adds
+# (tests/proof/host/record.py OPTIONAL_KEYS `residue`, record.schema.json object-valued engine/images/diff).
 [[lane]]
 name          = "slice-b-bundle"
 branch_prefix = "wr/slice-b-bundle/"
@@ -106,7 +107,8 @@ globs         = ["packages/trestle-packs/trestle_packs/core/dag.py", "packages/t
                  "tests/proof/host/docker_gate/**", "tests/proof/temporary.d/p0.toml", "tests/proof/divergence.toml",
                  "tests/proof/ci_shards.py", "tests/proof/selftest/test_ci_checkout.py", "tests/proof/drift/b/__init__.py",
                  "tests/pins/e_packs/driver_g_e3.py", "tests/pins/e_packs/fake_backend.py", "tests/proof/host/docker_gate/__init__.py",
-                 "tests/proof/b/__init__.py", "tests/core/docs/test_cl_d1_deferrals.py"]
+                 "tests/proof/b/__init__.py", "tests/core/docs/test_cl_d1_deferrals.py",
+                 "tests/proof/host/record.py", "tests/proof/host/record.schema.json"]
 
 [[gate]]
 branch         = "wr/slice-b-bundle/slice-b"
