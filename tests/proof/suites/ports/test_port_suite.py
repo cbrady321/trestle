@@ -8,13 +8,22 @@ import socket
 import subprocess
 import sys
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
+from trestle_packs.fakes import (
+    Confirmation,
+    ConfirmationStatus,
+    FakeCommand,
+    FakeMarker,
+    in_run_group,
+    passed_result,
+)
 
-from tests.proof.suites.ports import core
+from tests.proof.suites.ports import core, implementations
 from trestle.workflow import codes, ports
 from trestle.workflow.declarations import HostScopeRef
 from trestle.workflow.values import CurrencyFact, FoundRef
@@ -63,7 +72,7 @@ def protocols() -> dict[str, type]:
     }
 
 
-# ------------------------------------------------------------------------------ B3-C21
+# -------------------- B3-C21
 
 
 def test_every_b3_c21_family_mapped() -> None:
@@ -194,7 +203,7 @@ def test_contract_conversions_are_fixed_by_the_contract() -> None:
     )
 
 
-# ------------------------------------------------------------------------------ registration
+# -------------------- registration
 
 
 class Recorder:
@@ -209,13 +218,13 @@ class Recorder:
         return self.name
 
 
-def _case_ok(impl: Recorder) -> None:
-    assert impl.read() == impl.name
+def _case_ok(built: core.Implementation) -> None:
+    assert built.impl.read() == built.impl.name
 
 
-def _case_second(impl: Recorder) -> None:
-    impl.read()
-    assert impl.calls == ["read"]  # a fresh implementation per case
+def _case_second(built: core.Implementation) -> None:
+    built.impl.read()
+    assert built.impl.calls == ["read"]  # a fresh implementation per case
 
 
 def test_register_family_runs_unmodified(tmp_path: Path) -> None:
@@ -245,7 +254,7 @@ def test_register_family_runs_unmodified(tmp_path: Path) -> None:
         registry.run_family("unregistered", lambda: core.Implementation(Recorder("x")))
 
     # a failing case is named, the rest still run
-    def _fails(impl: Recorder) -> None:
+    def _fails(built: core.Implementation) -> None:
         raise AssertionError("boom")
 
     registry.register_family(
@@ -261,7 +270,7 @@ def test_register_family_runs_unmodified(tmp_path: Path) -> None:
         registry.run_family("fam", lambda: core.Implementation(Recorder("x")))
 
 
-# ------------------------------------------------------------------------------ the watcher
+# -------------------- the watcher
 
 
 class Envelope:
@@ -393,7 +402,7 @@ def test_watcher_catches_a_read_that_leaves_a_process_and_one_that_listens(tmp_p
     assert len(log.violations()) == 2
 
 
-# ------------------------------------------------------------------------------ reach per port
+# -------------------- reach per port
 
 CATEGORIES = ("containers", "images", "volumes", "networks")
 
@@ -468,3 +477,93 @@ def test_watcher_reach_per_port_b3_c17(tmp_path: Path) -> None:
     ):
         with pytest.raises(core.ReachMissing):
             _watched(tmp_path, op, lambda impl: None, core.Reach())
+
+
+# -------------------- the fakes
+
+
+@pytest.mark.parametrize("impl_id", sorted(implementations.IMPLEMENTATIONS))
+def test_family_suite(impl_id: str, tmp_path: Path) -> None:
+    """The suite, unmodified, passes on each registered implementation (`[fake-command]`,
+    `[fake-marker]`; the real adapters register beside them)."""
+    family, factory = implementations.IMPLEMENTATIONS[impl_id]
+    run = core.run_family(family, lambda: factory(tmp_path))
+    assert run.implementation == impl_id
+    assert run.suite_sha256 == core.REGISTRY.families[family].suite_sha256
+    assert set(run.cases_run) == {c.name for c in core.REGISTRY.families[family].cases}
+
+
+class _DurableAsGroup(FakeMarker):
+    def release_descriptor(self, call: Any) -> Any:
+        return in_run_group() if call.member == "create" else super().release_descriptor(call)
+
+
+class _WritingObserve(FakeMarker):
+    def observe(self, spec: Any, lineage: Any, effect: Any) -> Any:
+        (self.root / "cache.tmp").write_text("a read that writes", encoding="utf-8")
+        return super().observe(spec, lineage, effect)
+
+
+class _CountsNeverChecked(FakeCommand):
+    def run(self, command: Any, ticket: Any, cancel: Any, until: Any) -> Any:
+        confirmation, result = super().run(command, ticket, cancel, until)
+        if result is not None and result.classification == "contract_violation":
+            result = passed_result()  # forgets that a test selector with no counts is a violation
+        return confirmation, result
+
+
+class _NoneOnCancel(FakeCommand):
+    def run(self, command: Any, ticket: Any, cancel: Any, until: Any) -> Any:
+        if cancel.requested:
+            return Confirmation(ConfirmationStatus.APPLIED, None, None), None
+        return super().run(command, ticket, cancel, until)
+
+
+class _SelectorCountsFound(FakeMarker):
+    def observe(self, spec: Any, lineage: Any, effect: Any) -> Any:
+        seen = super().observe(spec, lineage, effect)
+        if seen.found and not seen.selector_present:  # a found instance is not this root's
+            return replace(seen, selector_present=True)
+        return seen
+
+
+@pytest.mark.parametrize(
+    ("family", "factory", "case"),
+    [
+        (
+            "Local Process Supervision",
+            lambda p: implementations.fake_marker(p, _DurableAsGroup),
+            "descriptor_forms_by_lifetime",
+        ),
+        (
+            "Local Process Supervision",
+            lambda p: implementations.fake_marker(p, _WritingObserve),
+            "absent_before_create",
+        ),
+        (
+            "Local Process Supervision",
+            lambda p: implementations.fake_marker(p, _SelectorCountsFound),
+            "found_instance_only_in_found",
+        ),
+        (
+            "Command Execution",
+            lambda p: implementations.fake_command(p, _CountsNeverChecked),
+            "reports_tests_without_counts",
+        ),
+        (
+            "Command Execution",
+            lambda p: implementations.fake_command(p, _NoneOnCancel),
+            "cancel_and_until_interrupted",
+        ),
+    ],
+    ids=["durable-as-group", "read-writes", "found-counted", "counts-unchecked", "none-on-cancel"],
+)
+def test_family_suite_catches_planted_defects(
+    family: str, factory: Callable[[Path], core.Implementation], case: str, tmp_path: Path
+) -> None:
+    """The suite is not vacuous: a fake with one planted defect fails exactly its case."""
+    with pytest.raises(core.SuiteFailure) as failed:
+        core.run_family(family, lambda: factory(tmp_path))
+    message = str(failed.value)
+    assert f"{case}:" in message
+    assert message.count("Error:") + message.count("ReadMutation") >= 1

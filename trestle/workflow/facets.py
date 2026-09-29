@@ -140,6 +140,12 @@ class ReadView:
         raise AttributeError("a read facet is read-only")
 
 
+def _status(confirmation: Confirmation) -> ConfirmationStatus:
+    """The status as the vocabulary's enum: a stdlib-only fake returns its own enum with the same
+    values (DM-09, structural conformance)."""
+    return ConfirmationStatus(getattr(confirmation.status, "value", confirmation.status))
+
+
 def _path_text(lineage: Lineage) -> str:
     return "/".join(lineage.path.segments) or "(root)"
 
@@ -259,9 +265,9 @@ class Ticketed[P]:
             ctx.lane.confirm(ticket, confirmation)
             if outcome is not None:
                 ctx.lane.record_result(ticket, outcome.recorded)
-            elif confirmation.status is not ConfirmationStatus.NOT_APPLIED:
+            elif _status(confirmation) != ConfirmationStatus.NOT_APPLIED:
                 raise PortContractViolation(
-                    f"{name} returned no result for a {confirmation.status.value} event (V-5.5)"
+                    f"{name} returned no result for a {_status(confirmation).value} event (V-5.5)"
                 )
         else:
             ctx.lane.confirm(ticket, result)

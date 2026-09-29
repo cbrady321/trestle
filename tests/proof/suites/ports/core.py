@@ -89,9 +89,15 @@ class Reach:
 
 @dataclass(frozen=True)
 class Implementation:
+    """What an implementation factory returns. `extras` is the family's fixture contract: the
+    named commands, specs and hooks a family's cases ask for (see `families.py`); a real adapter
+    supplies the same names with real commands and real instances."""
+
     impl: Any
     reach: Reach = field(default_factory=Reach)
     name: str = ""
+    extras: Mapping[str, Any] = field(default_factory=dict)
+    close: Callable[[], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -100,7 +106,7 @@ class Case:
     is empty for every other kind of case; only a read operation is watched."""
 
     name: str
-    body: Callable[[Any], None]
+    body: Callable[[Implementation], None]
     operation: str = ""
 
 
@@ -165,13 +171,16 @@ class Registry:
             try:
                 if case.operation:
                     with watch(case.operation, built.reach):
-                        case.body(built.impl)
+                        case.body(built)
                 else:
-                    case.body(built.impl)
+                    case.body(built)
             except (ReachMissing, SuiteModified):
                 raise
             except Exception as exc:  # noqa: BLE001 - every failure is reported with its case
                 failures.append(f"{case.name}: {type(exc).__name__}: {exc}")
+            finally:
+                if built.close is not None:
+                    built.close()
         run = FamilyRun(
             name, implementation, family.suite_sha256, tuple(c.name for c in family.cases)
         )
