@@ -19,6 +19,13 @@ def _write(tmp_path: Path, name: str, content: str) -> Path:
     return path
 
 
+@pytest.fixture(autouse=True)
+def _no_live_collection(monkeypatch):
+    """Selftests plant labels; never collect the live suite for registrants
+    (the default: no registrant, i.e. a claim with nothing red behind it)."""
+    monkeypatch.setattr(register_mod, "_label_registrants", lambda: {})
+
+
 def test_every_entry_has_probe_condition_owner():
     for entry in register_mod.load_entries():
         assert entry["probe"]
@@ -336,3 +343,47 @@ def test_final_rejects_present_entry(monkeypatch):
     ]
     monkeypatch.setattr(register_mod, "load_entries", lambda **kw: entries)
     assert register_mod.cmd_final() == 1
+
+
+def _serving_entry():
+    return {
+        "id": "X-1",
+        "mechanism": "m",
+        "introduced_by": "L.A.1",
+        "serves": ["lbl-1"],
+        "probe": "true",
+        "removal_condition": "c",
+        "removed_by": "L.A.2",
+        "permanent": False,
+    }
+
+
+def _claim_label(monkeypatch):
+    monkeypatch.setattr(
+        register_mod,
+        "_load_all_labels",
+        lambda: [{"id": "lbl-1", "row": "R-1", "posture": "claim"}],
+    )
+
+
+TARGET_NODE = {"nodeid": "t::target", "gap": "G-X1", "strict_xfail": True}
+GREEN_NODE = {"nodeid": "t::green", "gap": None, "strict_xfail": False}
+
+
+def test_claim_label_registered_only_by_strict_xfail_targets_is_not_a_claim(monkeypatch):
+    """p0-court L.P0-1A.*: a target label at posture claim is served by its
+    TM-P0-2 entry until the flip leaf, and J0-9 still needs exit 0."""
+    _claim_label(monkeypatch)
+    registrants = {"lbl-1": [TARGET_NODE, dict(TARGET_NODE, nodeid="t::target2")]}
+    assert register_mod.register_violations([_serving_entry()], registrants) == []
+
+
+def test_claim_label_with_a_green_registrant_fails_while_served(monkeypatch):
+    _claim_label(monkeypatch)
+    for nodes in ([GREEN_NODE], [TARGET_NODE, GREEN_NODE]):
+        assert register_mod.register_violations([_serving_entry()], {"lbl-1": nodes}) == ["lbl-1"]
+
+
+def test_claim_label_with_no_registrant_fails_while_served(monkeypatch):
+    _claim_label(monkeypatch)
+    assert register_mod.register_violations([_serving_entry()], {}) == ["lbl-1"]
