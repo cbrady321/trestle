@@ -317,6 +317,26 @@ _CLASS_OF: Final[dict[type, str]] = {
 ENTRY_CLASSES: Final[tuple[str, ...]] = tuple(_CLASS_OF.values())
 
 
+def walked_set(
+    scope: Iterable[tuple[str, ...]], selection: Mapping[tuple[str, ...], tuple[str, ...]]
+) -> frozenset[tuple[str, ...]]:
+    """The run's walked set `V_run` (V-4.8): the scope minus every alternative the recorded
+    selection did not select, and its subtree. An alternative is a child of its CHOICE vertex.
+    A CHOICE the selection does not name keeps all its alternatives here: an over-reservation
+    for the writer and a stricter `ended` for the fold, never a refusal (a CHOICE the root
+    stopped before selecting needs the plan's CHOICE set, which A-2's L.TR-2.1 supplies)."""
+
+    def excluded(path: tuple[str, ...]) -> bool:
+        for depth in range(1, len(path) + 1):
+            alt = path[:depth]
+            chosen = selection.get(alt[:-1])
+            if chosen is not None and chosen != alt:
+                return True
+        return False
+
+    return frozenset(p for p in scope if not excluded(p))
+
+
 # ----------------------------------------------------------------------------- read views (V-4)
 
 
@@ -451,6 +471,11 @@ def _enc_descriptor(release: ReleaseDescriptor) -> dict[str, Any]:
     raise TypeError(f"not a release descriptor: {type(release).__name__}")
 
 
+def descriptor_record(release: ReleaseDescriptor) -> dict[str, Any]:
+    """The JSON object of a V-10 release descriptor (bounds enforced), as the lane writes it."""
+    return _enc_descriptor(release)
+
+
 def _enc_handle(handle: CreatedHandle | None) -> dict[str, Any] | None:
     if handle is None:
         return None
@@ -576,6 +601,11 @@ def _dumps(record: object) -> bytes:
     """The one serialization (identical to `fsutil.append_ndjson`'s), so an encoded size is the
     size of the bytes on disk less the newline."""
     return json.dumps(record, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+def entry_class(entry: Entry) -> str:
+    """The wire class name of a written entry ("plan", "issue", ...)."""
+    return _CLASS_OF[type(entry)]
 
 
 def encode_record(entry: Entry, seq: int | None = None) -> dict[str, Any]:

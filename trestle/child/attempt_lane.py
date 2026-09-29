@@ -68,25 +68,6 @@ def _key(path: tuple[str, ...], effect: str, attempt: int) -> Key:
     return (path, effect, attempt)
 
 
-def _v_run(
-    scope: frozenset[tuple[str, ...]], selection: dict[tuple[str, ...], tuple[str, ...]]
-) -> frozenset[tuple[str, ...]]:
-    """The walked set (V-4.8): the scope minus every alternative the recorded selection did not
-    select (and its subtree). An alternative is a child of its CHOICE vertex. A CHOICE the
-    selection does not name keeps all its alternatives here: an over-reservation, never a
-    refusal of a `record_end` (A-2's L.TR-2.1 owns multi-vertex reservation)."""
-
-    def excluded(path: tuple[str, ...]) -> bool:
-        for depth in range(1, len(path) + 1):
-            alt = path[:depth]
-            chosen = selection.get(alt[:-1])
-            if chosen is not None and chosen != alt:
-                return True
-        return False
-
-    return frozenset(p for p in scope if not excluded(p))
-
-
 class AttemptLane:
     def __init__(
         self,
@@ -138,7 +119,7 @@ class AttemptLane:
             case lf.PlanEntry(plan=plan):
                 if self._plan is None:
                     self._plan = plan
-                    self._end_open = set(_v_run(self._scope, dict(plan.selection))) - self._ended
+                    self._end_open = set(lf.walked_set(self._scope, plan.selection)) - self._ended
             case lf.IssueEntry():
                 key = _key(entry.lineage.path, entry.effect, entry.attempt)
                 if key not in self._issue:
