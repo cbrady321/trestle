@@ -9,7 +9,7 @@ step = "core"
 slice = "core"
 tier = "must"
 venue = "CI"
-posture = "proven"
+posture = "claim"
 declared_by = "L.P0-1D.1"
 
 [[label]]
@@ -19,7 +19,7 @@ step = "core"
 slice = "core"
 tier = "must"
 venue = "CI"
-posture = "proven"
+posture = "claim"
 declared_by = "L.P0-1D.1"
 
 [[label]]
@@ -29,7 +29,7 @@ step = "core"
 slice = "core"
 tier = "must"
 venue = "CI"
-posture = "proven"
+posture = "claim"
 declared_by = "L.P0-1D.2"
 
 [[label]]
@@ -39,7 +39,7 @@ step = "core"
 slice = "core"
 tier = "must"
 venue = "CI"
-posture = "proven"
+posture = "claim"
 declared_by = "L.P0-1D.3"
 
 [[label]]
@@ -49,5 +49,5 @@ step = "core"
 slice = "core"
 tier = "must"
 venue = "CI"
-posture = "proven"
+posture = "claim"
 declared_by = "L.P0-1D.4"
