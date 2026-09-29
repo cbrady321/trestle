@@ -40,3 +40,23 @@ tier = "must"
 venue = "CI"
 posture = "proven"
 declared_by = "L.P0-1B.3"
+
+[[label]]
+id = "WR-PLAN-6:validate-equals-execute-imports"
+row = "WR-PLAN-6"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-1B.4"
+
+[[label]]
+id = "WR-PLAN-5:identity-covers-imports"
+row = "WR-PLAN-5"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-1B.4"
