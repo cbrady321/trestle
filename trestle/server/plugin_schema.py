@@ -10,6 +10,7 @@ import ast
 import importlib.util
 import math
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 from typing import Literal, NoReturn, cast
 
@@ -206,6 +207,7 @@ def _match(value: object, schema: dict[str, object], *, path: str) -> None:
     if expected == "string":
         if not isinstance(value, str):
             raise ArgsError(f"invalid {loc}: expected string; {_DESCRIBE_HINT}")
+        _match_string_format(value, schema.get("format"), loc=loc)
         return
     if expected == "integer":
         if not isinstance(value, int) or isinstance(value, bool):
@@ -224,6 +226,38 @@ def _match(value: object, schema: dict[str, object], *, path: str) -> None:
             raise ArgsError(f"invalid {loc}: expected null; {_DESCRIBE_HINT}")
         return
     raise ArgsError(f"invalid {loc}; {_DESCRIBE_HINT}")
+
+
+def parse_iso_datetime(text: str) -> datetime | None:
+    """A timezone-aware ISO 8601 date-time, or None (naive and malformed alike)."""
+    if not text.isascii():
+        return None
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed
+
+
+def parse_iso_date(text: str) -> date | None:
+    """A valid ISO 8601 calendar date, or None."""
+    if not text.isascii():
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _match_string_format(value: str, fmt: object, *, loc: str) -> None:
+    if fmt == "date-time" and parse_iso_datetime(value) is None:
+        raise ArgsError(
+            f"invalid {loc}: expected ISO 8601 date-time with a timezone; {_DESCRIBE_HINT}"
+        )
+    if fmt == "date" and parse_iso_date(value) is None:
+        raise ArgsError(f"invalid {loc}: expected ISO 8601 date; {_DESCRIBE_HINT}")
 
 
 def _match_object(value: object, schema: dict[str, object], *, path: str) -> None:
