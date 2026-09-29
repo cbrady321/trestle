@@ -118,6 +118,19 @@ Or persist paths in `$TRESTLE_HOME/config.toml` under `[plugins].paths`.
 
 ---
 
+## Restricted profile
+
+An operator may run Trestle with `[profile] mode = "restricted"` ([`security.md`](security.md)). Then the host lists **nine** tools (no `publish_plugin`), `run` accepts only the allowlisted plugins, and `cancel` works only on runs this MCP session started.
+
+| Refusal | Meaning | Fix |
+|---------|---------|-----|
+| `admission.not_allowlisted` | Plugin is not on the operator's allowlist (no `run_id`, nothing spawned) | Run an allowlisted plugin (ask the operator which); arguments cannot widen the list |
+| `projection.not_owner` | `cancel` for a run another session started | Cancel only your own runs; the run continues |
+
+The full profile (default) is unchanged: ten tools, any published plugin, any run cancellable.
+
+---
+
 ## Critical rules
 
 1. **Refusals are not runs.** `admission.*` and `publication.*` outcomes have no `run_id`. Do not treat them as failed runs.

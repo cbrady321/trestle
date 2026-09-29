@@ -51,6 +51,8 @@ class Project:
     home: Path
     registry: Registry
     run_registry: RunRegistry
+    # The restricted profile scopes `cancel` to the MCP session that started the run (WR-AUTH-1).
+    session_scoped_cancel: bool = False
     # Status polls run on worker threads (L.CS-4.2), so two of them can overlap: a projection
     # rewrites the run's summary.json through one fixed temporary name, one writer at a time.
     _status_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
@@ -193,7 +195,7 @@ class Project:
             views.append(view)
         return views, None
 
-    def cancel(self, run_id: Handle) -> RequestOutcome:
+    def cancel(self, run_id: Handle, caller_session: str | None = None) -> RequestOutcome:
         ledger = self._ledger_for(run_id)
         if ledger is None:
             return RequestOutcome(
@@ -202,6 +204,20 @@ class Project:
                 retryable=False,
                 origin="projection",
             )
+
+        # Under the restricted profile an MCP session may cancel only a run it started: the
+        # `created` row names the session that received it. This runs with the other checks, before
+        # anything routes the cancel, and before the state check so a foreign run's state is not
+        # revealed. A call outside an MCP session (the operator's CLI or console) is not scoped.
+        if self.session_scoped_cancel and caller_session is not None:
+            created = ledger.last_kind("created")
+            if created is None or created.get("caller_session") != caller_session:
+                return RequestOutcome(
+                    code=codes.NOT_OWNER,
+                    message=f"run not received in this session: {run_id}",
+                    retryable=False,
+                    origin="projection",
+                )
 
         state = ledger.projected_state()
         if state not in {"queued", "running"}:

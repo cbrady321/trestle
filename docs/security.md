@@ -52,6 +52,28 @@ This is part of the same statement as "not a sandbox" above: plugins run as your
 user, and stopping a run is best effort for exactly the processes Trestle can
 attribute.
 
+## Profiles: full and restricted
+
+The operator picks the service profile in `$TRESTLE_HOME/config.toml`; the server reads it once at start, so nothing an agent sends (a tool argument, plugin intent) can change it.
+
+```toml
+[profile]
+mode = "restricted"        # "full" (default) or "restricted"
+allowlist = ["echo"]       # plugin names an agent may run (restricted only)
+```
+
+| | `full` (default) | `restricted` |
+|---|---|---|
+| MCP tools | all ten, unchanged | nine: `publish_plugin` is not registered (not listed, not callable) |
+| `run` | any published plugin | only allowlisted plugins; any other is refused `admission.not_allowlisted` before a run id, run directory or process exists |
+| `cancel` | any run | only runs received in the same MCP session; another session's run is refused `projection.not_owner` and keeps running |
+
+An unknown `mode` or a malformed `allowlist` stops the server from starting: a config that means to restrict never runs as `full`. A restricted profile with no allowlist admits nothing. The operator's CLI and console (`trestle ops`) are not agent sessions and are not scoped.
+
+Every value an agent can select is a closed set or is validated before it acts: `query` views and `fetch` window kinds are enumerations, `completion` and `await_runs` modes are refused outside their sets, plugin names and handles must resolve, and `args` must match the plugin's schema. No tool argument selects cleanup or removal of a resource it did not create.
+
+**Neither profile is a sandbox.** The restricted profile narrows what an agent may ask Trestle to do; an allowlisted plugin still runs as your user with everything that implies (see “What local-only does not mean” above).
+
 ## Operator vs agent
 
 - **Agents** use MCP (`trestle serve`) — can admit and `run` work.

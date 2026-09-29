@@ -24,7 +24,7 @@ from trestle.common.types import (
     RequestOutcome,
     RunSpec,
 )
-from trestle.server.config import load_config
+from trestle.server.config import ProfileConfig, load_config
 from trestle.server.idempotency import IdempotencyStore
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, run_dir_for, work_dir
 from trestle.server.plugin_paths import CATALOG_HINT_PACKS_MISSING
@@ -50,8 +50,21 @@ class Admission:
     registry: Registry
     scheduler: Scheduler
     service_epoch: str
+    profile: ProfileConfig = ProfileConfig()
 
     def admit(self, req: AdmitRequest) -> AdmitResult:
+        # The restricted profile's allowlist comes first: a refusal here mints nothing (no run id,
+        # no run dir, no process) and does not depend on whether the plugin exists (WR-AUTH-2).
+        if not self.profile.allows(req.plugin):
+            return AdmitResultRefused(
+                tag="refused",
+                outcome=RequestOutcome(
+                    code=codes.NOT_ALLOWLISTED,
+                    message=f"plugin not allowlisted under the restricted profile: {req.plugin}",
+                    retryable=False,
+                    origin="admission",
+                ),
+            )
         capacity = self.scheduler.check_admit_capacity()
         if capacity is not None:
             return capacity
@@ -212,6 +225,7 @@ class Admission:
             "version": snap.version,
             "snapshot_id": snap.snapshot_id,
             "args_hash": a_hash,
+            "caller_session": req.caller_session,
         }
         if req.idempotency_key is not None:
             created_fields["idempotency_key"] = req.idempotency_key

@@ -14,7 +14,7 @@ from trestle.common.types import PublishView, RequestOutcome, RunView
 from trestle.query.catalog import VIEW_CATALOG_URI, view_catalog
 from trestle.server.admission import Admission
 from trestle.server.conductor import Conductor
-from trestle.server.config import load_config
+from trestle.server.config import ProfileConfig, load_config
 from trestle.server.control import ControlSurface
 from trestle.server.mcp_schema import FetchWindowArg, QueryViewArg
 from trestle.server.plugin_paths import resolve_plugin_dirs
@@ -34,6 +34,7 @@ class Kernel:
     home: Path
     control: ControlSurface
     registry: Registry
+    profile: ProfileConfig = ProfileConfig()
 
 
 def create_kernel(
@@ -66,6 +67,7 @@ def create_kernel(
         registry=registry,
         scheduler=scheduler,
         service_epoch=service_epoch,
+        profile=config.profile,
     )
     conductor = Conductor(
         home=trestle_home,
@@ -76,6 +78,7 @@ def create_kernel(
         home=trestle_home,
         registry=registry,
         run_registry=run_registry,
+        session_scoped_cancel=config.profile.restricted,
     )
     control = ControlSurface(
         admission=admission,
@@ -83,7 +86,7 @@ def create_kernel(
         conductor=conductor,
         scheduler=scheduler,
     )
-    return Kernel(home=trestle_home, control=control, registry=registry)
+    return Kernel(home=trestle_home, control=control, registry=registry, profile=config.profile)
 
 
 def _wire_result(value: RequestOutcome | RunView | PublishView | dict[str, Any]) -> dict[str, Any]:
@@ -94,6 +97,16 @@ def _wire_result(value: RequestOutcome | RunView | PublishView | dict[str, Any])
     if isinstance(value, PublishView):
         return value.to_dict()
     return value
+
+
+def _caller_session() -> str | None:
+    """The MCP session id of the tool call being served, or None outside an MCP session."""
+    from fastmcp.server.dependencies import get_context
+
+    try:
+        return get_context().session_id
+    except RuntimeError:
+        return None
 
 
 def attach_registry_version_mirror(mcp: Any, kernel: Kernel) -> None:
@@ -148,6 +161,7 @@ def run_server(
                 wait_ms=wait_ms,
                 idempotency_key=idempotency_key,
                 completion=completion,
+                caller_session=_caller_session(),
             )
         )
 
@@ -168,7 +182,7 @@ def run_server(
     @mcp.tool
     async def cancel(run_id: str) -> dict[str, Any]:
         """Request cancellation of a run."""
-        outcome = await asyncio.to_thread(kernel.control.cancel, run_id)
+        outcome = await asyncio.to_thread(kernel.control.cancel, run_id, _caller_session())
         return outcome.to_dict()
 
     @mcp.tool
@@ -214,13 +228,16 @@ def run_server(
             return result.to_dict()
         return result
 
-    @mcp.tool
     def publish_plugin(
         source: str,
         name: str | None = None,
     ) -> dict[str, Any]:
         """Publish or update a plugin from Python source at runtime."""
         return _wire_result(kernel.control.publish_plugin(source, name=name))
+
+    # The restricted profile does not register the tool at all: it is neither listed nor callable.
+    if not kernel.profile.restricted:
+        mcp.tool(publish_plugin)
 
     @mcp.resource(
         VIEW_CATALOG_URI,

@@ -104,6 +104,7 @@ class ControlSurface:
         wait_ms: int = 2000,
         idempotency_key: str | None = None,
         completion: str = "bounded",
+        caller_session: str | None = None,
     ) -> RequestOutcome | RunView:
         refused = _refuse_completion(completion, wait_ms)
         if refused is not None:
@@ -114,6 +115,7 @@ class ControlSurface:
                 args=args or {},
                 version=version,
                 idempotency_key=idempotency_key,
+                caller_session=caller_session,
             )
         ).result()
         if result.tag == "refused":
@@ -161,6 +163,7 @@ class ControlSurface:
         wait_ms: int = 2000,
         idempotency_key: str | None = None,
         completion: str = "bounded",
+        caller_session: str | None = None,
     ) -> RequestOutcome | RunView:
         refused = _refuse_completion(completion, wait_ms)
         if refused is not None:
@@ -174,6 +177,7 @@ class ControlSurface:
                     args=args or {},
                     version=version,
                     idempotency_key=idempotency_key,
+                    caller_session=caller_session,
                 )
             )
         )
@@ -242,8 +246,8 @@ class ControlSurface:
             )
         return await self.project.await_many_async(run_ids, cast(JoinMode, mode), timeout_ms)
 
-    def cancel(self, run_id: str) -> RequestOutcome:
-        return self.project.cancel(run_id)
+    def cancel(self, run_id: str, caller_session: str | None = None) -> RequestOutcome:
+        return self.project.cancel(run_id, caller_session=caller_session)
 
     def query(
         self,
