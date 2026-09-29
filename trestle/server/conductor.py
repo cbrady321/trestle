@@ -10,6 +10,7 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from trestle.common import clock
@@ -32,16 +33,22 @@ class Conductor:
     stopper: Callable[[Attribution], GroupStop] = stop_group
 
     def drive(self, order: WorkOrder) -> str:
+        try:
+            return self._drive(order)
+        finally:
+            # the scheduler's slot is released on every exit, a raised exception included
+            self.scheduler.complete(order.run_id)
+
+    def _drive(self, order: WorkOrder) -> str:
         run_dir = self._find_run_dir(order.run_id)
         ledger = RunLedger.open(ledger_path(run_dir))
         ledger.append("admitted", run_id=order.run_id, snapshot_id=order.snapshot_id)
         ledger.append("started", run_id=order.run_id)
 
         spec_path = evidence_dir(run_dir) / "spec.json"
-        timeout_s = 300
+        spec: dict[str, object] = {}
         if spec_path.exists():
             spec = json.loads(spec_path.read_text(encoding="utf-8"))
-            timeout_s = int(spec.get("timeout_s", timeout_s))
 
         wrapper_cmd = [
             sys.executable,
@@ -70,26 +77,26 @@ class Conductor:
         attribution.attribute_leader(proc.pid)
         self.run_registry.register(order.run_id, proc, attribution)
         cancel_flag = cancel_flag_path(run_dir)
-        deadline = time.monotonic() + timeout_s
-        stop_cause: str | None = None
+        deadline = _monotonic_deadline(spec)
+        first_observed_cause: str | None = None
         stop: GroupStop | None = None
         try:
             while proc.poll() is None:
                 attribution.observe()
                 if cancel_flag.exists():
-                    stop_cause = "cancel"
+                    first_observed_cause = "cancel"
                     stop = self.stopper(attribution)
                     break
                 if time.monotonic() > deadline:
-                    stop_cause = "deadline"
+                    first_observed_cause = "deadline"
                     stop = self.stopper(attribution)
                     break
                 time.sleep(clock.poll_interval)
-            if stop_cause is None:  # the exit was observed: check once more (B2-C10)
+            if first_observed_cause is None:  # the exit was observed: check once more (B2-C10)
                 if cancel_flag.exists():
-                    stop_cause = "cancel"
+                    first_observed_cause = "cancel"
                 elif time.monotonic() > deadline:
-                    stop_cause = "deadline"
+                    first_observed_cause = "deadline"
         finally:
             self.run_registry.unregister(order.run_id)
             # B2-C10: the kill runs on every terminal path, a normal exit included. A request-path
@@ -130,9 +137,9 @@ class Conductor:
         raw_limits = report.get("limits_exceeded", [])
         if isinstance(raw_limits, list):
             wrapper_limits = [item for item in raw_limits if isinstance(item, dict)]
-        if stop_cause == "cancel":
+        if first_observed_cause == "cancel":
             classification = "cancelled"
-        elif stop_cause == "deadline":
+        elif first_observed_cause == "deadline":
             classification = "timed_out"
         elif report:
             classification = str(report.get("classification", classification))
@@ -183,7 +190,6 @@ class Conductor:
         )
         ledger.append(classification, run_id=order.run_id)
 
-        self.scheduler.complete(order.run_id)
         return classification
 
     async def drive_async(self, order: WorkOrder) -> str:
@@ -221,6 +227,23 @@ class Conductor:
             if candidate.is_dir():
                 return candidate
         raise FileNotFoundError(run_id)
+
+
+def _monotonic_deadline(spec: dict[str, object]) -> float:
+    """The moment, on the monotonic clock, the run's admitted deadline falls (B2-C5): the deadline
+    `spec.deadline` fixed at admission, not a fresh timeout taken from spawn, so time spent
+    queued or held counts against it. A spec with no deadline falls back to its `timeout_s`."""
+    raw = spec.get("deadline")
+    if isinstance(raw, str):
+        try:
+            fixed = datetime.fromisoformat(raw)
+        except ValueError:
+            fixed = None
+        if fixed is not None:
+            if fixed.tzinfo is None:
+                fixed = fixed.replace(tzinfo=UTC)
+            return time.monotonic() + (fixed - datetime.now(tz=UTC)).total_seconds()
+    return time.monotonic() + _as_int(spec.get("timeout_s", 300), 300)
 
 
 def _record_identity(ledger: RunLedger, run_id: str, ident: Identity) -> None:
