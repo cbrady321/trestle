@@ -47,6 +47,7 @@ def test_ci_yml_parses_and_has_expected_jobs() -> None:
         "d2-straddle",
         "proof-ledger",
         "ckpt",
+        "ck-isolation",  # L.CS-1.4
     }
 
 

@@ -21,6 +21,7 @@ globs         = ["trestle/common/fsutil.py", "trestle/common/outcome.py", "trest
                  "tests/proof/drift/core/test_sa06_*.py", "tests/proof/drift/core/test_sa10_*.py", "tests/proof/drift/core/test_sa13_*.py",
                  "tests/proof/fence.d/core.toml", "tests/proof/temporary.d/core.toml", "tests/proof/labels.d/core.toml",
                  "tests/proof/gates.d/core.toml", "tests/proof/rollback.toml",
+                 "tests/proof/selftest/test_ci_checkout.py",
                  "tests/pins/a_lifecycle/test_g_a1.py", "tests/pins/a_lifecycle/test_g_a2.py", "tests/pins/a_lifecycle/test_g_a3.py",
                  "tests/pins/a_lifecycle/test_straddle.py", "tests/pins/b_contract/test_g_b3.py", "tests/pins/c_surface/test_g_c1.py",
                  "tests/pins/d_evidence/test_g_d1.py", "tests/pins/d_evidence/test_g_d2.py", "tests/pins/d_evidence/test_g_d3.py"]

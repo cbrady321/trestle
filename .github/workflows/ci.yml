@@ -150,6 +150,26 @@ jobs:
           name: proof-ledger.json
           path: proof-ledger.json
 
+  # CM-7's decline drill (L.CS-1.4): every CK merge on HEAD declines cleanly. Runs on
+  # pull_request and push to master, so it is a required job (CM-4); it sets no
+  # TRESTLE_PROOF_GATE and produces no proof result (CSC-13). The drill's scratch worktrees
+  # need full history (trailers, the landing diff, `git log <landing>..HEAD`).
+  ck-isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev,packs]"
+      - run: python -m tests.proof.guards clean-path --github-env
+      - run: pytest tests/core/tooling/test_ck_drill.py -q
+        env:
+          TRESTLE_CK_ISOLATION: "1"
+
   # CM-5 checkpoint evaluation (L.P0-0d.4). Push to master and
   # workflow_dispatch only, so it is outside CM-4's required-job list.
   # Idempotent: `meta ckpt` exits 0 without evaluating on a non-trigger
@@ -157,7 +177,7 @@ jobs:
   ckpt:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    needs: [lint, test, compat, guards, ancestry, d2-straddle, proof-ledger]
+    needs: [lint, test, compat, guards, ancestry, d2-straddle, proof-ledger, ck-isolation]
     permissions:
       contents: write
       checks: read
