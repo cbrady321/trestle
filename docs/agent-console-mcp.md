@@ -192,7 +192,7 @@ Filesystem drop-in (copy to `plugins/`) still works and uses the same hot-reload
 - `wait_ms>0` on a slow plugin → returns a **`running` frame** when the deadline elapses; join with `await_runs`.
 - Terminal within `wait_ms` → terminal `RunView` in one call (same as before).
 
-Long jobs: use a short `wait_ms` to get `run_id` quickly, then `await_runs` with a longer `timeout_ms` — or set a large `wait_ms` if the host allows a long stdio `tools/call`.
+Long jobs: call `run(..., wait_ms=<above zero>, completion="terminal")`; one call returns the finished run, bounded by the run's deadline plus a margin (see `completion` below). Polling is for bounded mode only: with the default `completion="bounded"`, a `running` frame is joined with `await_runs`.
 
 ### Run states
 
