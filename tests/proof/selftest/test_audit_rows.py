@@ -47,7 +47,7 @@ step = "core"
 slice = "core"
 tier = "must"
 venue = "CI"
-posture = "proven"
+posture = "claim"
 declared_by = "test"
 """
     )
@@ -101,7 +101,7 @@ def test_composes_must_name_mc03_clause(monkeypatch: pytest.MonkeyPatch) -> None
             "slice": "core",
             "tier": "must",
             "venue": "CI",
-            "posture": "proven",
+            "posture": "claim",
             "declared_by": "test",
             "composes": "NOT-A-CLAUSE",
         }

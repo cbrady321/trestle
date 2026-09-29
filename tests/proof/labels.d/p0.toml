@@ -10,7 +10,7 @@ step = "core"
 slice = "core"
 tier = "must"
 venue = "CI"
-posture = "proven"
+posture = "claim"
 declared_by = "L.P0-0a.1"
 
 [[label]]
@@ -20,7 +20,7 @@ step = "core"
 slice = "compat"
 tier = "must"
 venue = "CI"
-posture = "proven"
+posture = "claim"
 declared_by = "L.P0-0a.1"
 
 [[label]]
@@ -30,7 +30,7 @@ step = "core"
 slice = "compat"
 tier = "must"
 venue = "CI"
-posture = "proven"
+posture = "claim"
 declared_by = "L.P0-0a.5"
 
 [[label]]
@@ -40,7 +40,7 @@ step = "core"
 slice = "compat"
 tier = "must"
 venue = "CI"
-posture = "proven"
+posture = "claim"
 declared_by = "L.P0-0a.5"
 
 [[label]]
@@ -50,7 +50,7 @@ step = "core"
 slice = "compat"
 tier = "must"
 venue = "CI"
-posture = "proven"
+posture = "claim"
 declared_by = "L.P0-0a.5"
 
 [[label]]
@@ -60,7 +60,7 @@ step = "core"
 slice = "compat"
 tier = "must"
 venue = "CI"
-posture = "proven"
+posture = "claim"
 declared_by = "L.P0-0a.5"
 
 [[label]]
@@ -70,7 +70,7 @@ step = "core"
 slice = "compat"
 tier = "must"
 venue = "CI"
-posture = "proven"
+posture = "claim"
 declared_by = "L.P0-0a.5"
 
 [[label]]
@@ -80,7 +80,7 @@ step = "core"
 slice = "compat"
 tier = "must"
 venue = "CI"
-posture = "proven"
+posture = "claim"
 declared_by = "L.P0-0a.5"
 
 [[label]]
@@ -90,7 +90,7 @@ step = "core"
 slice = "compat"
 tier = "must"
 venue = "CI"
-posture = "proven"
+posture = "claim"
 declared_by = "L.P0-0a.5"
 
 [[label]]
@@ -100,7 +100,7 @@ step = "core"
 slice = "compat"
 tier = "must"
 venue = "CI"
-posture = "proven"
+posture = "claim"
 declared_by = "L.P0-0a.5"
 
 [[label]]
@@ -110,6 +110,6 @@ step = "core"
 slice = "core"
 tier = "must"
 venue = "CI"
-posture = "unproven"
+posture = "claim"
 reason = "alpine:3.20 image absent on this host; skip renders UNPROVEN, never a silent pass"
 declared_by = "L.P0-0a.5"
