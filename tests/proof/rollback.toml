@@ -9,7 +9,7 @@
 [[boundary]]
 merge = "CS-1"
 class = "forward_only"
-evidence = "pending:CS-1"
+evidence = "tests/core/spine/test_cs1_framing.py::test_newline_less_tail_terminated_no_valid_row_lost"
 authorized_by = "root '## Rollback posture': CS-1 (K-18, forward-only, isolated, pinned first)"
 
 [[boundary]]

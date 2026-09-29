@@ -11,7 +11,9 @@ def test_cs1_sv3_preregistered():
     assert by_merge["CS-1"]["class"] == "forward_only"
     assert by_merge["SV-3"]["class"] == "drain"
     for b in boundaries:
-        assert b["evidence"].startswith("pending:")
+        # pending until the boundary's evidence lands; then the evidence test's node id
+        # (L.CS-1.1 fills CS-1's)
+        assert b["evidence"].startswith("pending:") or "::" in b["evidence"]
         assert b["authorized_by"]
 
 
