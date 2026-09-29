@@ -20,3 +20,13 @@ tier = "PROC"
 venue = "CI"
 posture = "claim"
 declared_by = "L.P0-1C.2"
+
+[[label]]
+id = "WR-IDEM-1:join-after-republish"
+row = "WR-IDEM-1"
+step = "core"
+slice = "core"
+tier = "PROC"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-1C.3"
