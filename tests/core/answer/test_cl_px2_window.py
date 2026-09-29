@@ -127,7 +127,7 @@ def test_truly_unknown_run_still_invalid_handle(tmp_path: Path) -> None:
 @pytest.mark.proves("WR-EVID-7", "WR-EVID-7:window-hidden-run-marked", "core", "core", "PROC", "CI")
 def test_cap_case_guidance_corrected() -> None:
     text = (REPO_ROOT / "docs" / "agents.md").read_text(encoding="utf-8")
-    rule = next(line for line in text.splitlines() if line.startswith("5. **Fetch truncation"))
+    rule = next(line for line in text.splitlines() if "**Fetch truncation is success.**" in line)
     # Following the cursor is conditioned on it being set; the null case names outside_window.
     assert "`next_cursor` set means follow the cursor" in rule
     assert "`next_cursor` null" in rule
