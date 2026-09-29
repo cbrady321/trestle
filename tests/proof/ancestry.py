@@ -277,16 +277,30 @@ def reap(procs: set[ProcInfo]) -> None:
             pass
 
 
+def _self_and_ancestors(procs: set[ProcInfo]) -> set[int]:
+    """This process and every ancestor: each carries the marker in its own
+    argv (this CLI, and any `sh -c` that launched it), so none is a
+    survivor."""
+    by_pid = {p.pid: p for p in procs}
+    excluded: set[int] = set()
+    pid = os.getpid()
+    while pid in by_pid and pid not in excluded:
+        excluded.add(pid)
+        pid = by_pid[pid].ppid
+    excluded.add(os.getpid())
+    return excluded
+
+
 def _cli_survivors(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="tests.proof.ancestry survivors")
-    parser.add_argument("--marker", default=None)
+    parser.add_argument("--marker", action="append", default=[])
     args = parser.parse_args(argv)
 
-    procs = snapshot()
-    if args.marker is not None:
-        procs = {p for p in procs if args.marker in p.argv}
-    else:
-        procs = set()
+    snap = snapshot()
+    excluded = _self_and_ancestors(snap)
+    procs = {
+        p for p in snap if p.pid not in excluded and any(marker in p.argv for marker in args.marker)
+    }
 
     for proc in sorted(procs, key=lambda p: p.pid):
         print(f"{proc.pid}\t{proc.argv}")

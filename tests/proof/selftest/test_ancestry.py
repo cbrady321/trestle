@@ -152,3 +152,26 @@ def test_parse_linux_cmdline_is_nul_separated() -> None:
     )
     assert "trestle-anc-abc" in ancestry.parse_linux_cmdline(raw)
     assert ancestry.parse_linux_cmdline(b"") == ""
+
+
+def test_survivors_cli_accepts_repeated_markers_and_ignores_itself() -> None:
+    first = f"trestle-anc-{uuid.uuid4().hex[:12]}"
+    second = f"trestle-anc-{uuid.uuid4().hex[:12]}"
+    proc = _spawn_marked_sleeper(3.0, second)
+    try:
+        time.sleep(tolerances.SETTLE_S)
+        # only the *second* marker is planted; the first (absent) must not
+        # mask it, and this CLI's own argv carrying both must not count.
+        assert ancestry.main(["survivors", "--marker", second, "--marker", first]) == 1
+        assert ancestry.main(["survivors", "--marker", first]) == 0
+        cli = subprocess.run(
+            [sys.executable, "-m", "tests.proof.ancestry", "survivors", "--marker", first],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert cli.returncode == 0, cli.stdout
+    finally:
+        proc.kill()
+        proc.wait(timeout=tolerances.PROC_WAIT_S)
