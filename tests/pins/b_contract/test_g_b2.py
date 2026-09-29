@@ -1,6 +1,7 @@
 """G-B2 (BFD-13): dict-annotated plugins get dicts and byte-identical JSON
-(WR-COMPAT-4, permanent); dataclass-annotated params also get a dict today.
-The target requires a typed instance (WR-PLAN-9, K-3 default)."""
+(WR-COMPAT-4, permanent). A dataclass-annotated param received a dict at S0; flipped by
+L.CK-3/4.1 (WR-PLAN-9, K-3 default): it receives the typed instance while
+`_codec.TYPED_RECORDS` is set."""
 
 from __future__ import annotations
 
@@ -29,14 +30,7 @@ def test_compat_dict_plugin_bytes_identical(tmp_path: Path) -> None:
     assert result == b'{"a":{"x":3,"y":2},"sum":{"isdict":1,"total":3},"z":{"n":1}}'
 
 
-@pytest.mark.pin("G-B2")
-def test_pin_dataclass_param_receives_dict(tmp_path: Path) -> None:
-    assert _received(tmp_path) == "dict"
-
-
-@pytest.mark.target("G-B2")
 @pytest.mark.proves("WR-PLAN-9", "WR-PLAN-9:dataclass-arg-typed", "core", "core", "must", "CI")
-@pytest.mark.xfail(strict=True, reason="defect:G-B2")
 def test_target_dataclass_param_receives_instance(tmp_path: Path) -> None:
     received = _received(tmp_path)
     target_check(
