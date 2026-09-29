@@ -46,16 +46,60 @@ class Conductor:
             # the scheduler's slot is released on every exit, a raised exception included
             self.scheduler.complete(order.run_id)
 
+    def admitted_deadline(self, order: WorkOrder) -> float:
+        """The run's admitted deadline on the monotonic clock (B2-C5), read from its spec."""
+        return _monotonic_deadline(self._read_spec(self._find_run_dir(order.run_id)))
+
+    def finalize_unspawned(self, order: WorkOrder) -> str:
+        """End a run that reached its deadline while queued, without ever starting it (B2-C5,
+        B2-C12): `timed_out` with the deadline error and no `started`, `process_identity` or
+        `group_stop` row, since no process group exists to stop. The rows follow the same order as
+        a spawned run's: `error_record`, then `evidence_finalized`, then the terminal row."""
+        run_dir = self._find_run_dir(order.run_id)
+        ledger = RunLedger.open(ledger_path(run_dir))
+        classification = "timed_out"
+        error = _composed(
+            codes.EXECUTION_DEADLINE_EXCEEDED,
+            "queue",
+            "the run reached its deadline while queued and was never started",
+        )
+        ledger.append("error_record", run_id=order.run_id, **error)
+        atomic_write_json(
+            evidence_dir(run_dir) / "meta.json",
+            {
+                "run_id": order.run_id,
+                "classification": classification,
+                "duration_ms": _admitted_age_ms(self._read_spec(run_dir)),
+                "result_state": "absent",
+                "artifact_count": 0,
+                "limits_exceeded": None,
+                "error": error,
+            },
+        )
+        ledger.append(
+            "evidence_finalized",
+            run_id=order.run_id,
+            completeness="complete",
+            result_state="absent",
+        )
+        ledger.append(classification, run_id=order.run_id)
+        return classification
+
+    @staticmethod
+    def _read_spec(run_dir: Path) -> dict[str, object]:
+        spec_path = evidence_dir(run_dir) / "spec.json"
+        if not spec_path.exists():
+            return {}
+        loaded = json.loads(spec_path.read_text(encoding="utf-8"))
+        return loaded if isinstance(loaded, dict) else {}
+
     def _drive(self, order: WorkOrder) -> str:
         run_dir = self._find_run_dir(order.run_id)
         ledger = RunLedger.open(ledger_path(run_dir))
         ledger.append("admitted", run_id=order.run_id, snapshot_id=order.snapshot_id)
         ledger.append("started", run_id=order.run_id)
 
-        spec_path = evidence_dir(run_dir) / "spec.json"
-        spec: dict[str, object] = {}
-        if spec_path.exists():
-            spec = json.loads(spec_path.read_text(encoding="utf-8"))
+        spec = self._read_spec(run_dir)
 
         wrapper_cmd = [
             sys.executable,
@@ -272,6 +316,21 @@ def _monotonic_deadline(spec: dict[str, object]) -> float:
                 fixed = fixed.replace(tzinfo=UTC)
             return time.monotonic() + (fixed - datetime.now(tz=UTC)).total_seconds()
     return time.monotonic() + _as_int(spec.get("timeout_s", 300), 300)
+
+
+def _admitted_age_ms(spec: dict[str, object]) -> int:
+    """Milliseconds since admission, read back from the spec's deadline minus its budget."""
+    raw = spec.get("deadline")
+    if isinstance(raw, str):
+        try:
+            fixed = datetime.fromisoformat(raw)
+        except ValueError:
+            return 0
+        if fixed.tzinfo is None:
+            fixed = fixed.replace(tzinfo=UTC)
+        admitted = fixed.timestamp() - _as_int(spec.get("timeout_s", 0))
+        return max(0, int((time.time() - admitted) * 1000))
+    return 0
 
 
 def _error_fields(

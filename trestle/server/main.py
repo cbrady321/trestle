@@ -48,10 +48,9 @@ def create_kernel(
         service_epoch = (trestle_home / "service_epoch").read_text(encoding="utf-8").strip()
     else:
         service_epoch = recover_on_startup(trestle_home)
-        config = load_config(trestle_home)
         from trestle.server.idempotency import rebuild_from_ledgers
 
-        rebuild_from_ledgers(trestle_home, ttl_s=config.idempotency_ttl_s)
+        rebuild_from_ledgers(trestle_home, ttl_s=load_config(trestle_home).idempotency_ttl_s)
 
     if plugin_dirs is not None:
         dirs = plugin_dirs
@@ -59,7 +58,8 @@ def create_kernel(
         dirs = resolve_plugin_dirs(trestle_home, cli_dirs=cli_plugin_dirs)
     registry = Registry(home=trestle_home, plugin_dirs=dirs)
     registry.refresh()
-    scheduler = Scheduler()
+    config = load_config(trestle_home)
+    scheduler = Scheduler(max_running=config.max_running_runs, queue_depth=config.queue_depth)
     run_registry = RunRegistry()
     admission = Admission(
         home=trestle_home,
@@ -105,7 +105,8 @@ def attach_registry_version_mirror(mcp: Any, kernel: Kernel) -> None:
     async def list_tools_with_registry_version(
         request: mt.ListToolsRequest,
     ) -> mt.ListToolsResult:
-        kernel.registry.maybe_refresh()
+        # the refresh validates dropped-in plugins: it runs on the admission thread, not the loop
+        await asyncio.wrap_future(kernel.control.submit_refresh())
         result = await original(request)
         return mt.ListToolsResult(
             tools=result.tools,
@@ -139,7 +140,6 @@ def run_server(
         completion: str = "bounded",
     ) -> dict[str, Any]:
         """Start a plugin run and optionally wait for a status frame."""
-        kernel.registry.maybe_refresh()
         return _wire_result(
             await kernel.control.run_async(
                 plugin=plugin,
