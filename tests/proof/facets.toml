@@ -29,7 +29,7 @@ extractor = "pending"
 id = "context_surface"
 additive = "named"
 golden = "tests/fixtures/golden/s0/context_surface.json"
-extractor = "pending"
+extractor = "tests.pins.b_contract.facets:context_surface"
 
 [[facet]]
 id = "query_row_shapes"
@@ -59,7 +59,7 @@ extractor = "tests.pins.a_lifecycle.golden:meta_fields"
 id = "snapshot_manifest"
 additive = "free"
 golden = "tests/fixtures/golden/s0/snapshot_manifest.json"
-extractor = "pending"
+extractor = "tests.pins.b_contract.facets:snapshot_manifest"
 
 [[facet]]
 id = "event_row_shape"
