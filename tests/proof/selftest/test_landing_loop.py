@@ -790,3 +790,30 @@ def test_p11_host_step_precondition_unmet_is_not_failure(rig):
     outcome = fence_mod.attempt_landing("M1", _deps(rig, preflight="precondition_unmet"))
     assert outcome == "landed"
     assert not fence_mod._ready_path(rig["state_dir"], "M1").exists()
+
+
+def test_fence_config_at_reads_a_first_pr_fragment_from_its_head(rig):
+    """A phase's first PR carries its own fence fragment: the config read at
+    the PR head matches its gate, the base config does not."""
+    lane = rig["runner"].parent / "lane"
+    fence_dir = lane / "tests" / "proof" / "fence.d"
+    fence_dir.mkdir(parents=True)
+    (lane / "tests" / "proof" / "fence.toml").write_text(
+        'leave = []\nrecord_exempt = []\n[phases]\nx = ["wr/x/"]\n'
+    )
+    (fence_dir / "x.toml").write_text(
+        'phase = "x"\n[[lane]]\nname = "x"\nbranch_prefix = "wr/x/"\nglobs = ["a/**"]\n'
+        '[[gate]]\nbranch = "wr/x/m1"\nmerge = "X1"\n'
+    )
+    _sh(lane, "add", "-A")
+    _sh(lane, "commit", "-q", "-m", "first PR carries its fragment")
+    _sh(lane, "push", "-q", "origin", "HEAD:refs/heads/wr/x/m1")
+    _sh(rig["runner"], "fetch", "-q", "origin")
+
+    base = fence_mod.FenceConfig(leave=[], record_exempt=[], phases={}, lanes=[], gates=[])
+    cfg = fence_mod._fence_config_at(rig["runner"], "origin/wr/x/m1", base)
+    assert fence_mod.match_gate("wr/x/m1", cfg.gates).merge == "X1"
+    with pytest.raises(fence_mod.GateMatchError):
+        fence_mod.match_gate("wr/x/m1", base.gates)
+    # a ref with no fence.toml keeps the fallback
+    assert fence_mod._fence_config_at(rig["runner"], "origin/master", base) is base
