@@ -879,3 +879,37 @@ due_checkpoint = "CS-3 (leaf L.CS-3.2)"
 direction = "additive"
 items = [{ path = "$.*.reader.after_recovery.kinds", value = "error_record" }]
 authorized_by = "plans/core.md MC-15 (L.CS-3.2: recovery finalizes with an error_record row)"
+
+# L.CS-4.1 (MC-16): run(completion), an additive parameter of the `run` tool.
+# tools_list: $.tools[0].inputSchema.properties.completion; $.tools_bytes grows (4089 -> 4140),
+# bounded by WR-COMPAT-1's budget (test_goldens.py TOOLS_LIST_BUDGET_BYTES = 8192).
+
+[[entry]]
+id = "ADD-tools-list-run-completion"
+facet = "tools_list"
+row_or_k = "MC-16"
+docs = ["docs/agents.md", "docs/agent-console-mcp.md"]
+due_checkpoint = "CS-4 (leaf L.CS-4.1)"
+direction = "additive"
+authorized_by = "plans/core.md MC-16 (L.CS-4.1: completion=\"terminal\"); WR-COMPAT-1:ten-tools-within-budget"
+
+[[entry]]
+id = "ADD-tools-list-bytes-growth"
+facet = "tools_list"
+row_or_k = "WR-COMPAT-1"
+docs = []
+due_checkpoint = "CS-4 (leaf L.CS-4.1)"
+direction = "additive"
+authorized_by = "plans/core.md L.CS-4.1 (an additive tool parameter grows tools/list); WR-COMPAT-1:ten-tools-within-budget"
+
+# L.CS-4.3 (MC-17): RunView.outcome, the six-class outcome.
+# runview_shape: $.fields[14], $.frames.{succeeded,truncated_array,truncated_object}.outcome.
+
+[[entry]]
+id = "ADD-runview-outcome"
+facet = "runview_shape"
+row_or_k = "MC-17"
+docs = ["docs/agents.md", "docs/agent-console-mcp.md"]
+due_checkpoint = "CS-4 (leaf L.CS-4.3)"
+direction = "additive"
+authorized_by = "plans/core.md MC-17 (L.CS-4.3: outcome class for the six plain-plugin conditions); DM-03"
