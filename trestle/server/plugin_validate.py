@@ -20,8 +20,25 @@ class PluginValidationError(ValueError):
     """Throwaway-subprocess validation failed; do not snapshot."""
 
 
-class DeclarationInvalid(PluginValidationError):
+class PublicationRefused(PluginValidationError):
+    """Publication is refused with its own stable wire `code` (no snapshot is promoted)."""
+
+    def __init__(self, message: str, code: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+class DeclarationInvalid(PublicationRefused):
     """The plugin's declared tree could not be extracted (`publication.declaration_invalid`)."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, codes.PUBLICATION_DECLARATION_INVALID)
+
+
+# The stable codes the throwaway child may report; anything else it prints is a plain failure.
+CHILD_REFUSAL_CODES = frozenset(
+    {codes.PUBLICATION_DECLARATION_INVALID, codes.PUBLICATION_ENV_ARG_MISSING}
+)
 
 
 @dataclass(frozen=True)
@@ -97,14 +114,22 @@ def validate_and_digest(
 
 
 def validate_and_extract(
-    source_path: Path, *, entry: str | None = None, packages: tuple[str, ...] = ()
+    source_path: Path,
+    *,
+    entry: str | None = None,
+    packages: tuple[str, ...] = (),
+    env_arg: str | None = None,
 ) -> ValidationOutcome:
     """`validate_and_digest`, and the declared tree the child extracted from a workflow plugin's
     `WorkflowEntry` (MC-34). A refused extraction carries `code`
-    `publication.declaration_invalid`; nothing is returned but the diagnosis."""
+    `publication.declaration_invalid`; a port importer without `env_arg` (or a root declaration
+    that disagrees with it) carries `publication.env_arg_missing`; nothing is returned but the
+    diagnosis."""
     argv = python_argv("-m", "trestle.child.validate", "--plugin", str(source_path))
     if entry is not None:
         argv += ["--entry", entry]
+    if env_arg is not None:
+        argv += ["--env-arg", env_arg]
     for name in packages:
         argv += ["--package", name]
     try:
@@ -141,7 +166,7 @@ def validate_and_extract(
             )
         return ValidationOutcome(package_digests=digests, declaration=tree)
     code = payload.get("code")
-    stable = str(code) if isinstance(code, str) and code else None
+    stable = code if isinstance(code, str) and code in CHILD_REFUSAL_CODES else None
     if isinstance(payload.get("error"), str) and payload["error"]:
         return ValidationOutcome(error=str(payload["error"])[:200], code=stable)
     err = (proc.stderr or proc.stdout or "validation failed").strip()

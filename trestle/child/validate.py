@@ -84,6 +84,79 @@ def _is_forbidden(name: str) -> bool:
     return any(name == prefix or name.startswith(f"{prefix}.") for prefix in FORBIDDEN_PREFIXES)
 
 
+# Port modules a workflow plugin reaches the machine through (D-b, B1-E1): the workflow package's
+# own `ports` module and the packs' port packages. A plugin importing any of them acts on an
+# environment, so it must declare which argument names it (`@trestle(env_arg=...)`, WR-OWN-8).
+PORT_MODULES: tuple[str, ...] = (
+    "process",
+    "fakes",
+    "container",
+    "toolchain",
+    "grant",
+    "provision",
+    "testrun",
+)
+_PORT_PREFIXES: tuple[str, ...] = (
+    "trestle.workflow.ports",
+    *(f"trestle_packs.{name}" for name in PORT_MODULES),
+)
+
+
+def imported_port_modules(source: str) -> list[str]:
+    """The port modules `source` imports (sorted, unique), read from the AST alone: the plugin
+    is not imported. `from trestle_packs import process` counts as importing the port."""
+    found: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        names: list[str] = []
+        if isinstance(node, ast.Import):
+            names.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            names.append(node.module)
+            names.extend(f"{node.module}.{alias.name}" for alias in node.names)
+        for name in names:
+            if any(name == p or name.startswith(f"{p}.") for p in _PORT_PREFIXES):
+                found.add(name)
+    return sorted(found)
+
+
+def env_declaration_error(
+    ports: list[str], env_arg: str | None, tree: DeclaredTree | None
+) -> tuple[str, str] | None:
+    """The D-b publication rule (B1-E1, WR-OWN-8): `(wire code, message)` or None.
+
+    * A plugin importing a port module must declare `env_arg`.
+    * A plugin with a declared tree must agree with itself: the root declaration's
+      `env_key_field` equals the plugin's `env_arg` (both absent is fine).
+    """
+    if ports and env_arg is None:
+        return (
+            codes.PUBLICATION_ENV_ARG_MISSING,
+            f"plugin imports port module {ports[0]!r} but declares no env_arg; "
+            "declare @trestle(env_arg=...) naming the environment argument (WR-OWN-8)",
+        )
+    if tree is None:
+        return None
+    key = tree.nodes[""].get("env_key_field")
+    if key == env_arg:
+        return None
+    if key is None:
+        return (
+            codes.PUBLICATION_ENV_ARG_MISSING,
+            f"the root declaration names no env_key_field but the plugin declares env_arg "
+            f"{env_arg!r}; the two must be equal (WR-OWN-8)",
+        )
+    if env_arg is None:
+        return (
+            codes.PUBLICATION_ENV_ARG_MISSING,
+            f"the root declaration names env_key_field {key!r} but the plugin declares no "
+            "env_arg; declare @trestle(env_arg=...) (WR-OWN-8)",
+        )
+    return (
+        codes.PUBLICATION_DECLARATION_INVALID,
+        f"the root declaration's env_key_field {key!r} differs from env_arg {env_arg!r}",
+    )
+
+
 def select_entry(module: ModuleType, entry: str | None = None) -> Callable[..., object]:
     """The one entry callable of a loaded plugin module (WR-PLAN-4).
 
@@ -242,13 +315,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--plugin", required=True)
     parser.add_argument("--entry")
     parser.add_argument("--package", action="append", default=[])
+    parser.add_argument("--env-arg")
     args = parser.parse_args(argv)
     path = Path(args.plugin)
     try:
         # the declared packages are digested first, before any plugin code is imported
         digests = package_digests(args.package)
-        module = _load_plugin(path, args.entry)
-        tree = declared_tree_of(module)
+        tree: DeclaredTree | None = None
+        ports = imported_port_modules(path.read_text(encoding="utf-8"))
+        # the D-b rule's static half needs no import of code that may not even load
+        refusal = env_declaration_error(ports, args.env_arg, None) if ports else None
+        if refusal is None:
+            module = _load_plugin(path, args.entry)
+            tree = declared_tree_of(module)
+            refusal = env_declaration_error(ports, args.env_arg, tree)
+        if refusal is not None:
+            code, message = refusal
+            print(json.dumps({"ok": False, "code": code, "error": message[:500]}), flush=True)
+            return 1
     except (ValidationFailed, ProvenanceMismatch) as exc:
         print(json.dumps({"ok": False, "error": str(exc)[:500]}), flush=True)
         return 1

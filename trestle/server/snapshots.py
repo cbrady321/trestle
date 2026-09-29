@@ -26,6 +26,7 @@ from trestle.server.plugin_schema import (
 from trestle.server.plugin_validate import (
     DeclarationInvalid,
     PluginValidationError,
+    PublicationRefused,
     validate_and_extract,
 )
 
@@ -123,10 +124,14 @@ def materialize_snapshot(
     source = source_path.read_text(encoding="utf-8")
     schema, return_schema = schemas_from_source(source, source_path=source_path)
     declared = declared_from_source(source)
-    outcome = validate_and_extract(source_path, entry=declared.entry, packages=declared.packages)
+    outcome = validate_and_extract(
+        source_path, entry=declared.entry, packages=declared.packages, env_arg=declared.env_arg
+    )
     if outcome.error is not None:
         if outcome.code == codes.PUBLICATION_DECLARATION_INVALID:
             raise DeclarationInvalid(outcome.error)
+        if outcome.code is not None:
+            raise PublicationRefused(outcome.error, outcome.code)
         raise PluginValidationError(outcome.error)
     package_digests = outcome.package_digests
     tree = outcome.declaration
