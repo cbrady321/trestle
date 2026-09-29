@@ -31,7 +31,11 @@ from trestle.server.plugin_schema import (
     find_trestle_function,
     schemas_from_source,
 )
-from trestle.server.plugin_validate import PluginValidationError, validate_plugin_imports
+from trestle.server.plugin_validate import (
+    DeclarationInvalid,
+    PluginValidationError,
+    validate_plugin_imports,
+)
 from trestle.server.snapshots import (
     deadline_of,
     discover_plugin_name,
@@ -94,6 +98,8 @@ class Registry:
     registry_version: int = 1
     promotion_budget: PromotionBudget = field(default_factory=default_promotion_budget)
     _scan_signature: tuple[tuple[str, int, int], ...] | None = field(default=None, init=False)
+    # why the last refresh refused each plugin whose declaration could not be extracted
+    _declaration_refusals: dict[str, DeclarationInvalid] = field(default_factory=dict, init=False)
 
     def _scan_signature_now(self) -> tuple[tuple[str, int, int], ...]:
         entries: list[tuple[str, int, int]] = []
@@ -143,10 +149,12 @@ class Registry:
                 paths.append((path, plugin_id))
 
         seen: dict[str, PluginSnapshot] = {}
+        refusals: dict[str, DeclarationInvalid] = {}
         if not paths:
             if seen != self.snapshots:
                 self.registry_version += 1
             self.snapshots = seen
+            self._declaration_refusals = refusals
             self._scan_signature = self._scan_signature_now()
             return
 
@@ -157,6 +165,8 @@ class Registry:
                 try:
                     snap = materialize_snapshot(path, plugin_id, home=self.home)
                 except (SchemaError, PluginValidationError) as exc:
+                    if isinstance(exc, DeclarationInvalid):
+                        refusals[plugin_id] = exc
                     log_plugin_warning(
                         self.home,
                         f"plugin {plugin_id!r} failed validation: {exc}",
@@ -179,6 +189,7 @@ class Registry:
         if seen != self.snapshots:
             self.registry_version += 1
         self.snapshots = seen
+        self._declaration_refusals = refusals
         self._scan_signature = self._scan_signature_now()
 
     def get(self, plugin_id: str) -> PluginSnapshot | None:
@@ -325,6 +336,14 @@ class Registry:
         self.refresh()
         snap = self.get(plugin_name)
         if snap is None or snap.source_sha256 != source_sha256:
+            refused = self._declaration_refusals.get(plugin_name)
+            if refused is not None:
+                return RequestOutcome(
+                    code=codes.PUBLICATION_DECLARATION_INVALID,
+                    message=str(refused)[:200],
+                    retryable=False,
+                    origin="publication",
+                )
             had_previous = previous is not None
             return RequestOutcome(
                 code=codes.PUBLICATION_VALIDATION_FAILED,
