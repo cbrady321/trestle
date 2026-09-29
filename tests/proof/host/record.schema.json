@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HOST gate record (MC-27)",
+  "type": "object",
+  "required": ["schema", "gate", "sha", "mode", "python", "platform", "results", "status"],
+  "properties": {
+    "schema": {"type": "integer", "const": 1},
+    "gate": {"type": "string"},
+    "sha": {"type": "string"},
+    "mode": {"type": "string", "enum": ["run", "preflight"]},
+    "python": {"type": "string"},
+    "platform": {"type": "string"},
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["nodeid", "outcome"],
+        "properties": {
+          "nodeid": {"type": "string"},
+          "outcome": {"type": "string"},
+          "labels": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "engine": {"type": "string"},
+    "images": {"type": "array", "items": {"type": "string"}},
+    "inventory_before": {"type": "array"},
+    "inventory_after": {"type": "array"},
+    "diff": {"type": "array"},
+    "status": {"type": "string", "enum": ["PASSED", "FAILED", "PRECONDITION_UNMET"]}
+  },
+  "additionalProperties": false
+}

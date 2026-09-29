@@ -1,0 +1,143 @@
+# P0's fence fragment (CM-2; L.P0-0d.2), transcribed from p0-court.md
+# "## Merge order and gates" and its lane-globs table.
+
+phase = "p0"
+
+[[lane]]
+name = "p0-spine"
+branch_prefix = "wr/p0-spine/"
+globs = [
+  "conftest.py",
+  "pyproject.toml",
+  ".github/workflows/ci.yml",
+  "tests/__init__.py",
+  "tests/pins/__init__.py",
+  "tests/proof/**",
+  "!tests/proof/labels.d/p0-1*.toml",
+  "tests/fixtures/golden/s0/nodeids.txt",
+  "tests/fixtures/fossils/s0/MANIFEST.toml",
+  "tests/fixtures/fossils/s0/succeeded/**",
+  "tests/fixtures/fossils/s0/failed/**",
+]
+
+[[lane]]
+name = "p0-ckpt"
+branch_prefix = "wr/p0-ckpt/"
+globs = [
+  "tests/fixtures/fossils/j0/**",
+  "tests/proof/reviews/*-j0.toml",
+]
+
+[[lane]]
+name = "p0-lane-a"
+branch_prefix = "wr/p0-lane-a/"
+globs = [
+  "tests/pins/a_lifecycle/**",
+  "tests/fixtures/fossils/s0/**",
+  "!tests/fixtures/fossils/s0/MANIFEST.toml",
+  "!tests/fixtures/fossils/s0/succeeded/**",
+  "!tests/fixtures/fossils/s0/failed/**",
+  "tests/fixtures/golden/s0/ledger_kinds.json",
+  "tests/fixtures/golden/s0/meta_fields.json",
+  "tests/fixtures/golden/s0/fossil_projection.json",
+  "tests/proof/labels.d/p0-1a.toml",
+  "tests/proof/gaps.toml",
+  "tests/proof/facets.toml",
+]
+
+[[lane]]
+name = "p0-lane-b"
+branch_prefix = "wr/p0-lane-b/"
+globs = [
+  "tests/pins/b_contract/**",
+  "tests/fixtures/golden/s0/context_surface.json",
+  "tests/fixtures/golden/s0/snapshot_manifest.json",
+  "tests/proof/labels.d/p0-1b.toml",
+  "tests/proof/gaps.toml",
+  "tests/proof/facets.toml",
+]
+
+[[lane]]
+name = "p0-lane-c"
+branch_prefix = "wr/p0-lane-c/"
+globs = [
+  "tests/pins/c_surface/**",
+  "tests/fixtures/golden/s0/tools_list.json",
+  "tests/fixtures/golden/s0/runview_shape.json",
+  "tests/fixtures/golden/s0/spec_keys.json",
+  "tests/fixtures/golden/s0/refusal_codes.json",
+  "tests/proof/labels.d/p0-1c.toml",
+  "tests/proof/gaps.toml",
+  "tests/proof/facets.toml",
+]
+
+[[lane]]
+name = "p0-lane-d"
+branch_prefix = "wr/p0-lane-d/"
+globs = [
+  "tests/pins/d_evidence/**",
+  "tests/fixtures/golden/s0/query_row_shapes.json",
+  "tests/fixtures/golden/s0/event_row_shape.json",
+  "tests/proof/labels.d/p0-1d.toml",
+  "tests/proof/gaps.toml",
+  "tests/proof/facets.toml",
+]
+
+[[lane]]
+name = "p0-lane-e"
+branch_prefix = "wr/p0-lane-e/"
+globs = [
+  "tests/pins/e_packs/**",
+  "tests/proof/labels.d/p0-1e.toml",
+  "tests/proof/gaps.toml",
+  "tests/proof/facets.toml",
+]
+
+[[gate]]
+branch = "wr/p0-spine/0a"
+merge = "P0-0a"
+
+[[gate]]
+branch = "wr/p0-spine/0b"
+merge = "P0-0b"
+requires_merge = ["P0-0a"]
+
+[[gate]]
+branch = "wr/p0-spine/0c"
+merge = "P0-0c"
+requires_merge = ["P0-0b"]
+
+[[gate]]
+branch = "wr/p0-spine/0d"
+merge = "P0-0d"
+requires_merge = ["P0-0c"]
+
+[[gate]]
+branch = "wr/p0-lane-a/"
+merge = "P0-1A"
+requires_merge = ["P0-0d"]
+
+[[gate]]
+branch = "wr/p0-lane-b/"
+merge = "P0-1B"
+requires_merge = ["P0-0d"]
+
+[[gate]]
+branch = "wr/p0-lane-c/"
+merge = "P0-1C"
+requires_merge = ["P0-0d"]
+
+[[gate]]
+branch = "wr/p0-lane-d/"
+merge = "P0-1D"
+requires_merge = ["P0-0d"]
+
+[[gate]]
+branch = "wr/p0-lane-e/"
+merge = "P0-1E"
+requires_merge = ["P0-0d"]
+
+[[gate]]
+branch = "wr/p0-ckpt/j0"
+merge = "J0"
+requires_merge = ["P0-0d", "P0-1A", "P0-1B", "P0-1C", "P0-1D", "P0-1E"]

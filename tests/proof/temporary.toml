@@ -1,0 +1,68 @@
+## Base register (CM-7, MC-07). Holds the S0-introduced brownfield temporary
+## mechanisms (T-1..T-7 minus the withdrawn, permanent T-4 — the
+## import-boundary allowlist, CM-12). One phase, `tests/proof/temporary.d/<phase>.toml`,
+## adds its own `[[entry]]` rows; only the remover lists an id in its own
+## `cleanup.remove` (root `## Temporary mechanisms and removal conditions`).
+
+[[entry]]
+id = "T-1"
+mechanism = "wrapper's own pid-only timer (trestle/wrapper/reactor.py:28,40-43, trestle/wrapper/main.py:22); removed with the conductor's adoption at trestle/server/conductor.py:85-87 (B2-C10)"
+introduced_by = "S0"
+serves = []
+probe = "grep -rqF --include='*.py' 'reason=\"defect:G-A1\"' tests/pins"
+removal_condition = "group kill reaches the tree (G-A1 green)"
+removed_by = "L.CS-2.2"
+permanent = false
+
+[[entry]]
+id = "T-2"
+mechanism = "dual PYTHONPATH (trestle/server/plugin_validate.py::_subprocess_env)"
+introduced_by = "S0"
+serves = []
+probe = "grep -rqF --include='*.py' 'reason=\"defect:G-B4\"' tests/pins"
+removal_condition = "one env builder (G-B4)"
+removed_by = "L.CL-C1.3"
+permanent = false
+
+[[entry]]
+id = "T-3"
+mechanism = "isinstance(stack_spec, dict) workaround (examples/packs/integration_pipeline.py::integration_pipeline L59)"
+introduced_by = "S0"
+serves = []
+probe = "grep -rqF --include='*.py' 'reason=\"defect:K-3\"' tests/pins"
+removal_condition = "typed hydration (K-3)"
+removed_by = "L.CK-3/4.3"
+permanent = false
+
+[[entry]]
+id = "T-5"
+mechanism = "legacy pipeline entry points"
+introduced_by = "S0"
+serves = []
+probe = "true"
+removal_condition = "separate decision"
+removed_by = "named-not-removed"
+permanent = false
+citation = "brownfield Transition contract"
+
+[[entry]]
+id = "T-6"
+mechanism = "wrapped ComposeBackend (packages/trestle-packs/trestle_packs/docker/backend.py::ComposeBackend)"
+introduced_by = "S0"
+serves = []
+probe = "true"
+removal_condition = "separate decision"
+removed_by = "named-not-removed"
+permanent = false
+citation = "brownfield Transition contract"
+
+[[entry]]
+id = "T-7"
+mechanism = "old snapshot dirs and old-id keys (filesystem probe)"
+introduced_by = "S0"
+serves = []
+probe = "true"
+removal_condition = "age out with gc"
+removed_by = "named-not-removed"
+permanent = false
+citation = "age out with gc"

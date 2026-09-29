@@ -471,6 +471,72 @@ def cmd_mypy_ratchet(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ckpt(args: argparse.Namespace) -> int:
+    """`python -m tests.proof.meta ckpt <name> [--dry] [--preview] [--commit <sha>]`
+    (L.P0-0d.4): evaluates `tests/proof/ckpt/<name>.py` only on the newest
+    commit carrying `WR-Merge: <TRIGGER_MERGE>`; any other commit is a
+    no-op exit 0."""
+    from tests.proof import ckpt as ckpt_mod
+    from tests.proof import fence as fence_mod
+    from tests.proof import trailers as trailers_mod
+
+    try:
+        module = ckpt_mod.load_module(args.name)
+    except ckpt_mod.UnknownCkptError:
+        print(f"ckpt: unknown checkpoint {args.name!r}")
+        return 2
+
+    commit_ref = args.commit or "HEAD"
+    commit_sha = fence_mod._git(ROOT, "rev-parse", commit_ref).stdout.strip()  # noqa: SLF001
+    trigger_sha = trailers_mod.newest(module.TRIGGER_MERGE, ref=commit_ref, cwd=ROOT)
+    # --dry lists pending reasons on any commit (L.P0-0d.4: at P0-0d there is no
+    # J0 carrier yet); only a real evaluation is limited to the newest carrier.
+    if not args.dry and (trigger_sha is None or trigger_sha != commit_sha):
+        print(
+            f"ckpt {args.name}: {commit_sha} is not the newest "
+            f"{module.TRIGGER_MERGE} carrier; no-op"
+        )
+        return 0
+
+    if (
+        not args.dry
+        and not args.preview
+        and ckpt_mod.already_evaluated(module, commit_sha, cwd=ROOT)
+    ):
+        print(f"ckpt {args.name}: already evaluated at {commit_sha} (idempotent no-op)")
+        return 0
+
+    results = ckpt_mod.evaluate(module, commit_sha, preview=args.preview)
+    pending = [r for r in results if not r.ok]
+
+    if args.dry:
+        for r in pending:
+            print(f"pending:{r.id}")
+        return 0
+
+    if pending:
+        for r in pending:
+            print(f"ckpt {args.name}: {r.id}: {r.reason}")
+        return 1
+
+    digest = ckpt_mod.ledger_digest()
+    print(f"ckpt {args.name}: pass; digest={digest}")
+    return 0
+
+
+def cmd_register(args: argparse.Namespace) -> int:
+    """`python -m tests.proof.meta register[, --probe <id>, --final]`
+    (L.P0-0d.1): exactly CM-7's register rule, probe and `--final` commands,
+    implemented in `tests/proof/register.py`."""
+    from tests.proof import register as register_mod
+
+    if args.final:
+        return register_mod.cmd_final()
+    if args.probe:
+        return register_mod.cmd_probe(args.probe)
+    return register_mod.cmd_register()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m tests.proof.meta")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -488,6 +554,16 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("check-map")
     sub.add_parser("audit-rows")
     sub.add_parser("open-questions")
+    register_parser = sub.add_parser("register")
+    register_parser.add_argument("--probe", default=None)
+    register_parser.add_argument("--final", action="store_true")
+    kdoc_parser = sub.add_parser("kdoc")
+    kdoc_parser.add_argument("--history", default=None)
+    ckpt_parser = sub.add_parser("ckpt")
+    ckpt_parser.add_argument("name")
+    ckpt_parser.add_argument("--dry", action="store_true")
+    ckpt_parser.add_argument("--preview", action="store_true")
+    ckpt_parser.add_argument("--commit", default=None)
     return parser
 
 
@@ -510,6 +586,14 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_audit_rows(args)
     if args.command == "open-questions":
         return cmd_open_questions(args)
+    if args.command == "register":
+        return cmd_register(args)
+    if args.command == "kdoc":
+        from tests.proof import kdoc as kdoc_mod
+
+        return kdoc_mod.cmd_kdoc(args)
+    if args.command == "ckpt":
+        return cmd_ckpt(args)
     parser.error(f"unknown command {args.command}")
     return 2
 

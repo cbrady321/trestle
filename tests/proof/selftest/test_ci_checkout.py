@@ -25,7 +25,7 @@ def _load_ci_yml() -> dict:
     return yaml.safe_load(CI_YML_PATH.read_text())
 
 
-@pytest.mark.parametrize("job_name", ["test", "proof-ledger"])
+@pytest.mark.parametrize("job_name", ["test", "proof-ledger", "ckpt"])
 def test_full_history_checkout(job_name: str) -> None:
     workflow = _load_ci_yml()
     job = workflow["jobs"][job_name]
@@ -46,6 +46,7 @@ def test_ci_yml_parses_and_has_expected_jobs() -> None:
         "ancestry",
         "d2-straddle",
         "proof-ledger",
+        "ckpt",
     }
 
 

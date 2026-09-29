@@ -1,0 +1,19 @@
+## Rollback-boundary register (MC-31; L.P0-0d.1). One `[[boundary]]` per
+## non-rollback-transparent merge (root "## Rollback posture"); `evidence`
+## starts as `"pending:<merge>"` until the boundary's D2/RV evidence lands.
+## `meta register` fails when a landed boundary's evidence is still pending
+## ("landed" is `trailers.landing`, wired by `L.P0-0d.7`; this leaf's own
+## `register.is_landed` is a placeholder that always reports not-landed,
+## since `trailers.py` does not exist until L.P0-0d.7).
+
+[[boundary]]
+merge = "CS-1"
+class = "forward_only"
+evidence = "pending:CS-1"
+authorized_by = "root '## Rollback posture': CS-1 (K-18, forward-only, isolated, pinned first)"
+
+[[boundary]]
+merge = "SV-3"
+class = "drain"
+evidence = "pending:SV-3"
+authorized_by = "root '## Rollback posture': SV-3 (first plan-bearing version - drain first)"

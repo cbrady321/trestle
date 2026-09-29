@@ -4,6 +4,7 @@ on:
   push:
     branches: [master, main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   lint:
@@ -148,3 +149,59 @@ jobs:
         with:
           name: proof-ledger.json
           path: proof-ledger.json
+
+  # CM-5 checkpoint evaluation (L.P0-0d.4). Push to master and
+  # workflow_dispatch only, so it is outside CM-4's required-job list.
+  # Idempotent: `meta ckpt` exits 0 without evaluating on a non-trigger
+  # commit, or when TAG (or a successful `ckpt` run) already marks it.
+  ckpt:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    needs: [lint, test, compat, guards, ancestry, d2-straddle, proof-ledger]
+    permissions:
+      contents: write
+      checks: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev,packs]"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: proof-results-*
+          path: tests/proof/results
+          merge-multiple: true
+      - id: eval
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eo pipefail
+          mkdir -p ckpt-out
+          for f in tests/proof/ckpt/*.py; do
+            mod=$(basename "$f" .py)
+            [ "$mod" = "__init__" ] && continue
+            name="${mod//_/-}"
+            python -m tests.proof.meta ckpt "$name" | tee "ckpt-out/$name.txt"
+            if grep -q "pass; digest=" "ckpt-out/$name.txt"; then
+              tag=$(python -c "from tests.proof import ckpt; print(ckpt.load_module('$name').TAG or '')")
+              if [ -n "$tag" ]; then
+                git config user.name "github-actions[bot]"
+                git config user.email "github-actions[bot]@users.noreply.github.com"
+                git tag -a "$tag" -m "CM-5 checkpoint $name" "$GITHUB_SHA"
+                git push origin "refs/tags/$tag"
+              else
+                echo "artifact=ckpt-$name" >> "$GITHUB_OUTPUT"
+              fi
+            else
+              rm "ckpt-out/$name.txt"
+            fi
+          done
+      - if: steps.eval.outputs.artifact != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.eval.outputs.artifact }}
+          path: ckpt-out/

@@ -59,7 +59,32 @@ def pytest_configure(config: pytest.Config) -> None:
         config.addinivalue_line("markers", f"{name}: {doc}")
 
 
+def _deselect_host_gated(config: pytest.Config, items: list[pytest.Item]) -> list[pytest.Item]:
+    """CSC-9 (L.P0-0d.9): deselect — never skip — `host_only` nodes unless
+    `TRESTLE_HOST_GATE=proc`, and `docker_host` nodes unless
+    `TRESTLE_HOST_GATE=docker`. One hook for every testpath and session
+    (root, packs and env) — no per-directory conftest hook."""
+    import os
+
+    gate = os.environ.get("TRESTLE_HOST_GATE", "")
+    kept: list[pytest.Item] = []
+    deselected: list[pytest.Item] = []
+    for item in items:
+        if item.get_closest_marker("host_only") is not None and gate != "proc":
+            deselected.append(item)
+            continue
+        if item.get_closest_marker("docker_host") is not None and gate != "docker":
+            deselected.append(item)
+            continue
+        kept.append(item)
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = kept
+    return kept
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    items[:] = _deselect_host_gated(config, items)
     labels = _load_labels()
     compat_map = _load_compat_map()
     for item in items:
