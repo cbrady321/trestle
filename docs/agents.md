@@ -171,6 +171,31 @@ Every `BoundedView` includes `backend`, `as_of`, `items`, `truncated`, `next_cur
 
 ---
 
+## Run states
+
+A run is always in exactly one of these states. The same vocabulary is in
+[`agent-console-mcp.md`](agent-console-mcp.md) §3. Each state names the code
+that produces it; a state with no producer is **reserved** and is never written.
+
+<!-- K-13 -->
+| State | Kind | Producer |
+|-------|------|----------|
+| `queued` | projected | Admission writes the `created` and `admitted` ledger rows; the run is `queued` until the `started` row exists. |
+| `running` | projected | The conductor writes `started` when the worker begins; the run is `running` until evidence is finalized. |
+| `succeeded` | terminal | The conductor, when the worker exits 0. |
+| `failed` | terminal | The conductor, when the worker exits 1 (the plugin raised) or reports nothing usable. |
+| `cancelled` | terminal | The conductor, when it observes the run's cancel request. |
+| `timed_out` | terminal | The wrapper and conductor, when the run outlives its deadline. |
+| `worker_exit` | terminal | The wrapper, when the worker exits with a code other than 0 or 1 (for example 3). |
+| `interrupted` | terminal | Recovery, at the next start, for a run whose ledger has no terminal row. |
+| `crashed` | terminal | **Reserved.** It stays in the ledger's terminal-kind set so old readers keep working, but no code path writes it. |
+<!-- /K-13 -->
+
+`crashed` is reserved (K-13), not a state a run can reach. A run whose worker dies
+abnormally is `worker_exit`; a run whose server died is `interrupted`.
+
+---
+
 ## Wait and long jobs
 
 `run` admits work, starts execution on a background thread, then waits up to `wait_ms`:
@@ -188,7 +213,7 @@ Every `BoundedView` includes `backend`, `as_of`, `items`, `truncated`, `next_cur
 <!-- K-8 -->
 ### A succeeded run leaves no process behind (K-8)
 
-When a run ends, Trestle stops every process the run started, and that includes a run that **succeeded**: a plugin that returns normally while a child, or a grandchild in its own session, is still running has that process stopped (SIGTERM first, SIGKILL after the grace period) before the run's evidence is finalized. Nothing the run started writes into `evidence/` or changes `result.json` after the terminal answer. The run's class and summary are unchanged (a succeeded run stays `succeeded`), and `cleanup.processes` reads `released` once the stop is confirmed, `unknown` when it could not be.
+When a run ends, Trestle stops the processes it can attribute to the run (its recorded descendants, see the containment boundaries in `docs/security.md`), and that includes a run that **succeeded**: a plugin that returns normally while a child, or a grandchild in its own session, is still running has that process stopped (SIGTERM first, SIGKILL after the grace period) before the run's evidence is finalized. Nothing the run started writes into `evidence/` or changes `result.json` after the terminal answer. The run's class and summary are unchanged (a succeeded run stays `succeeded`), and `cleanup.processes` reads `released` once the stop is confirmed, `unknown` when it could not be.
 
 This is a knowing change (K-8): before it, a process a plugin forgot outlived a succeeded run. It is on by default (`REAP_ON_SUCCESS` in `trestle/server/conductor.py`), the same kill every other way a run can end has always received.
 <!-- /K-8 -->
@@ -258,6 +283,22 @@ See [`plugins.md`](plugins.md) for authoring, filesystem drop-in, and `publish_p
 | **Operator (HTTP)** | `trestle ops serve` + console UI | Read-only sessions/telemetry — [`operator-sessions-telemetry.md`](operator-sessions-telemetry.md) |
 
 Agents reach evidence **only** through MCP. Operator HTTP does not expose `run`.
+
+---
+
+## Stopping a run: what is not covered
+
+Cancel and deadline stop the processes Trestle can attribute to the run. Two
+boundaries are outside that guarantee (full statement in
+[`security.md`](security.md)):
+
+- A descendant that **double-forks** out of attribution between two ancestry
+  snapshots is outside the containment and evidence-integrity guarantee.
+- A run started by a version that **recorded no process identity** (K-19) is
+  finalized `interrupted` after a restart, its stop is reported **unconfirmed**,
+  never clean, and no signal is sent. Before first starting a version that
+  records identity, stop the server with no run live, or check
+  `ps -ax -o pid,command | grep trestle.child.main` and stop any such process.
 
 ---
 

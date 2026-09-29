@@ -23,6 +23,35 @@ Stdio is the default agent path. Streamable HTTP is optional for hosts that cann
 - Trestle **bounds what reaches the agent** (summaries, named views, fetch windows). It is **not** a sandbox that isolates plugins from the host.
 - Operator UI and HTTP MCP are loopback-only; they are not authenticated multi-user services.
 
+## What stopping a run does not cover
+
+Trestle ends the processes it can **attribute** to a run: the run's recorded
+leader, its recorded process group, and the descendants it observed by parent
+id, wherever they have moved since. Two boundaries sit outside that guarantee,
+and Trestle does not claim to contain more than this.
+
+1. **A double fork between two snapshots.** Trestle watches a run's process
+   ancestry by taking snapshots. A descendant that double-forks out of
+   attribution between two snapshots, so that no snapshot ever sees it as a
+   descendant, is outside the containment and evidence-integrity guarantee. It
+   can outlive the run, and Trestle will not know to stop it.
+2. **A run started before process identity was recorded (K-19).** A run started
+   by a version that recorded no process identity has nothing to recover from.
+   After a restart Trestle finalizes it `interrupted`, reports its stop as
+   **unconfirmed** (never clean), and sends no signal to any process.
+
+Before you first start a version that records process identity, either stop the
+server while no run is live, or check the process table and stop any leftover
+worker yourself:
+
+```bash
+ps -ax -o pid,command | grep trestle.child.main
+```
+
+This is part of the same statement as "not a sandbox" above: plugins run as your
+user, and stopping a run is best effort for exactly the processes Trestle can
+attribute.
+
 ## Operator vs agent
 
 - **Agents** use MCP (`trestle serve`) — can admit and `run` work.

@@ -194,6 +194,13 @@ Filesystem drop-in (copy to `plugins/`) still works and uses the same hot-reload
 
 Long jobs: use a short `wait_ms` to get `run_id` quickly, then `await_runs` with a longer `timeout_ms` — or set a large `wait_ms` if the host allows a long stdio `tools/call`.
 
+### Run states
+
+A run is `queued`, `running`, or one terminal state: `succeeded`, `failed`,
+`cancelled`, `timed_out`, `worker_exit` or `interrupted`. `crashed` is a
+**reserved** ledger kind that no code path writes. The producer of each state
+is listed in [`agents.md`](agents.md) (Run states).
+
 ### `run` honors `completion` (MC-16)
 
 `completion` is the one optional `run` parameter that changes what the call waits for: `"bounded"` (default) is the behavior above; `"terminal"` answers only from the finalized terminal row, never a `running` frame.
