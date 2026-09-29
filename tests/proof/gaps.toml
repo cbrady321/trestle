@@ -76,28 +76,28 @@ id = "G-C1"
 lane = "C"
 flip_merge = "CS-4"
 target = "required"
-entry = "pending"
+entry = "tests.pins.c_surface.test_g_c1:wait_at_budget"
 
 [[gap]]
 id = "G-C2"
 lane = "C"
 flip_merge = "CL-B1"
 target = "required"
-entry = "pending"
+entry = "tests.pins.c_surface.test_g_c2:project_across_republish"
 
 [[gap]]
 id = "G-C3"
 lane = "C"
 flip_merge = "CK-1"
 target = "required"
-entry = "pending"
+entry = "tests.pins.c_surface.test_g_c3:retry_after_edit"
 
 [[gap]]
 id = "G-C4"
 lane = "C"
 flip_merge = "CL-B1"
 target = "none(DM-20)"
-entry = "pending"
+entry = "tests.pins.c_surface.test_g_c4:sorted_fill_view"
 
 [[gap]]
 id = "G-D1"

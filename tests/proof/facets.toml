@@ -11,19 +11,19 @@
 id = "tools_list"
 additive = "named"
 golden = "tests/fixtures/golden/s0/tools_list.json"
-extractor = "pending"
+extractor = "tests.pins.c_surface.facets:tools_list"
 
 [[facet]]
 id = "runview_shape"
 additive = "named"
 golden = "tests/fixtures/golden/s0/runview_shape.json"
-extractor = "pending"
+extractor = "tests.pins.c_surface.facets:runview_shape"
 
 [[facet]]
 id = "refusal_codes"
 additive = "named"
 golden = "tests/fixtures/golden/s0/refusal_codes.json"
-extractor = "pending"
+extractor = "tests.pins.c_surface.facets:refusal_codes"
 
 [[facet]]
 id = "context_surface"
@@ -41,7 +41,7 @@ extractor = "tests.pins.d_evidence.facets:query_row_shapes"
 id = "spec_keys"
 additive = "free"
 golden = "tests/fixtures/golden/s0/spec_keys.json"
-extractor = "pending"
+extractor = "tests.pins.c_surface.facets:spec_keys"
 
 [[facet]]
 id = "ledger_kinds"

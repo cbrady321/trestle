@@ -1039,7 +1039,9 @@ def attempt_landing(merge_id: str, deps: LandingDeps) -> str:
 
     write_progress(state_dir, merge_id, "step-1", clock=deps.clock)
     expected_head = entry.get("landing_sha") or entry.get("head_sha")
-    if deps.pr_head_sha != expected_head:
+    # A stale-refresh (step 3) publishes a new head this attempt: the PR head
+    # is then `rebased_head_sha`, not the marked head.
+    if deps.pr_head_sha not in (expected_head, deps.rebased_head_sha or expected_head):
         record_return(state_dir, merge_id, "head moved during landing", clock=deps.clock)
         return "head moved during landing"
 
@@ -1305,29 +1307,60 @@ def cmd_merge(
     return int(code)
 
 
+def _refresh_stale(work: Path, branch: str, head: str) -> str:
+    """CM-3 step 3, `git rebase` being forbidden in this delivery: when
+    `origin/master` is not an ancestor of `head` (a landing before this
+    one moved it), merge it forward on the branch and push the branch with
+    a plain non-force push (CM-2 R3 is satisfied by ancestry). Returns the
+    new head, `head` itself when not stale, or the return reason."""
+    if is_ancestor(work, "origin/master", head):
+        return head
+    if _git(work, "checkout", "-q", "--detach", head).returncode != 0:
+        raise RuntimeError("refresh: cannot check out the branch head")
+    merged = _git(work, "merge", "--no-edit", "origin/master")
+    if merged.returncode != 0:
+        _git(work, "merge", "--abort")
+        return "rebase conflict"
+    new_head = _git(work, "rev-parse", "HEAD").stdout.strip()
+    pushed = _git(work, "push", "origin", f"HEAD:refs/heads/{branch}")
+    if pushed.returncode != 0:
+        return "push refused"
+    return new_head
+
+
 def _real_deps(
     merge_id: str, entry: dict, cfg: FenceConfig, cwd: Path, state_dir: Path, work: Path
 ) -> LandingDeps | str:
     """`LandingDeps` from real `gh`; a string is a return reason to record
-    instead of attempting the landing. Rebase and the P11 re-runs are not
-    wired here (a stale head surfaces as `fence merge` exit 3)."""
+    instead of attempting the landing. A stale READY branch is refreshed by
+    merging `origin/master` forward (CM-3 step 3) and CI is awaited on the
+    new head. The P11 re-runs are not wired here."""
     branch = entry.get("branch", merge_id)
     expected = entry.get("landing_sha") or entry.get("head_sha")
     try:
         pr_head = pr_head_via_gh(branch, cwd)
-        required = _required_at(work, f"origin/{branch}")
+        _git(work, "fetch", "origin", branch)
+        target, rebased = expected, None
         if pr_head == expected:
+            refreshed = _refresh_stale(work, branch, expected)
+            if refreshed in ("rebase conflict", "push refused"):
+                return refreshed
+            if refreshed != expected:
+                target = rebased = pr_head = refreshed
+                _git(work, "fetch", "origin", branch)
+        required = _required_at(work, f"origin/{branch}")
+        if pr_head == target:
             wait = ci_status(
-                cwd,
-                branch=branch,
+                work,
+                branch=f"origin/{branch}",
                 wait=True,
-                conclusions_reader=lambda _sha, where: job_conclusions_via_gh(expected, where),
+                conclusions_reader=lambda _sha, where: job_conclusions_via_gh(target, where),
                 required=required,
                 state_dir=state_dir,
             )
             if wait == 5:
                 return "remote unavailable"
-            conclusions: dict[str, str | None] | Exception = job_conclusions_via_gh(expected, cwd)
+            conclusions: dict[str, str | None] | Exception = job_conclusions_via_gh(target, cwd)
         else:
             wait, conclusions = 0, {}
     except FenceRemoteOutage:
@@ -1340,6 +1373,7 @@ def _real_deps(
         job_conclusions=conclusions,
         ci_wait_result=wait,
         required=required,
+        rebased_head_sha=rebased,
     )
 
 
