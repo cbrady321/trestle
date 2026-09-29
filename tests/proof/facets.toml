@@ -35,7 +35,7 @@ extractor = "pending"
 id = "query_row_shapes"
 additive = "named"
 golden = "tests/fixtures/golden/s0/query_row_shapes.json"
-extractor = "pending"
+extractor = "tests.pins.d_evidence.facets:query_row_shapes"
 
 [[facet]]
 id = "spec_keys"
@@ -65,7 +65,7 @@ extractor = "pending"
 id = "event_row_shape"
 additive = "free"
 golden = "tests/fixtures/golden/s0/event_row_shape.json"
-extractor = "pending"
+extractor = "tests.pins.d_evidence.facets:event_row_shape"
 
 [[facet]]
 id = "fossil_projection"
