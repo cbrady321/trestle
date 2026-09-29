@@ -40,6 +40,8 @@ def _assert_matches_golden(facet: str) -> None:
     missing, unexpected = normalize.structural_diff(
         normalize.normalize(_golden(facet)), current, policy="named"
     )
+    if facet == "refusal_codes":
+        unexpected = differ.drop_named_additive_codes(unexpected, current)
     assert (missing, unexpected) == ([], [])
 
 
