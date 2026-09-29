@@ -25,3 +25,13 @@ removal_condition = "none while F-11(b) (allowlist owner/default) is open; RB-0 
 removed_by        = "named-not-removed"
 permanent         = false
 citation          = "root C.9 F-11(a/b); design §10 F-11(b)"
+
+[[entry]]
+id                = "loop-walk-children-absent"     # plan id TM-B2-6
+mechanism         = "trestle/workflow/loop.py raises before any effect when a vertex is composite (the walk is tree-band work, OQ-28)"
+introduced_by     = "L.SV-5.7"
+serves            = []
+probe             = "grep -q 'walk_children: tree band' trestle/workflow/loop.py"
+removal_condition = "the in-library AllDeclaration walk lands"
+removed_by        = "L.TR-3.2"
+permanent         = false

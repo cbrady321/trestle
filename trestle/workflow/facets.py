@@ -81,6 +81,10 @@ class PortContractViolation(RuntimeError):
     recorded, so the record still shows the attempt as issued and resolved."""
 
 
+def _no_precedence() -> None:
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class FacetContext:
     """Everything a binder needs from the loop for one unit call.
@@ -88,7 +92,9 @@ class FacetContext:
     `ports` maps a port protocol type to its one implementation. `goal` and `flip_goal` read and
     flip the root's goal (`flip_goal` is idempotent; it is the loop's, B1-E6). `hold` is the loop's
     hold callback for steps the lane refused to hold (V-4.5). `remedy` is the remedy the loop
-    granted for this call, if any (`ActContext.remedy`)."""
+    granted for this call, if any (`ActContext.remedy`). `precedence` is called when a facet raised
+    `EffectRefused` or recorded `Confirmation(UNKNOWN)`: the call's returned `Step` then goes to
+    evidence only (refusal precedence, V-3.7); a binder used with no loop leaves it a no-op."""
 
     lane: AttemptLane
     lineage: Lineage
@@ -100,6 +106,7 @@ class FacetContext:
     hold: Callable[[StepView], None]
     now: Callable[[], Instant]
     remedy: RemedyGrant | None = None
+    precedence: Callable[[], None] = _no_precedence
 
 
 def _members(port: type) -> frozenset[str]:
@@ -184,7 +191,11 @@ class Ticketed[P]:
 
         @functools.wraps(member)
         def call(*args: Any, **kwargs: Any) -> Any:
-            return self._effect_call(name, member, signature, args, kwargs)
+            try:
+                return self._effect_call(name, member, signature, args, kwargs)
+            except EffectRefused:
+                self._ctx.precedence()
+                raise
 
         return call
 
@@ -257,9 +268,13 @@ class Ticketed[P]:
             result = member(**arguments, ticket=ticket)
         except Exception:
             ctx.lane.confirm(ticket, Confirmation(ConfirmationStatus.UNKNOWN, None, None))
+            ctx.precedence()
             raise
 
         # (5) the confirmation; an event's projected result (V-5.5)
+        confirmed = result[0] if self._projects_result else result
+        if _status(confirmed) == ConfirmationStatus.UNKNOWN:
+            ctx.precedence()
         if self._projects_result:
             confirmation, outcome = result
             ctx.lane.confirm(ticket, confirmation)

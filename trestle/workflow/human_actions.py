@@ -52,6 +52,11 @@ TEMPLATES: Final[dict[str, tuple[str, Resend]]] = {
         "Refresh {subject} inside the pre-existing consumer at {path}, then re-send.",
         _AFTER,
     ),
+    codes.BUDGET_DOES_NOT_FIT: (
+        "Re-send when the environment is free or with a longer deadline: queueing used the time "
+        "{path} needed.",
+        _AFTER,
+    ),
     codes.EFFECT_UNCONFIRMED: (
         "Check whether {effect} of {path} took effect, and keep or undo it, before re-sending.",
         Resend.UNKNOWN,
