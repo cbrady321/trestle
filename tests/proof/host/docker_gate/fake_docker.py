@@ -74,6 +74,29 @@ def fake_env(state_path: Path, log_path: Path, **extra: str) -> dict[str, str]:
     return env
 
 
+def install_shim(
+    directory: Path, state: Path, log: Path | None = None, mode: str | None = None
+) -> str:
+    """An absolute-path launcher for this shim, bound to `state` (and `log`, `mode`) by CONTENT,
+    not by environment (L.NW-2.3): the adapters run docker with an environment built from empty,
+    so the shim's variables cannot reach it any other way. The launcher's shebang is the running
+    interpreter, so it starts under the execution port's scrubbed `PATH`. Returns its path."""
+    launcher = Path(directory) / "docker"
+    bindings = {STATE_ENV: str(state)}
+    if log is not None:
+        bindings[LOG_ENV] = str(log)
+    if mode is not None:
+        bindings[MODE_ENV] = mode
+    launcher.write_text(
+        f"#!{sys.executable}\n"
+        "import os, runpy\n"
+        f"os.environ.update({bindings!r})\n"
+        f"runpy.run_path({str(Path(__file__).resolve())!r}, run_name='__main__')\n"
+    )
+    launcher.chmod(0o755)
+    return str(launcher)
+
+
 # -- the shim ------------------------------------------------------------------------------------
 
 
@@ -254,6 +277,10 @@ def _dispatch(args: list[str], state: dict) -> int:
     if not _reachable(state):
         return _unreachable()
     if cmd == "info":
+        template = _opt(rest, "--format")
+        if template == "{{.ServerVersion}}":  # the adapters' reachability read (L.NW-2.3)
+            print(state.get("server_version", DEFAULT_VERSION))
+            return 0
         print(
             json.dumps(
                 {

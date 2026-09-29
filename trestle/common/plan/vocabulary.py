@@ -1,5 +1,5 @@
-"""Plan vocabulary: the plan refusal codes (V-11; L.SV-3.1), B4's node vocabulary and the
-single-level code set (L.SV-4.1).
+"""Plan vocabulary: the plan refusal codes (V-11; L.SV-3.1), B4's node vocabulary, the
+single-level code set (L.SV-4.1) and Slice B's adapter codes (L.NW-2.3).
 
 Every code is the snake of its V-11 name behind the origin that raises it (V-11: names are
 provisional, the set is closed, meanings bind; RIPPLE-MAP N4). `V11` maps each V-11 name A-1 uses
@@ -129,6 +129,33 @@ SINGLE_LEVEL_CODES: frozenset[str] = frozenset(
         RECORDED_WITH_REMEDIES,
         OWNED_REMEDY_ON_FOUND,
         BUDGET_EXCEEDS_LEAF,
+    }
+)
+
+# ---- Slice B's adapter half (L.NW-2.3; MC-B-12; B3-E1). V-11 codes only: no adapter code outside
+# the closed set exists, and a code carries no class of its own (B4-T2 decides a node's class over
+# its `NodeEnd`). A code that A-1 already spelled keeps its one spelling (V-11 gives every code
+# one): `TOOLCHAIN_MISSING` and `CREDENTIAL_INTERACTIVE` are the `execution.*` values
+# `trestle.workflow.codes` compares in the join (J-5a) and the real command port returns; the
+# five others are `adapter.*`.
+
+DOCKER_CLI_MISSING = "adapter.docker_cli_missing"
+DOCKER_ENGINE_UNREACHABLE = "adapter.docker_engine_unreachable"
+TOOLCHAIN_MISSING = "execution.toolchain_missing"
+TOOLCHAIN_INTERFACE_DRIFT = "adapter.toolchain_interface_drift"
+COMPOSE_DEFINITION_INVALID = "adapter.compose_definition_invalid"
+CREDENTIAL_INTERACTIVE = "execution.credential_interactive"
+GRANT_ISSUER_UNREACHABLE = "adapter.grant_issuer_unreachable"
+
+ADAPTER_CODES: frozenset[str] = frozenset(
+    {
+        DOCKER_CLI_MISSING,
+        DOCKER_ENGINE_UNREACHABLE,
+        TOOLCHAIN_MISSING,
+        TOOLCHAIN_INTERFACE_DRIFT,
+        COMPOSE_DEFINITION_INVALID,
+        CREDENTIAL_INTERACTIVE,
+        GRANT_ISSUER_UNREACHABLE,
     }
 )
 

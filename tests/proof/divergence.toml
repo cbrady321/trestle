@@ -1461,3 +1461,77 @@ docs = []
 due_checkpoint = "TR-2 (leaf L.TR-2.5)"
 direction = "additive"
 authorized_by = "plan-workflow-runtime.md:979 (MC-06: projection.{terminal_wait_exceeded, outside_window, not_owner, cancel_not_root}); interfaces/00-shared-vocabulary.md V-11 CANCEL_NOT_ROOT; plans/a2-tree.md L.TR-2.5"
+
+# L.NW-2.3 (MC-B-12, DM-16, DM-48): the adapter half of Slice B's code set (V-11 codes, B3-E1),
+# defined in trestle/common/plan/vocabulary.py and re-exported by trestle/common/codes.py. One named
+# entry per wire code; ADD-adapter-environment-codes above is the seed's internal-facet marker.
+
+[[entry]]
+id = "ADD-code-docker-cli-missing"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["adapter.docker_cli_missing"]
+docs = []
+due_checkpoint = "NW-2 (leaf L.NW-2.3)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed names the adapter.* codes, DM-48); plans/b-slice-b.md L.NW-2.3 (MC-B-12, DM-16, V-11 closed)"
+
+[[entry]]
+id = "ADD-code-docker-engine-unreachable"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["adapter.docker_engine_unreachable"]
+docs = []
+due_checkpoint = "NW-2 (leaf L.NW-2.3)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed names the adapter.* codes, DM-48); plans/b-slice-b.md L.NW-2.3 (MC-B-12, DM-16, V-11 closed)"
+
+[[entry]]
+id = "ADD-code-toolchain-missing"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.toolchain_missing"]
+docs = []
+due_checkpoint = "NW-2 (leaf L.NW-2.3)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed names the adapter.* codes, DM-48); plans/b-slice-b.md L.NW-2.3 (MC-B-12, DM-16, V-11 closed)"
+
+[[entry]]
+id = "ADD-code-toolchain-interface-drift"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["adapter.toolchain_interface_drift"]
+docs = []
+due_checkpoint = "NW-2 (leaf L.NW-2.3)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed names the adapter.* codes, DM-48); plans/b-slice-b.md L.NW-2.3 (MC-B-12, DM-16, V-11 closed)"
+
+[[entry]]
+id = "ADD-code-compose-definition-invalid"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["adapter.compose_definition_invalid"]
+docs = []
+due_checkpoint = "NW-2 (leaf L.NW-2.3)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed names the adapter.* codes, DM-48); plans/b-slice-b.md L.NW-2.3 (MC-B-12, DM-16, V-11 closed)"
+
+[[entry]]
+id = "ADD-code-credential-interactive"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.credential_interactive"]
+docs = []
+due_checkpoint = "NW-2 (leaf L.NW-2.3)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed names the adapter.* codes, DM-48); plans/b-slice-b.md L.NW-2.3 (MC-B-12, DM-16, V-11 closed)"
+
+[[entry]]
+id = "ADD-code-grant-issuer-unreachable"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["adapter.grant_issuer_unreachable"]
+docs = []
+due_checkpoint = "NW-2 (leaf L.NW-2.3)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed names the adapter.* codes, DM-48); plans/b-slice-b.md L.NW-2.3 (MC-B-12, DM-16, V-11 closed)"
