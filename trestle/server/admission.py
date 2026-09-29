@@ -31,7 +31,7 @@ from trestle.server.plugin_validate import validate_plugin_imports
 from trestle.server.recovery import find_run_dir
 from trestle.server.registry import Registry
 from trestle.server.scheduler import Scheduler
-from trestle.server.snapshots import load_snapshot_schema
+from trestle.server.snapshots import load_declared, load_snapshot_schema
 
 
 @dataclass
@@ -166,6 +166,8 @@ class Admission:
             summary_budget=snap.summary_budget,
             timeout_s=snap.timeout_s,
             deadline=deadline.isoformat(),
+            # what publication recorded for the declared packages; the child checks it first
+            provenance={"packages": dict(load_declared(snap).package_digests)},
         )
         spec_dict = spec.to_dict()
         atomic_write_json(ev_dir / "spec.json", spec_dict)

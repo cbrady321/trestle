@@ -72,6 +72,7 @@ class RunSpec:
     timeout_s: int
     resolved_artifacts: dict[str, str] = field(default_factory=dict)
     deadline: str | None = None
+    provenance: dict[str, Any] = field(default_factory=lambda: {"packages": {}})
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -88,6 +89,7 @@ class RunSpec:
             "summary_budget": self.summary_budget,
             "timeout_s": self.timeout_s,
             "resolved_artifacts": self.resolved_artifacts,
+            "provenance": self.provenance,
         }
         if self.deadline is not None:
             out["deadline"] = self.deadline
@@ -110,7 +112,19 @@ class RunSpec:
             timeout_s=int(data["timeout_s"]),
             resolved_artifacts=dict(data.get("resolved_artifacts", {})),
             deadline=data.get("deadline"),
+            provenance=_provenance(data.get("provenance")),
         )
+
+
+def _provenance(raw: object) -> dict[str, Any]:
+    """`spec.json`'s `provenance`: the declared packages and the digests recorded for them at
+    publication (MC-18). A spec that predates it records none."""
+    packages = raw.get("packages") if isinstance(raw, dict) else None
+    return {
+        "packages": {str(k): str(v) for k, v in packages.items()}
+        if isinstance(packages, dict)
+        else {}
+    }
 
 
 @dataclass
@@ -141,6 +155,9 @@ class DeclaredMetadata:
     packages: tuple[str, ...] = ()
     env_arg: str | None = None
     secrets: frozenset[str] = frozenset()
+    # Recorded at publication, not declared in source: each declared package's digest as the
+    # publication validator resolved it. Empty for a plugin that declares no packages.
+    package_digests: dict[str, str] = field(default_factory=dict)
 
     def declared_dict(self) -> dict[str, Any]:
         """The manifest's `declared` object: canonical, JSON-safe, sorted where unordered."""
@@ -150,6 +167,7 @@ class DeclaredMetadata:
             "packages": list(self.packages),
             "env_arg": self.env_arg,
             "secrets": sorted(self.secrets),
+            "package_digests": {k: self.package_digests[k] for k in sorted(self.package_digests)},
         }
 
     @classmethod
@@ -170,6 +188,14 @@ class DeclaredMetadata:
             packages=tuple(str(x) for x in declared.get("packages", ())),
             env_arg=str(env_arg) if isinstance(env_arg, str) else None,
             secrets=frozenset(str(x) for x in declared.get("secrets", ())),
+            package_digests={
+                str(k): str(v)
+                for k, v in (
+                    declared["package_digests"]
+                    if isinstance(declared.get("package_digests"), dict)
+                    else {}
+                ).items()
+            },
         )
 
 

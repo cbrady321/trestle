@@ -1,6 +1,6 @@
-"""G-B5 (BFD-18): the snapshot id covered plugin.py bytes only, so editing an imported module
-left it unchanged. The target requires the identity to change when a *declared* package is
-edited (WR-PLAN-5). It is written in the declared-package form (L.CL-C1.4, step 1): a plugin
+"""G-B5 (BFD-18), flipped by L.CL-C1.4: the snapshot id covered plugin.py bytes only, so editing
+an imported module left it unchanged. The identity now moves when a *declared* package is edited
+(WR-PLAN-5). The test is written in the declared-package form (L.CL-C1.4, step 1): a plugin
 using the call form `@trestle(packages=[...])`, one of whose declared package modules is
 edited. An undeclared imported module is not covered by any declaration (recorded, not
 snapshotted; R-J)."""
@@ -51,9 +51,7 @@ def _ids_before_and_after_helper_edit(
     return first.snapshot_id, second.snapshot_id
 
 
-@pytest.mark.target("G-B5")
 @pytest.mark.proves("WR-PLAN-5", "WR-PLAN-5:identity-covers-imports", "core", "core", "must", "CI")
-@pytest.mark.xfail(strict=True, reason="defect:G-B5")
 def test_target_import_edit_changes_snapshot_id(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

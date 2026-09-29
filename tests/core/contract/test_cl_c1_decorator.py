@@ -8,10 +8,14 @@ from pathlib import Path
 import pytest
 
 from tests.proof import harness, tolerances
+from trestle.child.validate import package_digest
 from trestle.common import codes
 from trestle.common.types import DeclaredMetadata, PublishView, RequestOutcome, RunView
 from trestle.server.plugin_schema import DeclarationError, declared_from_source
 from trestle.server.snapshots import load_declared
+
+# what CALL_FORM declares as `deadline=timedelta(...)`
+DECLARED_DEADLINE_S = 310
 
 CALL_FORM = """\
 from datetime import timedelta
@@ -22,7 +26,7 @@ from trestle.plugin.surface import Context, trestle
 @trestle(
     deadline=310,
     summary_fields=["total", "rows"],
-    packages=("trestle_packs", "acme.shared"),
+    packages=("trestle_packs", "json.tool"),
     env_arg="target.env",
     secrets={"token", "auth.password"},
 )
@@ -66,21 +70,30 @@ def test_call_form_publishes_and_runs_with_declared_metadata(tmp_path: Path) -> 
     manifest = _manifest(kernel, "declared_plugin")
     assert manifest["entry"] == "declared_plugin"
     assert manifest["declared"] == {
-        "deadline_s": 310,
+        "deadline_s": DECLARED_DEADLINE_S,
         "summary_fields": ["total", "rows"],
-        "packages": ["trestle_packs", "acme.shared"],
+        "packages": ["trestle_packs", "json.tool"],
         "env_arg": "target.env",
         "secrets": ["auth.password", "token"],
+        # recorded at publication from the import path (L.CL-C1.4), not read from the source
+        "package_digests": {
+            "json.tool": package_digest("json.tool"),
+            "trestle_packs": package_digest("trestle_packs"),
+        },
     }
     snap = kernel.registry.get("declared_plugin")
     assert snap is not None
     assert load_declared(snap) == DeclaredMetadata(
         entry="declared_plugin",
-        deadline_s=310,
+        deadline_s=DECLARED_DEADLINE_S,
         summary_fields=("total", "rows"),
-        packages=("trestle_packs", "acme.shared"),
+        packages=("trestle_packs", "json.tool"),
         env_arg="target.env",
         secrets=frozenset({"token", "auth.password"}),
+        package_digests={
+            "json.tool": package_digest("json.tool"),
+            "trestle_packs": package_digest("trestle_packs"),
+        },
     )
 
     view = kernel.control.run(
@@ -91,7 +104,7 @@ def test_call_form_publishes_and_runs_with_declared_metadata(tmp_path: Path) -> 
     assert view.summary == {"total": 1}
 
 
-def test_bare_form_carries_defaults_and_unchanged_identity(tmp_path: Path) -> None:
+def test_bare_form_carries_defaults(tmp_path: Path) -> None:
     kernel = _kernel(tmp_path)
     assert isinstance(kernel.control.publish_plugin(BARE), PublishView)
     manifest = _manifest(kernel, "bare_plugin")
@@ -102,12 +115,13 @@ def test_bare_form_carries_defaults_and_unchanged_identity(tmp_path: Path) -> No
         "packages": [],
         "env_arg": None,
         "secrets": [],
+        "package_digests": {},
     }
     snap = kernel.registry.get("bare_plugin")
     assert snap is not None
     assert load_declared(snap) == DeclaredMetadata(entry="bare_plugin")
-    # the snapshot id is still over the source alone (L.CL-C1.4 moves it)
-    assert snap.snapshot_id == f"snap_{snap.source_sha256[:16]}"
+    # the identity is no longer the source alone (L.CL-C1.4, MC-18)
+    assert snap.snapshot_id != f"snap_{snap.source_sha256[:16]}"
 
 
 def test_snapshot_without_declared_keys_reads_defaults(tmp_path: Path) -> None:
@@ -180,7 +194,7 @@ def test_timedelta_deadline_reads_as_seconds() -> None:
         "@trestle(deadline=timedelta(minutes=5, seconds=10))\n"
         "def f() -> None: ...\n"
     )
-    assert declared_from_source(source).deadline_s == 310
+    assert declared_from_source(source).deadline_s == DECLARED_DEADLINE_S
 
 
 def test_declaration_error_is_a_schema_error() -> None:

@@ -14,7 +14,12 @@ from pathlib import Path
 
 from trestle.child.context import RuntimeContext
 from trestle.child.serialize import ResultTooLarge, write_result
-from trestle.child.validate import ValidationFailed, select_entry
+from trestle.child.validate import (
+    ProvenanceMismatch,
+    ValidationFailed,
+    check_package_digests,
+    select_entry,
+)
 from trestle.common import codes
 from trestle.common.errtext import sanitize
 from trestle.common.fsutil import atomic_write, atomic_write_json
@@ -42,6 +47,12 @@ def main(argv: list[str] | None = None) -> int:
     home = Path(os.environ.get("TRESTLE_HOME", Path.home() / ".trestle"))
     roots = {"home": home, "run": run_dir, "cwd": work, "user-home": Path.home()}
     plugin_path = home / "snapshots" / spec.snapshot_id / "plugin.py"
+    try:
+        # the declared packages are recorded, not snapshotted (R-J): check their digests against
+        # publication's before any plugin code is imported
+        check_package_digests(spec.provenance["packages"])
+    except ProvenanceMismatch as exc:
+        return _fail(evidence, "provenance", codes.EXECUTION_PROVENANCE_MISMATCH, exc, roots)
     try:
         fn = _load_plugin_callable(plugin_path)
     except Exception as exc:

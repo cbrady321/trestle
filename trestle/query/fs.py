@@ -354,7 +354,20 @@ def _run_provenance_row(record: RunRecord) -> dict[str, object]:
         "spec_hash": record.spec_hash,
         "args_hash": record.args_hash,
         "source_sha256": record.source_sha256,
+        "packages": _recorded_packages(record),
     }
+
+
+def _recorded_packages(record: RunRecord) -> dict[str, str]:
+    """The declared packages and the digests recorded for them at publication, from the run's
+    spec (MC-18). A run admitted before the field existed lists none."""
+    try:
+        loaded = json.loads((evidence_dir(record.run_dir) / "spec.json").read_text("utf-8"))
+    except (OSError, ValueError):
+        return {}
+    provenance = loaded.get("provenance") if isinstance(loaded, dict) else None
+    packages = provenance.get("packages") if isinstance(provenance, dict) else None
+    return {str(k): str(v) for k, v in packages.items()} if isinstance(packages, dict) else {}
 
 
 def _last_error_rows(record: RunRecord) -> list[dict[str, object]]:

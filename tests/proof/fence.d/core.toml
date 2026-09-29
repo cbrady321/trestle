@@ -62,7 +62,8 @@ globs         = ["trestle/plugin/**", "trestle/server/plugin_schema.py", "trestl
                  "tests/proof/labels.d/p0-1b.toml",
                  "tests/proof/gates.d/core.toml", "tests/proof/temporary.toml",
                  "tests/proof/fence.d/core.toml", "tests/pins/b_contract/facets.py", "tests/pins/b_contract/test_g_b1.py", "tests/pins/b_contract/test_g_b2.py", "tests/pins/b_contract/test_g_b4.py",
-                 "tests/pins/b_contract/test_g_b5.py"]
+                 "tests/pins/b_contract/test_g_b5.py", "trestle/query/views.py", "tests/pins/c_surface/facets.py",
+                 "tests/pins/d_evidence/facets.py", "tests/pins/c_surface/test_goldens.py"]
 
 [[lane]]
 name          = "ck-14"

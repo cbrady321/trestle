@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import ast
+import dataclasses
 import hashlib
 import json
 import shutil
 from pathlib import Path
 
+import trestle
 from trestle.common.canonical import canonical_json
 from trestle.common.fsutil import atomic_write, sha256_file
 from trestle.common.ids import generate_snapshot_id
@@ -19,7 +21,7 @@ from trestle.server.plugin_schema import (
     schema_digest,
     schemas_from_source,
 )
-from trestle.server.plugin_validate import PluginValidationError, validate_plugin
+from trestle.server.plugin_validate import PluginValidationError, validate_and_digest
 
 
 def load_snapshot_schema(snap: PluginSnapshot) -> dict[str, object]:
@@ -89,21 +91,39 @@ def materialize_snapshot(
     source = source_path.read_text(encoding="utf-8")
     schema, return_schema = schemas_from_source(source, source_path=source_path)
     declared = declared_from_source(source)
-    error = validate_plugin(source_path, entry=declared.entry)
+    error, package_digests = validate_and_digest(
+        source_path, entry=declared.entry, packages=declared.packages
+    )
     if error is not None:
         raise PluginValidationError(error)
+    declared = dataclasses.replace(declared, package_digests=package_digests)
     schema_bytes = canonical_json(schema)
     return_schema_bytes = canonical_json(return_schema)
     schema_sha256 = schema_digest(schema)
     source_sha256 = sha256_file(source_path)
-    snapshot_id = generate_snapshot_id(source_sha256)
+    identity_declared = declared.declared_dict()
+    del identity_declared["package_digests"]  # the digests enter the identity as their own slot
+    snapshot_id = generate_snapshot_id(
+        source_sha256=source_sha256,
+        package_digests=package_digests,
+        input_schema_sha256=schema_sha256,
+        return_schema_sha256=schema_digest(return_schema),
+        declared=identity_declared,
+        summary_budget=summary_budget,
+        runtime_version=trestle.__version__,
+    )
     snap_dir = home / "snapshots" / snapshot_id
     snap_dir.mkdir(parents=True, exist_ok=True)
     dest = snap_dir / "plugin.py"
     if not dest.exists():
         shutil.copy2(source_path, dest)
-    atomic_write(snap_dir / "schema.json", schema_bytes)
-    atomic_write(snap_dir / "return_schema.json", return_schema_bytes)
+    # A schema is never rewritten under an existing id: the id already covers both schemas.
+    for name, content in (
+        ("schema.json", schema_bytes),
+        ("return_schema.json", return_schema_bytes),
+    ):
+        if not (snap_dir / name).exists():
+            atomic_write(snap_dir / name, content)
     manifest = {
         "plugin": plugin_id,
         "version": version,
