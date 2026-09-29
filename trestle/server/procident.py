@@ -354,14 +354,24 @@ class Attribution:
 
     def _attributable(self, live: dict[int, ProcRow]) -> set[int]:
         # A recorded process counts only while its pid still carries its recorded start: a live
-        # pid with another start is a reused pid, attributable to nobody.
+        # pid with another start is a reused pid, attributable to nobody, and never signalled
+        # (B2-C11 (iii), V-2.3), whatever group it is in and whoever its parent is.
+        reused = {
+            pid
+            for (pid, start) in self._known
+            if pid in live
+            and live[pid].start != start
+            and (pid, live[pid].start) not in self._known
+        }
         attributed = {
             pid for (pid, start) in self._known if pid in live and live[pid].start == start
         }
         # A recorded group's members count only while the group has not emptied: a pgid can be
         # reused once its group is gone (never while it lives, SA-10).
         if self._group_live:
-            members = {pid for pid, row in live.items() if row.pgid == self.group}
+            members = {
+                pid for pid, row in live.items() if row.pgid == self.group and pid not in reused
+            }
             if members:
                 attributed |= members
             else:
@@ -370,7 +380,7 @@ class Attribution:
         while changed:
             changed = False
             for pid, row in live.items():
-                if pid not in attributed and row.ppid in attributed:
+                if pid not in attributed and pid not in reused and row.ppid in attributed:
                     attributed.add(pid)
                     changed = True
         return attributed
@@ -482,3 +492,84 @@ def _send(
         current = attribution.source.row(pid)
         if current is not None and current.start == row.start and not current.zombie:
             out.signal_pid(pid, signum)
+
+
+# --- recovery (B2-C11) -------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RecoveryDecision:
+    """Which B2-C11 branch a restart takes for a run with no terminal row.
+
+    `confirmed_gone` is decided here for branches (i) and (ii), which never signal; branch (iii)
+    leaves it None: only the stop that follows can say. `method` is the `group_stop` method
+    recorded: `no_identity` for (i), `recovery` for (ii) and (iii)."""
+
+    branch: str
+    method: str
+    confirmed_gone: bool | None
+    identities: tuple[Identity, ...]
+    leader: Identity | None
+
+
+def recovery_decision(
+    records: list[dict[str, Any]], source: ProcessSource | None = None
+) -> RecoveryDecision:
+    """Read the run's `process_identity` rows and take one branch, comparing `(boot, start)` as
+    integers and never as text:
+
+    (i) no leader row (a run started by a version that records no identity, K-19, or interrupted
+        between spawn and the append): no signal, `confirmed_gone` false, cleanup unknown;
+    (ii) the leader's row names a process that is gone (no live process with that pid, boot and
+        start): no signal, ever. `confirmed_gone` only when the recorded group is provably gone
+        (another boot, or no live process in the recorded group) and every recorded row is gone
+        or reused, else false;
+    (iii) the leader is alive with a matching start: the caller stops the run's attributable
+        processes; only this branch sends a signal.
+    """
+    src = source if source is not None else SYSTEM
+    idents = tuple(identity_rows(records))
+    leader = next((i for i in idents if i.leader), None)
+    if leader is None:
+        return RecoveryDecision("i", "no_identity", False, idents, None)
+    boot_now = src.boot_id()
+    table = src.table()
+
+    def live_match(ident: Identity) -> bool:
+        row = table.get(ident.pid)
+        return (
+            ident.boot == boot_now
+            and row is not None
+            and not row.zombie
+            and row.start == ident.start
+        )
+
+    if live_match(leader):
+        return RecoveryDecision("iii", "recovery", None, idents, leader)
+    group_gone = leader.boot != boot_now or not any(
+        row.pgid == leader.group and not row.zombie for row in table.values()
+    )
+    rows_gone = not any(live_match(ident) for ident in idents)
+    return RecoveryDecision("ii", "recovery", group_gone and rows_gone, idents, leader)
+
+
+def stop_recovered(
+    decision: RecoveryDecision,
+    *,
+    record: Callable[[Identity], None],
+    source: ProcessSource | None = None,
+    signaller: Signaller | None = None,
+) -> GroupStop:
+    """Branch (iii)'s stop: start-guard every recorded row (a live pid with another start is
+    reused and never signalled), then stop what is attributable, and its live descendants, through
+    the one stopper as B2-C10 does. A process found now that has no row gets one first."""
+    assert decision.branch == "iii" and decision.leader is not None
+    attribution = Attribution(
+        group=decision.leader.group,
+        record=record,
+        source=source,
+        known=list(decision.identities),
+    )
+    stop = stop_group(attribution, signaller=signaller)
+    attribution.close()
+    return stop

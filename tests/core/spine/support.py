@@ -21,6 +21,9 @@ from tests.proof import ancestry, harness, records, tolerances
 from trestle.common.types import AdmitRequest, RequestOutcome, WorkOrder
 from trestle.server.ledger import RunLedger, ledger_path, run_dir_for
 from trestle.server.main import Kernel
+from trestle.server.procident import Attribution, Identity, ProcRow
+
+START = 1_000  # a process start token in the planted tables below
 
 # A marker names one run (its run id or its tmp path); anything shorter matches unrelated processes.
 MIN_MARKER = 8
@@ -205,3 +208,62 @@ class SignalRecorder:
     def killpg(self, pgid: int, signum: int) -> None:
         self._note(int(signum), pid=None, group=pgid)
         self._real_killpg(pgid, signum)
+
+
+# -- a planted boot id, process table and signaller ------------------------------------------
+
+START = 1_000
+
+
+class FakeHost:
+    """A planted boot id, process table and signaller in one: a signal ends a process unless it
+    ignores that signal, exactly as the OS would, and every signal is recorded."""
+
+    def __init__(self) -> None:
+        self.rows: dict[int, ProcRow] = {}
+        self.ignores: dict[int, set[int]] = {}
+        self.sent: list[tuple[str, int, int, float]] = []
+        self.rowed_at_signal: list[set[int]] = []
+        self.recorded: list[Identity] = []
+        self.boot = "boot-a"
+        self.reads = 0  # every time the process table or the boot identity was read
+
+    def add(
+        self, pid: int, ppid: int, pgid: int, *, start: int = START, ignore: tuple[int, ...] = ()
+    ) -> None:
+        self.rows[pid] = ProcRow(pid=pid, ppid=ppid, pgid=pgid, start=start)
+        self.ignores[pid] = set(ignore)
+
+    # ProcessSource
+    def boot_id(self) -> str:
+        self.reads += 1
+        return self.boot
+
+    def table(self) -> dict[int, ProcRow]:
+        self.reads += 1
+        return dict(self.rows)
+
+    def row(self, pid: int) -> ProcRow | None:
+        self.reads += 1
+        return self.rows.get(pid)
+
+    # Signaller
+    def signal_pid(self, pid: int, signum: int) -> None:
+        self._note("pid", pid, signum)
+        self._deliver(pid, signum)
+
+    def signal_group(self, pgid: int, signum: int) -> None:
+        self._note("group", pgid, signum)
+        for pid in [p for p, r in self.rows.items() if r.pgid == pgid]:
+            self._deliver(pid, signum)
+
+    def _note(self, kind: str, target: int, signum: int) -> None:
+        self.sent.append((kind, target, int(signum), time.monotonic()))
+        self.rowed_at_signal.append({ident.pid for ident in self.recorded})
+
+    def _deliver(self, pid: int, signum: int) -> None:
+        if pid in self.rows and int(signum) not in self.ignores.get(pid, set()):
+            del self.rows[pid]
+
+    def attribution(self, group: int) -> Attribution:
+        return Attribution(group=group, record=self.recorded.append, source=self)

@@ -1,8 +1,8 @@
-"""G-A3 (BFD-05): server SIGKILL leaves wrapper, child and grandchild;
-recovery only marks the run interrupted.
+"""G-A3 (BFD-05), flipped by L.CS-2.4: recovery stops the run's recorded group.
 
-`recover_run_dir` reads ledger kinds, does no liveness check and signals
-nothing, so every process of the killed run's tree outlives recovery.
+A server SIGKILLed mid-run leaves the wrapper, child and grandchild running. `recover_run_dir`
+reads the run's `process_identity` rows, finds the recorded leader alive with a matching start
+(B2-C11 branch (iii)) and stops every attributable process before it finalizes `interrupted`.
 """
 
 from __future__ import annotations
@@ -40,22 +40,10 @@ def _kill_and_restart(host: mcp_host.McpHost) -> tuple[helpers.Tree, str | None,
         return tree, terminal, helpers.alive_marked(tree.live, run_id)
 
 
-@pytest.mark.pin("G-A3")
-def test_pin_orphans_survive_restart_run_interrupted() -> None:
-    with mcp_host.McpHost() as host:
-        tree, terminal, survivors = _kill_and_restart(host)
-    assert terminal == "interrupted"
-    assert tree.wrapper <= survivors, "wrapper did not survive server SIGKILL + recovery"
-    assert tree.child <= survivors, "child did not survive server SIGKILL + recovery"
-    assert tree.grandchild <= survivors, "grandchild did not survive server SIGKILL + recovery"
-
-
-@pytest.mark.target("G-A3")
 @pytest.mark.proves("A6.2", "A6.2:core", "A", "core", "PROC", "BOTH")
 @pytest.mark.proves(
     "WR-CANCEL-3", "WR-CANCEL-3:recovery-stops-recorded-group", "core", "core", "PROC", "BOTH"
 )
-@pytest.mark.xfail(strict=True, reason="defect:G-A3")
 def test_target_restart_leaves_no_attributable_survivor() -> None:
     with mcp_host.McpHost() as host:
         _tree, _terminal, survivors = _kill_and_restart(host)

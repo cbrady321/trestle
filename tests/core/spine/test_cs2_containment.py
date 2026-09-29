@@ -22,7 +22,7 @@ from tests.core.spine import support
 from tests.proof import ancestry, tolerances
 from trestle.common import clock
 from trestle.server import procident
-from trestle.server.procident import Attribution, Identity, ProcRow
+from trestle.server.procident import Attribution
 from trestle.wrapper import main as wrapper_main
 from trestle.wrapper import reactor
 
@@ -277,56 +277,8 @@ def test_sigterm_flushes_a_bounded_console_and_report_without_waiting_on_pipes(
 # -- the stopper against a planted process table and signaller ---------------------------------
 
 SIGTERM, SIGKILL = signal.SIGTERM, signal.SIGKILL
-START = 1_000
-
-
-class FakeHost:
-    """A planted boot id, process table and signaller in one: a signal ends a process unless it
-    ignores that signal, exactly as the OS would, and every signal is recorded."""
-
-    def __init__(self) -> None:
-        self.rows: dict[int, ProcRow] = {}
-        self.ignores: dict[int, set[int]] = {}
-        self.sent: list[tuple[str, int, int, float]] = []
-        self.rowed_at_signal: list[set[int]] = []
-        self.recorded: list[Identity] = []
-
-    def add(
-        self, pid: int, ppid: int, pgid: int, *, start: int = START, ignore: tuple[int, ...] = ()
-    ) -> None:
-        self.rows[pid] = ProcRow(pid=pid, ppid=ppid, pgid=pgid, start=start)
-        self.ignores[pid] = set(ignore)
-
-    # ProcessSource
-    def boot_id(self) -> str:
-        return "boot-a"
-
-    def table(self) -> dict[int, ProcRow]:
-        return dict(self.rows)
-
-    def row(self, pid: int) -> ProcRow | None:
-        return self.rows.get(pid)
-
-    # Signaller
-    def signal_pid(self, pid: int, signum: int) -> None:
-        self._note("pid", pid, signum)
-        self._deliver(pid, signum)
-
-    def signal_group(self, pgid: int, signum: int) -> None:
-        self._note("group", pgid, signum)
-        for pid in [p for p, r in self.rows.items() if r.pgid == pgid]:
-            self._deliver(pid, signum)
-
-    def _note(self, kind: str, target: int, signum: int) -> None:
-        self.sent.append((kind, target, int(signum), time.monotonic()))
-        self.rowed_at_signal.append({ident.pid for ident in self.recorded})
-
-    def _deliver(self, pid: int, signum: int) -> None:
-        if pid in self.rows and int(signum) not in self.ignores.get(pid, set()):
-            del self.rows[pid]
-
-    def attribution(self, group: int) -> Attribution:
-        return Attribution(group=group, record=self.recorded.append, source=self)
+START = support.START
+FakeHost = support.FakeHost
 
 
 def _stop(host: FakeHost, attr: Attribution) -> procident.GroupStop:
