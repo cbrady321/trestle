@@ -208,15 +208,15 @@ def _label_registrants() -> dict[str, list[dict[str, Any]]]:
 
 
 def _presented_as_proven(nodes: list[dict[str, Any]]) -> bool:
-    """A claim is asserted, not merely declared, when the label is
-    registered by a node that is not a strict-xfail target (a passing
-    proof), or by no node at all. A label whose every registrant is a
-    strict-xfail `target()` is declared at posture `claim` but still red:
-    the mechanism that serves it (a TM-P0-2 entry) is exactly what keeps
-    it red until its flip leaf (p0-court L.P0-1A.* straddle label; J0-9)."""
-    if not nodes:
-        return True
-    return any(not (n.get("gap") and n.get("strict_xfail")) for n in nodes)
+    """MC-02: a label is PROVEN only when every registered node passed, so
+    a label with >=1 strict-xfail `target()` registrant renders UNPROVEN
+    while that target is red. A `claim`-posture label is presented as
+    proven (a "green clause") when it has no such red registrant; one that
+    has one is declared but not yet claimed: the entry serving it (a
+    TM-P0-2 entry) is exactly what keeps it red until its flip leaf
+    (p0-court L.P0-1A.* straddle label; J0-9 needs `meta register` to
+    exit 0)."""
+    return not any(n.get("gap") and n.get("strict_xfail") for n in nodes)
 
 
 def register_violations(
@@ -226,8 +226,8 @@ def register_violations(
     """`meta register`'s register rule: a claim of X fails while any present
     entry (or its active phase) serves X. A label is *claimed* when its
     posture is `claim` and it is presented as proven (see
-    `_presented_as_proven`); a `claim`-posture label whose registrants are
-    all strict-xfail targets is a declaration, not yet a claim."""
+    `_presented_as_proven`); a `claim`-posture label with a red
+    strict-xfail target registrant is a declaration, not yet a claim."""
     entries = entries if entries is not None else load_entries()
     served: set[str] = set()
     for entry in entries:

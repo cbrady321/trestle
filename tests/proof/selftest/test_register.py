@@ -380,8 +380,20 @@ def test_claim_label_registered_only_by_strict_xfail_targets_is_not_a_claim(monk
 
 def test_claim_label_with_a_green_registrant_fails_while_served(monkeypatch):
     _claim_label(monkeypatch)
-    for nodes in ([GREEN_NODE], [TARGET_NODE, GREEN_NODE]):
-        assert register_mod.register_violations([_serving_entry()], {"lbl-1": nodes}) == ["lbl-1"]
+    assert register_mod.register_violations([_serving_entry()], {"lbl-1": [GREEN_NODE]}) == [
+        "lbl-1"
+    ]
+
+
+def test_claim_label_with_red_target_beside_a_preserved_node_is_not_a_claim(monkeypatch):
+    """MC-02: one red strict-xfail registrant keeps the label UNPROVEN
+    (e.g. WR-PROOF-2:pack-docker-live: alpine-skipped compat node + G-E2
+    target)."""
+    _claim_label(monkeypatch)
+    assert (
+        register_mod.register_violations([_serving_entry()], {"lbl-1": [TARGET_NODE, GREEN_NODE]})
+        == []
+    )
 
 
 def test_claim_label_with_no_registrant_fails_while_served(monkeypatch):
