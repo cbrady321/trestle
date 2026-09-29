@@ -891,6 +891,7 @@ row_or_k = "MC-16"
 docs = ["docs/agents.md", "docs/agent-console-mcp.md"]
 due_checkpoint = "CS-4 (leaf L.CS-4.1)"
 direction = "additive"
+keys = ["$.tools[0].inputSchema.properties.completion"]
 authorized_by = "plans/core.md MC-16 (L.CS-4.1: completion=\"terminal\"); WR-COMPAT-1:ten-tools-within-budget"
 
 [[entry]]
@@ -900,6 +901,7 @@ row_or_k = "WR-COMPAT-1"
 docs = []
 due_checkpoint = "CS-4 (leaf L.CS-4.1)"
 direction = "additive"
+grows = [{ path = "$.tools_bytes", max = 8192 }]
 authorized_by = "plans/core.md L.CS-4.1 (an additive tool parameter grows tools/list); WR-COMPAT-1:ten-tools-within-budget"
 
 # L.CS-4.3 (MC-17): RunView.outcome, the six-class outcome.
@@ -912,4 +914,6 @@ row_or_k = "MC-17"
 docs = ["docs/agents.md", "docs/agent-console-mcp.md"]
 due_checkpoint = "CS-4 (leaf L.CS-4.3)"
 direction = "additive"
+keys = ["$.frames.*.outcome"]
+items = [{ path = "$.fields", value = ["outcome", "dict[str, Any] | None"] }]
 authorized_by = "plans/core.md MC-17 (L.CS-4.3: outcome class for the six plain-plugin conditions); DM-03"
