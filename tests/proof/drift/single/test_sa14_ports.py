@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.proof.suites.ports import core
+from tests.proof.suites.ports import core, families, implementations
 from trestle.child import run_services as rs
 from trestle.common import lane_format as lf
 from trestle.workflow import ports
@@ -30,12 +30,12 @@ class Impl:
         return self.name
 
 
-def _identifies(impl: Impl) -> None:
-    assert impl.identify() == impl.name
+def _identifies(built: core.Implementation) -> None:
+    assert built.impl.identify() == built.impl.name
 
 
-def _returns_text(impl: Impl) -> None:
-    assert isinstance(impl.identify(), str)
+def _returns_text(built: core.Implementation) -> None:
+    assert isinstance(built.impl.identify(), str)
 
 
 @pytest.mark.parametrize("sa", ["SA-14"])
@@ -97,3 +97,19 @@ def test_descriptor_json_python_roundtrip(sa: str) -> None:
     # exactly the three forms exist
     assert ports.FORMS == ("in_run_group", "argv", "durable")
     assert {type(f).__name__ for f in FORMS} == {"InRunGroup", "ArgvRelease", "Durable"}
+
+
+@pytest.mark.parametrize("sa", ["SA-14"])
+def test_the_fakes_run_the_one_suite_file(sa: str, tmp_path: Path) -> None:
+    """Every registered implementation of a family ran the same family file: one hash, equal to
+    the file on disk (B3-C17: the suite runs unmodified against every implementation)."""
+    hashes: dict[str, set[str]] = {}
+    for impl_id, (family, factory) in implementations.IMPLEMENTATIONS.items():
+        run = core.run_family(family, lambda f=factory: f(tmp_path))
+        assert run.implementation == impl_id
+        hashes.setdefault(family, set()).add(run.suite_sha256)
+    assert set(hashes) == {"Command Execution", "Local Process Supervision"}
+    for family, seen in hashes.items():
+        assert seen == {core.sha256_of(Path(families.__file__))}, family
+    marker_runs = [r for r in core.REGISTRY.runs if r.family == "Local Process Supervision"]
+    assert len(marker_runs) >= 2  # fake-marker and fake-marker-durable, one suite
