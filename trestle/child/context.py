@@ -7,10 +7,14 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from trestle.common import redact
 from trestle.common.fsutil import append_ndjson, atomic_write
 from trestle.common.limits import CaptureLimits, capture_limits
+
+if TYPE_CHECKING:
+    from trestle.workflow.services import RunServices
 
 # Event kinds a plugin can never write through `Context.event` (SV-5.1): the four the runtime
 # itself records (`log`, `progress`, `artifact_available`, and `error`, which the last-error
@@ -76,10 +80,23 @@ class RuntimeContext:
         # one marker line per (stream, limit) (WR-EVID-4): later drops of the same kind are
         # tallied here and folded into that line, so marker volume never grows with the drops
         self._tallies: dict[tuple[str, str], _Tally] = {}
+        self._run_services: RunServices | None = None
 
     @property
     def cancelled(self) -> bool:
         return (self._work / "cancel.flag").exists()
+
+    @property
+    def run_services(self) -> RunServices:
+        """B2-C14's `RunContext.run_services`: the run's services, present only for a workflow
+        run (the child binds them, `bind_run_services`). A plain plugin's context has none, and
+        reading it raises `AttributeError`, so `hasattr(ctx, "run_services")` tells."""
+        if self._run_services is None:
+            raise AttributeError("run_services: this is not a workflow run")
+        return self._run_services
+
+    def bind_run_services(self, services: RunServices) -> None:
+        self._run_services = services
 
     def log(self, message: str) -> None:
         self._emit("log", {"message": message})

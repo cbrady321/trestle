@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from trestle.child.context import RuntimeContext
+from trestle.child.run_services import ServicesInput, build_run_services
 from trestle.child.serialize import ResultTooLarge, write_result
 from trestle.child.validate import (
     ProvenanceMismatch,
@@ -24,6 +25,8 @@ from trestle.common import codes, redact
 from trestle.common.errtext import sanitize
 from trestle.common.fsutil import atomic_write, atomic_write_json
 from trestle.common.limits import CaptureLimits, capture_limits
+from trestle.common.plan import formats
+from trestle.common.plan.compiler import AdmittedPlan
 from trestle.common.types import DeclaredMetadata, RunSpec
 from trestle.plugin._codec import hydrate
 
@@ -66,6 +69,11 @@ def main(argv: list[str] | None = None) -> int:
         fn = _load_plugin_callable(plugin_path)
     except Exception as exc:
         return _fail(evidence, "load", codes.EXECUTION_IMPORT_FAILED, exc, roots, secrets)
+    try:
+        plan = _workflow_plan(spec)
+    except (formats.PlanInvalid, formats.UnknownPlanFormat) as exc:
+        # the admitted plan does not verify: nothing has run, and nothing may (B1-E7)
+        return _fail(evidence, "admitted", codes.DECLARATION_STALE, exc, roots, secrets)
     deadline = datetime.fromisoformat(spec.deadline) if spec.deadline else datetime.now(tz=UTC)
     limits = capture_limits()
     ctx = RuntimeContext(
@@ -76,11 +84,35 @@ def main(argv: list[str] | None = None) -> int:
         limits=limits,
         scrubber=redact.Scrubber(secrets=secrets, roots=roots),
     )
+    if plan is not None:
+        # B2-C14: a workflow run's callable reaches the run's services through its Context;
+        # a plain plugin's context carries none
+        ctx.bind_run_services(
+            build_run_services(
+                ServicesInput(
+                    run_dir=run_dir,
+                    plan=plan,
+                    deadline=deadline,
+                    event=ctx.event,
+                    event_max=limits.max_single_event_bytes,
+                )
+            )
+        )
 
     try:
         return _call_plugin(fn, ctx, plugin_args, limits, evidence, roots, secrets)
     finally:
         ctx.flush_limits()  # the run's limit markers carry their totals, one line per kind
+
+
+def _workflow_plan(spec: RunSpec) -> AdmittedPlan | None:
+    """The admitted plan of a workflow run: `spec.plan` decoded and verified, or None for a plain
+    plugin (no plan, or the implicit depth-1 plan, which declares no tree, B2-C1). Raises
+    `formats.PlanInvalid` / `formats.UnknownPlanFormat` for a plan that does not verify."""
+    if spec.plan is None:
+        return None
+    plan = AdmittedPlan.from_json(json.dumps(spec.plan))
+    return plan if plan.declaration_digest is not None else None
 
 
 def _call_plugin(
