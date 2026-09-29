@@ -842,3 +842,26 @@ direction = "additive"
 keys = ["$.frames.*.cleanup"]
 items = [{ path = "$.fields", value = ["cleanup", "CleanupView | None"] }]
 authorized_by = "plans/core.md MC-32 (L.CS-2.6: the cleanup projection on RunView)"
+
+# L.CS-3.2 (MC-15): the error_record ledger row is the sole failure authority.
+# ledger_kinds: $.sequences.<failing state>[n] (error_record before execution_ended).
+# fossil_projection: $.<state>.reader.after_recovery.kinds (error_record on admitted, created,
+# execution_ended, finalized_no_terminal, started, straddle, torn_tail).
+
+[[entry]]
+id = "ADD-ledger-kind-error-record"
+facet = "ledger_kinds"
+row_or_k = "MC-15"
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.2)"
+direction = "additive"
+authorized_by = "plans/core.md MC-15 (L.CS-3.2: error_record ledger row is the sole authority; meta derived)"
+
+[[entry]]
+id = "ADD-fossil-recovery-error-record"
+facet = "fossil_projection"
+row_or_k = "MC-15"
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.2)"
+direction = "additive"
+authorized_by = "plans/core.md MC-15 (L.CS-3.2: recovery finalizes with an error_record row)"
