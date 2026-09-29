@@ -213,7 +213,7 @@ abnormally is `worker_exit`; a run whose server died is `interrupted`.
 <!-- K-8 -->
 ### A succeeded run leaves no process behind (K-8)
 
-When a run ends, Trestle stops every process the run started, and that includes a run that **succeeded**: a plugin that returns normally while a child, or a grandchild in its own session, is still running has that process stopped (SIGTERM first, SIGKILL after the grace period) before the run's evidence is finalized. Nothing the run started writes into `evidence/` or changes `result.json` after the terminal answer. The run's class and summary are unchanged (a succeeded run stays `succeeded`), and `cleanup.processes` reads `released` once the stop is confirmed, `unknown` when it could not be.
+When a run ends, Trestle stops the processes it can attribute to the run (its recorded descendants, see the containment boundaries in `docs/security.md`), and that includes a run that **succeeded**: a plugin that returns normally while a child, or a grandchild in its own session, is still running has that process stopped (SIGTERM first, SIGKILL after the grace period) before the run's evidence is finalized. Nothing the run started writes into `evidence/` or changes `result.json` after the terminal answer. The run's class and summary are unchanged (a succeeded run stays `succeeded`), and `cleanup.processes` reads `released` once the stop is confirmed, `unknown` when it could not be.
 
 This is a knowing change (K-8): before it, a process a plugin forgot outlived a succeeded run. It is on by default (`REAP_ON_SUCCESS` in `trestle/server/conductor.py`), the same kill every other way a run can end has always received.
 <!-- /K-8 -->
