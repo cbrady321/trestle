@@ -3,8 +3,9 @@ JSON document to the path in `TRESTLE_AUDIT_OUT` (no new dependency).
 
 `nodes` (every collected item, written at collection finish): nodeid,
 the label ids its `proves()`/`stub_proven()`/compat markers name (as the
-root plugin resolved them), the gap of its `target()` marker, whether it
-carries a strict xfail and whether it carries a `gated_on`/`na` reason.
+root plugin resolved them), whether it carries `host_only`, the gap of its
+`target()` marker, whether it carries a strict xfail and whether it
+carries a `gated_on`/`na` reason.
 `outcomes` (call-phase, written at session finish): nodeid, outcome, the
 raised exception's class name and, for `TargetUnmet`, the gap it names.
 Used by J0-2 (red-reason audit; L.P0-0d.8) and by CM-7's register rule
@@ -39,6 +40,7 @@ def pytest_collection_finish(session: pytest.Session) -> None:
             {
                 "nodeid": item.nodeid,
                 "labels": list(plugin_mod._ITEM_LABELS.get(item.nodeid, [])),
+                "host_only": item.get_closest_marker("host_only") is not None,
                 "gap": _target_gap(item),
                 "strict_xfail": any(
                     m.kwargs.get("strict") for m in item.iter_markers(name="xfail")

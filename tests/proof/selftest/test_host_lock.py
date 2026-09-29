@@ -170,6 +170,7 @@ def test_proc_gate_argv_uses_venv_python_and_records_its_version(tmp_path, monke
         lock_path=tmp_path / "lock",
         venv=venv,
         info_runner=lambda a: Info(),
+        collector=lambda _x: [{"nodeid": "t::a", "host_only": True}],
     )
     assert rc == 0
     assert argvs[0][0] == str(venv / "bin" / "python")
