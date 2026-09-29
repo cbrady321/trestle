@@ -1,6 +1,5 @@
-"""G-D1 (BFD-31, K-18): `append_ndjson` re-reads the whole file on every
-append, so the bytes read per append equal the file size and grow without
-bound. Operation count only; no wall clock (SA-05)."""
+"""G-D1 (BFD-31, K-18), flipped by L.CS-1.2: the bytes `append_ndjson` reads per append do not
+grow with the file. Operation count only; no wall clock (SA-05)."""
 
 from __future__ import annotations
 
@@ -10,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from tests.pins.d_evidence._bytes_read import count_bytes_read
-from tests.proof.markers import TargetUnmet, target_check
+from tests.proof.markers import target_check
 from trestle.common.fsutil import append_ndjson
 from trestle.server.ledger import ledger_path
 
@@ -34,17 +33,8 @@ def _bytes_read_by_append(path: Path) -> int:
     return counter.bytes_read
 
 
-@pytest.mark.pin("G-D1")
-def test_pin_bytes_read_per_append_equals_file_size(tmp_path: Path) -> None:
-    path = _prepare(tmp_path, SMALL_ROWS)
-    size = path.stat().st_size
-    assert _bytes_read_by_append(path) == size
-
-
-@pytest.mark.target("G-D1")
 @pytest.mark.proves("WR-EVID-4", "A9.2", "core", "core", "must", "CI")
 @pytest.mark.proves("WR-EVID-4", "WR-EVID-4:flat-append", "core", "core", "must", "CI")
-@pytest.mark.xfail(strict=True, raises=TargetUnmet, reason="defect:G-D1")
 def test_target_bytes_read_nongrowing_2000_vs_4000(tmp_path: Path) -> None:
     small = _bytes_read_by_append(_prepare(tmp_path / "small", SMALL_ROWS))
     large = _bytes_read_by_append(_prepare(tmp_path / "large", LARGE_ROWS))

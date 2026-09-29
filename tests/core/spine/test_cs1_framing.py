@@ -1,16 +1,22 @@
 """CS-1 framing (L.CS-1.1): a valid newline-less tail is terminated, a torn tail truncated,
-neither merged; the append cost and its ratio (L.CS-1.2) are added to this file."""
+neither merged. Append cost independent of history and its published ratio (L.CS-1.2)."""
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
+import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
-from tests.proof import records
-from trestle.common.fsutil import append_ndjson, read_ndjson
+from tests.pins.d_evidence._bytes_read import count_bytes_read
+from tests.proof import records, tolerances
+from trestle.child.context import RuntimeContext
+from trestle.common.fsutil import _TAIL_WINDOW, append_ndjson, read_ndjson
+from trestle.common.limits import CaptureLimits
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path
 from trestle.server.recovery import recover_run_dir
 
@@ -185,3 +191,56 @@ def test_terminal_row_without_newline_recovers_as_terminal(tmp_path: Path) -> No
 def test_k18_documented() -> None:
     doc = (REPO_ROOT / "docs" / "operator-sessions-telemetry.md").read_text(encoding="utf-8")
     assert "(K-18)" in doc and "newline-less tail is terminated" in doc
+
+
+EVENTS = 4000
+QUARTER = EVENTS // 4
+SMALL_FILE_BYTES = 1024
+LARGE_FILE_BYTES = 8 * 1024 * 1024
+
+
+def _filler_file(path: Path, size: int) -> None:
+    """Newline-terminated valid rows totalling at least `size` bytes."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    row = _encode({"kind": "log", "pad": "x" * 100}) + b"\n"
+    path.write_bytes(row * (size // len(row) + 1))
+
+
+def _bytes_read_by_append(path: Path) -> int:
+    with count_bytes_read(path) as counter:
+        append_ndjson(path, ROW_A)
+    return counter.bytes_read
+
+
+@pytest.mark.proves("WR-EVID-4", "A9.2", "core", "core", "must", "CI")
+@pytest.mark.proves("WR-EVID-4", "WR-EVID-4:flat-append", "core", "core", "must", "CI")
+def test_e6_rerun_quartile_ratio(tmp_path: Path) -> None:
+    work, evidence = tmp_path / "work", tmp_path / "evidence"
+    evidence.mkdir()
+    limits = dataclasses.replace(CaptureLimits(), max_events_per_second=EVENTS * 2)
+    ctx = RuntimeContext(
+        work=work,
+        evidence=evidence,
+        deadline=datetime.now(UTC),
+        events_path=evidence / "events.ndjson",
+        limits=limits,
+    )
+    elapsed: list[float] = []
+    for i in range(EVENTS):
+        started = time.perf_counter()
+        ctx._emit("log", {"message": f"event {i}"})
+        elapsed.append(time.perf_counter() - started)
+    assert len(read_ndjson(evidence / "events.ndjson")) == EVENTS  # every event recorded
+
+    first = QUARTER / sum(elapsed[:QUARTER])
+    last = QUARTER / sum(elapsed[-QUARTER:])
+    assert last / first >= tolerances.append_cost_ratio(), (first, last)
+
+    # the bytes one append reads are the same (within one window) at 1 KiB and at 8 MiB
+    _filler_file(tmp_path / "small" / "ledger.ndjson", SMALL_FILE_BYTES)
+    small = _bytes_read_by_append(tmp_path / "small" / "ledger.ndjson")
+    _filler_file(tmp_path / "large" / "ledger.ndjson", LARGE_FILE_BYTES)
+    large = _bytes_read_by_append(tmp_path / "large" / "ledger.ndjson")
+    assert 0 < small <= large <= small + _TAIL_WINDOW
+    assert large <= _TAIL_WINDOW
+    assert (tmp_path / "large" / "ledger.ndjson").stat().st_size >= LARGE_FILE_BYTES

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 
 def fsync_dir(path: Path) -> None:
@@ -59,27 +59,55 @@ def _is_ndjson_row(line: bytes) -> bool:
         return False
 
 
+# The tail check reads backwards in windows of this size, so an append's read cost is one window
+# whatever the file's length (WR-EVID-4). Only a final line longer than a window costs more.
+_TAIL_WINDOW = 4096
+
+
+def _final_line(fh: BinaryIO, end: int) -> tuple[int, bytes, bool]:
+    """The line that ends at byte offset `end` (> 0): its start offset, its bytes without the
+    newline, and whether a newline ended it. Reads backwards, one window at a time."""
+    chunks: list[bytes] = []
+    terminated = False
+    pos = end
+    while pos > 0:
+        low = max(0, pos - _TAIL_WINDOW)
+        fh.seek(low)
+        buf = fh.read(pos - low)
+        if pos == end and buf.endswith(b"\n"):
+            terminated = True
+            buf = buf[:-1]
+        cut = buf.rfind(b"\n")
+        if cut >= 0:
+            chunks.append(buf[cut + 1 :])
+            return low + cut + 1, b"".join(reversed(chunks)), terminated
+        chunks.append(buf)
+        pos = low
+    return 0, b"".join(reversed(chunks)), terminated
+
+
 def _repair_ndjson_tail(path: Path) -> bytes:
     """Bring `path`'s tail to a line boundary and return the bytes the next write must lead with.
 
-    Only the final line is inspected (DM-55). A torn final line, newline-terminated or not, is cut
-    with `os.truncate` at the previous newline (R-STORE-10). A final line that is a valid object
-    without its newline is kept and terminated: the caller writes `b"\\n"` before its record, so
-    a valid row is never dropped and never merged onto (WR-EVID-11).
+    Only the final line is inspected (DM-55), through one bounded window from the end of the
+    file. A torn final line, newline-terminated or not, is cut with `os.truncate` at the
+    previous newline (R-STORE-10). A final line that is a valid object without its newline is
+    kept and terminated: the caller writes `b"\\n"` before its record, so a valid row is never
+    dropped and never merged onto (WR-EVID-11).
     """
     if not path.exists():
         return b""
-    data = path.read_bytes()
-    size = end = len(data)
-    while end:
-        body_end = end - 1 if data[end - 1 : end] == b"\n" else end
-        start = data.rfind(b"\n", 0, body_end) + 1
-        if _is_ndjson_row(data[start:body_end]):
-            break
-        end = start
+    with path.open("rb") as fh:
+        size = end = fh.seek(0, os.SEEK_END)
+        terminated = True
+        while end:
+            start, body, terminated = _final_line(fh, end)
+            if _is_ndjson_row(body):
+                break
+            end = start
     if end < size:
         os.truncate(path, end)
-    return b"\n" if end and data[end - 1 : end] != b"\n" else b""
+    return b"" if terminated or not end else b"\n"
 
 
 def read_ndjson(path: Path) -> list[dict[str, Any]]:
