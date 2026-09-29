@@ -138,10 +138,14 @@ _HOLDER = "import signal; signal.pause()  # trestle proof suite: local process h
 _LISTEN_PORT = "20321"
 
 
-def _local_spec() -> ports.ResourceSpec:
+def _local_spec(tag: str = "") -> ports.ResourceSpec:
+    """`tag` (default none) ends the holder's command line: a suite run in parallel with another
+    (`xdist`, or another suite over the same holder) passes a tag of its own, so the other's
+    processes are not this one's found instances."""
     resolved = ports.Resolved(sys.executable, "3.12", "pin", "adoption")
+    holder = f"{_HOLDER} {tag}" if tag else _HOLDER
     command = ports.BoundCommand(
-        "app", (sys.executable, "-c", _HOLDER), {"PORT": _LISTEN_PORT}, resolved, False
+        "app", (sys.executable, "-c", holder), {"PORT": _LISTEN_PORT}, resolved, False
     )
     return ports.ResourceSpec(
         "suite-proc", RealizationKind.AGENT_LAUNCHED_PROJECT, "suite-entry", command
@@ -169,9 +173,9 @@ def fake_local(
 
 
 def real_local(
-    base: Path, local_class: type[LocalProcessPort] = LocalProcessPort
+    base: Path, local_class: type[LocalProcessPort] = LocalProcessPort, tag: str = ""
 ) -> core.Implementation:
-    spec = _local_spec()
+    spec = _local_spec(tag)
     assert spec.command is not None
     port = local_class()
     planted: list[subprocess.Popen[bytes]] = []
