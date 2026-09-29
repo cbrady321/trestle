@@ -18,7 +18,7 @@ from trestle.server.ledger import TERMINAL_KINDS
 GAP = "G-C1"
 
 
-def _wait_at_budget() -> tuple[object, str, str | None, str]:
+def wait_at_budget() -> tuple[object, str, str | None, str]:
     """Admit `slow` with a whole-second budget, wait for exactly that
     budget, and report (view, run_id, ledger terminal at return, final
     terminal after settling)."""
@@ -32,7 +32,7 @@ def _wait_at_budget() -> tuple[object, str, str | None, str]:
 
 @pytest.mark.pin(GAP)
 def test_pin_deadline_keyed_wait_returns_running() -> None:
-    view, _run_id, terminal_at_return, final_state = _wait_at_budget()
+    view, _run_id, terminal_at_return, final_state = wait_at_budget()
     assert view.state == "running"  # type: ignore[attr-defined]
     assert terminal_at_return is None
     assert final_state in TERMINAL_KINDS  # the run does time out afterwards
@@ -45,7 +45,7 @@ def test_pin_deadline_keyed_wait_returns_running() -> None:
 )
 @pytest.mark.xfail(strict=True, reason="defect:G-C1")
 def test_target_answer_terminal_and_after_terminal_row() -> None:
-    view, _run_id, terminal_at_return, _final = _wait_at_budget()
+    view, _run_id, terminal_at_return, _final = wait_at_budget()
     state = view.state  # type: ignore[attr-defined]
     target_check(
         state in TERMINAL_KINDS, GAP, f"answer at the budget edge is {state!r}, not terminal"

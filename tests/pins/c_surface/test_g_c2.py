@@ -21,7 +21,7 @@ TIGHT_BUDGET = 256
 ROOMY_BUDGET = 65536
 
 
-def _project_across_republish() -> tuple[RunView, RunView]:
+def project_across_republish() -> tuple[RunView, RunView]:
     """Admit `big_array` under TIGHT_BUDGET, finish it, then republish the
     plugin with ROOMY_BUDGET and project the same run again."""
     kernel = harness.fresh_kernel()
@@ -41,7 +41,7 @@ def _project_across_republish() -> tuple[RunView, RunView]:
 
 @pytest.mark.pin(GAP)
 def test_pin_budget_follows_current_snapshot() -> None:
-    admitted, after = _project_across_republish()
+    admitted, after = project_across_republish()
     assert admitted.state == "succeeded"
     assert admitted.truncated is True  # tight budget at admission
     assert after.truncated is False  # the later roomy budget re-projected it
@@ -51,7 +51,7 @@ def test_pin_budget_follows_current_snapshot() -> None:
 @pytest.mark.proves("WR-TERM-5", "WR-TERM-5:budget-from-own-spec", "core", "core", "PROC", "CI")
 @pytest.mark.xfail(strict=True, reason="defect:G-C2")
 def test_target_budget_follows_spec() -> None:
-    admitted, after = _project_across_republish()
+    admitted, after = project_across_republish()
     target_check(
         after.truncated == admitted.truncated and after.omitted == admitted.omitted,
         GAP,

@@ -16,6 +16,7 @@ import pytest
 from tests.pins.c_surface._support import as_view
 from tests.proof import harness, tolerances
 from trestle.child.index import MAX_INDEX_BYTES
+from trestle.common.types import RunView
 
 GAP = "G-C4"
 PLUGINS = Path(__file__).resolve().parent / "plugins"
@@ -24,17 +25,22 @@ FILL_BUDGET = 520  # fits two FIELD_WIDTH fields plus the small one, not three
 INDEX_ENTRY_FLOOR = 16  # bytes: a lower bound on one index field entry
 
 
-@pytest.mark.pin(GAP)
-def test_pin_sorted_greedy_skip_and_continue() -> None:
+def sorted_fill_view() -> RunView:
+    """Run `sorted_fill` under FILL_BUDGET and return its terminal frame."""
     kernel = harness.fresh_kernel([PLUGINS])
     with harness.patch_snapshot(kernel, "sorted_fill", summary_budget=FILL_BUDGET):
-        view = as_view(
+        return as_view(
             kernel.control.run(
                 plugin="sorted_fill",
                 args={"width": FIELD_WIDTH},
                 wait_ms=tolerances.HARNESS_WAIT_MS,
             )
         )
+
+
+@pytest.mark.pin(GAP)
+def test_pin_sorted_greedy_skip_and_continue() -> None:
+    view = sorted_fill_view()
     assert view.state == "succeeded"
     assert view.truncated is True
     # k1, k2 take the budget in sorted order; k3 does not fit and is skipped;

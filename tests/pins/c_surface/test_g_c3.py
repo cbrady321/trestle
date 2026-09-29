@@ -22,7 +22,7 @@ KEY = "g-c3-key"
 ARGS = {"message": "g-c3"}
 
 
-def _retry_after_edit(tmp_path: Path) -> tuple[RunView, RunView | RequestOutcome]:
+def retry_after_edit(tmp_path: Path) -> tuple[RunView, RunView | RequestOutcome]:
     """Run `echo` under KEY, edit the plugin source (no semantic change),
     let the registry pick the edit up, and retry with the same key and
     args."""
@@ -51,8 +51,8 @@ def _retry_after_edit(tmp_path: Path) -> tuple[RunView, RunView | RequestOutcome
 
 
 @pytest.mark.pin(GAP)
-def test_pin_retry_after_edit_conflicts(tmp_path: Path) -> None:
-    _first, retry = _retry_after_edit(tmp_path)
+def test_pinretry_after_edit_conflicts(tmp_path: Path) -> None:
+    _first, retry = retry_after_edit(tmp_path)
     assert isinstance(retry, RequestOutcome)
     assert retry.code == codes.IDEMPOTENCY_KEY_CONFLICT
 
@@ -61,8 +61,8 @@ def test_pin_retry_after_edit_conflicts(tmp_path: Path) -> None:
 @pytest.mark.proves("WR-IDEM-1", "A3.1", "A", "core", "PROC", "CI")
 @pytest.mark.proves("WR-IDEM-1", "WR-IDEM-1:join-after-republish", "core", "core", "PROC", "CI")
 @pytest.mark.xfail(strict=True, reason="defect:G-C3")
-def test_target_retry_after_edit_joins_same_run(tmp_path: Path) -> None:
-    first, retry = _retry_after_edit(tmp_path)
+def test_targetretry_after_edit_joins_same_run(tmp_path: Path) -> None:
+    first, retry = retry_after_edit(tmp_path)
     target_check(
         isinstance(retry, RunView) and retry.run_id == first.run_id,
         GAP,
