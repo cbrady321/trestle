@@ -929,3 +929,16 @@ direction = "additive"
 keys = ["$.frames.*.outcome"]
 items = [{ path = "$.fields", value = ["outcome", "dict[str, Any] | None"] }]
 authorized_by = "plans/core.md MC-17 (L.CS-4.3: outcome class for the six plain-plugin conditions); DM-03"
+
+# L.CL-C1.4 (MC-18): run_provenance records the declared packages.
+# query_row_shapes: $.views.run_provenance.declared_fields[5],
+# $.views.run_provenance.observed.{failed,succeeded}.row_shape.packages.
+
+[[entry]]
+id = "ADD-run-provenance-packages"
+facet = "query_row_shapes"
+row_or_k = "MC-18"
+docs = []
+due_checkpoint = "CL-C1 (leaf L.CL-C1.4)"
+direction = "additive"
+authorized_by = "plans/core.md MC-18 (L.CL-C1.4: identity digest full-shape; packages recorded); WR-PLAN-5:provenance-lists-imported-code"
