@@ -16,8 +16,11 @@ from typing import Any
 import pytest
 
 from tests.proof import mcp_host, tolerances
+from trestle.common import codes
+from trestle.server import admission
 
 PLUGIN_DIR = Path(__file__).resolve().parent / "plugins"
+ROOT = Path(__file__).resolve().parents[3]
 KEY = "ck-1-key"
 WAIT_MS = tolerances.HARNESS_WAIT_MS
 # The idempotency ttl of the window test: one settle unit, in whole seconds.
@@ -96,3 +99,52 @@ def test_run_longer_than_window_still_joins(
         done = host.call("await_runs", {"run_ids": [first["run_id"]], "timeout_ms": WAIT_MS * 3})
         views = done["result"] if isinstance(done, dict) and "result" in done else done
         assert [view["state"] for view in views] == ["succeeded"], done
+
+
+@pytest.mark.proves("WR-IDEM-1", "WR-IDEM-1:answer-names-identity", "core", "core", "MCP", "CI")
+@pytest.mark.proves("WR-PROOF-10", "WR-PROOF-10:K-1", "core", "core", "INSPECT", "CI")
+def test_joined_answer_names_snapshot_that_ran(tmp_path: Path) -> None:
+    counter = tmp_path / "counter"
+    args = {"plugin": "counter", "args": {"counter_file": str(counter)}, "idempotency_key": KEY}
+    with mcp_host.McpHost(home=tmp_path / "host-home") as host:
+        source = _install_counter(host)
+        first = host.call("run", {**args, "wait_ms": WAIT_MS})
+        original = _snapshot_id(first)
+        current = _republish(host, source, tmp_path)
+        assert current != original
+
+        joined = host.call("run", {**args, "wait_ms": WAIT_MS})
+        assert joined["run_id"] == first["run_id"], joined
+        # the joined answer names the code that ran, not the code the plugin has now
+        assert _snapshot_id(joined) == original
+        assert _snapshot_id(joined) != current
+        assert _lines(counter) == 1
+
+    # the K-1 knowing change is documented in its delimited block (MC-05); the markers are spelled
+    # in two pieces so this file is not itself a carrier of the block
+    text = (ROOT / "docs" / "agents.md").read_text(encoding="utf-8")
+    opening, closing = "<!-- K" + "-1 -->", "<!-- /K" + "-1 -->"
+    assert text.count(opening) == 1 and text.count(closing) == 1
+    body = text[text.index(opening) : text.index(closing)]
+    assert "JOIN_ACROSS_REPUBLISH" in body and "outcome.identity.snapshot_id" in body
+
+
+@pytest.mark.xfail(
+    condition=admission.JOIN_ACROSS_REPUBLISH,
+    strict=True,
+    reason="variant:OQ-1=conflict",
+)
+@pytest.mark.proves("WR-IDEM-1", "WR-IDEM-1:variant-conflict-written", "core", "core", "MCP", "CI")
+def test_variant_conflict(tmp_path: Path) -> None:
+    """The OQ-1 = conflict variant (TM-C4a): the S0 answer to the same key after a republish. It
+    fails while K-1 holds (strict xfail) and runs and passes once K-1 is declined."""
+    counter = tmp_path / "counter"
+    args = {"plugin": "counter", "args": {"counter_file": str(counter)}, "idempotency_key": KEY}
+    with mcp_host.McpHost(home=tmp_path / "host-home") as host:
+        source = _install_counter(host)
+        first = host.call("run", {**args, "wait_ms": WAIT_MS})
+        assert first["state"] == "succeeded", first
+        _republish(host, source, tmp_path)
+        again = host.call("run", {**args, "wait_ms": WAIT_MS})
+        assert again["code"] == codes.IDEMPOTENCY_KEY_CONFLICT, again
+        assert "run_id" not in again
