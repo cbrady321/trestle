@@ -1,11 +1,13 @@
-"""G-B5 (BFD-18): the snapshot id covers plugin.py bytes only. Pin records
-that editing an imported module leaves the id unchanged; the target requires
-the identity to change (WR-PLAN-5)."""
+"""G-B5 (BFD-18): the snapshot id covered plugin.py bytes only, so editing an imported module
+left it unchanged. The target requires the identity to change when a *declared* package is
+edited (WR-PLAN-5). It is written in the declared-package form (L.CL-C1.4, step 1): a plugin
+using the call form `@trestle(packages=[...])`, one of whose declared package modules is
+edited. An undeclared imported module is not covered by any declaration (recorded, not
+snapshotted; R-J)."""
 
 from __future__ import annotations
 
 import os
-import shutil
 from pathlib import Path
 
 import pytest
@@ -13,7 +15,20 @@ import pytest
 from tests.proof.markers import target_check
 from trestle.server.snapshots import materialize_snapshot
 
-PLUGIN = Path(__file__).parent / "plugins" / "imports_helper.py"
+PLUGIN_SOURCE = '''"""G-B5 fixture: the behavior depends on a declared package (`b5_helper`)."""
+
+from __future__ import annotations
+
+import importlib
+
+from trestle.plugin.surface import Context, trestle
+
+
+@trestle(packages=["b5_helper"])
+def imports_helper(ctx: Context) -> dict[str, str]:
+    helper = importlib.import_module("b5_helper")
+    return {"value": str(helper.VALUE)}
+'''
 
 
 def _ids_before_and_after_helper_edit(
@@ -26,7 +41,7 @@ def _ids_before_and_after_helper_edit(
         "PYTHONPATH", str(helper_dir) + os.pathsep + os.environ.get("PYTHONPATH", "")
     )
     source = tmp_path / "imports_helper.py"
-    shutil.copy2(PLUGIN, source)
+    source.write_text(PLUGIN_SOURCE, encoding="utf-8")
     home = tmp_path / "home"
 
     helper.write_text("VALUE = 1\n", encoding="utf-8")
@@ -34,12 +49,6 @@ def _ids_before_and_after_helper_edit(
     helper.write_text("VALUE = 2\n", encoding="utf-8")
     second = materialize_snapshot(source, "imports_helper", home=home)
     return first.snapshot_id, second.snapshot_id
-
-
-@pytest.mark.pin("G-B5")
-def test_pin_import_edit_keeps_snapshot_id(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    before, after = _ids_before_and_after_helper_edit(monkeypatch, tmp_path)
-    assert before == after
 
 
 @pytest.mark.target("G-B5")
@@ -52,5 +61,5 @@ def test_target_import_edit_changes_snapshot_id(
     target_check(
         before != after,
         "G-B5",
-        f"snapshot id stayed {before!r} after the imported module was edited",
+        f"snapshot id stayed {before!r} after the declared package was edited",
     )
