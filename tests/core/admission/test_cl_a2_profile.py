@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -316,3 +317,165 @@ def test_created_row_carries_a_null_session_outside_mcp(tmp_path: Path) -> None:
     view = kernel.control.run(plugin="echo", args={"message": "x"}, wait_ms=NO_WAIT_MS)
     assert not hasattr(view, "code"), view
     assert _created_session(kernel.home, view.run_id) is None
+
+
+# ---- CL-A2.3: closed policy sets, the full profile, and no sandbox claim -------------------------
+
+REPO = mcp_host.REPO
+# How each agent-selectable property is bounded: `closed` (an enumeration the server refuses to step
+# outside), `validated` (checked against the catalog, the ledger, a schema or a range before it
+# acts), or `text` (opaque content that is only stored or matched, never executed as a selection).
+POLICY: dict[tuple[str, str], str] = {
+    ("run", "plugin"): "validated",  # the registry and, restricted, the allowlist
+    ("run", "args"): "validated",  # the plugin's own input schema
+    ("run", "version"): "validated",  # must equal the published version
+    ("run", "wait_ms"): "validated",  # a bound; zero means do not wait
+    ("run", "idempotency_key"): "text",  # matched against earlier keys, never interpreted
+    ("run", "completion"): "closed",  # bounded | terminal
+    ("await_runs", "run_ids"): "validated",  # handles that must resolve
+    ("await_runs", "mode"): "closed",  # all | any | first_failure
+    ("await_runs", "timeout_ms"): "validated",
+    ("cancel", "run_id"): "validated",
+    ("query", "view"): "closed",
+    ("query", "params"): "validated",  # per-view parameters, refused when invalid
+    ("query", "cursor"): "validated",  # an issued cursor, refused when expired
+    ("fetch", "target"): "validated",  # an opaque handle, never a path
+    ("fetch", "window"): "closed",  # kind is an enumeration
+    ("pin", "target"): "validated",
+    ("unpin", "target"): "validated",
+    ("describe_plugin", "plugin_id"): "validated",
+    ("publish_plugin", "source"): "validated",  # publication checks it; full profile only
+    ("publish_plugin", "name"): "validated",
+}
+# A word in a property or enumeration name that would select removal of a resource.
+DESTRUCTIVE = re.compile(
+    r"clean|keep|delete|remove|destroy|purge|prune|kill|force|wipe|gc|unlink", re.IGNORECASE
+)
+# Out-of-set values, and the code each earns from a full-profile server (None: a wire refusal).
+CLOSED_REFUSALS: list[tuple[str, dict[str, Any], str | None]] = [
+    ("run", {"plugin": ALLOWED, "completion": "bogus"}, codes.INVALID_ARGS),
+    ("await_runs", {"run_ids": ["r_none"], "mode": "bogus"}, codes.PROJECTION_INVALID_ARGS),
+    ("query", {"view": "bogus"}, codes.INVALID_VIEW),
+    (
+        "fetch",
+        {"target": "r_none/result", "window": {"kind": "bogus"}},
+        codes.PROJECTION_INVALID_ARGS,
+    ),
+]
+
+
+def _properties(tools: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:
+    return {
+        (tool["name"], prop): schema
+        for tool in tools
+        for prop, schema in tool["inputSchema"].get("properties", {}).items()
+    }
+
+
+def _enum_members(schema: dict[str, Any]) -> list[str]:
+    members = list(schema.get("enum", []))
+    for child in schema.get("properties", {}).values():
+        members += _enum_members(child)
+    return members
+
+
+@pytest.mark.proves(
+    "WR-AUTH-4", "WR-AUTH-4:closed-sets-no-destructive", "core", "core", "LOGIC+MCP", "CI"
+)
+def test_agent_selectable_values_are_closed_non_destructive(tmp_path: Path) -> None:
+    listed: dict[str, list[dict[str, Any]]] = {}
+    for mode, allowlist in ((None, None), (PROFILE_RESTRICTED, [ALLOWED])):
+        home = tmp_path / f"home-{mode}"
+        _write_profile(home, mode, allowlist)
+        with mcp_host.McpHost(home=home) as host:
+            listed[str(mode)] = _tools(host)
+            if mode is None:
+                for tool, args, code in CLOSED_REFUSALS:
+                    try:
+                        refusal = host.call(tool, args)
+                    except RuntimeError:
+                        assert code is None, (tool, args)  # the schema refused it
+                    else:
+                        # a tool that may answer with a list wraps its outcome under `result`
+                        outcome = refusal.get("result", refusal)
+                        assert outcome.get("code") == code, (tool, args, refusal)
+                        assert "run_id" not in outcome, refusal
+        assert _run_dirs(home) == []  # no refused call left a run behind
+
+    for tools in listed.values():
+        found = _properties(tools)
+        # every property is classified: a new one fails here until its bound is named
+        assert set(found) <= set(POLICY), sorted(set(found) - set(POLICY))
+        for (tool, prop), schema in found.items():
+            assert not DESTRUCTIVE.search(prop), (tool, prop)
+            for member in _enum_members(schema):
+                assert not DESTRUCTIVE.search(member), (tool, prop, member)
+            if POLICY[(tool, prop)] == "closed" and (tool, prop) in {
+                ("query", "view"),
+                ("fetch", "window"),
+            }:
+                assert _enum_members(schema), (tool, prop)  # an enumeration in the schema itself
+    assert set(_properties(listed["None"])) == set(POLICY)
+    assert set(POLICY) - set(_properties(listed[PROFILE_RESTRICTED])) == {
+        ("publish_plugin", "source"),
+        ("publish_plugin", "name"),
+    }
+    # the closed sets the server refuses outside of are the ones it declares
+    from typing import get_args
+
+    from trestle.common.types import JoinMode
+    from trestle.server.control import COMPLETIONS
+
+    assert COMPLETIONS == {"bounded", "terminal"}
+    assert set(get_args(JoinMode)) == {"all", "any", "first_failure"}
+
+
+@pytest.mark.proves(
+    "WR-AUTH-5", "WR-AUTH-5:full-profile-ten-tools", "core", "core", "LOGIC+MCP", "CI"
+)
+def test_full_profile_lists_ten_tools_and_restricted_is_a_subset(tmp_path: Path) -> None:
+    listings: dict[str, list[dict[str, Any]]] = {}
+    for label, mode, allowlist in (
+        ("default", None, None),
+        ("explicit", "full", []),
+        ("restricted", PROFILE_RESTRICTED, [ALLOWED]),
+    ):
+        home = tmp_path / f"home-{label}"
+        _write_profile(home, mode, allowlist)
+        with mcp_host.McpHost(home=home) as host:
+            listings[label] = _tools(host)
+    assert [tool["name"] for tool in listings["default"]] == list(FULL_TOOLS)
+    # naming the full profile changes nothing: the ten tool entries are byte-identical
+    assert json.dumps(listings["explicit"]) == json.dumps(listings["default"])
+    # the restricted listing is the full one without publish_plugin, entry for entry
+    assert listings["restricted"] == [
+        t for t in listings["default"] if t["name"] != "publish_plugin"
+    ]
+
+
+NEGATION = re.compile(
+    r"not\W+a sandbox|neither \w+ is a sandbox|isn.t a sandbox|no sandbox"
+    r"|not sandbox|out of scope|non-goal",
+    re.IGNORECASE,
+)
+
+
+@pytest.mark.proves("WR-AUTH-5", "WR-AUTH-5:no-sandbox-claim", "core", "core", "INSPECT", "CI")
+def test_no_doc_claims_sandbox() -> None:
+    """INSPECT (RV-3 reviews adequacy at L.J-CORE.1): the security doc keeps its "not a sandbox"
+    statement, and no document mentions a sandbox except to disclaim one or to list it as out of
+    scope."""
+    security = (REPO / "docs" / "security.md").read_text(encoding="utf-8").replace("*", "")
+    assert re.search(r"not a sandbox", security, re.IGNORECASE), (
+        "docs/security.md lost its statement"
+    )
+    for path in [REPO / "README.md", *sorted((REPO / "docs").glob("*.md"))]:
+        section = ""
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if line.startswith("#"):
+                section = line
+            if "sandbox" not in line.lower():
+                continue
+            assert NEGATION.search(line) or NEGATION.search(section), (
+                f"{path.name}:{number} mentions a sandbox without disclaiming it: {line!r}"
+            )
