@@ -244,18 +244,72 @@ class GateMatchError(ValueError):
     """A `wr/` branch matching zero or two gates (CM-2)."""
 
 
-def match_gate(branch: str, gates: list[Gate]) -> Gate:
-    """Equality, or prefix only when the gate's `branch` ends in `/`
-    (CM-2). Raises `GateMatchError` on zero or two-plus matches."""
+def _gate_hits(branch: str, gates: list[Gate]) -> list[Gate]:
     hits = []
     for gate in gates:
         if gate.branch == branch:
             hits.append(gate)
         elif gate.branch.endswith("/") and branch.startswith(gate.branch):
             hits.append(gate)
+    return hits
+
+
+def match_gate(branch: str, gates: list[Gate]) -> Gate:
+    """Equality, or prefix only when the gate's `branch` ends in `/`
+    (CM-2). Raises `GateMatchError` on zero or two-plus matches. A bundle
+    branch (two-plus gates with exactly this `branch`) is not one gate: the
+    error tells the caller to use `match_gates`."""
+    hits = _gate_hits(branch, gates)
+    if len(hits) > 1 and all(g.branch == branch for g in hits):
+        ids = ", ".join(g.merge for g in hits)
+        raise GateMatchError(
+            f"{branch!r} is a bundle of {len(hits)} gates ({ids}); use match_gates, not match_gate"
+        )
     if len(hits) != 1:
         raise GateMatchError(f"{branch!r} matches {len(hits)} gate(s), expected exactly 1")
     return hits[0]
+
+
+def match_gates(branch: str, gates: list[Gate]) -> list[Gate]:
+    """The gates `branch` lands, in landing order. One gate for an ordinary
+    branch (`match_gate`'s exactly-one contract, equality or prefix). A
+    *bundle* is two or more gates whose `branch` is exactly `branch` (never a
+    prefix gate, never a checkpoint id): they are returned ordered by
+    `requires_merge` among themselves (topological, ties in config order),
+    and a cycle or a repeated merge id is a `GateMatchError`."""
+    hits = _gate_hits(branch, gates)
+    if not hits:
+        raise GateMatchError(f"{branch!r} matches 0 gate(s), expected at least 1")
+    if len(hits) == 1:
+        return hits
+    if any(g.branch != branch for g in hits):
+        raise GateMatchError(
+            f"{branch!r} matches {len(hits)} gates including a prefix gate; "
+            "a bundle is exact-equal gates only"
+        )
+    ids = [g.merge for g in hits]
+    if len(set(ids)) != len(ids):
+        raise GateMatchError(f"bundle {branch!r} repeats a merge id in {ids}")
+    for gate in hits:
+        if _is_checkpoint_id(gate.merge):
+            raise GateMatchError(
+                f"bundle {branch!r} carries checkpoint {gate.merge}; never bundled"
+            )
+    ordered: list[Gate] = []
+    pending = list(hits)
+    while pending:
+        placed = {g.merge for g in ordered}
+        ready = next(
+            (g for g in pending if all(r in placed or r not in ids for r in g.requires_merge)),
+            None,
+        )
+        if ready is None:
+            raise GateMatchError(
+                f"bundle {branch!r}: requires_merge cycle among {[g.merge for g in pending]}"
+            )
+        ordered.append(ready)
+        pending.remove(ready)
+    return ordered
 
 
 def phase_for_branch(branch: str, phases: dict[str, list[str]]) -> str | None:
@@ -393,32 +447,118 @@ def predecessor_holds(
     return True, "ok"
 
 
-def check_pr(
+class BundleError(ValueError):
+    """A bundle branch's boundary markers are wrong (a gate, a problem)."""
+
+
+@dataclass
+class BundleRun:
+    """What `resolve_bundle` reads off a bundle branch: the commit each gate
+    lands (`boundaries`, by merge id), and the gates an earlier run of this
+    same bundle already landed on the base (`landed`: merge id -> the landing
+    commit), for the idempotent re-run after a partial landing."""
+
+    base0: str
+    boundaries: dict[str, str] = field(default_factory=dict)
+    landed: dict[str, str] = field(default_factory=dict)
+
+
+def bundle_base(
+    cwd: Path, gates: list[Gate], base: str, head: str
+) -> tuple[str, dict[str, str]] | None:
+    """The base the bundle's first chunk started from, and the landings of
+    this bundle already on `base`; `None` when `base` is not an ancestor of
+    `head` (R3) beyond those landings. A partial landing leaves `base` ahead
+    of `head` by exactly this bundle's own `WR-Merge`/`WR-Fix` merges."""
+    if is_ancestor(cwd, base, head):
+        return base, {}
+    ids = {g.merge for g in gates}
+    ahead = set(_git(cwd, "rev-list", base, f"^{head}").stdout.split())
+    landed: dict[str, str] = {}
+    for commit in trailers_mod._commits(base, cwd=cwd):  # noqa: SLF001
+        if commit.sha not in ahead:
+            continue
+        for kind, cid in commit.trailers():
+            if cid in ids and kind in ("WR-Merge", "WR-Fix"):
+                landed.setdefault(cid, commit.sha)
+    if set(landed.values()) != ahead:
+        return None
+    # walk the first-parent line back through the landings to the old base
+    cur = base
+    while cur in ahead:
+        parents = _git(cwd, "rev-list", "--parents", "-n", "1", cur).stdout.split()
+        if len(parents) < 2:
+            return None
+        cur = parents[1]
+    return cur, landed
+
+
+def resolve_bundle(cwd: Path, gates: list[Gate], base: str, head: str) -> BundleRun:
+    """CM-2 bundle boundaries. For gate G the boundary is the commit on the
+    branch's first-parent line whose message carries `Bundle-Merge: <G>`:
+    exactly one per gate, in gate order, and the last gate's marker is the
+    head itself (a merge-forward of the base after it does not move it:
+    `_refresh_stale` publishes those). Raises `BundleError` naming the gate
+    and the problem; `ValueError` from `bundle_base` never occurs here."""
+    found = bundle_base(cwd, gates, base, head)
+    if found is None:
+        raise BundleError("base is not an ancestor of head (branch is behind)")
+    base0, landed = found
+    ids = [g.merge for g in gates]
+    commits = trailers_mod._commits(f"{base0}..{head}", cwd=cwd)  # noqa: SLF001
+    marks: list[tuple[int, str]] = []
+    for idx, commit in enumerate(commits):
+        found_ids = commit.bundle_markers()
+        if len(found_ids) > 1:
+            raise BundleError(
+                f"gate {found_ids[1]}: commit {commit.sha[:12]} carries "
+                f"{len(found_ids)} Bundle-Merge markers {found_ids} (one marker per commit)"
+            )
+        for mid in found_ids:
+            if mid not in ids:
+                raise BundleError(f"gate {mid}: Bundle-Merge marker names no gate of this bundle")
+            if any(m == mid for _, m in marks):
+                raise BundleError(f"gate {mid}: more than one Bundle-Merge: {mid} marker")
+            marks.append((idx, mid))
+    for gate_id in ids:
+        if not any(m == gate_id for _, m in marks):
+            raise BundleError(f"gate {gate_id}: no Bundle-Merge: {gate_id} marker on the branch")
+    seen = [m for _, m in marks]
+    if seen != ids:
+        first = next(i for i, (a, b) in enumerate(zip(seen, ids, strict=True)) if a != b)
+        raise BundleError(
+            f"gate {ids[first]}: Bundle-Merge markers are out of order "
+            f"(found {seen}, gate order is {ids})"
+        )
+    last_idx = marks[-1][0]
+    for tail in commits[last_idx + 1 :]:
+        parents = _git(cwd, "rev-list", "--parents", "-n", "1", tail.sha).stdout.split()
+        if len(parents) < 3 or not all(is_ancestor(cwd, p, base) for p in parents[2:]):
+            raise BundleError(
+                f"gate {ids[-1]}: its Bundle-Merge marker is not the branch head "
+                f"(commit {tail.sha[:12]} follows it)"
+            )
+    run = BundleRun(base0=base0, landed=landed)
+    for idx, mid in marks:
+        run.boundaries[mid] = commits[idx].sha
+    run.boundaries[ids[-1]] = head  # the last chunk runs to the head itself
+    return run
+
+
+def _tree_rules(
     cfg: FenceConfig,
     cwd: Path,
     branch: str,
     head_sha: str,
     base_sha: str,
-    check_run_reader=None,
-) -> RuleResult:
-    """`python -m tests.proof.fence check --pr`'s rules R1-R6, evaluated on
-    the PR head H (`head_sha`) against the base X (`base_sha`, the current
-    `origin/master`)."""
-    warnings = check_missing_records(cwd, cfg.record_exempt)
-
-    # R1
-    try:
-        gate = match_gate(branch, cfg.gates)
-    except GateMatchError as exc:
-        return RuleResult(False, "R1", str(exc), warnings)
-
-    # R2
-    ok, msg = predecessor_holds(gate.requires_merge, base_sha, cwd, check_run_reader)
-    if not ok:
-        return RuleResult(False, "R2", msg, warnings)
-
+    warnings: list[str],
+    check_r3: bool = True,
+    tree_sha: str | None = None,
+) -> RuleResult | None:
+    """R3-R5 on `base_sha..head_sha`; `None` when they hold. R4 reads the
+    paths that differ between `base_sha` and `tree_sha` (default `head_sha`)."""
     # R3
-    if not is_ancestor(cwd, base_sha, head_sha):
+    if check_r3 and not is_ancestor(cwd, base_sha, head_sha):
         return RuleResult(
             False, "R3", "base is not an ancestor of head (branch is behind)", warnings
         )
@@ -428,7 +568,7 @@ def check_pr(
     lane = next(
         (ln for ln in cfg.lanes if ln.branch_prefix and branch.startswith(ln.branch_prefix)), None
     )
-    for path in diff_paths(cwd, base_sha, head_sha):
+    for path in diff_paths(cwd, base_sha, tree_sha or head_sha):
         if path.startswith("tests/proof/fence.d/"):
             frag_phase = Path(path).stem
             if frag_phase != phase:
@@ -447,6 +587,72 @@ def check_pr(
     for commit in trailers_mod._commits(f"{base_sha}..{head_sha}", cwd=cwd):  # noqa: SLF001
         if commit.trailers():
             return RuleResult(False, "R5", f"commit {commit.sha} carries a trailer line", warnings)
+    return None
+
+
+def check_pr(
+    cfg: FenceConfig,
+    cwd: Path,
+    branch: str,
+    head_sha: str,
+    base_sha: str,
+    check_run_reader=None,
+    gate: Gate | None = None,
+    check_r3: bool = True,
+    tree_sha: str | None = None,
+) -> RuleResult:
+    """`python -m tests.proof.fence check --pr`'s rules R1-R6, evaluated on
+    the PR head H (`head_sha`) against the base X (`base_sha`, the current
+    `origin/master`).
+
+    A bundle branch (several exact-equal gates) is judged once for the whole
+    branch: R2 per gate (each `requires_merge` is an earlier gate of the
+    bundle or already landed on X), the bundle's boundary markers, and R3-R5
+    on X..H once. `fence merge` instead judges each gate of a bundle on its
+    own chunk by passing `gate` (R1 is then that gate, `head_sha` its
+    boundary, `base_sha` the base with the earlier gates landed) and
+    `check_r3=False` (it judged ancestry for the whole run) and `tree_sha`
+    (the gate's merge commit: R4 reads what that landing changes on the base,
+    which is the chunk alone even when the base has moved past the boundary's
+    own ancestry)."""
+    warnings = check_missing_records(cwd, cfg.record_exempt)
+
+    # R1
+    if gate is not None:
+        gates = [gate]
+    else:
+        try:
+            gates = match_gates(branch, cfg.gates)
+        except GateMatchError as exc:
+            return RuleResult(False, "R1", str(exc), warnings)
+    bundle = gate is None and len(gates) > 1
+    if not bundle:
+        gate = gates[0]
+
+    # R2
+    if bundle:
+        ids = [g.merge for g in gates]
+        for i, g in enumerate(gates):
+            outside = [r for r in g.requires_merge if r not in ids[:i]]
+            ok, msg = predecessor_holds(outside, base_sha, cwd, check_run_reader)
+            if not ok:
+                return RuleResult(False, "R2", f"gate {g.merge}: {msg}", warnings)
+    else:
+        ok, msg = predecessor_holds(gate.requires_merge, base_sha, cwd, check_run_reader)
+        if not ok:
+            return RuleResult(False, "R2", msg, warnings)
+
+    # R3-R5
+    failed = _tree_rules(cfg, cwd, branch, head_sha, base_sha, warnings, check_r3, tree_sha)
+    if failed is not None:
+        return failed
+
+    if bundle:
+        try:
+            resolve_bundle(cwd, gates, base_sha, head_sha)
+        except BundleError as exc:
+            return RuleResult(False, "bundle", f"bundle {branch}: {exc}", warnings)
+        return RuleResult(True, None, "ok", warnings)
 
     # R6
     if _is_checkpoint_id(gate.merge):
@@ -670,10 +876,13 @@ def ready_mark(
     clock=None,
     conclusions: dict[str, str | None] | None = None,
     required: list[str] | None = None,
+    gates: list[str] | None = None,
 ) -> int:
     """`fence ready mark`: refuses unless every required job concluded
     `success` on the pushed PR head (exit 2 a job failed, 5 a remote
-    read failed/timed out, 6 not all concluded); exits 0 when it marks."""
+    read failed/timed out, 6 not all concluded); exits 0 when it marks.
+    A bundle branch is marked once, under its last gate's merge id, and the
+    entry records `gates` (every merge id the branch lands, in order)."""
     clock = clock or _time.time
     try:
         req = required if required is not None else required_check_names()
@@ -698,19 +907,19 @@ def ready_mark(
         except json.JSONDecodeError:
             existing = {}
     marked_at = existing.get("marked_at", clock())
-    _atomic_write(
-        path,
-        {
-            "state": "ready",
-            "branch": branch,
-            "returns": existing.get("returns", 0),
-            "ckpt_rebases": existing.get("ckpt_rebases", 0),
-            "reason": None,
-            "landing_sha": existing.get("landing_sha"),
-            "marked_at": marked_at,
-            "head_sha": head,
-        },
-    )
+    entry = {
+        "state": "ready",
+        "branch": branch,
+        "returns": existing.get("returns", 0),
+        "ckpt_rebases": existing.get("ckpt_rebases", 0),
+        "reason": None,
+        "landing_sha": existing.get("landing_sha"),
+        "marked_at": marked_at,
+        "head_sha": head,
+    }
+    if gates:
+        entry["gates"] = list(gates)
+    _atomic_write(path, entry)
     print("ready mark: marked")
     return 0
 
@@ -852,15 +1061,29 @@ def fence_merge(
         if H != expect_sha:
             return FenceMergeExit.HEAD_MISMATCH, "fetched branch head is not --expect-sha"
 
-        # Step 2: R3.
-        if not is_ancestor(cwd, X, H):
+        # Step 2: R3. A bundle (several exact-equal gates) may find `X` ahead
+        # of `H` by exactly its own earlier landings (a partial landing).
+        is_bundle = sum(1 for g in cfg.gates if g.branch == branch) > 1
+        if is_bundle:
+            try:
+                bundle_gates = match_gates(branch, cfg.gates)
+            except GateMatchError as exc:
+                return FenceMergeExit.VERDICT_REFUSED, f"R1: {exc}"
+            if bundle_base(cwd, bundle_gates, X, H) is None:
+                return FenceMergeExit.MASTER_MOVED, "origin/master is not an ancestor of H"
+        elif not is_ancestor(cwd, X, H):
             return FenceMergeExit.MASTER_MOVED, "origin/master is not an ancestor of H"
 
-        # Step 3: required jobs (CM-4).
-        try:
-            gate = match_gate(branch, cfg.gates)
-        except GateMatchError as exc:
-            return FenceMergeExit.VERDICT_REFUSED, f"R1: {exc}"
+        # Step 3: required jobs (CM-4). For a bundle they are judged on the
+        # branch head H for every gate: CI runs on the PR head only, so an
+        # intermediate gate's boundary commit has no check runs of its own.
+        # That is the bundle's weaker intermediate guarantee (a gate's chunk
+        # is verified only as part of the whole branch).
+        if not is_bundle:
+            try:
+                gate = match_gate(branch, cfg.gates)
+            except GateMatchError as exc:
+                return FenceMergeExit.VERDICT_REFUSED, f"R1: {exc}"
         required = required if required is not None else required_check_names()
         if isinstance(job_conclusions, Exception):
             raise job_conclusions
@@ -871,36 +1094,19 @@ def fence_merge(
         if not ok:
             return FenceMergeExit.VERDICT_REFUSED, f"required job {failing} concluded non-success"
 
-        # Step 4: build the --no-ff merge commit and derive the trailer (CM-1).
-        _git(cwd, "checkout", "-q", "-B", "_fence_merge_master", X)
-        trailer_kind = "WR-Fix" if trailers_mod.landing(gate.merge, ref=X, cwd=cwd) else "WR-Merge"
-        merge = _git(
-            cwd,
-            "merge",
-            "--no-ff",
-            "-m",
-            f"WR-Merge: {gate.merge}" if trailer_kind == "WR-Merge" else f"WR-Fix: {gate.merge}",
-            H,
-        )
-        if merge.returncode != 0:
-            _git(cwd, "merge", "--abort")
-            return FenceMergeExit.VERDICT_REFUSED, f"merge failed: {merge.stderr}"
-        merge_sha = _git(cwd, "rev-parse", "HEAD").stdout.strip()
+        if is_bundle:
+            landed = _land_bundle(cfg, cwd, branch, bundle_gates, X, H)
+            if isinstance(landed, tuple):
+                return landed
+            merge_sha = landed
+        else:
+            refused = _land_single(cfg, cwd, branch, gate, X, H)
+            if isinstance(refused, tuple):
+                return refused
+            merge_sha = refused
 
-        # Step 5: the verdict on the merge commit. R1-R6 are evaluated
-        # against the PR's own content (X..H, the diff and commits the
-        # merge carries) — never against the merge commit's own single
-        # derived trailer, which R5 would otherwise always trip on.
-        result = check_pr(cfg, cwd, branch, H, X)
-        if not result.ok:
-            return FenceMergeExit.VERDICT_REFUSED, f"{result.rule}: {result.message}"
-        from tests.proof import kdoc as kdoc_mod
-
-        missing = kdoc_mod.missing_docs(gate.merge, merge_sha, cwd=cwd)
-        if missing:
-            return FenceMergeExit.VERDICT_REFUSED, f"kdoc: missing docs {missing}"
-
-        # Step 6: push, plain and non-force (P1).
+        # Step 6: push, plain and non-force (P1). A bundle pushes its whole run
+        # in this one push: any earlier refusal returned before this line.
         if push_result == "non-ff":
             return FenceMergeExit.MASTER_MOVED, "non-fast-forward push refusal"
         if push_result == "other":
@@ -917,6 +1123,96 @@ def fence_merge(
         return FenceMergeExit.REMOTE_UNAVAILABLE, str(exc)
     except Exception as exc:  # noqa: BLE001 - P6: any crash is exit 1
         return FenceMergeExit.CRASHED, f"crash: {exc}"
+
+
+def _land_single(
+    cfg: FenceConfig, cwd: Path, branch: str, gate: Gate, X: str, H: str
+) -> str | tuple[int, str]:
+    """Steps 4-5 for an ordinary branch: the merge commit's sha, or the
+    `(exit, message)` refusal."""
+    # Step 4: build the --no-ff merge commit and derive the trailer (CM-1).
+    _git(cwd, "checkout", "-q", "-B", "_fence_merge_master", X)
+    trailer_kind = "WR-Fix" if trailers_mod.landing(gate.merge, ref=X, cwd=cwd) else "WR-Merge"
+    merge = _git(
+        cwd,
+        "merge",
+        "--no-ff",
+        "-m",
+        f"WR-Merge: {gate.merge}" if trailer_kind == "WR-Merge" else f"WR-Fix: {gate.merge}",
+        H,
+    )
+    if merge.returncode != 0:
+        _git(cwd, "merge", "--abort")
+        return FenceMergeExit.VERDICT_REFUSED, f"merge failed: {merge.stderr}"
+    merge_sha = _git(cwd, "rev-parse", "HEAD").stdout.strip()
+
+    # Step 5: the verdict on the merge commit. R1-R6 are evaluated
+    # against the PR's own content (X..H, the diff and commits the
+    # merge carries) — never against the merge commit's own single
+    # derived trailer, which R5 would otherwise always trip on.
+    result = check_pr(cfg, cwd, branch, H, X)
+    if not result.ok:
+        return FenceMergeExit.VERDICT_REFUSED, f"{result.rule}: {result.message}"
+    from tests.proof import kdoc as kdoc_mod
+
+    missing = kdoc_mod.missing_docs(gate.merge, merge_sha, cwd=cwd)
+    if missing:
+        return FenceMergeExit.VERDICT_REFUSED, f"kdoc: missing docs {missing}"
+    return merge_sha
+
+
+def _land_bundle(
+    cfg: FenceConfig, cwd: Path, branch: str, gates: list[Gate], X: str, H: str
+) -> str | tuple[int, str]:
+    """Steps 4-5 for a bundle branch: one `--no-ff` merge of each gate's
+    boundary commit onto the running base, in gate order, each with its own
+    `WR-Merge: <id>` (or `WR-Fix: <id>` when that id already has a landing on
+    the base) and its own full verdict (R1-R6 on that chunk, the K-doc rule on
+    that merge). A gate this same bundle already landed on `X` (a partial
+    landing) is skipped. Returns the last merge's sha, or the first refusal
+    (`(exit, message)` naming the gate) — nothing is pushed here, so a refusal
+    at any gate leaves `origin/master` exactly as it was (all-or-nothing)."""
+    from tests.proof import kdoc as kdoc_mod
+
+    try:
+        run = resolve_bundle(cwd, gates, X, H)
+    except BundleError as exc:
+        return FenceMergeExit.VERDICT_REFUSED, f"bundle {branch}: {exc}"
+    _git(cwd, "checkout", "-q", "-B", "_fence_merge_master", X)
+    cur = X
+    for gate in gates:
+        if gate.merge in run.landed:
+            continue  # idempotent re-run: this bundle already landed this gate
+        boundary = run.boundaries[gate.merge]
+        trailer_kind = (
+            "WR-Fix" if trailers_mod.landing(gate.merge, ref=cur, cwd=cwd) else "WR-Merge"
+        )
+        merge = _git(cwd, "merge", "--no-ff", "-m", f"{trailer_kind}: {gate.merge}", boundary)
+        if merge.returncode != 0:
+            _git(cwd, "merge", "--abort")
+            return (
+                FenceMergeExit.VERDICT_REFUSED,
+                f"gate {gate.merge}: merge failed: {merge.stderr}",
+            )
+        merge_sha = _git(cwd, "rev-parse", "HEAD").stdout.strip()
+        # This gate's chunk is `cur..boundary`: `cur` already carries the
+        # earlier gates, so R2 sees them landed and R4/R5 see only this chunk.
+        result = check_pr(
+            cfg, cwd, branch, boundary, cur, gate=gate, check_r3=False, tree_sha=merge_sha
+        )
+        if not result.ok:
+            return (
+                FenceMergeExit.VERDICT_REFUSED,
+                f"gate {gate.merge}: {result.rule}: {result.message}",
+            )
+        missing = kdoc_mod.missing_docs(gate.merge, merge_sha, cwd=cwd)
+        if missing:
+            return (
+                FenceMergeExit.VERDICT_REFUSED,
+                f"gate {gate.merge}: kdoc: missing docs {missing}",
+            )
+        cur = merge_sha
+    return cur
 
 
 def landed_merge_check(merge_id: str, landing_sha: str | None, cwd: Path) -> str | None:
@@ -1124,16 +1420,19 @@ def attempt_landing(merge_id: str, deps: LandingDeps) -> str:
         return "remote unavailable"
     if exit_code == FenceMergeExit.JOBS_NOT_CONCLUDED:
         return "recheck-ci"
+    # A refusal's message (which gate, which rule) is kept in the entry's
+    # `reason` (`<return reason>: <message>`; `record_return` classifies on the
+    # part before the first colon), so the loop can print why, not just that.
     if exit_code == FenceMergeExit.VERDICT_REFUSED:
-        record_return(state_dir, merge_id, "verdict refused", clock=deps.clock)
+        record_return(state_dir, merge_id, f"verdict refused: {message}", clock=deps.clock)
         return "verdict refused"
     if exit_code == FenceMergeExit.PUSH_REFUSED:
-        record_return(state_dir, merge_id, "push refused", clock=deps.clock)
+        record_return(state_dir, merge_id, f"push refused: {message}", clock=deps.clock)
         return "push refused"
     if exit_code == FenceMergeExit.HEAD_MISMATCH:
         record_return(state_dir, merge_id, "head moved during landing", clock=deps.clock)
         return "head moved during landing"
-    record_return(state_dir, merge_id, "fence merge crashed", clock=deps.clock)
+    record_return(state_dir, merge_id, f"fence merge crashed: {message}", clock=deps.clock)
     return "fence merge crashed"
 
 
@@ -1211,10 +1510,10 @@ def take_land_lock(state_dir: Path):
 # --- CLI paths with real dependencies (git, gh) ------------------------------
 
 
-def _current_gate(cwd: Path) -> tuple[FenceConfig, str, Gate]:
+def _current_gates(cwd: Path) -> tuple[FenceConfig, str, list[Gate]]:
     branch = _git(cwd, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     cfg = load_fence()
-    return cfg, branch, match_gate(branch, cfg.gates)
+    return cfg, branch, match_gates(branch, cfg.gates)
 
 
 def _required_at(cwd: Path, ref: str) -> list[str]:
@@ -1234,10 +1533,12 @@ def _required_at(cwd: Path, ref: str) -> list[str]:
 def cmd_ready(action: str, clear: bool, cwd: Path | None = None) -> int:
     cwd = cwd or ROOT
     try:
-        _cfg, branch, gate = _current_gate(cwd)
+        _cfg, branch, gates = _current_gates(cwd)
     except GateMatchError as exc:
         print(f"ready {action}: R1: {exc}")
         return 2
+    # A bundle's READY entry is keyed by its last gate's merge id.
+    gate = gates[-1]
     state_dir = default_state_dir(cwd)
     if action == "status":
         for entry in ready_status(state_dir, gate.merge):
@@ -1247,7 +1548,8 @@ def cmd_ready(action: str, clear: bool, cwd: Path | None = None) -> int:
         return ready_unmark(state_dir, gate.merge)
     if clear:
         return ready_clear(state_dir, gate.merge)
-    return ready_mark(state_dir, gate.merge, branch, cwd)
+    bundle = [g.merge for g in gates] if len(gates) > 1 else None
+    return ready_mark(state_dir, gate.merge, branch, cwd, gates=bundle)
 
 
 def _drop_worktree(cwd: Path, path: Path) -> None:
@@ -1399,6 +1701,18 @@ def _real_deps(
     )
 
 
+def _outcome_detail(state_dir: Path, merge_id: str, outcome: str) -> str:
+    """The loop's one-line outcome, with the refusal's message (gate and rule)
+    the entry's `reason` carries when it is `<outcome>: <message>`."""
+    try:
+        reason = json.loads(_ready_path(state_dir, merge_id).read_text()).get("reason")
+    except (OSError, json.JSONDecodeError):
+        return outcome
+    if isinstance(reason, str) and reason.startswith(f"{outcome}: "):
+        return reason
+    return outcome
+
+
 def cmd_land(cwd: Path | None = None, once: bool = False, landing_dir: Path | None = None) -> int:
     """`fence land`: the CM-3 single-writer loop. Holds the lifetime lock
     (exit 10 if another loop has it) and lands READY entries FIFO. Forever
@@ -1443,7 +1757,9 @@ def cmd_land(cwd: Path | None = None, once: bool = False, landing_dir: Path | No
                 finally:
                     _drop_worktree(cwd, landing_dir)
                 if outcome != "recheck-ci":
-                    print(f"fence land: {merge_id}: {outcome}")
+                    print(
+                        f"fence land: {merge_id}: {_outcome_detail(state_dir, merge_id, outcome)}"
+                    )
                     break
                 if _time.time() - started >= CI_WAIT_MAX:
                     record_return(state_dir, merge_id, "CI wait exceeded")
