@@ -22,7 +22,7 @@ from trestle.server.plugin_paths import (
     CATALOG_HINT_PACKS_MISSING,
     log_plugin_warning,
 )
-from trestle.server.plugin_schema import SchemaError, schemas_from_source
+from trestle.server.plugin_schema import SchemaError, declared_from_source, schemas_from_source
 from trestle.server.plugin_validate import PluginValidationError, validate_plugin_imports
 from trestle.server.snapshots import (
     discover_plugin_name,
@@ -286,6 +286,7 @@ class Registry:
             )
         try:
             schemas_from_source(source)
+            declared_from_source(source)
         except SchemaError as exc:
             return RequestOutcome(
                 code=codes.PUBLICATION_VALIDATION_FAILED,

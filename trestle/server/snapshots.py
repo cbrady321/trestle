@@ -11,8 +11,9 @@ from pathlib import Path
 from trestle.common.canonical import canonical_json
 from trestle.common.fsutil import atomic_write, sha256_file
 from trestle.common.ids import generate_snapshot_id
-from trestle.common.types import PluginSnapshot
+from trestle.common.types import DeclaredMetadata, PluginSnapshot
 from trestle.server.plugin_schema import (
+    declared_from_source,
     find_trestle_function,
     schema_digest,
     schemas_from_source,
@@ -48,6 +49,19 @@ def load_snapshot_return_schema(snap: PluginSnapshot) -> dict[str, object]:
     return return_schema
 
 
+def load_declared(snap: PluginSnapshot) -> DeclaredMetadata:
+    """The declared metadata and entry name of a published snapshot (MC-18).
+
+    The only reader of `manifest.json`'s `declared` and `entry`. A snapshot whose manifest
+    predates them yields the defaults."""
+    manifest_path = Path(snap.source_path).with_name("manifest.json")
+    if manifest_path.is_file():
+        loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            return DeclaredMetadata.from_manifest(loaded)
+    return DeclaredMetadata()
+
+
 def discover_plugin_name_from_source(source: str) -> str | None:
     fn = find_trestle_function(ast.parse(source))
     return None if fn is None else fn.name
@@ -68,6 +82,7 @@ def materialize_snapshot(
 ) -> PluginSnapshot:
     source = source_path.read_text(encoding="utf-8")
     schema, return_schema = schemas_from_source(source, source_path=source_path)
+    declared = declared_from_source(source)
     error = validate_plugin(source_path)
     if error is not None:
         raise PluginValidationError(error)
@@ -88,6 +103,8 @@ def materialize_snapshot(
         "version": version,
         "source_sha256": source_sha256,
         "schema_sha256": schema_sha256,
+        "declared": declared.declared_dict(),
+        "entry": declared.entry,
     }
     manifest_sha256 = hashlib.sha256(
         json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")

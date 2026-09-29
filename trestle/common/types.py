@@ -126,6 +126,53 @@ class PluginSnapshot:
     timeout_s: int
 
 
+@dataclass(frozen=True)
+class DeclaredMetadata:
+    """What a plugin declares statically in its decorator call form, plus its entry name.
+
+    Carried in `manifest.json` as `declared` and `entry` (MC-18) and read only through
+    `trestle.server.snapshots.load_declared`. An undeclared plugin carries the defaults; the
+    300 s default deadline is applied by admission, so `deadline_s` stays `None` here.
+    """
+
+    entry: str | None = None
+    deadline_s: float | None = None
+    summary_fields: tuple[str, ...] = ()
+    packages: tuple[str, ...] = ()
+    env_arg: str | None = None
+    secrets: frozenset[str] = frozenset()
+
+    def declared_dict(self) -> dict[str, Any]:
+        """The manifest's `declared` object: canonical, JSON-safe, sorted where unordered."""
+        return {
+            "deadline_s": self.deadline_s,
+            "summary_fields": list(self.summary_fields),
+            "packages": list(self.packages),
+            "env_arg": self.env_arg,
+            "secrets": sorted(self.secrets),
+        }
+
+    @classmethod
+    def from_manifest(cls, manifest: dict[str, Any]) -> DeclaredMetadata:
+        """Read `declared` and `entry` from a manifest dict; a manifest that predates them
+        (no `declared` key) yields the defaults."""
+        entry = manifest.get("entry")
+        raw = manifest.get("declared")
+        declared: dict[str, Any] = raw if isinstance(raw, dict) else {}
+        deadline = declared.get("deadline_s")
+        env_arg = declared.get("env_arg")
+        return cls(
+            entry=str(entry) if isinstance(entry, str) else None,
+            deadline_s=deadline
+            if isinstance(deadline, (int, float)) and not isinstance(deadline, bool)
+            else None,
+            summary_fields=tuple(str(x) for x in declared.get("summary_fields", ())),
+            packages=tuple(str(x) for x in declared.get("packages", ())),
+            env_arg=str(env_arg) if isinstance(env_arg, str) else None,
+            secrets=frozenset(str(x) for x in declared.get("secrets", ())),
+        )
+
+
 @dataclass
 class CleanupView:
     """The cleanup disposition of a finished run's process-group target (B2-C9, B4-C7): for a

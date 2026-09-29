@@ -53,6 +53,19 @@ def context_surface() -> dict[str, Any]:
     }
 
 
+# The S0 manifest keys, in the golden's (sorted) order. A key added since (MC-18: `declared`,
+# `entry`) is listed after them, so the golden stays a prefix of the current list and an
+# additive key shows as an addition rather than shifting every S0 key's position.
+_S0_MANIFEST_KEYS = ("plugin", "schema_sha256", "source_sha256", "version")
+
+
+def _manifest_keys(manifest: dict[str, Any]) -> list[str]:
+    keys = sorted(manifest)
+    return [k for k in keys if k in _S0_MANIFEST_KEYS] + [
+        k for k in keys if k not in _S0_MANIFEST_KEYS
+    ]
+
+
 def snapshot_manifest() -> dict[str, Any]:
     """What materializing a declare-nothing plugin produces: the snapshot
     dataclass fields, the on-disk snapshot files, the manifest keys and the
@@ -67,7 +80,7 @@ def snapshot_manifest() -> dict[str, Any]:
         return {
             "snapshot_fields": [f.name for f in dataclasses.fields(PluginSnapshot)],
             "snapshot_files": files,
-            "manifest_keys": sorted(manifest),
+            "manifest_keys": _manifest_keys(manifest),
             "id_prefix": snap.snapshot_id.split("_", 1)[0] + "_",
             "declare_nothing_defaults": {
                 "timeout_s": sig.parameters["timeout_s"].default,

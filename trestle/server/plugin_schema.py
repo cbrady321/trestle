@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, NoReturn, cast
 
 from trestle.common.canonical import canonical_json
 from trestle.common.fsutil import sha256_bytes
+from trestle.common.types import DeclaredMetadata
 
 SUBSET_POINTER = "docs/plugins.md"
 MAX_OBJECT_DEPTH = 5
@@ -271,6 +273,148 @@ def find_trestle_function(tree: ast.AST) -> _FnDef | None:
         if _has_trestle_decorator(node):
             return node
     return None
+
+
+DECLARED_KEYWORDS = ("deadline", "summary_fields", "packages", "env_arg", "secrets")
+_TIMEDELTA_UNITS = {
+    "weeks": 604800.0,
+    "days": 86400.0,
+    "hours": 3600.0,
+    "minutes": 60.0,
+    "seconds": 1.0,
+    "milliseconds": 0.001,
+    "microseconds": 0.000001,
+}
+
+
+class DeclarationError(SchemaError):
+    """A decorator call form is outside the statically readable subset."""
+
+
+def declared_from_source(source: str) -> DeclaredMetadata:
+    """The entry name and the decorator metadata of the @trestle function, read from the AST.
+
+    Only literals are read; a keyword that is unknown, repeated, positional-only, non-literal
+    or out of range raises `DeclarationError` (refused at publication, WR-PLAN-4)."""
+    fn = find_trestle_function(ast.parse(source))
+    if fn is None:
+        _reject("no @trestle entry point found")
+    assert fn is not None
+    return declared_from_function(fn)
+
+
+def declared_from_function(fn: _FnDef) -> DeclaredMetadata:
+    call = _trestle_call(fn)
+    if call is None:
+        return DeclaredMetadata(entry=fn.name)
+    if call.args:
+        raise DeclarationError(
+            f"@trestle takes keyword arguments only ({', '.join(DECLARED_KEYWORDS)}); "
+            f"see {SUBSET_POINTER}"
+        )
+    values: dict[str, ast.expr] = {}
+    for kw in call.keywords:
+        if kw.arg is None:
+            raise DeclarationError("@trestle(**...) is not statically readable")
+        if kw.arg not in DECLARED_KEYWORDS:
+            raise DeclarationError(
+                f"@trestle: unknown keyword {kw.arg!r}; allowed: {', '.join(DECLARED_KEYWORDS)}"
+            )
+        if kw.arg in values:
+            raise DeclarationError(f"@trestle: keyword {kw.arg!r} given twice")
+        values[kw.arg] = kw.value
+    return DeclaredMetadata(
+        entry=fn.name,
+        deadline_s=_declared_deadline(values["deadline"]) if "deadline" in values else None,
+        summary_fields=_declared_names(values.get("summary_fields"), "summary_fields"),
+        packages=_declared_names(values.get("packages"), "packages"),
+        env_arg=_declared_env_arg(values["env_arg"]) if "env_arg" in values else None,
+        secrets=frozenset(_declared_names(values.get("secrets"), "secrets", allow_set=True)),
+    )
+
+
+def _trestle_call(fn: _FnDef) -> ast.Call | None:
+    for dec in fn.decorator_list:
+        if (
+            isinstance(dec, ast.Call)
+            and isinstance(dec.func, ast.Name)
+            and dec.func.id == "trestle"
+        ):
+            return dec
+    return None
+
+
+def _number(node: ast.expr, keyword: str) -> float:
+    value: object
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        inner = _number(node.operand, keyword)
+        return -inner if isinstance(node.op, ast.USub) else inner
+    if isinstance(node, ast.Constant):
+        value = node.value
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return value
+    raise DeclarationError(f"@trestle: {keyword} must be a number literal")
+
+
+def _declared_deadline(node: ast.expr) -> float | None:
+    if isinstance(node, ast.Constant) and node.value is None:
+        return None
+    seconds: float
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "timedelta"
+    ):
+        if node.args or any(kw.arg not in _TIMEDELTA_UNITS for kw in node.keywords):
+            raise DeclarationError(
+                "@trestle: deadline timedelta takes literal keyword arguments "
+                f"({', '.join(_TIMEDELTA_UNITS)}) only"
+            )
+        seconds = sum(
+            _number(kw.value, "deadline") * _TIMEDELTA_UNITS[str(kw.arg)] for kw in node.keywords
+        )
+        if seconds == int(seconds):
+            seconds = int(seconds)
+    else:
+        seconds = _number(node, "deadline")
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise DeclarationError("@trestle: deadline must be a positive, finite number of seconds")
+    return seconds
+
+
+def _dotted_name(text: str, keyword: str) -> str:
+    if not text or not all(part.isidentifier() for part in text.split(".")):
+        raise DeclarationError(f"@trestle: {keyword} entry {text!r} is not a dotted name")
+    return text
+
+
+def _declared_names(
+    node: ast.expr | None, keyword: str, *, allow_set: bool = False
+) -> tuple[str, ...]:
+    if node is None:
+        return ()
+    if not (isinstance(node, (ast.List, ast.Tuple)) or (allow_set and isinstance(node, ast.Set))):
+        raise DeclarationError(f"@trestle: {keyword} must be a list or tuple of string literals")
+    names: list[str] = []
+    for item in node.elts:
+        if not (isinstance(item, ast.Constant) and isinstance(item.value, str)):
+            raise DeclarationError(f"@trestle: {keyword} entries must be string literals")
+        if keyword != "summary_fields":
+            _dotted_name(item.value, keyword)
+        elif not item.value:
+            raise DeclarationError("@trestle: summary_fields entries must not be empty")
+        names.append(item.value)
+    if len(set(names)) != len(names):
+        raise DeclarationError(f"@trestle: {keyword} lists an entry twice")
+    return tuple(names)
+
+
+def _declared_env_arg(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Constant) and node.value is None:
+        return None
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return _dotted_name(node.value, "env_arg")
+    raise DeclarationError("@trestle: env_arg must be a string literal or None")
 
 
 def type_node_to_schema(node: TypeNode) -> dict[str, object]:
