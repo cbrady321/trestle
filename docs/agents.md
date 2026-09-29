@@ -286,6 +286,22 @@ Agents reach evidence **only** through MCP. Operator HTTP does not expose `run`.
 
 ---
 
+## Stopping a run: what is not covered
+
+Cancel and deadline stop the processes Trestle can attribute to the run. Two
+boundaries are outside that guarantee (full statement in
+[`security.md`](security.md)):
+
+- A descendant that **double-forks** out of attribution between two ancestry
+  snapshots is outside the containment and evidence-integrity guarantee.
+- A run started by a version that **recorded no process identity** (K-19) is
+  finalized `interrupted` after a restart, its stop is reported **unconfirmed**,
+  never clean, and no signal is sent. Before first starting a version that
+  records identity, stop the server with no run live, or check
+  `ps -ax -o pid,command | grep trestle.child.main` and stop any such process.
+
+---
+
 ## Out of scope
 
 - Per-plugin MCP tools
