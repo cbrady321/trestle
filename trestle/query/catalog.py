@@ -22,7 +22,10 @@ _VIEW_WHEN: dict[str, dict[str, str]] = {
         "params": "run_id",
     },
     "last_error": {
-        "use_when": "Why a run failed — last error event. Empty items if the run succeeded.",
+        "use_when": (
+            "Why a run failed — the run's recorded explanation (error code, phase, message), "
+            "or the last error event the plugin logged. Empty items if the run succeeded."
+        ),
         "params": "run_id",
     },
     "run_tail": {

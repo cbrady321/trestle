@@ -232,7 +232,7 @@ Ask one question; pick one path. Prefer the **smallest** answer.
 | Question | Tool | View / target / window |
 |----------|------|------------------------|
 | What did the plugin return? | `fetch` | `{run_id}/result` + `jsonpath` or `range` |
-| Why did it fail? | `query` | `last_error` + `{run_id}` |
+| Why did it fail? | `query` | `last_error` + `{run_id}` (or `RunView.error`; K-10) |
 | What printed to wrapper stdout? | `query` | `run_tail` + `{run_id}` (post-finalize only) |
 | Structured run metadata? | `query` | `run` + `{run_id}` |
 | Event timeline? | `query` | `run_events` + `{run_id}` |
@@ -264,7 +264,7 @@ When to pick each view vs `fetch`: MCP resource **`trestle://views`**. That cata
 | View | Params | Rows |
 |------|--------|------|
 | `run` | `run_id` | Status, plugin, state, timing |
-| `last_error` | `run_id` | Last error event (empty if none) |
+| `last_error` | `run_id` | The run's recorded explanation (`execution.*` code, phase, message), else the last error event; empty for a run that succeeded (K-10) |
 | `run_tail` | `run_id` | Wrapper stdout lines, oldest first |
 | `run_events` | `run_id` | Structured events |
 | `recent_runs` | — | Recent runs (paginated) |

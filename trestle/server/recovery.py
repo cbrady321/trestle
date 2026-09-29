@@ -6,6 +6,7 @@ import json
 import shutil
 from pathlib import Path
 
+from trestle.common import codes
 from trestle.common.fsutil import atomic_write, atomic_write_json, fsync_dir
 from trestle.common.ids import generate_service_epoch
 from trestle.server import procident
@@ -128,6 +129,16 @@ def append_recovery_suffix(
     # B2-C11: the run's processes are dealt with before anything is finalized
     _record_group_stop(ledger, run_id, source=source, signaller=signaller)
     sweep_tmp_partial(run_dir)
+    # MC-15: a run finalized here has an explanation; the one it already wrote (before the restart)
+    # stands, and none is made up for a run that ends by any other means
+    if ledger.terminal_state() is None and not ledger.has_kind("error_record"):
+        ledger.append(
+            "error_record",
+            run_id=run_id,
+            code=codes.EXECUTION_INTERRUPTED,
+            phase="recovery",
+            message="the service restarted while the run was in flight",
+        )
     result_state = _result_state(run_dir)
     completeness = "complete" if result_state == "complete" else "partial"
 
@@ -192,7 +203,7 @@ def rematerialize_meta(run_dir: Path, ledger: RunLedger) -> None:
     artifact_count = sum(
         1 for record in ledger.records if record.get("kind") == "artifact_available"
     )
-    meta = {
+    meta: dict[str, object] = {
         "run_id": run_id,
         "classification": terminal,
         "duration_ms": duration_ms,
@@ -201,6 +212,9 @@ def rematerialize_meta(run_dir: Path, ledger: RunLedger) -> None:
         "limits_exceeded": limits_exceeded,
         "recovered": True,
     }
+    error = ledger.last_kind("error_record")
+    if error is not None:  # a copy of the ledger row's fields, the row being the authority
+        meta["error"] = {key: error.get(key) for key in ("code", "phase", "message")}
     atomic_write_json(evidence / "meta.json", meta)
     fsync_dir(evidence)
 

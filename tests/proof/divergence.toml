@@ -696,6 +696,98 @@ authorized_by = "plan-workflow-runtime.md:979 (MC-06: projection.{terminal_wait_
 # `*` matches one path segment. A selector that matches nothing on the head is
 # stale and fails d1. An additive entry without selectors excuses nothing.
 
+# L.CS-3.1: the nine MC-CORE-04 execution codes (MC-06 names execution.*; core.md MC-CORE-04, DM-16).
+
+[[entry]]
+id = "ADD-code-execution-import-failed"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.import_failed"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-bind-failed"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.bind_failed"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-plugin-raised"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.plugin_raised"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-result-unencodable"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.result_unencodable"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-provenance-mismatch"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.provenance_mismatch"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-cancelled"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.cancelled"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-deadline-exceeded"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.deadline_exceeded"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-worker-exit"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.worker_exit"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-interrupted"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.interrupted"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
 # The core bundle's named additive diffs of the S0 goldens (keys/items/grows selectors, see the
 # L.P0-0d.20 schema comment above): one entry per change, attributed to its leaf.
 
@@ -750,3 +842,28 @@ direction = "additive"
 keys = ["$.frames.*.cleanup"]
 items = [{ path = "$.fields", value = ["cleanup", "CleanupView | None"] }]
 authorized_by = "plans/core.md MC-32 (L.CS-2.6: the cleanup projection on RunView)"
+
+# L.CS-3.2 (MC-15): the error_record ledger row is the sole failure authority.
+# ledger_kinds: $.sequences.<failing state>[n] (error_record before execution_ended).
+# fossil_projection: $.<state>.reader.after_recovery.kinds (error_record on admitted, created,
+# execution_ended, finalized_no_terminal, started, straddle, torn_tail).
+
+[[entry]]
+id = "ADD-ledger-kind-error-record"
+facet = "ledger_kinds"
+row_or_k = "MC-15"
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.2)"
+direction = "additive"
+items = [{ path = "$.sequences.*", value = "error_record" }]
+authorized_by = "plans/core.md MC-15 (L.CS-3.2: error_record ledger row is the sole authority; meta derived)"
+
+[[entry]]
+id = "ADD-fossil-recovery-error-record"
+facet = "fossil_projection"
+row_or_k = "MC-15"
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.2)"
+direction = "additive"
+items = [{ path = "$.*.reader.after_recovery.kinds", value = "error_record" }]
+authorized_by = "plans/core.md MC-15 (L.CS-3.2: recovery finalizes with an error_record row)"
