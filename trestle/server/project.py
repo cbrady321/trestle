@@ -18,21 +18,32 @@ from trestle.common.types import (
     CleanupView,
     Handle,
     JoinMode,
+    PluginSnapshot,
     PublishView,
     RequestOutcome,
+    RunSpec,
     RunView,
 )
 from trestle.query.fs import FilesystemQueryBackend
-from trestle.server.ledger import TERMINAL_KINDS, RunLedger, evidence_dir, ledger_path
+from trestle.server.ledger import (
+    TERMINAL_KINDS,
+    RunLedger,
+    evidence_dir,
+    ledger_path,
+)
 from trestle.server.pins import PinStore
 from trestle.server.projection import (
     build_summary,
+    count_events,
     fetch_bytes,
     load_index,
     write_summary_json,
 )
 from trestle.server.registry import Registry
 from trestle.server.runs import RunRegistry
+from trestle.server.snapshots import load_declared
+
+DEFAULT_SUMMARY_BUDGET = 4096
 
 
 @dataclass
@@ -344,15 +355,15 @@ class Project:
                 1 for record in ledger.records if record.get("kind") == "artifact_available"
             )
 
+        # MC-12: a finalized run's count is on its `evidence_finalized` row, read with no file
+        # scan; a run still in flight (or one finalized before the field existed) is counted live
         event_count = 0
-        if evidence is not None:
-            events_path = evidence / "events.ndjson"
-            if events_path.exists():
-                event_count = sum(
-                    1
-                    for line in events_path.read_text(encoding="utf-8").splitlines()
-                    if line.strip()
-                )
+        finalized = ledger.last_kind("evidence_finalized")
+        recorded = finalized.get("event_count") if finalized is not None else None
+        if isinstance(recorded, int) and not isinstance(recorded, bool):
+            event_count = recorded
+        elif evidence is not None:
+            event_count = count_events(evidence)
 
         summary = None
         truncated = False
@@ -364,18 +375,25 @@ class Project:
             index = load_index(evidence)
             result_path = evidence / "result.json"
             if index is not None and result_path.exists():
-                budget = self._summary_budget(ledger)
+                spec = _read_spec(evidence)
+                budget = self._summary_budget(spec)
                 projection = build_summary(
                     run_id=run_id,
                     result_path=result_path,
                     index=index,
                     budget=budget,
+                    declared_fields=self._declared_summary_fields(spec),
                 )
                 summary = projection.summary
                 truncated = projection.truncated
                 omitted = projection.omitted
                 next_handle = projection.next_handle
                 result_bytes = projection.result_bytes
+                if projection.markers:
+                    limits_exceeded = [
+                        *(limits_exceeded if isinstance(limits_exceeded, list) else []),
+                        *projection.markers,
+                    ]
                 write_summary_json(evidence, projection, budget)
             elif evidence.joinpath("result.state").exists():
                 result_bytes = None
@@ -398,13 +416,47 @@ class Project:
             outcome=_outcome_view(ledger, state, evidence),
         )
 
-    def _summary_budget(self, ledger: RunLedger) -> int:
-        created = ledger.last_kind("created")
-        plugin = str(created.get("plugin", "")) if created else ""
-        snap = self.registry.get(plugin)
-        if snap is not None:
-            return snap.summary_budget
-        return 4096
+    def _summary_budget(self, spec: dict[str, object] | None) -> int:
+        """The budget the run was admitted under: its own `spec.json`, whatever is published
+        later (WR-TERM-5)."""
+        budget = spec.get("summary_budget") if spec is not None else None
+        if isinstance(budget, int) and not isinstance(budget, bool):
+            return budget
+        return DEFAULT_SUMMARY_BUDGET
+
+    def _declared_summary_fields(self, spec: dict[str, object] | None) -> tuple[str, ...]:
+        """The `summary_fields` the run's own snapshot declared (MC-18), read through
+        `snapshots.load_declared`. A run whose snapshot is gone declares nothing."""
+        if spec is None:
+            return ()
+        try:
+            run_spec = RunSpec.from_dict(spec)
+        except (KeyError, TypeError, ValueError):
+            return ()
+        plugin_path = self.home / "snapshots" / run_spec.snapshot_id / "plugin.py"
+        if not plugin_path.is_file():
+            return ()
+        snap = PluginSnapshot(
+            snapshot_id=run_spec.snapshot_id,
+            plugin=run_spec.plugin,
+            version=run_spec.version,
+            source_path=str(plugin_path),
+            source_sha256=run_spec.source_sha256,
+            schema_sha256=run_spec.schema_sha256,
+            manifest_sha256=run_spec.manifest_sha256,
+            summary_budget=run_spec.summary_budget,
+            timeout_s=run_spec.timeout_s,
+        )
+        return load_declared(snap).summary_fields
+
+
+def _read_spec(evidence: Path) -> dict[str, object] | None:
+    """The run's admitted spec, or None when it is missing or unreadable."""
+    try:
+        loaded = json.loads((evidence / "spec.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return loaded if isinstance(loaded, dict) else None
 
 
 def _terminal_wait_exceeded(run_id: Handle) -> RequestOutcome:

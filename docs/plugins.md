@@ -57,6 +57,27 @@ their digests for each run.
 - Use `ctx.log` for structured events; wrapper stdout/`print` appears in `query(run_tail)`.
 - Write keepers under `outputs/` — the foundation attaches them as artifacts.
 
+## Artifacts and their limits
+
+A run produces artifacts three ways, and the same limits hold on all three (K-17):
+
+- **`outputs/`.** Every file under `ctx.outputs` is promoted to an artifact when the run ends, whatever
+  the run's class.
+- **`ctx.attach(path, name=...)`** copies a file under the work directory into the run's evidence
+  now and returns its handle.
+- **`ctx.artifact(name)`** returns a staging path (`<name>.partial`). A staged file that is never
+  attached is promoted when the run ends, under `name`; if it is attached, the attach takes it
+  and it is not promoted again.
+
+A run may hold at most 1 000 artifacts and 2 GiB of artifact bytes in all (10 and 64 KiB under
+`TRESTLE_TEST_LIMITS=1`). An artifact that would pass either limit is **not** stored, and the run's
+`limits_exceeded` names the limit once (`stream: "artifacts"`, `limit: "max_artifact_count"` or
+`"max_artifact_bytes"`, with the bytes left out): a refused promotion leaves the file where the plugin
+wrote it, and a refused `attach` returns the empty string, so a handle a plugin was given always
+fetches. Every promoted artifact is scrubbed of declared secret values first; a binary artifact that
+holds one is refused with a `secret_in_binary` marker. Limit markers are one per (stream, limit) for
+the whole run, however many things were dropped: the marker's byte total counts them all.
+
 ## Deadlines, cancel and subprocesses
 
 `ctx.deadline` is the run's deadline, fixed at admission (the plugin's declared `deadline`, else
