@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -22,7 +23,13 @@ from trestle.server.plugin_paths import (
     CATALOG_HINT_PACKS_MISSING,
     log_plugin_warning,
 )
-from trestle.server.plugin_schema import SchemaError, declared_from_source, schemas_from_source
+from trestle.server.plugin_schema import (
+    EntryError,
+    SchemaError,
+    declared_from_source,
+    find_trestle_function,
+    schemas_from_source,
+)
 from trestle.server.plugin_validate import PluginValidationError, validate_plugin_imports
 from trestle.server.snapshots import (
     discover_plugin_name,
@@ -262,7 +269,15 @@ class Registry:
                 origin="publication",
             )
         try:
+            find_trestle_function(ast.parse(source))
             discovered = discover_plugin_name_from_source(source)
+        except EntryError as exc:
+            return RequestOutcome(
+                code=codes.PUBLICATION_VALIDATION_FAILED,
+                message=str(exc)[:200],
+                retryable=False,
+                origin="publication",
+            )
         except SyntaxError as exc:
             return RequestOutcome(
                 code=codes.PUBLICATION_INVALID_SOURCE,

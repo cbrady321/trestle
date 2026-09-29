@@ -266,13 +266,44 @@ def _match_array(value: object, schema: dict[str, object], *, path: str) -> None
             raise ArgsError(f"invalid {loc}: values must be unique; {_DESCRIBE_HINT}")
 
 
+class EntryError(SchemaError):
+    """The source has no single, synchronous entry point (WR-PLAN-4)."""
+
+
+def entry_functions(tree: ast.AST) -> list[_FnDef]:
+    """The module-level `@trestle` definitions of one plugin.py, in source order.
+
+    Only a definition made in this file can be an entry: a marked callable it imports is not
+    found here, so it is never the entry."""
+    return [
+        node
+        for node in (tree.body if isinstance(tree, ast.Module) else [])
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and _has_trestle_decorator(node)
+    ]
+
+
 def find_trestle_function(tree: ast.AST) -> _FnDef | None:
-    for node in tree.body if isinstance(tree, ast.Module) else []:
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        if _has_trestle_decorator(node):
-            return node
-    return None
+    """The one entry point: exactly one `@trestle` def defined in the file, and not `async`.
+
+    None when there is no marked definition. Two or more (ambiguous) or an `async` entry
+    raises `EntryError`, so a plugin is refused at publication, never run as a guess."""
+    fns = entry_functions(tree)
+    if not fns:
+        return None
+    if len(fns) > 1:
+        names = ", ".join(fn.name for fn in fns)
+        raise EntryError(
+            f"ambiguous entry point: {len(fns)} @trestle functions ({names}); "
+            f"define exactly one; see {SUBSET_POINTER}"
+        )
+    fn = fns[0]
+    if isinstance(fn, ast.AsyncFunctionDef):
+        raise EntryError(
+            f"async entry point {fn.name!r} is not supported; define a plain def; "
+            f"see {SUBSET_POINTER}"
+        )
+    return fn
 
 
 DECLARED_KEYWORDS = ("deadline", "summary_fields", "packages", "env_arg", "secrets")

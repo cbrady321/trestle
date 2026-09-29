@@ -71,17 +71,17 @@ def packs_import_error() -> str | None:
     return err[:200] if err else "import failed"
 
 
-def validate_plugin(source_path: Path) -> str | None:
-    """Import the plugin in a throwaway child. None means ok; str is diagnosis."""
+def validate_plugin(source_path: Path, *, entry: str | None = None) -> str | None:
+    """Import the plugin in a throwaway child. None means ok; str is diagnosis.
+
+    `entry`, when given, is the entry name the publisher derived from the source; the child
+    refuses a plugin whose one marked callable is not that."""
+    argv = [sys.executable, "-m", "trestle.child.validate", "--plugin", str(source_path)]
+    if entry is not None:
+        argv += ["--entry", entry]
     try:
         proc = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "trestle.child.validate",
-                "--plugin",
-                str(source_path),
-            ],
+            argv,
             capture_output=True,
             text=True,
             timeout=VALIDATE_TIMEOUT_S,

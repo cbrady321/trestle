@@ -13,6 +13,7 @@ from trestle.common.fsutil import atomic_write, sha256_file
 from trestle.common.ids import generate_snapshot_id
 from trestle.common.types import DeclaredMetadata, PluginSnapshot
 from trestle.server.plugin_schema import (
+    EntryError,
     declared_from_source,
     find_trestle_function,
     schema_digest,
@@ -63,7 +64,12 @@ def load_declared(snap: PluginSnapshot) -> DeclaredMetadata:
 
 
 def discover_plugin_name_from_source(source: str) -> str | None:
-    fn = find_trestle_function(ast.parse(source))
+    try:
+        fn = find_trestle_function(ast.parse(source))
+    except EntryError:
+        # No single entry: the source cannot be published under any name (schemas_from_source
+        # names the reason), so there is no name to discover.
+        return None
     return None if fn is None else fn.name
 
 
@@ -83,7 +89,7 @@ def materialize_snapshot(
     source = source_path.read_text(encoding="utf-8")
     schema, return_schema = schemas_from_source(source, source_path=source_path)
     declared = declared_from_source(source)
-    error = validate_plugin(source_path)
+    error = validate_plugin(source_path, entry=declared.entry)
     if error is not None:
         raise PluginValidationError(error)
     schema_bytes = canonical_json(schema)
