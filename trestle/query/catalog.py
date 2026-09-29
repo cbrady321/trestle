@@ -45,7 +45,11 @@ _VIEW_WHEN: dict[str, dict[str, str]] = {
         "params": "run_id",
     },
     "recent_runs": {
-        "use_when": "Browse recent runs, newest first. Follow next_cursor when truncated.",
+        "use_when": (
+            "Browse recent runs, newest first. Follow next_cursor when it is set. "
+            "truncated with next_cursor null: older runs lie past the window (reach past "
+            "it is out); a run_id view of one answers projection.outside_window."
+        ),
         "params": "",
     },
     "recent_failures": {
