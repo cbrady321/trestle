@@ -268,8 +268,9 @@ def test_proc_gate_runs_under_host_lock(tmp_path):
 
 
 def test_hung_gate_run_killed_at_host_run_max_lock_freed(tmp_path, monkeypatch):
-    """A planted hung gate run holding the lock is killed with its process
-    group at HOST_RUN_MAX (injected clock), writes no record, frees the lock."""
+    """A planted hung child of the real proc_gate.run path (no wrapped
+    `hold`) is killed with its process group at the bound, writes no
+    record, and frees the lock."""
     import fcntl
     import signal
     import time
@@ -279,51 +280,40 @@ def test_hung_gate_run_killed_at_host_run_max_lock_freed(tmp_path, monkeypatch):
     repo = _repo(tmp_path)
     record_dir = tmp_path / "records-hung"
     lock_path = tmp_path / "hung.lock"
+    pidfile = tmp_path / "grandchild.pid"
+    # shell + backgrounded grandchild: both must die with the group
+    script = f"sleep 300 & echo $! > {pidfile}; wait"
 
-    # a planted hung gate process in its own process group
-    hung = subprocess.Popen(["sleep", "300"], start_new_session=True)
-    pgid = os.getpgid(hung.pid)
-    killed = []
-    ticks = {"n": 0.0}
-
-    def clock():
-        ticks["n"] += fence_mod.HOST_RUN_MAX + 1.0
-        return ticks["n"]
-
-    def kill_group():
-        killed.append(pgid)
-        os.killpg(pgid, signal.SIGKILL)
-
-    real_hold = host_lock.hold
-
-    def bounded_hold(**kw):
-        return real_hold(
-            lock_path=lock_path,
-            host_run_max=fence_mod.HOST_RUN_MAX,
-            clock=clock,
-            kill_process_group=kill_group,
-            **kw,
-        )
-
-    monkeypatch.setattr(proc_gate.host_lock, "hold", bounded_hold)
     monkeypatch.delenv(host_lock.HELD_ENV, raising=False)
-    ran = []
+    started = time.time()
+    grandchild = None
     try:
         with pytest.raises(host_lock.HostRunTimedOut, match="HOST run timed out"):
             proc_gate.run(
                 cwd=repo,
                 record_dir=record_dir,
-                pytest_runner=lambda a, e: ran.append(a),
                 pip_runner=lambda *a: None,
+                host_run_max=1.0,
+                lock_path=lock_path,
+                command=["sh", "-c", script],
             )
-        hung.wait(timeout=10)  # reaped: the group really died
+        assert time.time() - started < 30
+        grandchild = int(pidfile.read_text())
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            try:
+                os.kill(grandchild, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.05)
+        with pytest.raises(ProcessLookupError):
+            os.kill(grandchild, 0)
     finally:
-        if hung.poll() is None:
-            hung.kill()
-            hung.wait()
-    assert killed == [pgid]
-    assert hung.returncode == -signal.SIGKILL
-    assert ran == []
+        if grandchild is not None:
+            try:
+                os.kill(grandchild, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
     assert not list(record_dir.glob("*.json")) if record_dir.exists() else True
     assert host_lock.HELD_ENV not in os.environ
     deadline = time.time() + 5
