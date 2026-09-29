@@ -16,7 +16,7 @@ import importlib
 import tomllib
 from pathlib import Path
 
-from tests.proof import harness
+from tests.proof import harness, tolerances
 
 ROOT = Path(__file__).resolve().parents[2]
 FOSSILS_ROOT = ROOT / "tests" / "fixtures" / "fossils"
@@ -56,14 +56,16 @@ def produce_succeeded(home: Path) -> None:
     """Spine fossil: one run of the shared `echo` plugin to completion."""
     home.mkdir(parents=True, exist_ok=True)
     kernel = harness.fresh_kernel(home=home)
-    harness.run_to_dir(kernel, "echo", {"message": "fossil-succeeded"}, wait_ms=5000)
+    harness.run_to_dir(
+        kernel, "echo", {"message": "fossil-succeeded"}, wait_ms=tolerances.HARNESS_WAIT_MS
+    )
 
 
 def produce_failed(home: Path) -> None:
     """Spine fossil: one run of a plugin that raises, terminal `failed`."""
     home.mkdir(parents=True, exist_ok=True)
     kernel = harness.fresh_kernel(plugin_dirs=[FIXTURE_PLUGIN_DIR], home=home)
-    harness.run_to_dir(kernel, "boom", {}, wait_ms=5000)
+    harness.run_to_dir(kernel, "boom", {}, wait_ms=tolerances.HARNESS_WAIT_MS)
 
 
 def cmd_generate(args: argparse.Namespace) -> int:
