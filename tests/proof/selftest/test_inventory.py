@@ -55,10 +55,14 @@ def test_count_pending_exits_0_iff_pending() -> None:
 
 
 def test_count_pending_lane_filter() -> None:
+    # Lanes discharge their own entries (TM-P0-8), so the expected lane-A
+    # count is read from the inventory rather than frozen at its P0-0a value.
+    gaps = tomllib.loads(GAPS_PATH.read_text())["gap"]
+    expected_a = sum(1 for g in gaps if g["lane"] == "A" and g.get("entry") == "pending")
     proc_a = _run("--count-pending", "--lane", "A")
     proc_z = _run("--count-pending", "--lane", "does-not-exist")
-    assert proc_a.returncode == 0
-    assert int(proc_a.stdout.strip()) == 4  # G-A1..G-A4, all pending
+    assert int(proc_a.stdout.strip()) == expected_a
+    assert proc_a.returncode == (0 if expected_a else 1)
     assert proc_z.returncode == 1
     assert int(proc_z.stdout.strip()) == 0
 
