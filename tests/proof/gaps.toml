@@ -76,63 +76,63 @@ id = "G-C1"
 lane = "C"
 flip_merge = "CS-4"
 target = "required"
-entry = "pending"
+entry = "tests.pins.c_surface.test_g_c1:wait_at_budget"
 
 [[gap]]
 id = "G-C2"
 lane = "C"
 flip_merge = "CL-B1"
 target = "required"
-entry = "pending"
+entry = "tests.pins.c_surface.test_g_c2:project_across_republish"
 
 [[gap]]
 id = "G-C3"
 lane = "C"
 flip_merge = "CK-1"
 target = "required"
-entry = "pending"
+entry = "tests.pins.c_surface.test_g_c3:retry_after_edit"
 
 [[gap]]
 id = "G-C4"
 lane = "C"
 flip_merge = "CL-B1"
 target = "none(DM-20)"
-entry = "pending"
+entry = "tests.pins.c_surface.test_g_c4:sorted_fill_view"
 
 [[gap]]
 id = "G-D1"
 lane = "D"
 flip_merge = "CS-1"
 target = "required"
-entry = "pending"
+entry = "tests.pins.d_evidence.test_g_d1:test_target_bytes_read_nongrowing_2000_vs_4000"
 
 [[gap]]
 id = "G-D2"
 lane = "D"
 flip_merge = "CS-1"
 target = "required"
-entry = "pending"
+entry = "tests.pins.d_evidence.test_g_d2:test_target_no_valid_row_lost"
 
 [[gap]]
 id = "G-D3"
 lane = "D"
 flip_merge = "CS-3"
 target = "required"
-entry = "pending"
+entry = "tests.pins.d_evidence.test_g_d3:test_target_last_error_contains_exception_message"
 
 [[gap]]
 id = "G-D4"
 lane = "D"
 flip_merge = "CL-B1"
 target = "required"
-entry = "pending"
+entry = "tests.pins.d_evidence.test_g_d4:test_target_marker_lines_equal_for_200_and_2000_drops"
 
 [[gap]]
 id = "G-D5"
 lane = "D"
 flip_merge = "CL-B1"
 target = "required"
-entry = "pending"
+entry = "tests.pins.d_evidence.test_g_d5:test_target_cap_marked_and_staged_promoted_or_refused"
 
 [[gap]]
 id = "G-E1"

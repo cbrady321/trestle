@@ -240,3 +240,71 @@ def test_matrix_job_ancestry_is_required_as_both_check_runs():
         False,
         "ancestry (macos-latest)",
     )
+
+
+# --- CM-3 step 3: a stale READY branch is refreshed by merging master forward
+
+
+def _two_lanes(rig, monkeypatch, second_file: str, second_text: str) -> str:
+    """Add `wr/x/m2`, cut from the same base as `wr/x/m1` (M1 unchanged), mark
+    both READY (M1 first) and make the faked PR head follow the remote."""
+    runner, origin = rig["runner"], rig["origin"]
+    root = _sh(runner, "rev-parse", "origin/master")
+    (fence_mod.FENCE_D_DIR / "p.toml").write_text(
+        'phase = "p"\n[[lane]]\nname = "x"\nbranch_prefix = "wr/x/"\nglobs = ["a/**"]\n'
+        '[[gate]]\nbranch = "wr/x/m1"\nmerge = "M1"\n'
+        '[[gate]]\nbranch = "wr/x/m2"\nmerge = "M2"\n'
+    )
+    _sh(runner, "checkout", "-q", "-b", "wr/x/m2", root)
+    (runner / second_file).write_text(second_text)
+    _sh(runner, "add", second_file)
+    _sh(runner, "commit", "-q", "-m", "second lane change")
+    _sh(runner, "push", "-q", "origin", "HEAD:refs/heads/wr/x/m2")
+    m2_head = _sh(runner, "rev-parse", "HEAD")
+    monkeypatch.setattr(
+        fence_mod, "pr_head_via_gh", lambda branch, _cwd: _sh(origin, "rev-parse", branch)
+    )
+    _sh(runner, "checkout", "-q", "wr/x/m1")
+    assert fence_mod.main(["ready", "mark"]) == 0
+    _sh(runner, "checkout", "-q", "wr/x/m2")
+    assert fence_mod.main(["ready", "mark"]) == 0
+    _sh(runner, "checkout", "-q", "wr/x/m1")
+    return m2_head
+
+
+def test_land_once_refreshes_a_stale_ready_branch_by_merging_master_forward(
+    rig, monkeypatch, capsys
+):
+    origin = rig["origin"]
+    m2_head = _two_lanes(rig, monkeypatch, "a/two.txt", "two")
+    monkeypatch.setattr(fence_mod, "_time", FakeClock())
+    assert fence_mod.main(["land", "--once"]) == 0
+    log = _master_log(rig)
+    assert log.count("WR-Merge: M1") == 1 and log.count("WR-Merge: M2") == 1
+    new_head = _sh(origin, "rev-parse", "wr/x/m2")
+    parents = _sh(origin, "rev-list", "--parents", "-n1", new_head).split()[1:]
+    assert len(parents) == 2 and m2_head in parents  # a merge commit, not a rebase
+    assert _sh(origin, "merge-base", "--is-ancestor", rig["head"], new_head) == ""
+    assert _sh(origin, "rev-list", "--merges", "-n1", "master").split()  # --no-ff landings
+    second_parents = _sh(origin, "log", "--merges", "--format=%P", "-n1", "master").split()
+    assert second_parents[1] == new_head
+    _sh(rig["runner"], "checkout", "-q", "wr/x/m2")
+    assert _status(rig, capsys) == []
+
+
+def test_land_once_refresh_conflict_returns_rebase_conflict_and_leaves_the_branch(
+    rig, monkeypatch, capsys
+):
+    origin = rig["origin"]
+    m2_head = _two_lanes(rig, monkeypatch, "a/change.txt", "conflicting")
+    assert fence_mod.main(["land", "--once"]) == 0
+    log = _master_log(rig)
+    assert log.count("WR-Merge: M1") == 1 and "WR-Merge: M2" not in log
+    assert _sh(origin, "rev-parse", "wr/x/m2") == m2_head  # branch untouched on the remote
+    _sh(rig["runner"], "checkout", "-q", "wr/x/m2")
+    (entry,) = _status(rig, capsys)
+    assert entry["_merge_id"] == "M2" and entry["reason"] == "rebase conflict"
+    assert entry["returns"] == 1
+    landing = rig["runner"].parent / "landing"
+    assert not landing.exists()
+    assert "MERGE_HEAD" not in _sh(rig["runner"], "status", "--porcelain=v2", "--branch")
