@@ -193,6 +193,21 @@ class RunServices(Protocol):
     def evidence(self) -> EvidenceSink: ...
 
 
+@runtime_checkable
+class FinalizationBounds(Protocol):
+    """Two operator bounds the loop reads and B2's surface does not carry (L.SV-5.7): the reserve
+    each parent holds back in a carve (the dispatch re-check's worst case needs it, B2-C5) and the
+    finalization margin (J-25's currency margin, V-3.1). `trestle.workflow` may not import
+    `clock.py` (C.5 step 4), so the child's services expose them; a `RunServices` without them is
+    read as zero for both."""
+
+    @property
+    def finalization_reserve_s(self) -> float: ...
+
+    @property
+    def currency_margin_s(self) -> float: ...
+
+
 # ---- B2-C14
 
 
@@ -211,6 +226,7 @@ __all__ = [
     "AttemptTicket",
     "ChildRunId",
     "Cut",
+    "FinalizationBounds",
     "LaneRefusal",
     "NodeEnd",
     "PlanAccepted",

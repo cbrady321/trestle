@@ -39,3 +39,13 @@ probe             = "python -m tests.proof.probes.single multi-vertex-refusal"  
 removal_condition = "full -> choice-only when the J-TRL lift set is green (narrowed by L.TR-L.1); choice-only -> absent when ChoiceNode selection and live-state are green"
 removed_by        = "L.TR-5.3"
 permanent         = false
+
+[[entry]]
+id                = "loop-walk-children-absent"     # plan id TM-B2-6
+mechanism         = "trestle/workflow/loop.py raises before any effect when a vertex is composite (the walk is tree-band work, OQ-28)"
+introduced_by     = "L.SV-5.7"
+serves            = []
+probe             = "grep -q 'walk_children: tree band' trestle/workflow/loop.py"
+removal_condition = "the in-library AllDeclaration walk lands"
+removed_by        = "L.TR-3.2"
+permanent         = false

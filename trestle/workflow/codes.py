@@ -27,6 +27,9 @@ TICKET_REFUSED: Final = "execution.ticket_refused"
 LANE_UNAVAILABLE: Final = "execution.lane_unavailable"
 UNIT_RAISED: Final = "execution.unit_raised"
 STOP_SEEN: Final = "execution.stop_seen"
+DECLARATION_STALE: Final = "execution.declaration_stale"
+# one spelling for admission and for the in-run dispatch re-check (V-11 `BUDGET_DOES_NOT_FIT`)
+BUDGET_DOES_NOT_FIT: Final = "admission.budget_does_not_fit"
 
 # V-11.2: the human-actionable NOT_APPLIED set (read by J-5a).
 HUMAN_ACTIONABLE: Final = frozenset({CREDENTIAL_INTERACTIVE, TOOLCHAIN_MISSING})
