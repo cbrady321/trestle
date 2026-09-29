@@ -120,11 +120,12 @@ def test_fence_fragment_lanes_and_gates(tmp_path: Path) -> None:
     for lane in product:
         missing = [g for g in lane.globs if g not in bundle_lane.globs]
         assert not missing, (lane.name, missing)
-    # paths the leaves need that no per-lane block owns (AM-4, AM-5, AM-10)
+    # paths the leaves need that no per-lane block owns (AM-4, AM-5, AM-10; core's deferral test)
     for extra in (
         "tests/proof/differ.py",
         "tests/proof/divergence.toml",
         "tests/proof/drift/core/test_sa05_clock.py",
+        "tests/core/docs/test_cl_d1_deferrals.py",
     ):
         assert extra in bundle_lane.globs, extra
 

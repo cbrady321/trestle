@@ -80,7 +80,8 @@ globs         = ["trestle/server/lease.py", "trestle/server/answer.py", "tests/s
 # above (89 distinct) plus what the leaves need and no lane owns: tests/proof/differ.py (d4/d5/d8 builders delete
 # their UNBUILT_MODES keys), tests/proof/divergence.toml (named ADD-code-* entries for the new wire codes),
 # tests/proof/drift/core/test_sa05_clock.py (the published release slice changes core's SA-05 assertions), and the
-# package markers of the new test trees.
+# package markers of the new test trees, and core's deferral test (it asserted that no deferral label is declared
+# `claim`; the single fragment declares the two deferred core labels it claims at SL-8).
 [[lane]]
 name          = "single-bundle"
 branch_prefix = "wr/single-bundle/"
@@ -121,7 +122,8 @@ globs         = ["docs/agent-console-mcp.md", "docs/agents.md", ".cursor/skills/
                  "trestle/server/main.py", "tests/proof/differ.py", "tests/proof/divergence.toml",
                  "tests/proof/drift/core/test_sa05_clock.py", "tests/single/__init__.py",
                  "tests/proof/drift/single/__init__.py", "tests/proof/probes/__init__.py",
-                 "tests/proof/differ_modes/__init__.py", "tests/proof/fossil_states/__init__.py"]
+                 "tests/proof/differ_modes/__init__.py", "tests/proof/fossil_states/__init__.py",
+                 "tests/core/docs/test_cl_d1_deferrals.py"]
 
 [[lane]]                     # the checkpoint lane: only the J-SINGLE gate; globs exactly CM-5's two checkpoint paths
 name          = "j-single"   # (host records tests/proof/host/host-*/*.json are exempt, CM-2)
