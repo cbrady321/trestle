@@ -143,7 +143,14 @@ def test_execution_code_vocabulary_is_the_nine_named() -> None:
         "worker_exit",
         "interrupted",
     }
-    assert codes.EXECUTION_CODES == {f"execution.{n}" for n in names}
+    nine = {f"execution.{n}" for n in names}
+    # additive since L.SV-4.2 (DM-16): the single-level execution codes join the set; the nine
+    # core members are unchanged and no other code is in it
+    from trestle.common.plan.vocabulary import SINGLE_LEVEL_CODES
+
+    single = {c for c in SINGLE_LEVEL_CODES if c.startswith("execution.")}
+    assert nine <= codes.EXECUTION_CODES
+    assert codes.EXECUTION_CODES == nine | single
     for n in names:
         assert getattr(codes, f"EXECUTION_{n.upper()}") == f"execution.{n}"
 

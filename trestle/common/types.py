@@ -246,6 +246,9 @@ class RunView:
     limits_exceeded: list[dict[str, Any]] | None = None
     cleanup: CleanupView | None = None
     outcome: dict[str, Any] | None = None  # MC-17: {class, code, identity, recovered}, beside state
+    # B4-C6: the TerminalAnswer, one additive key beside today's run state (present only once the
+    # terminal row exists, so a non-terminal frame never carries a class, WR-TERM-2)
+    answer: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -274,6 +277,8 @@ class RunView:
             out["cleanup"] = self.cleanup.to_dict()
         if self.outcome is not None:
             out["outcome"] = self.outcome
+        if self.answer is not None:
+            out["answer"] = self.answer
         return out
 
 
