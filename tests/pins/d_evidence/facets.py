@@ -48,9 +48,21 @@ def _fossil_run_id(home: Path) -> str:
     return next(p.name for p in sorted((home / "runs").glob("*/*")) if p.is_dir())
 
 
+# View row fields added since S0 (MC-18: the provenance view lists `packages`), listed after the
+# S0 fields so the golden stays a prefix of the current list and an additive field shows as an
+# addition rather than shifting every S0 field's position.
+_LATER_FIELDS = {"run_provenance": frozenset({"packages"})}
+
+
+def _declared_fields(name: str) -> list[str]:
+    later = _LATER_FIELDS.get(name, frozenset())
+    fields = VIEW_ROW_FIELDS[name]
+    return sorted(fields - later) + sorted(fields & later)
+
+
 def query_row_shapes() -> dict[str, Any]:
     views: dict[str, dict[str, Any]] = {
-        name: {"declared_fields": sorted(VIEW_ROW_FIELDS[name]), "observed": {}}
+        name: {"declared_fields": _declared_fields(name), "observed": {}}
         for name in VIEW_NAME_VALUES
     }
     with tempfile.TemporaryDirectory(prefix="trestle-d5-") as tmp:

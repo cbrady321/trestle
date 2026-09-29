@@ -220,10 +220,30 @@ This is a knowing change (K-8): before it, a process a plugin forgot outlived a 
 
 ---
 
+## Snapshot identity
+
+<!-- K-2 -->
+A plugin's snapshot id (`snap_` plus 16 hex digits) no longer hashes `plugin.py` alone. It covers the
+source, the digests of the packages the plugin declares (`@trestle(packages=[...])`), the input and
+return schemas, the declared metadata (deadline, summary fields, packages, env arg, secrets and the
+summary budget) and the Trestle runtime version. Two publications with equal ids ran equal code
+and declarations; an edit to a declared package or a declared value gives a new id. Anyone who
+compared snapshot ids to detect a change in `plugin.py` bytes should compare `source_sha256`, which
+is still the hash of that file. A schema file is never rewritten under an existing id. A run keeps
+the id it was admitted under, and stops with `execution.provenance_mismatch` if a declared package
+changed after admission (the packages are recorded, not snapshotted; see `docs/plugins.md`).
+<!-- /K-2 -->
+
 ## Cancel, deadlines and cleanup
 
-A run has one deadline, fixed when it is admitted: `timeout_s` counted from admission, so time spent
-queued or held counts against it. `cancel` and the deadline are the two ways a run is stopped, and
+A run has one deadline, fixed when it is admitted: the plugin's declared deadline (300 s when it
+declares none), counted from admission, so time spent queued or held counts against it.
+<!-- K-9 -->
+A plugin may declare a longer deadline in its `@trestle(deadline=...)` call form (one that declares
+none keeps 300 s); `describe_plugin` reports it as `deadline_s` with `deadline_source` (`declared` or `default`), and it is enforced, not
+advisory. A declared deadline above the ceiling (3600 s) is refused before any run id with
+`admission.budget_does_not_fit`.
+<!-- /K-9 --> `cancel` and the deadline are the two ways a run is stopped, and
 both stop the **whole process tree**, not just the plugin's own process. The supervisor sends
 SIGTERM to every process attributable to the run at once, waits at most `grace`, sends SIGKILL,
 and waits at most `kill` for confirmation. Attributable means the run's process group, and every

@@ -46,6 +46,7 @@ def test_ci_yml_parses_and_has_expected_jobs() -> None:
         "compat",
         "guards",
         "spine",  # L.CS-4.4
+        "long-gate",  # L.CL-C1.5
         "ancestry",
         "d2-straddle",
         "proof-ledger",
@@ -72,6 +73,8 @@ def test_test_and_compat_jobs_set_proof_gate_env() -> None:
     assert any(e.get("TRESTLE_PROOF_GATE") == "ci-compat" for e in compat_envs)
     spine_envs = [s.get("env", {}) for s in workflow["jobs"]["spine"]["steps"]]
     assert any(e.get("TRESTLE_PROOF_GATE") == "ci-spine" for e in spine_envs)  # L.CS-4.4
+    long_envs = [s.get("env", {}) for s in workflow["jobs"]["long-gate"]["steps"]]
+    assert any(e.get("TRESTLE_PROOF_GATE") == "ci-long" for e in long_envs)  # L.CL-C1.5
 
 
 def test_proof_ledger_needs_test_and_compat() -> None:
@@ -81,6 +84,7 @@ def test_proof_ledger_needs_test_and_compat() -> None:
         "compat",
         "guards",
         "spine",  # L.CS-4.4
+        "long-gate",  # L.CL-C1.5
         "ancestry",
         "d2-straddle",
     }

@@ -21,7 +21,7 @@ globs         = ["trestle/common/fsutil.py", "trestle/common/outcome.py", "trest
                  "tests/proof/drift/core/test_sa06_*.py", "tests/proof/drift/core/test_sa10_*.py", "tests/proof/drift/core/test_sa13_*.py",
                  "tests/proof/fence.d/core.toml", "tests/proof/temporary.d/core.toml", "tests/proof/labels.d/core.toml",
                  "tests/proof/gates.d/core.toml", "tests/proof/rollback.toml", "tests/proof/divergence.toml",
-                 "tests/proof/selftest/test_ci_checkout.py", "tests/proof/selftest/test_rollback.py",
+                 "tests/proof/selftest/test_ci_checkout.py", "tests/proof/selftest/test_tolerances_cli.py", "tests/proof/selftest/test_rollback.py",
                  "tests/proof/drift/test_sa06_reader_seam.py", "tests/proof/selftest/test_tolerances_cli.py",
                  "tests/pins/a_lifecycle/fossil_producers.py", "tests/pins/c_surface/test_goldens.py",
                  "tests/pins/a_lifecycle/test_g_a1.py", "tests/pins/a_lifecycle/test_g_a2.py", "tests/pins/a_lifecycle/test_g_a3.py",
@@ -60,9 +60,11 @@ globs         = ["trestle/plugin/**", "trestle/server/plugin_schema.py", "trestl
                  ".cursor/skills/trestle/SKILL.md", "pyproject.toml", ".github/workflows/ci.yml", "tests/core/contract/**",
                  "tests/proof/drift/core/test_sa02_*.py", "tests/core/tooling/declines/ck_3_4.py", "tests/proof/labels.d/core.toml",
                  "tests/proof/labels.d/p0-1b.toml",
-                 "tests/proof/gates.d/core.toml", "tests/proof/temporary.toml",
-                 "tests/pins/b_contract/test_g_b1.py", "tests/pins/b_contract/test_g_b2.py", "tests/pins/b_contract/test_g_b4.py",
-                 "tests/pins/b_contract/test_g_b5.py"]
+                 "tests/proof/gates.d/core.toml", "tests/proof/temporary.toml", "tests/proof/divergence.toml",
+                 "tests/proof/selftest/test_ci_checkout.py",
+                 "tests/proof/fence.d/core.toml", "tests/pins/b_contract/facets.py", "tests/pins/b_contract/test_g_b1.py", "tests/pins/b_contract/test_g_b2.py", "tests/pins/b_contract/test_g_b4.py",
+                 "tests/pins/b_contract/test_g_b5.py", "trestle/query/views.py", "tests/pins/c_surface/facets.py",
+                 "tests/pins/d_evidence/facets.py", "tests/pins/c_surface/test_goldens.py"]
 
 [[lane]]
 name          = "ck-14"

@@ -6,7 +6,6 @@ import asyncio
 import json
 import shutil
 import subprocess
-import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -17,6 +16,7 @@ from trestle.common import clock, codes
 from trestle.common.errtext import sanitize
 from trestle.common.fsutil import atomic_write_json
 from trestle.common.ids import generate_artifact_id
+from trestle.common.pyenv import build_child_env, python_argv
 from trestle.common.types import WorkOrder
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, work_dir
 from trestle.server.procident import Attribution, GroupStop, Identity, ProcessSource, stop_group
@@ -101,13 +101,7 @@ class Conductor:
 
         spec = self._read_spec(run_dir)
 
-        wrapper_cmd = [
-            sys.executable,
-            "-m",
-            "trestle.wrapper.main",
-            "--run-dir",
-            str(run_dir),
-        ]
+        wrapper_cmd = python_argv("-m", "trestle.wrapper.main", "--run-dir", str(run_dir))
         started = time.monotonic()
         proc = subprocess.Popen(
             wrapper_cmd,
@@ -115,7 +109,7 @@ class Conductor:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            env=_subprocess_env(self.home),
+            env=build_child_env(home=self.home),
             start_new_session=True,
         )
         # B2-C16: the leader's identity row goes down after spawn and before the first liveness
@@ -437,14 +431,3 @@ def _merge_limit_markers(markers: list[dict[str, object]]) -> list[dict[str, obj
                 "bytes_suppressed": suppressed,
             }
     return list(merged.values())
-
-
-def _subprocess_env(home: Path) -> dict[str, str]:
-    import os
-
-    env = os.environ.copy()
-    root = str(Path(__file__).resolve().parents[2])
-    existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = root if not existing else f"{root}{os.pathsep}{existing}"
-    env["TRESTLE_HOME"] = str(home)
-    return env
