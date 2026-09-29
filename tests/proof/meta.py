@@ -505,8 +505,9 @@ def cmd_ckpt(args: argparse.Namespace) -> int:
     commit_sha = fence_mod._git(ROOT, "rev-parse", commit_ref).stdout.strip()  # noqa: SLF001
     trigger_sha = trailers_mod.newest(module.TRIGGER_MERGE, ref=commit_ref, cwd=ROOT)
     # --dry lists pending reasons on any commit (L.P0-0d.4: at P0-0d there is no
-    # J0 carrier yet); only a real evaluation is limited to the newest carrier.
-    if not args.dry and (trigger_sha is None or trigger_sha != commit_sha):
+    # J0 carrier yet) and --preview evaluates the PR head, which is never a
+    # carrier; only a real evaluation is limited to the newest carrier.
+    if not args.dry and not args.preview and (trigger_sha is None or trigger_sha != commit_sha):
         print(
             f"ckpt {args.name}: {commit_sha} is not the newest "
             f"{module.TRIGGER_MERGE} carrier; no-op"

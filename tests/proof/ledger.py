@@ -13,6 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from tests.proof import results as results_mod
+from tests.proof import reviews as reviews_mod
 
 PROVEN = "PROVEN"
 UNPROVEN = "UNPROVEN"
@@ -33,6 +34,7 @@ def render(
     results_dir: Path | None = None,
     meta_config_path: Path | None = None,
     gates_dir: Path | None = None,
+    reviews_dir: Path | None = None,
 ) -> dict[str, dict[str, object]]:
     # Resolved at call time (not as bound default parameter values) so a
     # test can `monkeypatch.setattr(results_mod, "RESULTS_DIR", ...)` and
@@ -76,5 +78,19 @@ def render(
             "status": status,
             "corroborating_314": any_314_pass,
             "n_results": len(recs),
+        }
+
+    # A valid passing stage-critic review record renders `review:<id>`
+    # (MC-02, WR-PROOF review verifiers); a failing or malformed one shows
+    # nothing, so the review reads as absent.
+    passing: dict[str, int] = {}
+    for review in reviews_mod.load_valid(reviews_dir):
+        if review["outcome"] == "pass":
+            passing[review["id"]] = passing.get(review["id"], 0) + 1
+    for rid, count in passing.items():
+        report[f"review:{rid}"] = {
+            "status": PROVEN,
+            "corroborating_314": False,
+            "n_results": count,
         }
     return report
