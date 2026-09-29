@@ -37,17 +37,17 @@ Imports the standard library and `trestle.common.plan` only.
 
 from __future__ import annotations
 
-import hashlib
-from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field, replace
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from typing import Any, final
 
+from trestle.common.plan import formats, ordinal
 from trestle.common.plan import vocabulary as vocab
 from trestle.common.plan.declared import ROOT_PATH, DeclaredTree, canonical_json
 
 VERTEX_MAX = 1024  # V-13 (provisional): |PlanAccepted.selected_scope|; owner B2-C2
 REFUSAL_TEXT_MAX = 200  # V-13: `PlanRefused.subject` / `message` / `valid_listed_at`
-PLAN_FORMAT = 1
+PLAN_FORMAT = formats.PLAN_FORMAT
 
 _ROOT_NAME = "<root>"
 
@@ -124,7 +124,8 @@ class AdmittedPlan:
     (L.SV-3.2 / L.SV-3.4; empty and 0.0 as `compile` returns them); `release_rank` and
     `precedence_ordinal` are per vertex; `lease_set` is `()` (the root declares no environment)
     or the one canonical-JSON environment key; `declaration_digest` is the `DeclaredTree.digest`
-    compiled from; `plan_digest` is the sha256 of the canonical JSON of every other field.
+    compiled from (None for a plain plugin, which has no declaration); `plan_digest` is the sha256
+    of the canonical JSON of every other field (None only for the implicit depth-1 plan).
     """
 
     format_version: int
@@ -138,7 +139,7 @@ class AdmittedPlan:
     lease_set: tuple[str, ...]
     release_rank: Mapping[str, int]
     precedence_ordinal: Mapping[str, int]
-    plan_digest: str
+    plan_digest: str | None
 
     @property
     def paths(self) -> tuple[str, ...]:
@@ -166,9 +167,76 @@ class AdmittedPlan:
             "precedence_ordinal": dict(self.precedence_ordinal),
         }
 
+    def to_json(self) -> str:
+        """Canonical JSON: the body plus `plan_digest` (`formats.encode`)."""
+        return formats.encode(self.body(), self.plan_digest)
 
-def _digest_of(body: Mapping[str, Any]) -> str:
-    return hashlib.sha256(canonical_json(body).encode("utf-8")).hexdigest()
+    @classmethod
+    def from_json(cls, text: str) -> AdmittedPlan:
+        """Decode and verify. Raises `formats.UnknownPlanFormat` / `formats.PlanInvalid`."""
+        body, digest = formats.decode(text)
+        try:
+            return cls(
+                format_version=body["format_version"],
+                declaration_digest=body["declaration_digest"],
+                root=body["root"],
+                vertices=tuple(
+                    Vertex(
+                        path=v["path"],
+                        unit=v["unit"],
+                        compose=v["compose"],
+                        budget_s=v["budget_s"],
+                        children=tuple(v["children"]),
+                        needs=tuple(v["needs"]),
+                        concurrency=v["concurrency"],
+                        create_run=tuple((e, t) for e, t in v["create_run"]),
+                        vantage=v["vantage"],
+                    )
+                    for v in body["vertices"]
+                ),
+                edges=tuple((a, b) for a, b in body["edges"]),
+                eligible={p: tuple(alts) for p, alts in body["eligible"].items()},
+                slices=dict(body["slices"]),
+                release_slice=body["release_slice"],
+                lease_set=tuple(body["lease_set"]),
+                release_rank=dict(body["release_rank"]),
+                precedence_ordinal=dict(body["precedence_ordinal"]),
+                plan_digest=digest,
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise formats.PlanInvalid(f"shape:{exc!r}") from exc
+
+
+def implicit_depth1_plan(unit: str = "") -> AdmittedPlan:
+    """The plan of a root that declares no tree (B2-C1): one vertex, release rank 0, precedence
+    ordinal 0, release slice 0, no digest and no declaration digest."""
+    root = Vertex(ROOT_PATH, unit, "leaf", None, (), (), 1, (), "host")
+    return AdmittedPlan(
+        format_version=PLAN_FORMAT,
+        declaration_digest=None,
+        root=unit,
+        vertices=(root,),
+        edges=(),
+        eligible={},
+        slices={},
+        release_slice=0.0,
+        lease_set=(),
+        release_rank={ROOT_PATH: 0},
+        precedence_ordinal={ROOT_PATH: 0},
+        plan_digest=None,
+    )
+
+
+def plan_shape_equal(a: AdmittedPlan, b: AdmittedPlan) -> bool:
+    """Equal over (vertices, edges, slices, release_rank, ordinal) only: the digests and the
+    format metadata are excluded (MC-06 d4), and a vertex is its path."""
+    return (
+        a.paths == b.paths
+        and a.edges == b.edges
+        and dict(a.slices) == dict(b.slices)
+        and dict(a.release_rank) == dict(b.release_rank)
+        and dict(a.precedence_ordinal) == dict(b.precedence_ordinal)
+    )
 
 
 # ---- request access
@@ -238,87 +306,6 @@ def _refs(path: str, node: Mapping[str, Any]) -> list[_Ref]:
     return []
 
 
-class _Cycle(Exception):
-    def __init__(self, path: str) -> None:
-        super().__init__(path)
-        self.path = path
-
-
-@dataclass(slots=True)
-class _Walk:
-    order: list[str] = field(default_factory=list)
-    post: dict[str, int] = field(default_factory=dict)
-    entry: dict[str, int] = field(default_factory=dict)  # leaves placed before entering
-
-
-def _walk(root: str, kids: Callable[[str], Iterable[str]], is_leaf: Callable[[str], bool]) -> _Walk:
-    """Depth-first over canonical occurrences only: a node reached again through a second parent
-    is skipped (its position is its first occurrence). Raises `_Cycle` on a containment cycle."""
-    walk = _Walk()
-    leaves = 0
-    posn = 0
-    entered = {root}
-    on_stack = {root}
-    walk.order.append(root)
-    walk.entry[root] = leaves
-    if is_leaf(root):
-        leaves += 1
-    stack = [(root, iter(kids(root)))]
-    while stack:
-        path, it = stack[-1]
-        for kid in it:
-            if kid in on_stack:
-                raise _Cycle(kid)
-            if kid in entered:
-                continue
-            entered.add(kid)
-            on_stack.add(kid)
-            walk.order.append(kid)
-            walk.entry[kid] = leaves
-            if is_leaf(kid):
-                leaves += 1
-            stack.append((kid, iter(kids(kid))))
-            break
-        else:
-            stack.pop()
-            on_stack.discard(path)
-            walk.post[path] = posn
-            posn += 1
-    return walk
-
-
-def _toposort(
-    nodes: Sequence[str], edges: Iterable[tuple[str, str]]
-) -> tuple[dict[str, int], str | None]:
-    """Longest-path depth of every node over `(before, after)` edges, or a node on a cycle."""
-    succ: dict[str, set[str]] = {n: set() for n in nodes}
-    pred: dict[str, set[str]] = {n: set() for n in nodes}
-    for a, b in edges:
-        succ[a].add(b)
-        pred[b].add(a)
-    indeg = {n: len(pred[n]) for n in nodes}
-    depth = {n: 0 for n in nodes}
-    ready = sorted(n for n in nodes if indeg[n] == 0)
-    done = 0
-    while ready:
-        node = ready.pop()
-        done += 1
-        for nxt in sorted(succ[node]):
-            depth[nxt] = max(depth[nxt], depth[node] + 1)
-            indeg[nxt] -= 1
-            if indeg[nxt] == 0:
-                ready.append(nxt)
-    if done == len(nodes):
-        return depth, None
-    remaining = {n for n in nodes if indeg[n] > 0}
-    node = min(remaining)
-    seen: set[str] = set()
-    while node not in seen:
-        seen.add(node)
-        node = min(p for p in pred[node] if p in remaining)
-    return depth, node
-
-
 # ---- tree integrity
 
 
@@ -332,8 +319,8 @@ def _integrity(nodes: Mapping[str, Mapping[str, Any]]) -> Refusal | None:
         return bool(nodes[path]["compose"] == "leaf")
 
     try:
-        walk = _walk(ROOT_PATH, kids, is_leaf)
-    except _Cycle as cycle:
+        walk = ordinal.place(ROOT_PATH, kids, is_leaf)
+    except ordinal.Cycle as cycle:
         return Refusal(vocab.DEPENDENCY_CYCLE, _text(cycle.path), message="containment cycle")
     edges: list[tuple[str, str]] = []
     for path in walk.order:
@@ -376,7 +363,7 @@ def _integrity(nodes: Mapping[str, Mapping[str, Any]]) -> Refusal | None:
                     f"{_text(path)}/{fallback}",
                     message="fallback is not one of the choice's alternatives",
                 )
-    _, cyclic = _toposort(walk.order, edges)
+    _, cyclic = ordinal.toposort(walk.order, edges)
     if cyclic is not None:
         return Refusal(vocab.DEPENDENCY_CYCLE, _text(cyclic), message="needs cycle")
     return None
@@ -464,7 +451,7 @@ def compile(  # noqa: A001  (MC-23 names the entry point `compile`)
     def is_leaf(path: str) -> bool:
         return bool(nodes[path]["compose"] == "leaf")
 
-    walk = _walk(ROOT_PATH, kids, is_leaf)  # integrity already ruled cycles out
+    walk = ordinal.place(ROOT_PATH, kids, is_leaf)  # integrity already ruled cycles out
     scope = walk.order
 
     # (0)
@@ -591,24 +578,10 @@ def compile(  # noqa: A001  (MC-23 names the entry point `compile`)
                     edges.add((sibling.path, ref.path))
                     needs_of[ref.path].add(sibling.path)
 
-    by_post = sorted(scope, key=lambda p: walk.post[p])
-    subtree: dict[str, set[str]] = {}
-    for path in by_post:
-        acc = {path}
-        for kid in kids(path):
-            acc |= subtree[kid]
-        subtree[path] = acc
-    expanded: set[tuple[str, str]] = set()
-    for dependency, dependent in edges:
-        for before in subtree[dependency]:
-            for after in subtree[dependent]:
-                expanded.add((before, after))
-    rank, cyclic = _toposort(scope, expanded)
+    rank, cyclic = ordinal.release_ranks(walk, kids, edges)
     if cyclic is not None:
         return Refusal(vocab.DEPENDENCY_CYCLE, _text(cyclic), message="needs cycle in scope")
-
-    keyed = sorted(scope, key=lambda p: (walk.entry[p], walk.post[p]))
-    ordinal = {path: i for i, path in enumerate(keyed)}
+    precedence = ordinal.precedence_ordinals(walk)
 
     vertices = []
     for path in scope:
@@ -642,7 +615,7 @@ def compile(  # noqa: A001  (MC-23 names the entry point `compile`)
         release_slice=0.0,
         lease_set=lease_set,
         release_rank={p: rank[p] for p in scope},
-        precedence_ordinal=ordinal,
+        precedence_ordinal=precedence,
         plan_digest="",
     )
-    return replace(sealed, plan_digest=_digest_of(sealed.body()))
+    return replace(sealed, plan_digest=formats.plan_digest(sealed.body()))
