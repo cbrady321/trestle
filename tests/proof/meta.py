@@ -342,6 +342,9 @@ ROW_OWNERS_PATH = ROOT / "tests" / "proof" / "row_owners.toml"
 CSC1_REQUIRED_KEYS = {"id", "row", "step", "slice", "tier", "venue", "posture", "declared_by"}
 CSC1_OPTIONAL_KEYS = {"composes", "oq", "reason"}
 CSC1_ALL_KEYS = CSC1_REQUIRED_KEYS | CSC1_OPTIONAL_KEYS
+# C.9 / CSC-1: the only postures a label may carry. Whether a claim is
+# proven is derived from results (MC-02), never a posture.
+CSC1_POSTURES = ("claim", "gated_on", "both_variant", "deferred", "stub_proven", "shape", "na")
 
 
 def _load_all_labels() -> list[dict[str, object]]:
@@ -370,6 +373,11 @@ def cmd_audit_rows(_args: argparse.Namespace) -> int:
         if extra or missing:
             errors.append(f"{label.get('id')}: bad schema (extra={extra}, missing={missing})")
             continue
+        if label.get("posture") not in CSC1_POSTURES:
+            errors.append(
+                f"{label.get('id')}: posture={label.get('posture')!r} is not one of "
+                f"{'|'.join(CSC1_POSTURES)} (C.9, CSC-1)"
+            )
         if label.get("posture") == "gated_on" and not label.get("oq"):
             errors.append(f"{label.get('id')}: posture=gated_on requires an 'oq' field")
         composes = label.get("composes")

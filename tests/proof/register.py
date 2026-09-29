@@ -170,9 +170,64 @@ def _expand_served(served: set[str], labels: list[dict[str, Any]]) -> set[str]:
     return expanded
 
 
-def register_violations(entries: list[dict[str, Any]] | None = None) -> list[str]:
+def _label_registrants() -> dict[str, list[dict[str, Any]]]:
+    """label id -> the collected nodes registering it (`proves`/
+    `stub_proven`/compat-map), read by a collect-only run of
+    `tests.proof.audit_plugin`; each node dict carries `gap` (its
+    `target()` gap or None) and `strict_xfail`."""
+    import json
+    import os
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "nodes.json"
+        env = dict(os.environ, TRESTLE_AUDIT_OUT=str(out))
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "--collect-only",
+                "-q",
+                "-p",
+                "tests.proof.audit_plugin",
+                "-p",
+                "no:cacheprovider",
+            ],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        nodes = json.loads(out.read_text())["nodes"] if out.exists() else []
+    registrants: dict[str, list[dict[str, Any]]] = {}
+    for node in nodes:
+        for label_id in node["labels"]:
+            registrants.setdefault(label_id, []).append(node)
+    return registrants
+
+
+def _presented_as_proven(nodes: list[dict[str, Any]]) -> bool:
+    """MC-02: a label is PROVEN only when every registered node passed, so
+    a label with >=1 strict-xfail `target()` registrant renders UNPROVEN
+    while that target is red. A `claim`-posture label is presented as
+    proven (a "green clause") when it has no such red registrant; one that
+    has one is declared but not yet claimed: the entry serving it (a
+    TM-P0-2 entry) is exactly what keeps it red until its flip leaf
+    (p0-court L.P0-1A.* straddle label; J0-9 needs `meta register` to
+    exit 0)."""
+    return not any(n.get("gap") and n.get("strict_xfail") for n in nodes)
+
+
+def register_violations(
+    entries: list[dict[str, Any]] | None = None,
+    registrants: dict[str, list[dict[str, Any]]] | None = None,
+) -> list[str]:
     """`meta register`'s register rule: a claim of X fails while any present
-    entry (or its active phase) serves X."""
+    entry (or its active phase) serves X. A label is *claimed* when its
+    posture is `claim` and it is presented as proven (see
+    `_presented_as_proven`); a `claim`-posture label with a red
+    strict-xfail target registrant is a declaration, not yet a claim."""
     entries = entries if entries is not None else load_entries()
     served: set[str] = set()
     for entry in entries:
@@ -184,13 +239,20 @@ def register_violations(entries: list[dict[str, Any]] | None = None) -> list[str
     labels = _load_all_labels()
     served = _expand_served(served, labels)
 
-    violations = []
-    for label in labels:
-        if label.get("posture") != "claim":
-            continue
-        if label["id"] in served or label.get("row") in served:
-            violations.append(label["id"])
-    return violations
+    candidates = [
+        label
+        for label in labels
+        if label.get("posture") == "claim" and (label["id"] in served or label.get("row") in served)
+    ]
+    if not candidates:
+        return []
+    if registrants is None:
+        registrants = _label_registrants()
+    return [
+        label["id"]
+        for label in candidates
+        if _presented_as_proven(registrants.get(label["id"], []))
+    ]
 
 
 def load_rollback(*, path: Path | None = None) -> list[dict[str, Any]]:

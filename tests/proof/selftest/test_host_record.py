@@ -200,12 +200,57 @@ def test_live_record_check_applies_pass_set():
     assert not any("t::c" in v for v in violations)
 
 
+def test_pass_set_allows_skip_for_c9_na_posture():
+    rec = _record(
+        "a" * 40, results=[{"nodeid": "t::n", "outcome": "SKIPPED", "labels": ["lbl-na"]}]
+    )
+    assert record_mod.pass_set_violations(rec, {"lbl-na": {"posture": "na"}}) == []
+
+
+def _node(nodeid, labels=(), host_only=False):
+    return {"nodeid": nodeid, "labels": list(labels), "host_only": host_only}
+
+
+_LABELS = [{"id": "L-both", "venue": "BOTH"}, {"id": "L-ci", "venue": "CI"}]
+_NODES = [
+    _node("t.py::both", ["L-both"]),
+    _node("t.py::host", host_only=True),
+    _node("t.py::ci", ["L-ci"]),
+    _node("t.py::plain"),
+]
+
+
+def _collector(calls=None, k_hits=()):
+    def collect(extra):
+        if calls is not None:
+            calls.append(extra)
+        if extra:
+            return [_node(n) for n in k_hits]
+        return _NODES
+
+    return collect
+
+
 def test_proc_gate_default_set_is_venue_both_union_host_only():
-    args = proc_gate.default_select_args()
-    assert "host_only" in " ".join(args)
+    assert proc_gate.default_set(_NODES, _LABELS) == ["t.py::both", "t.py::host"]
+    # a plain CI node is not selected; neither venue-BOTH nor host_only alone is missed
+    assert "t.py::ci" not in proc_gate.default_set(_NODES, _LABELS)
 
 
-def test_proc_gate_select_adds_to_default_set(tmp_path):
+def test_proc_gate_select_node_id_and_k_expr_union_with_default(tmp_path):
+    calls = []
+    default, nodes = proc_gate.build_node_list(
+        ["tests/x.py::test_y", "kexpr and more"],
+        _collector(calls, k_hits=["t.py::ci", "t.py::both"]),
+        _LABELS,
+        tmp_path,
+    )
+    assert default == ["t.py::both", "t.py::host"]
+    assert nodes == ["t.py::both", "t.py::host", "tests/x.py::test_y", "t.py::ci"]
+    assert ["-k", "kexpr and more"] in calls
+
+
+def _proc_run(tmp_path, select, collector, results_nodes=None):
     calls = []
 
     def fake_runner(a, _e):
@@ -221,16 +266,62 @@ def test_proc_gate_select_adds_to_default_set(tmp_path):
     _sh(repo, "init", "-q", "-b", "master")
     _sh(repo, "commit", "-q", "--allow-empty", "-m", "root")
     rc = proc_gate.run(
-        select=["tests/x.py::test_y"],
+        select=select,
         cwd=repo,
         record_dir=tmp_path / "records",
         pytest_runner=fake_runner,
         pip_runner=lambda *a: None,
         lock_path=tmp_path / "host.lock",
+        collector=collector,
     )
+    (rec,) = [json.loads(p.read_text()) for p in (tmp_path / "records").glob("*.json")]
+    return rc, calls, rec
+
+
+def test_proc_gate_select_adds_to_default_set(tmp_path, monkeypatch):
+    from tests.proof import meta as meta_mod
+
+    monkeypatch.setattr(meta_mod, "_load_all_labels", lambda: _LABELS)
+    rc, calls, rec = _proc_run(tmp_path, ["tests/x.py::test_y"], _collector())
     assert rc == 0
-    assert "tests/x.py::test_y" in calls[0]
-    assert "-m" in calls[0] and "host_only" in calls[0]
+    assert calls[0] == ["t.py::both", "t.py::host", "tests/x.py::test_y"]
+    assert "-m" not in calls[0]
+    assert rec["status"] == "PASSED"
+
+
+def test_proc_gate_empty_default_set_is_not_a_vacuous_pass(tmp_path, monkeypatch):
+    from tests.proof import meta as meta_mod
+
+    monkeypatch.setattr(meta_mod, "_load_all_labels", lambda: _LABELS)
+    rc, calls, rec = _proc_run(tmp_path, None, lambda extra: [_node("t.py::plain")])
+    assert calls == []
+    assert rec["status"] == "PRECONDITION_UNMET"
+
+
+def test_proc_gate_zero_results_with_nonempty_default_set_fails(tmp_path, monkeypatch):
+    from tests.proof import meta as meta_mod
+
+    monkeypatch.setattr(meta_mod, "_load_all_labels", lambda: _LABELS)
+
+    def runner(_a, e):
+        Path(e["TRESTLE_AUDIT_OUT"]).write_text(json.dumps({"nodes": _NODES, "outcomes": {}}))
+
+        class R:
+            returncode = 0
+
+        return R()
+
+    repo = _repo(tmp_path)
+    rc = proc_gate.run(
+        cwd=repo,
+        record_dir=tmp_path / "records0",
+        pytest_runner=runner,
+        pip_runner=lambda *a: None,
+        lock_path=tmp_path / "host.lock",
+        collector=_collector(),
+    )
+    (rec,) = [json.loads(p.read_text()) for p in (tmp_path / "records0").glob("*.json")]
+    assert rc == 0 and rec["status"] == "FAILED"
 
 
 def test_proc_gate_second_run_at_same_sha_refused(tmp_path):
@@ -264,6 +355,7 @@ def test_proc_gate_runs_under_host_lock(tmp_path):
         pytest_runner=fake_runner,
         pip_runner=lambda *a: None,
         lock_path=tmp_path / "host.lock",
+        collector=lambda _x: [{"nodeid": "t::a", "host_only": True}],
     )
     assert rc == 0
     assert held_during_run["held"] is True
@@ -299,6 +391,7 @@ def test_hung_gate_run_killed_at_host_run_max_lock_freed(tmp_path, monkeypatch):
                 host_run_max=1.0,
                 lock_path=lock_path,
                 command=["sh", "-c", script],
+                collector=lambda _x: [{"nodeid": "t::a", "host_only": True}],
             )
         assert time.time() - started < 30
         grandchild = int(pidfile.read_text())

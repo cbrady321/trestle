@@ -97,7 +97,7 @@ def test_planted_decided_oq_clause_fails(monkeypatch: pytest.MonkeyPatch) -> Non
             "slice": "core",
             "tier": "must",
             "venue": "CI",
-            "posture": "proven",
+            "posture": "claim",
             "oq": "OQ-30",
             "declared_by": "test",
         }

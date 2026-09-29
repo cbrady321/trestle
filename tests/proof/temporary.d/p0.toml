@@ -69,7 +69,7 @@ permanent = false
 id = "TM-P0-2:G-B2"
 mechanism = "G-B2 strict-xfail target + today-pin"
 introduced_by = "L.P0-1B.2"
-serves = ["WR-COMPAT-4:preserved", "WR-PLAN-9:dataclass-arg-typed"]
+serves = ["WR-PLAN-9:dataclass-arg-typed"]
 probe = "grep -rqF --include='*.py' 'reason=\"defect:G-B2\"' tests/pins"
 removal_condition = "the target is un-xfailed and the pin inverted"
 removed_by = "L.CK-3/4.1"
