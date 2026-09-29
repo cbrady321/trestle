@@ -5,9 +5,9 @@
 from __future__ import annotations
 
 import pytest
+from trestle_packs.core.dag import plan_waves
 
 from tests.proof.markers import target_check
-from trestle_packs.core.dag import plan_waves
 
 SERVICES = ["db", "web"]
 WAVES = [["db", "ghost"], ["web"]]
