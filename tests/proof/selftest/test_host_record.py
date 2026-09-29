@@ -267,6 +267,111 @@ def test_proc_gate_runs_under_host_lock(tmp_path):
     assert host_lock.HELD_ENV not in os.environ
 
 
+def test_hung_gate_run_killed_at_host_run_max_lock_freed(tmp_path, monkeypatch):
+    """A planted hung gate run holding the lock is killed with its process
+    group at HOST_RUN_MAX (injected clock), writes no record, frees the lock."""
+    import fcntl
+    import signal
+    import time
+
+    from tests.proof.host import host_lock
+
+    repo = _repo(tmp_path)
+    record_dir = tmp_path / "records-hung"
+    lock_path = tmp_path / "hung.lock"
+
+    # a planted hung gate process in its own process group
+    hung = subprocess.Popen(["sleep", "300"], start_new_session=True)
+    pgid = os.getpgid(hung.pid)
+    killed = []
+    ticks = {"n": 0.0}
+
+    def clock():
+        ticks["n"] += fence_mod.HOST_RUN_MAX + 1.0
+        return ticks["n"]
+
+    def kill_group():
+        killed.append(pgid)
+        os.killpg(pgid, signal.SIGKILL)
+
+    real_hold = host_lock.hold
+
+    def bounded_hold(**kw):
+        return real_hold(
+            lock_path=lock_path,
+            host_run_max=fence_mod.HOST_RUN_MAX,
+            clock=clock,
+            kill_process_group=kill_group,
+            **kw,
+        )
+
+    monkeypatch.setattr(proc_gate.host_lock, "hold", bounded_hold)
+    monkeypatch.delenv(host_lock.HELD_ENV, raising=False)
+    ran = []
+    try:
+        with pytest.raises(host_lock.HostRunTimedOut, match="HOST run timed out"):
+            proc_gate.run(
+                cwd=repo,
+                record_dir=record_dir,
+                pytest_runner=lambda a, e: ran.append(a),
+                pip_runner=lambda *a: None,
+            )
+        hung.wait(timeout=10)  # reaped: the group really died
+    finally:
+        if hung.poll() is None:
+            hung.kill()
+            hung.wait()
+    assert killed == [pgid]
+    assert hung.returncode == -signal.SIGKILL
+    assert ran == []
+    assert not list(record_dir.glob("*.json")) if record_dir.exists() else True
+    assert host_lock.HELD_ENV not in os.environ
+    deadline = time.time() + 5
+    with open(lock_path, "a+") as fh:  # lock is free: a second taker gets it at once
+        while True:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                assert time.time() < deadline, "host lock not freed"
+                time.sleep(0.05)
+
+
+def test_live_record_check_on_planted_repo(tmp_path, monkeypatch):
+    """In a temp repo the live record check passes with a planted admissible
+    record and fails with a planted stale one."""
+    from tests.proof import meta as meta_mod
+    from tests.proof.host import live_records
+
+    monkeypatch.setattr(meta_mod, "_load_all_labels", lambda: [])
+
+    def plant(repo: Path) -> str:
+        sha = _sh(repo, "rev-parse", "HEAD")
+        rec = repo / "tests" / "proof" / "host" / "host-proc" / f"{sha}.json"
+        rec.write_text(json.dumps(_record(sha)))
+        _sh(repo, "add", "-A")
+        _sh(repo, "commit", "-q", "-m", "record")
+        return sha
+
+    # admissible: only record files changed after the record's sha
+    (tmp_path / "good").mkdir()
+    good = _repo(tmp_path / "good")
+    plant(good)
+    monkeypatch.setattr(live_records, "ROOT", good)
+    live_records.test_committed_records_valid_for_head()
+
+    # stale: a non-record path changed after the record's sha
+    (tmp_path / "stale").mkdir()
+    stale = _repo(tmp_path / "stale")
+    plant(stale)
+    (stale / "code.txt").write_text("changed after the record")
+    _sh(stale, "add", "-A")
+    _sh(stale, "commit", "-q", "-m", "later product change")
+    monkeypatch.setattr(live_records, "ROOT", stale)
+    with pytest.raises(AssertionError, match="no admissible host-proc record"):
+        live_records.test_committed_records_valid_for_head()
+
+
 def test_live_records_module_not_default_collected():
     proc = subprocess.run(
         ["python3", "-m", "pytest", "--collect-only", "-q", "tests/proof/host/live_records.py"],
