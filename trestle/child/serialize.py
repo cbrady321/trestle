@@ -11,20 +11,37 @@ from typing import Any, BinaryIO
 
 from trestle.child.index import MAX_INDEX_BYTES, Index
 from trestle.common.canonical import NonCanonical
+from trestle.plugin._codec import Unencodable, normalize
 
 
 class ResultTooLarge(Exception):
     pass
 
 
-def write_result(path: Path, value: Any, *, max_bytes: int | None = None) -> Index:
+def write_result(
+    path: Path,
+    value: Any,
+    *,
+    max_bytes: int | None = None,
+    declared_return: object = None,
+) -> Index:
+    """Write `value` as canonical JSON at `path`, atomically, and return its index.
+
+    The value goes through the one codec first (WR-EVID-5): what has no JSON form
+    raises `Unencodable` before a file exists. On any failure the temp file is
+    removed, so a result file is either whole or absent.
+    """
+    plain = normalize(value, declared_return)
     tmp = path.with_suffix(".json.tmp")
-    with tmp.open("wb") as fh:
-        idx = _write_value(fh, value, max_bytes=max_bytes)
-    if max_bytes is not None and idx.byte_length > max_bytes:
+    try:
+        with tmp.open("wb") as fh:
+            idx = _write_value(fh, plain, max_bytes=max_bytes)
+        if max_bytes is not None and idx.byte_length > max_bytes:
+            raise ResultTooLarge(idx.byte_length)
+        os.replace(tmp, path)
+    except BaseException:
         tmp.unlink(missing_ok=True)
-        raise ResultTooLarge(idx.byte_length)
-    os.replace(tmp, path)
+        raise
     return idx
 
 
@@ -35,7 +52,7 @@ def _dump_scalar(value: Any) -> bytes:
         return json.dumps(value, ensure_ascii=False).encode("utf-8")
     if value is None or isinstance(value, (bool, int, str)):
         return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    raise TypeError(type(value))
+    raise Unencodable(f"{type(value).__name__} has no JSON form")
 
 
 def _write_value(fh: BinaryIO, value: Any, *, max_bytes: int | None = None) -> Index:
@@ -50,11 +67,9 @@ def _write_value(fh: BinaryIO, value: Any, *, max_bytes: int | None = None) -> I
         )
     if isinstance(value, dict):
         return _write_object(fh, value, max_bytes=max_bytes)
-    if isinstance(value, (list, tuple)) or (
-        isinstance(value, Iterable) and not isinstance(value, (str, bytes, bytearray))
-    ):
+    if isinstance(value, (list, tuple)):
         return _write_array(fh, value, max_bytes=max_bytes)
-    raise TypeError(type(value))
+    raise Unencodable(f"{type(value).__name__} has no JSON form")
 
 
 def _canonical_object_items(obj: dict[str, Any]) -> list[tuple[str, Any]]:

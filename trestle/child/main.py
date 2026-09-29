@@ -81,17 +81,18 @@ def main(argv: list[str] | None = None) -> int:
         return _fail(evidence, "call", codes.EXECUTION_PLUGIN_RAISED, exc, roots)
 
     if result is not None:
+        declared_return = _declared_return(fn)
         try:
             idx = write_result(
                 evidence / "result.json",
                 result,
                 max_bytes=limits.max_result_bytes,
+                declared_return=declared_return,
             )
         except ResultTooLarge:
             atomic_write(evidence / "result.state", b"too_large")
             return 0
         except Exception as exc:
-            (evidence / "result.json.tmp").unlink(missing_ok=True)  # no partial result left behind
             return _fail(evidence, "encode", codes.EXECUTION_RESULT_UNENCODABLE, exc, roots)
         atomic_write(evidence / "result.index", idx.to_json())
     return 0
@@ -162,15 +163,28 @@ def _hydrate_arg(fn: Callable[..., object], param: inspect.Parameter, value: obj
     one that cannot be evaluated leaves the value as it arrived (today's
     behaviour), since admission has already accepted it.
     """
-    annotation = param.annotation
+    annotation = _resolve_annotation(fn, param.annotation)
     if annotation is inspect.Parameter.empty:
         return value
+    return hydrate(annotation, value)
+
+
+def _resolve_annotation(fn: Callable[..., object], annotation: object) -> object:
+    """A parameter or return annotation as an object; `inspect.Parameter.empty` when it is absent
+    or a postponed one that cannot be evaluated in the plugin module's namespace."""
     if isinstance(annotation, str):
         try:
-            annotation = eval(annotation, getattr(fn, "__globals__", {}))  # noqa: S307
+            return eval(annotation, getattr(fn, "__globals__", {}))  # noqa: S307
         except Exception:
-            return value
-    return hydrate(annotation, value)
+            return inspect.Parameter.empty
+    return annotation
+
+
+def _declared_return(fn: Callable[..., object]) -> object:
+    """The entry point's return annotation for the encoder (None when absent or unresolvable):
+    only a set that annotation names is written as an array (WR-EVID-5)."""
+    annotation = _resolve_annotation(fn, inspect.signature(fn).return_annotation)
+    return None if annotation is inspect.Parameter.empty else annotation
 
 
 if __name__ == "__main__":
