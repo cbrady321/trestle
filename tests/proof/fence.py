@@ -783,7 +783,7 @@ def ci_status(
                 if sha is None:
                     concl: dict[str, str | None] = {}
                 else:
-                    concl = {"ckpt": reader(sha, cwd)}
+                    concl = reader(sha, cwd)
                 req = ["ckpt"]
             else:
                 sha = _git(cwd, "rev-parse", branch).stdout.strip()
