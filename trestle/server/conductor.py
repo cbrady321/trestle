@@ -18,6 +18,7 @@ from trestle.common.ids import generate_artifact_id
 from trestle.common.limits import capture_limits
 from trestle.common.pyenv import build_child_env, python_argv
 from trestle.common.types import WorkOrder
+from trestle.server import fold
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, work_dir
 from trestle.server.procident import Attribution, GroupStop, Identity, ProcessSource, stop_group
 from trestle.server.projection import count_events
@@ -189,6 +190,11 @@ class Conductor:
             method=stop.method,
         )
 
+        # B2-C7 (MC-19): the lane is folded, and its entries are in the ledger as `lane_folded`
+        # rows, before the row that ends execution; a run with no lane writes none. `accepted` is
+        # spec.plan's PlanAccepted once L.SV-3.4 admits one (None: the implicit one-vertex plan).
+        folded = fold.fold_into_ledger(run_dir, ledger, None)
+
         duration_ms = int((time.monotonic() - started) * 1000)
 
         report_path = evidence_dir(run_dir) / "wrapper_report.json"
@@ -214,7 +220,7 @@ class Conductor:
             classification = "succeeded"
 
         # MC-15: the run's one explanation, in the ledger, before the row that ends execution
-        error = _error_fields(self.home, run_dir, classification, exit_code)
+        error = _error_fields(self.home, run_dir, classification, exit_code, folded)
         if error is not None:
             # the child scrubbed its message; a file a plugin process wrote is scrubbed again
             error = {key: redact.scrub(value, secrets) for key, value in error.items()}
@@ -391,14 +397,19 @@ def _admitted_age_ms(spec: dict[str, object]) -> int:
 
 
 def _error_fields(
-    home: Path, run_dir: Path, classification: str, exit_code: int
+    home: Path,
+    run_dir: Path,
+    classification: str,
+    exit_code: int,
+    folded: fold.FoldedRecord | None = None,
 ) -> dict[str, str] | None:
     """The `error_record` fields {code, phase, message} for a run that did not succeed (MC-15).
 
     A cancel and a deadline are the supervisor's own first cause, so their code comes from the
     class whatever the child managed to write while it was being stopped. A child that ended by
-    itself hands over `evidence/child_error.json`, folded here; a child that failed without one
-    (or with one that does not parse) is a `worker_exit`.
+    itself hands over `evidence/child_error.json`, folded here; failing that, the lane's own
+    record of the failure (the root's failing step, else the code its NodeEnd carries: DM-02);
+    a child that failed without either (or with one that does not parse) is a `worker_exit`.
     """
     if classification == "succeeded":
         return None
@@ -410,9 +421,12 @@ def _error_fields(
             "stop",
             "the run reached its deadline and was stopped",
         )
-    folded = _read_child_error(home, run_dir)
-    if folded is not None:
-        return folded
+    child = _read_child_error(home, run_dir)
+    if child is not None:
+        return child
+    from_lane = fold.lane_error(folded) if folded is not None else None
+    if from_lane is not None:
+        return from_lane
     return _composed(
         codes.EXECUTION_WORKER_EXIT,
         "exit",
