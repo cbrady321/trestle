@@ -1,0 +1,6 @@
+# tests/proof/temporary.d/single.toml -- phase SINGLE (plans/a1-single-level.md). Schema CM-7 (MC-07);
+# permanent = false on every entry. L.SV-0.2 writes only this comment header: each [[entry]] is appended
+# by its introducing leaf (L.SV-3.4 admission-audit-hook, L.SV-3.5 multi-vertex-refusal, L.SV-3.7
+# release-executable-allowlist-empty, L.SV-5.7 loop-walk-children-absent, L.SV-5.9 one-vertex-spine-fixture).
+# Deferrals (CM-8), lane worktrees, the lane-only workflow file and the D2 exception E-SV3-1 (CM-9) are not
+# register entries (CM-7).

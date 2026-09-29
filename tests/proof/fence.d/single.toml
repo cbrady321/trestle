@@ -1,0 +1,219 @@
+# tests/proof/fence.d/single.toml -- phase SINGLE (plans/a1-single-level.md). Schema CM-2 (MC-08), closed: no other key.
+# BUNDLE FORM (deviation from the plan's 8-lane / 18-gate payload, recorded in A1-DOCS-RETURN.md): the 17 product
+# gates below share ONE branch `wr/single-bundle/single`, so R4 judges every chunk against the `single-bundle` lane,
+# and `match_gates` lands them in requires_merge order (greedy over config order; the table order below is the
+# landing order). J-SINGLE stays alone on its checkpoint branch. The seven per-lane blocks stay verbatim for the
+# lane branches' own local checks; every glob they gain must also be added to the bundle lane.
+phase        = "single"
+
+[[lane]]
+name          = "sv-docs"
+branch_prefix = "wr/sv-docs/"
+globs         = ["docs/agent-console-mcp.md", "docs/agents.md", ".cursor/skills/trestle/SKILL.md", "tests/single/docs/**",
+                 "tests/proof/fence.d/single.toml", "tests/proof/labels.d/single.toml", "tests/proof/temporary.d/single.toml"]
+
+[[lane]]
+name          = "sv-rec"
+branch_prefix = "wr/sv-rec/"
+globs         = ["trestle/common/lane_format.py", "trestle/common/plan/bounds.py", "trestle/child/attempt_lane.py", "trestle/server/fold.py",
+                 "trestle/server/conductor.py", "trestle/server/recovery.py",
+                 "trestle/common/clock.py", "tests/proof/records.py", "tests/proof/record_facts.py",
+                 "tests/single/record/**", "tests/proof/drift/single/test_sa01_*.py"]
+
+[[lane]]
+name          = "sv-con"
+branch_prefix = "wr/sv-con/"
+globs         = ["trestle/workflow/__init__.py", "trestle/workflow/declarations.py", "trestle/workflow/extract.py",
+                 "trestle/common/plan/__init__.py", "trestle/common/plan/declared.py", "trestle/child/validate.py",
+                 "trestle/server/plugin_validate.py", "trestle/server/snapshots.py", "trestle/common/codes.py",
+                 "tests/single/contract/**", "tests/fixtures/workflows/contract_*.py", "tests/proof/drift/single/test_sa02_declared_tree.py"]
+
+[[lane]]                     # also carries the FOUNDATIONS commits (cherry-picked)
+name          = "sv-host"
+branch_prefix = "wr/sv-host/"
+globs         = ["trestle/common/plan/compiler.py", "trestle/common/plan/carving.py", "trestle/common/plan/ordinal.py",
+                 "trestle/common/plan/formats.py", "trestle/common/plan/precedence.py", "trestle/common/plan/vocabulary.py",
+                 "tests/proof/foundations/**", "trestle/server/sweep.py", "trestle/server/config.py",
+                 "trestle/server/answer.py", "trestle/common/clock.py",
+                 "trestle/server/admission.py", "trestle/server/conductor.py", "trestle/server/runs.py", "trestle/server/recovery.py",
+                 "trestle/server/project.py", "trestle/server/scheduler.py", "trestle/common/types.py", "trestle/common/codes.py",
+                 "docs/plugins.md", "tests/proof/temporary.d/single.toml",
+                 "tests/single/control/**", "tests/single/answer/**", "tests/fixtures/workflows/probe_*.py",
+                 "tests/proof/rollback.toml", "tests/proof/probes/single.py",
+                 "tests/proof/drain_check.py", "tests/proof/meta.py", "tests/proof/d2_exceptions.toml",
+                 "tests/proof/differ_modes/d4_*.py", "tests/proof/differ_modes/d5_*.py",
+                 "tests/proof/drift/single/test_sa03_*.py", "tests/proof/drift/single/test_sa05_*.py"]
+
+[[lane]]
+name          = "sv-runtime"
+branch_prefix = "wr/sv-runtime/"
+globs         = ["trestle/workflow/**", "trestle/plugin/surface.py", "trestle/child/run_services.py",
+                 "trestle/child/context.py", "trestle/child/main.py", "docs/plugins.md", "tests/proof/temporary.d/single.toml",
+                 "packages/trestle-packs/trestle_packs/fakes/__init__.py", "packages/trestle-packs/trestle_packs/fakes/command.py",
+                 "packages/trestle-packs/trestle_packs/fakes/marker.py",
+                 "tests/fixtures/workflows/**", "tests/single/workflow/**", "tests/single/spine/**", "tests/proof/harness.py",
+                 "tests/proof/spine/**", "tests/proof/suites/**", "tests/proof/ckpt/single*.py", "tests/proof/probes/single.py",
+                 "tests/proof/drift/single/test_sa01_*.py", "tests/proof/drift/single/test_sa04_*.py",
+                 "tests/proof/drift/single/test_sa06_*.py", "tests/proof/drift/single/test_sa09_*.py",
+                 "tests/proof/drift/single/test_sa14_*.py", ".github/workflows/lane-sv-runtime.yml"]
+
+[[lane]]                     # packs paths narrowed to what A-1 edits (DM-69)
+name          = "sl-r"
+branch_prefix = "wr/sl-r/"
+globs         = ["trestle/workflow/**", "trestle/server/registry.py", "trestle/child/context.py",
+                 "packages/trestle-packs/pyproject.toml",
+                 "packages/trestle-packs/trestle_packs/process/**", "packages/trestle-packs/trestle_packs/fakes/local_process.py",
+                 "packages/trestle-packs/trestle_packs/fakes/marker.py",
+                 "tests/single/workflow/**", "tests/fixtures/workflows/**", "tests/proof/suites/**", "tests/proof/spine/test_termination.py",
+                 "tests/proof/differ_modes/d8_*.py", "tests/proof/fossil_states/single.py", "tests/fixtures/fossils/single/MANIFEST.toml",
+                 "tests/proof/drift/single/test_sa09_*.py"]
+
+[[lane]]
+name          = "sl-h"
+branch_prefix = "wr/sl-h/"
+globs         = ["trestle/server/lease.py", "trestle/server/answer.py", "tests/single/control/**", "tests/single/answer/**",
+                 "trestle/server/control.py", "trestle/server/main.py", "trestle/server/admission.py", "trestle/server/scheduler.py",
+                 "trestle/server/conductor.py", "trestle/server/project.py", "trestle/common/codes.py"]
+
+
+# The single product bundle (one PR, CM-2 bundle): its globs are the union of the seven product lanes' globs
+# above (89 distinct) plus what the leaves need and no lane owns: tests/proof/differ.py (d4/d5/d8 builders delete
+# their UNBUILT_MODES keys), tests/proof/divergence.toml (named ADD-code-* entries for the new wire codes),
+# tests/proof/drift/core/test_sa05_clock.py (the published release slice changes core's SA-05 assertions), and the
+# package markers of the new test trees.
+[[lane]]
+name          = "single-bundle"
+branch_prefix = "wr/single-bundle/"
+globs         = ["docs/agent-console-mcp.md", "docs/agents.md", ".cursor/skills/trestle/SKILL.md",
+                 "tests/single/docs/**", "tests/proof/fence.d/single.toml", "tests/proof/labels.d/single.toml",
+                 "tests/proof/temporary.d/single.toml", "trestle/common/lane_format.py", "trestle/common/plan/bounds.py",
+                 "trestle/child/attempt_lane.py", "trestle/server/fold.py", "trestle/server/conductor.py",
+                 "trestle/server/recovery.py", "trestle/common/clock.py", "tests/proof/records.py",
+                 "tests/proof/record_facts.py", "tests/single/record/**", "tests/proof/drift/single/test_sa01_*.py",
+                 "trestle/workflow/__init__.py", "trestle/workflow/declarations.py", "trestle/workflow/extract.py",
+                 "trestle/common/plan/__init__.py", "trestle/common/plan/declared.py", "trestle/child/validate.py",
+                 "trestle/server/plugin_validate.py", "trestle/server/snapshots.py", "trestle/common/codes.py",
+                 "tests/single/contract/**", "tests/fixtures/workflows/contract_*.py",
+                 "tests/proof/drift/single/test_sa02_declared_tree.py", "trestle/common/plan/compiler.py",
+                 "trestle/common/plan/carving.py", "trestle/common/plan/ordinal.py", "trestle/common/plan/formats.py",
+                 "trestle/common/plan/precedence.py", "trestle/common/plan/vocabulary.py", "tests/proof/foundations/**",
+                 "trestle/server/sweep.py", "trestle/server/config.py", "trestle/server/answer.py",
+                 "trestle/server/admission.py", "trestle/server/runs.py", "trestle/server/project.py",
+                 "trestle/server/scheduler.py", "trestle/common/types.py", "docs/plugins.md", "tests/single/control/**",
+                 "tests/single/answer/**", "tests/fixtures/workflows/probe_*.py", "tests/proof/rollback.toml",
+                 "tests/proof/probes/single.py", "tests/proof/drain_check.py", "tests/proof/meta.py",
+                 "tests/proof/d2_exceptions.toml", "tests/proof/differ_modes/d4_*.py",
+                 "tests/proof/differ_modes/d5_*.py", "tests/proof/drift/single/test_sa03_*.py",
+                 "tests/proof/drift/single/test_sa05_*.py", "trestle/workflow/**", "trestle/plugin/surface.py",
+                 "trestle/child/run_services.py", "trestle/child/context.py", "trestle/child/main.py",
+                 "packages/trestle-packs/trestle_packs/fakes/__init__.py",
+                 "packages/trestle-packs/trestle_packs/fakes/command.py",
+                 "packages/trestle-packs/trestle_packs/fakes/marker.py", "tests/fixtures/workflows/**",
+                 "tests/single/workflow/**", "tests/single/spine/**", "tests/proof/harness.py", "tests/proof/spine/**",
+                 "tests/proof/suites/**", "tests/proof/ckpt/single*.py", "tests/proof/drift/single/test_sa04_*.py",
+                 "tests/proof/drift/single/test_sa06_*.py", "tests/proof/drift/single/test_sa09_*.py",
+                 "tests/proof/drift/single/test_sa14_*.py", ".github/workflows/lane-sv-runtime.yml",
+                 "trestle/server/registry.py", "packages/trestle-packs/pyproject.toml",
+                 "packages/trestle-packs/trestle_packs/process/**",
+                 "packages/trestle-packs/trestle_packs/fakes/local_process.py", "tests/proof/spine/test_termination.py",
+                 "tests/proof/differ_modes/d8_*.py", "tests/proof/fossil_states/single.py",
+                 "tests/fixtures/fossils/single/MANIFEST.toml", "trestle/server/lease.py", "trestle/server/control.py",
+                 "trestle/server/main.py", "tests/proof/differ.py", "tests/proof/divergence.toml",
+                 "tests/proof/drift/core/test_sa05_clock.py", "tests/single/__init__.py",
+                 "tests/proof/drift/single/__init__.py", "tests/proof/probes/__init__.py",
+                 "tests/proof/differ_modes/__init__.py", "tests/proof/fossil_states/__init__.py"]
+
+[[lane]]                     # the checkpoint lane: only the J-SINGLE gate; globs exactly CM-5's two checkpoint paths
+name          = "j-single"   # (host records tests/proof/host/host-*/*.json are exempt, CM-2)
+branch_prefix = "wr/j-single/"
+globs         = ["tests/fixtures/fossils/single/**", "tests/proof/reviews/*-single.toml"]
+
+[[gate]]
+branch         = "wr/single-bundle/single"
+merge          = "SV-0"
+requires_merge = ["J-CORE"]
+
+[[gate]]
+branch         = "wr/single-bundle/single"
+merge          = "SV-1"
+requires_merge = ["SV-0"]
+
+[[gate]]
+branch         = "wr/single-bundle/single"
+merge          = "SV-2"
+requires_merge = ["SV-0"]
+
+[[gate]]
+branch         = "wr/single-bundle/single"
+merge          = "SV-3"
+requires_merge = ["SV-1", "SV-2"]
+
+[[gate]]
+branch         = "wr/single-bundle/single"
+merge          = "SV-4"
+requires_merge = ["SV-3"]
+
+[[gate]]
+branch         = "wr/single-bundle/single"
+merge          = "SV-5"
+requires_merge = ["SV-4"]
+
+[[gate]]
+branch         = "wr/single-bundle/single"
+merge          = "SL-7"
+requires_merge = ["SV-5"]
+
+[[gate]]
+branch         = "wr/single-bundle/single"
+merge          = "SL-4"
+requires_merge = ["SV-5", "SL-7"]
+
+[[gate]]
+branch         = "wr/single-bundle/single"
+merge          = "SL-2"
+requires_merge = ["SV-5", "SL-4"]
+
+[[gate]]
+branch         = "wr/single-bundle/single"
+merge          = "SL-3"
+requires_merge = ["SV-5", "SL-2"]
+
+[[gate]]
+branch         = "wr/single-bundle/single"
+merge          = "SL-5"
+requires_merge = ["SV-5", "SL-3"]
+
+[[gate]]
+branch         = "wr/single-bundle/single"
+merge          = "SL-6"
+requires_merge = ["SV-5", "SL-5"]
+
+[[gate]]
+branch         = "wr/single-bundle/single"
+merge          = "SL-10"
+requires_merge = ["SV-5", "SL-6"]
+
+[[gate]]
+branch         = "wr/single-bundle/single"
+merge          = "SL-1"
+requires_merge = ["SV-5"]
+
+[[gate]]
+branch         = "wr/single-bundle/single"
+merge          = "SL-8"
+requires_merge = ["SV-5", "SL-1"]
+
+[[gate]]
+branch         = "wr/single-bundle/single"
+merge          = "SL-9"
+requires_merge = ["SV-5", "SL-8", "SL-5", "SL-6"]
+
+[[gate]]
+branch         = "wr/single-bundle/single"
+merge          = "SL-11"
+requires_merge = ["SV-5", "SL-10", "SL-9"]
+
+[[gate]]
+branch         = "wr/j-single/J-SINGLE"
+merge          = "J-SINGLE"
+requires_merge = ["SL-11"]
