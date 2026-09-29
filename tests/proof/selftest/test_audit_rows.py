@@ -21,9 +21,24 @@ def _write_labels(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, labels_toml: 
     return labels_dir
 
 
-def test_planted_unowned_row_reported(capsys: pytest.CaptureFixture[str]) -> None:
+def test_planted_unowned_row_reported(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
     from argparse import Namespace
 
+    # This test is about row coverage, not the posture vocabulary (the live
+    # posture check is `meta audit-rows` itself, J0-9): read the live labels
+    # with any pre-C.9 posture spelling normalized so the coverage report
+    # is reached whatever state the lane fragments are in.
+    real = meta._load_all_labels
+    monkeypatch.setattr(
+        meta,
+        "_load_all_labels",
+        lambda: [
+            {**lbl, "posture": "claim"} if lbl.get("posture") in ("proven", "unproven") else lbl
+            for lbl in real()
+        ],
+    )
     rc = meta.cmd_audit_rows(Namespace())
     assert rc == 0
     out = capsys.readouterr().out
@@ -116,3 +131,29 @@ def test_composes_must_name_mc03_clause(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(meta, "_load_all_labels", lambda: good)
     rc = meta.cmd_audit_rows(Namespace())
     assert rc == 0
+
+
+def test_posture_outside_c9_vocabulary_rejected(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    """CSC-1 loader: `proven`/`unproven` are not C.9 postures."""
+    from argparse import Namespace
+
+    def label(posture: str) -> dict[str, str]:
+        return {
+            "id": "X:y",
+            "row": "X",
+            "step": "core",
+            "slice": "core",
+            "tier": "must",
+            "venue": "CI",
+            "posture": posture,
+            "declared_by": "test",
+        }
+
+    for bad in ("proven", "unproven", ""):
+        monkeypatch.setattr(meta, "_load_all_labels", lambda bad=bad: [label(bad)])
+        assert meta.cmd_audit_rows(Namespace()) == 1
+        assert "is not one of" in capsys.readouterr().out
+    for good in meta.CSC1_POSTURES:
+        extra = {"oq": "OQ-1"} if good == "gated_on" else {}
+        monkeypatch.setattr(meta, "_load_all_labels", lambda g=good, e=extra: [{**label(g), **e}])
+        assert meta.cmd_audit_rows(Namespace()) == 0
