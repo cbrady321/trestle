@@ -17,6 +17,9 @@ from tests.proof import ancestry, harness, mcp_host, tolerances
 from trestle.common import clock, codes, errtext, outcome
 from trestle.common.types import RequestOutcome, RunView
 
+# A caller that asks not to wait at all.
+NO_WAIT_MS = 0
+
 CONDITIONS = (
     "pass",
     "cancel",
@@ -89,7 +92,7 @@ def answers(tmp_path_factory: pytest.TempPathFactory) -> dict[str, dict[str, Any
             kernel.control.run(plugin="unencodable", wait_ms=tolerances.HARNESS_WAIT_MS)
         )
 
-        started = kernel.control.run(plugin="tree", args={"seconds": 60}, wait_ms=0)
+        started = kernel.control.run(plugin="tree", args={"seconds": 60}, wait_ms=NO_WAIT_MS)
         assert isinstance(started, RunView)
         with support.reaping(started.run_id):
             support.wait_ready(support.run_dir_of(kernel, started.run_id))
@@ -97,7 +100,7 @@ def answers(tmp_path_factory: pytest.TempPathFactory) -> dict[str, dict[str, Any
             out["cancel"] = _await_wire(kernel, started.run_id)
 
         with harness.patch_snapshot(kernel, "slow", timeout_s=support.SHORT_DEADLINE_S):
-            timed = kernel.control.run(plugin="slow", args={"seconds": 60}, wait_ms=0)
+            timed = kernel.control.run(plugin="slow", args={"seconds": 60}, wait_ms=NO_WAIT_MS)
             assert isinstance(timed, RunView)
             with support.reaping(timed.run_id):
                 out["deadline"] = _await_wire(kernel, timed.run_id)
@@ -154,7 +157,7 @@ def test_required_fields_are_decidable_from_the_one_answer(
             assert len(error["message"].encode("utf-8")) <= errtext.MESSAGE_MAX, condition
     # a non-terminal run has no class yet
     kernel = support.spine_kernel()
-    started = kernel.control.run(plugin="slow", args={"seconds": 60}, wait_ms=0)
+    started = kernel.control.run(plugin="slow", args={"seconds": 60}, wait_ms=NO_WAIT_MS)
     assert isinstance(started, RunView)
     with support.reaping(started.run_id):
         assert started.state in {"queued", "running"} and started.outcome is None
