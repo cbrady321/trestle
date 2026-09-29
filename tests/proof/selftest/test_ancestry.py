@@ -132,3 +132,23 @@ def test_survivors_cli_exit_status() -> None:
 
 def test_no_marker_reports_nothing() -> None:
     assert ancestry.main(["survivors"]) == 0
+
+
+def test_parse_linux_stat_start_handles_awkward_comm() -> None:
+    # 52-field /proc/<pid>/stat layout; start (field 22) is 987654.
+    tail = "S 1 100 100 0 -1 4194560 100 0 0 0 1 2 0 0 20 0 1 0 987654 1000000 200 rest"
+    for comm in ("python", "my prog", "a) b (c", "x)y)"):
+        assert ancestry.parse_linux_stat_start(f"4242 ({comm}) {tail}") == 987654
+    assert ancestry.parse_linux_stat_start("4242 (no tail) S 1 2") is None
+    assert ancestry.parse_linux_stat_start("garbage") is None
+    assert ancestry.parse_linux_stat_start("4242 (p) " + "S " + "x " * 30) is None
+
+
+def test_parse_linux_cmdline_is_nul_separated() -> None:
+    raw = b"python\0-c\0import time; time.sleep(1)\0" + b"6\0trestle-anc-abc\0"
+    assert (
+        ancestry.parse_linux_cmdline(raw)
+        == "python -c import time; time.sleep(1) 6 trestle-anc-abc"
+    )
+    assert "trestle-anc-abc" in ancestry.parse_linux_cmdline(raw)
+    assert ancestry.parse_linux_cmdline(b"") == ""
