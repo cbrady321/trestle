@@ -41,35 +41,35 @@ id = "G-B1"
 lane = "B"
 flip_merge = "CL-C1"
 target = "required"
-entry = "pending"
+entry = "tests.pins.b_contract.test_g_b1:test_target_described_is_executed"
 
 [[gap]]
 id = "G-B2"
 lane = "B"
 flip_merge = "CK-3/4"
 target = "required"
-entry = "pending"
+entry = "tests.pins.b_contract.test_g_b2:test_target_dataclass_param_receives_instance"
 
 [[gap]]
 id = "G-B3"
 lane = "B"
 flip_merge = "CS-3"
 target = "required"
-entry = "pending"
+entry = "tests.pins.b_contract.test_g_b3:test_target_runview_error_carries_message"
 
 [[gap]]
 id = "G-B4"
 lane = "B"
 flip_merge = "CL-C1"
 target = "required"
-entry = "pending"
+entry = "tests.pins.b_contract.test_g_b4:test_target_import_roots_equal"
 
 [[gap]]
 id = "G-B5"
 lane = "B"
 flip_merge = "CL-C1"
 target = "required"
-entry = "pending"
+entry = "tests.pins.b_contract.test_g_b5:test_target_import_edit_changes_snapshot_id"
 
 [[gap]]
 id = "G-C1"

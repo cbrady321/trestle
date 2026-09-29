@@ -1,0 +1,72 @@
+# Lane B (P0-1B) labels registry fragment (MC-04). One label per clause a
+# lane-B target or compat pin proves.
+
+[[label]]
+id = "WR-PLAN-4:described-callable-runs"
+row = "WR-PLAN-4"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-1B.1"
+
+[[label]]
+id = "WR-COMPAT-4:preserved"
+row = "WR-COMPAT-4"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-1B.2"
+
+[[label]]
+id = "WR-PLAN-9:dataclass-arg-typed"
+row = "WR-PLAN-9"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-1B.2"
+
+[[label]]
+id = "WR-EVID-1:sentinel-in-runview-error"
+row = "WR-EVID-1"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-1B.3"
+
+[[label]]
+id = "WR-PLAN-6:validate-equals-execute-imports"
+row = "WR-PLAN-6"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-1B.4"
+
+[[label]]
+id = "WR-PLAN-5:identity-covers-imports"
+row = "WR-PLAN-5"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-1B.4"
+
+[[label]]
+id = "WR-COMPAT-5:preserved"
+row = "WR-COMPAT-5"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-1B.5"
