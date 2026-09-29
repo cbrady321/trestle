@@ -32,12 +32,20 @@ def _sh(repo: Path, *args: str) -> str:
     return proc.stdout.strip()
 
 
+def _ident(repo: Path) -> None:
+    """Self-contained committer identity, so merges/rebases in this clone do
+    not depend on the host's global git config."""
+    _sh(repo, "config", "user.name", "t")
+    _sh(repo, "config", "user.email", "t@t")
+
+
 @pytest.fixture
 def rig(tmp_path: Path):
     origin = tmp_path / "origin.git"
     _sh(tmp_path, "init", "-q", "--bare", str(origin))
     master = tmp_path / "master"
     _sh(tmp_path, "clone", "-q", str(origin), str(master))
+    _ident(master)
     (master / "a").mkdir()
     (master / "a" / "seed.txt").write_text("seed")
     _sh(master, "add", "a/seed.txt")
@@ -46,6 +54,7 @@ def rig(tmp_path: Path):
 
     lane = tmp_path / "lane"
     _sh(tmp_path, "clone", "-q", str(origin), str(lane))
+    _ident(lane)
     _sh(lane, "checkout", "-q", "-b", "wr/x/m1", "origin/master")
     (lane / "a" / "change.txt").write_text("x")
     _sh(lane, "add", "a/change.txt")
@@ -55,6 +64,7 @@ def rig(tmp_path: Path):
 
     runner = tmp_path / "runner"
     _sh(tmp_path, "clone", "-q", str(origin), str(runner))
+    _ident(runner)
 
     state_dir = tmp_path / "state"
     cfg = fence_mod.FenceConfig(
