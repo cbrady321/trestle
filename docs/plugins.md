@@ -86,13 +86,24 @@ tree, whether or not the plugin ever reads `ctx.deadline` or `ctx.cancelled`. It
 a plugin may ignore. Reading `ctx.cancelled` still lets a plugin stop cooperatively and cleanly
 first.
 
-A stop sends SIGTERM to every process attributable to the run (the run's process group and every
-descendant by parent id, in whatever session it has moved to), waits at most `grace` (default 10 s),
-sends SIGKILL, and waits at most `kill` (default 5 s) for confirmation: `stop_bound` in all
-(`grace` + `kill`, 15 s by default), plus at most one supervisor `poll_interval` (0.05 s) to notice a
-cancel. The values are published in `trestle.common.clock` (`grace`, `kill`, `stop_bound`,
-`poll_interval`); the operator sets `TRESTLE_CANCEL_GRACE_S` and `TRESTLE_CANCEL_KILL_S`. A plugin
-that needs to clean up on SIGTERM has `grace` to do it.
+The supervisor is the only thing that signals a run. A cancel request writes a flag and nothing
+else; the supervisor sees the flag (or, for the deadline, the run's release point), records one
+stop row naming the cause and the lane's committed length, and the run's class is the cause of the
+first stop row. A stop then gives a run that declares a release walk its release slice to release
+cooperatively (a run that declares none has slice 0), and sends SIGTERM to every process
+attributable to the run (the run's process group and every descendant by parent id, in whatever
+session it has moved to), waits at most `grace` (default 10 s), sends SIGKILL, and waits at most
+`kill` (default 5 s) for confirmation: `stop_bound` in all (`release_slice` + `grace` + `kill`,
+25 s by default), plus at most one supervisor `poll_interval` (0.05 s) to notice a cancel. A plain
+plugin's slice is 0, so its own stop takes `grace` + `kill`. The values are published in
+`trestle.common.clock` (`release_slice`, `grace`, `kill`, `stop_bound`, `poll_interval`); the
+operator sets `TRESTLE_RELEASE_SLICE_S`, `TRESTLE_CANCEL_GRACE_S` and `TRESTLE_CANCEL_KILL_S`. The
+finalization margin (`finalization_margin`, 35 s by default: the stop bound plus the
+`FINALIZATION_RESERVE_S` of 10 s) is how long after the deadline a call may still be answered; it
+covers the kill and the release sweep of every root Trestle admits. The release slice and the
+reserve are plan defaults disclosed for the maintainer to set (10 s each), not requirements. A
+plugin that needs to clean up on SIGTERM has `grace` to do it. A run cancelled, or past its
+deadline, while it still waits in the queue is finalized at once with no process to stop.
 
 Subprocesses a plugin starts run non-interactively: their stdin is `/dev/null`, never the MCP
 transport. They are inside the run's cancellable scope, so a daemon a plugin leaves behind is
