@@ -125,7 +125,7 @@ id = "G-D4"
 lane = "D"
 flip_merge = "CL-B1"
 target = "required"
-entry = "pending"
+entry = "tests.pins.d_evidence.test_g_d4:test_target_marker_lines_equal_for_200_and_2000_drops"
 
 [[gap]]
 id = "G-D5"
