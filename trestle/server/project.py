@@ -6,10 +6,11 @@ import asyncio
 import json
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from trestle.common import codes
+from trestle.common import clock, codes
 from trestle.common.outcome import classify
 from trestle.common.types import (
     CatalogView,
@@ -73,6 +74,60 @@ class Project:
             if time.monotonic() >= deadline:
                 return view
             await asyncio.sleep(0.05)
+
+    def await_terminal(self, run_id: Handle) -> RunView | RequestOutcome:
+        """`completion="terminal"`: answer only from the finalized terminal row (the run view's
+        state is terminal exactly when `evidence_finalized` and a terminal kind are both in the
+        ledger), never a running frame. The wait is bounded by the run's admitted deadline plus
+        `clock.finalization_margin`; past it the answer is `projection.terminal_wait_exceeded`."""
+        limit = time.monotonic() + self._terminal_bound_s(run_id)
+        while True:
+            view = self.status(run_id)
+            if isinstance(view, RequestOutcome) or view.state not in _NON_TERMINAL_STATES:
+                return view
+            if time.monotonic() >= limit:
+                return _terminal_wait_exceeded(run_id)
+            time.sleep(clock.poll_interval)
+
+    async def await_terminal_async(self, run_id: Handle) -> RunView | RequestOutcome:
+        limit = time.monotonic() + self._terminal_bound_s(run_id)
+        while True:
+            view = self.status(run_id)
+            if isinstance(view, RequestOutcome) or view.state not in _NON_TERMINAL_STATES:
+                return view
+            if time.monotonic() >= limit:
+                return _terminal_wait_exceeded(run_id)
+            await asyncio.sleep(clock.poll_interval)
+
+    def _terminal_bound_s(self, run_id: Handle) -> float:
+        """Seconds from now to the moment the terminal wait gives up: the run's admitted
+        `spec.deadline` (wall clock, fixed at admission) plus the finalization margin. A spec
+        without a readable deadline falls back to its `timeout_s` from now, as the conductor
+        does."""
+        run_dir = self._run_dir_for(run_id)
+        spec: dict[str, Any] = {}
+        if run_dir is not None:
+            try:
+                loaded = json.loads((evidence_dir(run_dir) / "spec.json").read_text("utf-8"))
+            except (OSError, ValueError):
+                loaded = None
+            if isinstance(loaded, dict):
+                spec = loaded
+        remaining: float | None = None
+        raw = spec.get("deadline")
+        if isinstance(raw, str):
+            try:
+                fixed = datetime.fromisoformat(raw)
+            except ValueError:
+                fixed = None
+            if fixed is not None:
+                if fixed.tzinfo is None:
+                    fixed = fixed.replace(tzinfo=UTC)
+                remaining = (fixed - datetime.now(tz=UTC)).total_seconds()
+        if remaining is None:
+            timeout = spec.get("timeout_s")
+            remaining = float(timeout) if isinstance(timeout, (int, float)) else 300.0
+        return max(remaining, 0.0) + clock.finalization_margin
 
     async def await_many_async(
         self,
@@ -345,6 +400,18 @@ class Project:
         if snap is not None:
             return snap.summary_budget
         return 4096
+
+
+def _terminal_wait_exceeded(run_id: Handle) -> RequestOutcome:
+    return RequestOutcome(
+        code=codes.TERMINAL_WAIT_EXCEEDED,
+        message=(
+            f"run {run_id} has no finalized terminal row within its deadline plus the "
+            "finalization margin; query it by run id"
+        ),
+        retryable=False,
+        origin="projection",
+    )
 
 
 def _error_view(ledger: RunLedger, state: str) -> dict[str, Any] | None:

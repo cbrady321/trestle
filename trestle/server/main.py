@@ -135,6 +135,7 @@ def run_server(
         version: str | None = None,
         wait_ms: int = 2000,
         idempotency_key: str | None = None,
+        completion: str = "bounded",
     ) -> dict[str, Any]:
         """Start a plugin run and optionally wait for a status frame."""
         kernel.registry.maybe_refresh()
@@ -145,6 +146,7 @@ def run_server(
                 version=version,
                 wait_ms=wait_ms,
                 idempotency_key=idempotency_key,
+                completion=completion,
             )
         )
 

@@ -64,6 +64,22 @@ def test_every_clock_bound_is_read_through_tolerances(sa: str) -> None:
 
 
 @pytest.mark.parametrize("sa", ["SA-05"])
+def test_margin_covers_stop_bound(sa: str) -> None:
+    """B2-C2 (5) in its plan-less form (L.CS-4.1): a root with no release target has release slice
+    0, so `grace + kill <= finalization_margin`, and the default leaves room for the finalization
+    writes after the stop (strictly more than the stop bound). SV-3 extends the check to the
+    release targets. A deadline stop of a plugin that ignores SIGTERM therefore still answers inside
+    `spec.deadline + finalization_margin`."""
+    from trestle.common import clock
+
+    release_slice = 0.0  # a plan-less root has no release target (the slice is published by SV-3)
+    assert clock.stop_bound == release_slice + clock.grace + clock.kill
+    assert clock.grace + clock.kill <= clock.finalization_margin
+    assert clock.finalization_margin > clock.stop_bound  # room for the finalization writes
+    assert tolerances.finalization_margin() == clock.finalization_margin
+
+
+@pytest.mark.parametrize("sa", ["SA-05"])
 def test_no_timing_literal_in_core_tests(sa: str) -> None:
     offenders: list[str] = []
     for base in TEST_TREES:

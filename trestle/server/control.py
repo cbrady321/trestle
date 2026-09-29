@@ -21,6 +21,23 @@ from trestle.server.conductor import Conductor
 from trestle.server.project import Project
 from trestle.server.scheduler import Scheduler
 
+COMPLETIONS = frozenset({"bounded", "terminal"})
+
+
+def _refuse_completion(completion: str, wait_ms: int) -> RequestOutcome | None:
+    """`run`'s one additive parameter (MC-16), checked before admission so a refusal is not a run.
+    `terminal` waits for the finalized terminal row, so a call that asks not to wait (`wait_ms` of
+    zero) contradicts it."""
+    if completion not in COMPLETIONS:
+        detail = f"invalid completion: {completion!r} (expected bounded or terminal)"
+    elif completion == "terminal" and wait_ms <= 0:
+        detail = "completion=terminal waits for the terminal row and needs wait_ms above zero"
+    else:
+        return None
+    return RequestOutcome(
+        code=codes.INVALID_ARGS, message=detail, retryable=False, origin="admission"
+    )
+
 
 @dataclass
 class ControlSurface:
@@ -44,7 +61,11 @@ class ControlSurface:
         version: str | None = None,
         wait_ms: int = 2000,
         idempotency_key: str | None = None,
+        completion: str = "bounded",
     ) -> RequestOutcome | RunView:
+        refused = _refuse_completion(completion, wait_ms)
+        if refused is not None:
+            return refused
         self.admission.registry.maybe_refresh()
         result = self.admission.admit(
             AdmitRequest(
@@ -63,6 +84,8 @@ class ControlSurface:
                 if isinstance(view, RequestOutcome):
                     return view
                 return view
+            if completion == "terminal":
+                return self.project.await_terminal(result.run_id)
             return self.project.await_one(result.run_id, wait_ms)
 
         from trestle.server.ledger import RunLedger, ledger_path, run_dir_for
@@ -84,6 +107,8 @@ class ControlSurface:
             if isinstance(view, RequestOutcome):
                 return view
             return view
+        if completion == "terminal":
+            return self.project.await_terminal(result.run_id)
         return self.project.await_one(result.run_id, wait_ms)
 
     async def run_async(
@@ -93,7 +118,11 @@ class ControlSurface:
         version: str | None = None,
         wait_ms: int = 2000,
         idempotency_key: str | None = None,
+        completion: str = "bounded",
     ) -> RequestOutcome | RunView:
+        refused = _refuse_completion(completion, wait_ms)
+        if refused is not None:
+            return refused
         self.admission.registry.maybe_refresh()
         result = self.admission.admit(
             AdmitRequest(
@@ -112,6 +141,8 @@ class ControlSurface:
                 if isinstance(view, RequestOutcome):
                     return view
                 return view
+            if completion == "terminal":
+                return await self.project.await_terminal_async(result.run_id)
             return await self.project.await_one_async(result.run_id, wait_ms)
 
         from trestle.server.ledger import RunLedger, ledger_path, run_dir_for
@@ -133,6 +164,8 @@ class ControlSurface:
             if isinstance(view, RequestOutcome):
                 return view
             return view
+        if completion == "terminal":
+            return await self.project.await_terminal_async(result.run_id)
         return await self.project.await_one_async(result.run_id, wait_ms)
 
     def await_runs(
