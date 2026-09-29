@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from trestle.common import codes
+from trestle.common import clock, codes
 from trestle.common.fsutil import atomic_write, sha256_bytes
 from trestle.common.types import (
     CatalogView,
@@ -40,6 +40,7 @@ from trestle.server.snapshots import (
     deadline_of,
     discover_plugin_name,
     discover_plugin_name_from_source,
+    load_declared_tree,
     load_snapshot_return_schema,
     load_snapshot_schema,
     materialize_snapshot,
@@ -252,7 +253,7 @@ class Registry:
         if snap is None:
             return None
         deadline_s, deadline_source = deadline_of(snap)
-        return {
+        view: dict[str, object] = {
             "name": snap.plugin,
             "version": snap.version,
             "snapshot_id": snap.snapshot_id,
@@ -261,9 +262,21 @@ class Registry:
             "timeout_s": math.ceil(deadline_s),
             "deadline_s": deadline_s,
             "deadline_source": deadline_source,
+            # The longest a terminal call is held before the caller may give up: the admitted
+            # deadline plus the same finalization margin the terminal wait uses (never a config
+            # field, MC-B2-04). Discoverable here so a host sizes its own timeout before calling.
+            "max_call_duration_s": deadline_s + clock.finalization_margin,
             "input_schema": load_snapshot_schema(snap),
             "return_schema": load_snapshot_return_schema(snap),
         }
+        tree = load_declared_tree(snap)
+        if tree is not None:
+            # A workflow entry (MC-34) also discloses the outcome codes its declaration can
+            # surface, so they are known before invoking (WR-TERM-8); a plain plugin adds nothing.
+            view["declared_codes"] = sorted(
+                {str(code) for node in tree.nodes.values() for code in node["declared_codes"]}
+            )
+        return view
 
     def writable_plugin_dir(self) -> Path:
         if self.plugin_dirs:
