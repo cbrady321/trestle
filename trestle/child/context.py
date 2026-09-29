@@ -7,6 +7,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from trestle.common import redact
 from trestle.common.fsutil import append_ndjson
 from trestle.common.limits import CaptureLimits, capture_limits
 
@@ -20,7 +21,9 @@ class RuntimeContext:
         deadline: datetime,
         events_path: Path,
         limits: CaptureLimits | None = None,
+        scrubber: redact.Scrubber = redact.NO_SCRUB,
     ) -> None:
+        self._scrubber = scrubber
         self._work = work
         self._evidence = evidence
         self.deadline = deadline
@@ -62,13 +65,24 @@ class RuntimeContext:
 
         if not path.is_relative_to(self._work):
             raise ValueError("attach path must be under work/")
+        data = path.read_bytes()
+        size = len(data)
+        data, refused = self._scrubber.data(data)
+        if refused:  # MC-CORE-13: a binary holding a declared secret is never written
+            self._record_limit("artifacts", redact.BINARY_LIMIT, 0, size)
+            raise ValueError("attachment holds a declared secret and is binary: refused")
         art_id = generate_artifact_id()
         dest = self._evidence / "artifacts" / art_id
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(path.read_bytes())
+        dest.write_bytes(data)
         append_ndjson(
             self._events_path,
-            {"kind": "artifact_available", "artifact_id": art_id, "name": name, "at": _now()},
+            {
+                "kind": "artifact_available",
+                "artifact_id": art_id,
+                "name": self._scrubber.text(name),
+                "at": _now(),
+            },
         )
         return art_id
 
@@ -83,6 +97,7 @@ class RuntimeContext:
         return markers
 
     def _emit(self, kind: str, payload: dict[str, object]) -> None:
+        payload = self._scrubber.json(payload)  # before it is encoded or measured
         encoded = json.dumps({"kind": kind, "payload": payload}, separators=(",", ":")).encode(
             "utf-8"
         )

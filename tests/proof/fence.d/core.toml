@@ -41,7 +41,7 @@ globs         = ["trestle/server/idempotency.py", "trestle/server/config.py", "t
 [[lane]]
 name          = "cl-b"
 branch_prefix = "wr/cl-b/"
-globs         = ["trestle/server/projection.py", "trestle/common/redact.py", "trestle/server/project.py", "trestle/server/conductor.py",
+globs         = ["trestle/server/projection.py", "trestle/common/redact.py", "trestle/common/errtext.py", "trestle/server/project.py", "trestle/server/conductor.py",
                  "trestle/query/fs.py", "trestle/query/catalog.py", "trestle/child/context.py", "trestle/child/main.py",
                  "trestle/child/serialize.py", "trestle/wrapper/reactor.py", "trestle/server/admission.py", "trestle/common/types.py",
                  "trestle/common/codes.py", "trestle/server/main.py", "trestle/server/control.py", "docs/agents.md", "docs/plugins.md",

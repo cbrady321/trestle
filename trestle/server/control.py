@@ -140,6 +140,7 @@ class ControlSurface:
             run_id=result.run_id,
             snapshot_id=snap.snapshot_id if snap else "",
             spec_hash=spec_hash,
+            secrets=result.secrets,
         )
         self._drive_background(order)
 
@@ -186,7 +187,7 @@ class ControlSurface:
                 return await self.project.await_terminal_async(result.run_id)
             return await self.project.await_one_async(result.run_id, wait_ms)
 
-        order = await asyncio.to_thread(self._work_order, result.run_id, plugin)
+        order = await asyncio.to_thread(self._work_order, result.run_id, plugin, result.secrets)
         await asyncio.to_thread(self._drive_background, order)
 
         if wait_ms == 0:
@@ -195,7 +196,9 @@ class ControlSurface:
             return await self.project.await_terminal_async(result.run_id)
         return await self.project.await_one_async(result.run_id, wait_ms)
 
-    def _work_order(self, run_id: str, plugin: str) -> WorkOrder:
+    def _work_order(
+        self, run_id: str, plugin: str, secrets: dict[str, Any] | None = None
+    ) -> WorkOrder:
         from trestle.server.ledger import RunLedger, ledger_path, run_dir_for
 
         run_dir = run_dir_for(self.admission.home, run_id)
@@ -206,6 +209,7 @@ class ControlSurface:
             run_id=run_id,
             snapshot_id=snap.snapshot_id if snap else "",
             spec_hash=spec_hash,
+            secrets=secrets or {},
         )
 
     def await_runs(

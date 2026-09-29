@@ -20,7 +20,7 @@ from trestle.child.validate import (
     check_package_digests,
     select_entry,
 )
-from trestle.common import codes
+from trestle.common import codes, redact
 from trestle.common.errtext import sanitize
 from trestle.common.fsutil import atomic_write, atomic_write_json
 from trestle.common.limits import capture_limits
@@ -40,6 +40,12 @@ def main(argv: list[str] | None = None) -> int:
     evidence = run_dir / "evidence"
     work = run_dir / "work"
     spec = RunSpec.from_dict(json.loads((evidence / "spec.json").read_text(encoding="utf-8")))
+    # MC-CORE-13: the run's real secret values arrive in the environment and leave it here, before
+    # any plugin code is imported, so nothing the plugin starts inherits them. They are held in
+    # memory only: `spec.json` carries the redacted arguments.
+    secret_values = redact.take_env(os.environ)
+    secrets = redact.secret_strings(secret_values)
+    plugin_args = redact.restore_args(spec.args, secret_values)
 
     os.chdir(work)
     os.environ["TMPDIR"] = str(work / "tmp")
@@ -53,11 +59,13 @@ def main(argv: list[str] | None = None) -> int:
         # publication's before any plugin code is imported
         check_package_digests(spec.provenance["packages"])
     except ProvenanceMismatch as exc:
-        return _fail(evidence, "provenance", codes.EXECUTION_PROVENANCE_MISMATCH, exc, roots)
+        return _fail(
+            evidence, "provenance", codes.EXECUTION_PROVENANCE_MISMATCH, exc, roots, secrets
+        )
     try:
         fn = _load_plugin_callable(plugin_path)
     except Exception as exc:
-        return _fail(evidence, "load", codes.EXECUTION_IMPORT_FAILED, exc, roots)
+        return _fail(evidence, "load", codes.EXECUTION_IMPORT_FAILED, exc, roots, secrets)
     deadline = datetime.fromisoformat(spec.deadline) if spec.deadline else datetime.now(tz=UTC)
     limits = capture_limits()
     ctx = RuntimeContext(
@@ -66,19 +74,20 @@ def main(argv: list[str] | None = None) -> int:
         deadline=deadline,
         events_path=evidence / "events.ndjson",
         limits=limits,
+        scrubber=redact.Scrubber(secrets=secrets, roots=roots),
     )
 
     try:
-        bound_args = _bind_args(fn, spec.args)
+        bound_args = _bind_args(fn, plugin_args)
     except Exception as exc:
-        return _fail(evidence, "bind", codes.EXECUTION_BIND_FAILED, exc, roots)
+        return _fail(evidence, "bind", codes.EXECUTION_BIND_FAILED, exc, roots, secrets)
     try:
         result = fn(ctx, **bound_args)
     except SystemExit as exc:
         code = exc.code if isinstance(exc.code, int) else 1
         return code if code is not None else 1
     except Exception as exc:
-        return _fail(evidence, "call", codes.EXECUTION_PLUGIN_RAISED, exc, roots)
+        return _fail(evidence, "call", codes.EXECUTION_PLUGIN_RAISED, exc, roots, secrets)
 
     if result is not None:
         declared_return = _declared_return(fn)
@@ -88,26 +97,37 @@ def main(argv: list[str] | None = None) -> int:
                 result,
                 max_bytes=limits.max_result_bytes,
                 declared_return=declared_return,
+                scrubber=redact.Scrubber(secrets=secrets, roots=roots),
             )
         except ResultTooLarge:
             atomic_write(evidence / "result.state", b"too_large")
             return 0
         except Exception as exc:
-            return _fail(evidence, "encode", codes.EXECUTION_RESULT_UNENCODABLE, exc, roots)
+            return _fail(
+                evidence, "encode", codes.EXECUTION_RESULT_UNENCODABLE, exc, roots, secrets
+            )
         atomic_write(evidence / "result.index", idx.to_json())
     return 0
 
 
-def _fail(evidence: Path, phase: str, code: str, exc: BaseException, roots: dict[str, Path]) -> int:
+def _fail(
+    evidence: Path,
+    phase: str,
+    code: str,
+    exc: BaseException,
+    roots: dict[str, Path],
+    secrets: frozenset[str] = frozenset(),
+) -> int:
     """The failure's one record: the atomic `evidence/child_error.json` {code, phase, message,
     exc_type} (MC-15's feeder), its message through the one sanitizer (MC-CORE-14). The child
     exits 1; the file is the whole handoff (DM-01). A failure to write it is not allowed to hide
-    the exit code, so the write is best effort."""
+    the exit code, so the write is best effort. A declared secret is scrubbed first (MC-CORE-13),
+    so the bound can never cut one in half."""
     record = {
         "code": code,
         "phase": phase,
-        "message": sanitize(str(exc) or type(exc).__name__, roots),
-        "exc_type": type(exc).__name__[:_EXC_TYPE_MAX],
+        "message": sanitize(redact.scrub(str(exc) or type(exc).__name__, secrets), roots),
+        "exc_type": redact.scrub(type(exc).__name__[:_EXC_TYPE_MAX], secrets),
     }
     try:
         atomic_write_json(evidence / CHILD_ERROR, record)
