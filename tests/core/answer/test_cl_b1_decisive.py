@@ -17,7 +17,8 @@ from trestle.common import codes
 from trestle.common.types import DeclaredMetadata, PublishView, RunView
 from trestle.server import project as project_module
 from trestle.server import projection
-from trestle.server.ledger import RunLedger, count_events, ledger_path, run_dir_for
+from trestle.server.ledger import RunLedger, ledger_path, run_dir_for
+from trestle.server.projection import count_events
 
 MIB = 1024 * 1024
 

@@ -23,7 +23,7 @@ from trestle.child.validate import (
 from trestle.common import codes, redact
 from trestle.common.errtext import sanitize
 from trestle.common.fsutil import atomic_write, atomic_write_json
-from trestle.common.limits import capture_limits
+from trestle.common.limits import CaptureLimits, capture_limits
 from trestle.common.types import DeclaredMetadata, RunSpec
 from trestle.plugin._codec import hydrate
 
@@ -77,6 +77,21 @@ def main(argv: list[str] | None = None) -> int:
         scrubber=redact.Scrubber(secrets=secrets, roots=roots),
     )
 
+    try:
+        return _call_plugin(fn, ctx, plugin_args, limits, evidence, roots, secrets)
+    finally:
+        ctx.flush_limits()  # the run's limit markers carry their totals, one line per kind
+
+
+def _call_plugin(
+    fn: Callable[..., object],
+    ctx: RuntimeContext,
+    plugin_args: dict[str, object],
+    limits: CaptureLimits,
+    evidence: Path,
+    roots: dict[str, Path],
+    secrets: frozenset[str],
+) -> int:
     try:
         bound_args = _bind_args(fn, plugin_args)
     except Exception as exc:

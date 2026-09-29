@@ -28,13 +28,13 @@ from trestle.query.fs import FilesystemQueryBackend
 from trestle.server.ledger import (
     TERMINAL_KINDS,
     RunLedger,
-    count_events,
     evidence_dir,
     ledger_path,
 )
 from trestle.server.pins import PinStore
 from trestle.server.projection import (
     build_summary,
+    count_events,
     fetch_bytes,
     load_index,
     write_summary_json,

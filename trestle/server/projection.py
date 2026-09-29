@@ -256,6 +256,16 @@ def parse_result_target(target: str) -> str | None:
     return None
 
 
+def count_events(evidence: Path) -> int:
+    """Non-blank lines of `events.ndjson`, streamed. Called once, when a run is finalized: the
+    count is then recorded on the `evidence_finalized` row (MC-12) and read from there."""
+    events_path = evidence / "events.ndjson"
+    if not events_path.exists():
+        return 0
+    with events_path.open("rb") as handle:
+        return sum(1 for line in handle if line.strip())
+
+
 def fetch_bytes(
     *,
     home: Path,

@@ -13,7 +13,6 @@ from trestle.server import procident
 from trestle.server.ledger import (
     TERMINAL_KINDS,
     RunLedger,
-    count_events,
     evidence_dir,
     ledger_path,
     run_dir_for,
@@ -149,7 +148,6 @@ def append_recovery_suffix(
             run_id=run_id,
             completeness=completeness,
             result_state=result_state,
-            event_count=count_events(evidence_dir(run_dir)),
         )
 
     if ledger.terminal_state() is None:
