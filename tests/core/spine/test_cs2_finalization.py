@@ -115,6 +115,8 @@ def _doc(name: str) -> str:
     return (REPO / "docs" / name).read_text(encoding="utf-8")
 
 
+@pytest.mark.proves("WR-PROOF-10", "WR-PROOF-10:K-7", "core", "core", "INSPECT", "CI")
+@pytest.mark.proves("WR-PROOF-10", "WR-PROOF-10:K-9-enforcement", "core", "core", "INSPECT", "CI")
 def test_k7_and_k9_enforcement_statements_are_published() -> None:
     """K-7 (docs/agents.md): a cancel or deadline stops the whole tree within `stop_bound`.
     K-9, enforcement half (docs/plugins.md): `ctx.deadline` is enforced, not advisory. The
