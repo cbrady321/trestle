@@ -123,10 +123,20 @@ class Tree:
 def observe_live_tree(kernel: Kernel, run_id: str) -> Tree:
     """Wait until the `detach` plugin reports its grandchild spawned, then
     snapshot the run's attributable tree (marker = the run's tmp path)."""
-    run_dir = run_dir_of(kernel, run_id)
-    ready = run_dir / "work" / "tmp" / "ready"
-    assert wait_until(ready.exists, tolerances.JOIN_WAIT_S), "detach plugin never became ready"
-    time.sleep(tolerances.SETTLE_SHORT_S)
+    wait_ready(run_dir_of(kernel, run_id))
     tree = Tree(marker=run_id, live=marked(run_id))
     assert tree.wrapper and tree.child and tree.grandchild, tree.live
     return tree
+
+
+def find_run_dir(home: Path, run_id: str) -> Path:
+    """The run directory for `run_id` under `home` (month unknown)."""
+    matches = sorted((home / "runs").glob(f"*/{run_id}"))
+    assert matches, f"no run directory for {run_id} under {home}"
+    return matches[0]
+
+
+def wait_ready(run_dir: Path) -> None:
+    ready = run_dir / "work" / "tmp" / "ready"
+    assert wait_until(ready.exists, tolerances.JOIN_WAIT_S), "detach plugin never became ready"
+    time.sleep(tolerances.SETTLE_SHORT_S)
