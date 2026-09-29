@@ -13,3 +13,13 @@ venue = "BOTH"
 posture = "claim"
 declared_by = "L.P0-1A.1"
 
+
+[[label]]
+id = "WR-DEADLINE-2:ends-in-deadline-window"
+row = "WR-DEADLINE-2"
+step = "core"
+slice = "core"
+tier = "PROC"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-1A.2"
