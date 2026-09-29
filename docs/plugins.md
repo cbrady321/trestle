@@ -55,6 +55,12 @@ their digests for each run.
 
 - Return a small mapping that fits the default agent summary.
 - Use `ctx.log` for structured events; wrapper stdout/`print` appears in `query(run_tail)`.
+- Use `ctx.event(kind, **fields)` to record an event of your own kind. It shares the limits of
+  `ctx.log` and `ctx.progress` (per-event size, count, rate; over a limit the event is dropped and
+  the run's `limits_exceeded` names it) and the same secret scrubbing. A kind the runtime records
+  itself (`log`, `progress`, `artifact_available`, `error`) or uses for a run's lane record
+  (`plan`, `issue`, `confirmation`, `result`, `released`, `step`, `node_end`) is refused with
+  `ValueError`, as is an empty kind.
 - Write keepers under `outputs/` — the foundation attaches them as artifacts.
 
 ## Artifacts and their limits

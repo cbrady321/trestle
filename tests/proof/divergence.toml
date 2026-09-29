@@ -968,3 +968,17 @@ direction = "additive"
 keys = ["$.views.run_provenance.observed.*.row_shape.packages"]
 items = [{ path = "$.views.run_provenance.declared_fields", value = "packages" }]
 authorized_by = "plans/core.md MC-18 (L.CL-C1.4: identity digest full-shape; packages recorded); WR-PLAN-5:provenance-lists-imported-code"
+
+# L.SV-5.1 (MC-15, BFD-10): Context.event(kind, **fields), the plugin-authored event method.
+# context_surface: $.context.methods.event. The seeded ADD-context-event-method above carries no
+# selector and so excuses nothing; this entry names the one diff.
+
+[[entry]]
+id = "ADD-context-event-method-surface"
+facet = "context_surface"
+row_or_k = "BFD-10"
+docs = ["docs/plugins.md"]
+due_checkpoint = "SV-5 (leaf L.SV-5.1)"
+direction = "additive"
+keys = ["$.context.methods.event"]
+authorized_by = "plans/a1-single-level.md L.SV-5.1 (BFD-10: Context.event, additive); plan-workflow-runtime.md:979 (MC-06 seed)"
