@@ -9,6 +9,7 @@ import contextlib
 import fcntl
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -48,6 +49,30 @@ def venv_python(venv: Path | None = None) -> Path:
     return venv_path(venv) / "bin" / "python"
 
 
+def _translated() -> bool:
+    """True when this process runs under Rosetta on an arm64 Mac (an x86_64
+    launcher such as miniforge's python3.12): its children would run the
+    universal2 venv interpreter as x86_64 too, against arm64-only wheels."""
+    if sys.platform != "darwin":
+        return False
+    try:
+        out = subprocess.run(
+            ["/usr/sbin/sysctl", "-n", "sysctl.proc_translated"],
+            capture_output=True,
+            text=True,
+        ).stdout
+    except OSError:
+        return False
+    return out.strip() == "1"
+
+
+def venv_command(venv: Path | None = None) -> list[str]:
+    """argv prefix that runs the clean venv's python natively (arm64 on an
+    arm64 Mac, whatever architecture launched the gate)."""
+    prefix = ["/usr/bin/arch", "-arm64"] if _translated() else []
+    return [*prefix, str(venv_python(venv))]
+
+
 def venv_interpreter_info(venv: Path | None = None, runner=None) -> tuple[str, str]:
     """(python version, sys.platform) as reported by the venv's own
     interpreter; ("unavailable", "unavailable") when it cannot be run."""
@@ -55,12 +80,12 @@ def venv_interpreter_info(venv: Path | None = None, runner=None) -> tuple[str, s
     code = "import platform, sys; print(platform.python_version()); print(sys.platform)"
     try:
         if runner is not None:
-            out = runner([str(py), "-c", code]).stdout
+            out = runner([*venv_command(venv), "-c", code]).stdout
         else:
             if not py.exists():
                 return ("unavailable", "unavailable")
             out = subprocess.run(
-                [str(py), "-c", code], capture_output=True, text=True, check=True
+                [*venv_command(venv), "-c", code], capture_output=True, text=True, check=True
             ).stdout
         version, plat = out.split()[:2]
         return (version, plat)
@@ -79,7 +104,7 @@ def _repoint_venv(worktree: Path, pip_runner=None, venv: Path | None = None) -> 
     runner = pip_runner or (
         lambda args, cwd: subprocess.run(args, cwd=cwd, capture_output=True, text=True)
     )
-    args = [str(py), "-m", "pip", "install", "--no-deps", "-e", "."]
+    args = [*venv_command(venv), "-m", "pip", "install", "--no-deps", "-e", "."]
     packs = worktree / "packages" / "trestle-packs"
     if packs.exists():
         args += ["-e", str(packs)]

@@ -50,7 +50,13 @@ def build_node_list(select: list[str] | None, collector, labels: list[dict], cwd
     return default, nodes
 
 
-_OUTCOME = {"passed": "PASSED", "failed": "FAILED", "skipped": "SKIPPED"}
+_OUTCOME = {
+    "passed": "PASSED",
+    "failed": "FAILED",
+    "skipped": "SKIPPED",
+    "xfailed": "XFAIL",
+    "xpassed": "XPASS",
+}
 
 
 def _read_audit(path: Path) -> dict | None:
@@ -116,7 +122,7 @@ def run(
     env["TRESTLE_AUDIT_OUT"] = str(audit_run)
 
     def _py_argv(*extra):
-        return [str(host_lock.venv_python(venv)), "-m", "pytest", "-q", *extra]
+        return [*host_lock.venv_command(venv), "-m", "pytest", "-q", *extra]
 
     def _collect(extra):
         # collect-only in the venv, host_only nodes not deselected (gate env set)

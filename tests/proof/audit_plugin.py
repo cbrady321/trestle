@@ -58,6 +58,11 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[Any]):
     report = outcome.get_result()
     if call.when == "call" or (call.when == "setup" and not report.passed):
         entry: dict[str, Any] = {"outcome": report.outcome, "exc_type": None, "unmet_gap": None}
+        if hasattr(report, "wasxfail"):
+            # pytest reports an xfail as `skipped` and a non-strict xpass as
+            # `passed`; name them, so a HOST record never reads a red target
+            # as a skip (CM-6's pass set allows XFAIL, refuses XPASS).
+            entry["outcome"] = "xfailed" if report.skipped else "xpassed"
         if call.excinfo is not None:
             entry["exc_type"] = call.excinfo.type.__name__
             entry["unmet_gap"] = getattr(call.excinfo.value, "gap", None)

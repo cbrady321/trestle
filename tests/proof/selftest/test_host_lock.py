@@ -82,7 +82,8 @@ def _git_repo(path):
     return path
 
 
-def test_repoint_uses_venv_python_pip_with_worktree_cwd(tmp_path):
+def test_repoint_uses_venv_python_pip_with_worktree_cwd(tmp_path, monkeypatch):
+    monkeypatch.setattr(host_lock, "_translated", lambda: False)
     (tmp_path / "packages" / "trestle-packs").mkdir(parents=True)
     venv = tmp_path / "venv"
     calls = []
@@ -129,6 +130,7 @@ def test_proc_gate_missing_venv_records_precondition_unmet(tmp_path, monkeypatch
 
 
 def test_proc_gate_argv_uses_venv_python_and_records_its_version(tmp_path, monkeypatch):
+    monkeypatch.setattr(host_lock, "_translated", lambda: False)
     import json
     import subprocess
 
@@ -176,3 +178,63 @@ def test_proc_gate_argv_uses_venv_python_and_records_its_version(tmp_path, monke
     assert argvs[0][0] == str(venv / "bin" / "python")
     (rec,) = [json.loads(p.read_text()) for p in rec_dir.glob("*.json")]
     assert (rec["python"], rec["platform"]) == ("3.12.9", "darwin")
+
+
+def test_venv_command_runs_native_arm64_under_rosetta(tmp_path, monkeypatch):
+    venv = tmp_path / "venv"
+    monkeypatch.setattr(host_lock, "_translated", lambda: True)
+    assert host_lock.venv_command(venv) == ["/usr/bin/arch", "-arm64", str(venv / "bin" / "python")]
+    monkeypatch.setattr(host_lock, "_translated", lambda: False)
+    assert host_lock.venv_command(venv) == [str(venv / "bin" / "python")]
+
+
+def test_audit_plugin_names_xfail_and_xpass(tmp_path):
+    import json
+    import subprocess
+    import sys
+    import textwrap
+
+    (tmp_path / "test_x.py").write_text(
+        textwrap.dedent(
+            """
+            import pytest
+
+            @pytest.mark.xfail(strict=True, reason="defect:G-X")
+            def test_red():
+                assert False
+
+            @pytest.mark.xfail(strict=False, reason="loose")
+            def test_loose():
+                pass
+            """
+        )
+    )
+    out = tmp_path / "audit.json"
+    env = dict(os.environ, TRESTLE_AUDIT_OUT=str(out))
+    root = str(__import__("pathlib").Path(__file__).resolve().parents[3])
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, [root, env.get("PYTHONPATH")]))
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "tests.proof.audit_plugin",
+            "-p",
+            "no:cacheprovider",
+            "--rootdir",
+            str(tmp_path),
+            "-c",
+            os.devnull,
+            str(tmp_path / "test_x.py"),
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    outcomes = {
+        k.split("::")[-1]: v["outcome"] for k, v in json.loads(out.read_text())["outcomes"].items()
+    }
+    assert outcomes == {"test_red": "xfailed", "test_loose": "xpassed"}
