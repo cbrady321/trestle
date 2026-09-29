@@ -2,8 +2,9 @@
 
 L.CL-B2.1: admission writes `spec.json` with the declared arguments redacted and delivers the real
 values to the plugin in memory; the sentinel is absent from the spec, the ledger and the
-idempotency store. Later leaves of this merge extend this file with the write-path scrub and the
-host-path scan.
+idempotency store. L.CL-B2.2: the write-path scrub keeps the sentinel out of every file the run
+writes (events, console, result, child_error, artifacts, the work directory) and out of the MCP
+answer. L.CL-B2.3 adds the host-path scan.
 
 Every timing bound comes from `tests.proof.tolerances` (SA-05); no timing literal appears here.
 """
@@ -17,7 +18,7 @@ from typing import Any
 
 import pytest
 
-from tests.proof import harness, tolerances
+from tests.proof import harness, mcp_host, tolerances
 from trestle.common import codes, redact
 from trestle.common.canonical import args_hash
 from trestle.common.types import PublishView, RequestOutcome, RunView
@@ -184,3 +185,190 @@ def test_redact_args_and_values_shapes() -> None:
     assert redact.secret_strings(values) == {"x", "p", "q", "dotted-key"}
     # no declaration: the arguments come back equal
     assert redact.redact_args(args, []) == args
+
+
+# --- L.CL-B2.2: the write-path scrub ----------------------------------------------------------
+
+# A plugin that puts its secret on every path a plugin can write: its log and progress events, its
+# stdout and stderr (and a child process's), a scratch file, an attachment (text, and with `mode`
+# a binary), an outputs file, an exception message and its return (a leaf and a key).
+LEAKER_SOURCE = """\
+import hashlib
+import subprocess
+import sys
+
+from trestle.plugin.surface import Context, trestle
+
+
+@trestle(secrets=["token"])
+def leaker(ctx: Context, token: str, mode: str = "ok") -> dict[str, list[str]]:
+    ctx.log(f"log {token}")
+    ctx.progress(f"progress {token}")
+    print(f"stdout {token}", flush=True)
+    print(f"stderr {token}", file=sys.stderr, flush=True)
+    subprocess.run(
+        [sys.executable, "-c", "import sys; print('child ' + sys.argv[1], flush=True)", token],
+        check=True,
+    )
+    (ctx.tmp / "scratch.txt").write_text(f"scratch {token}", encoding="utf-8")
+    text = ctx.tmp / "attached.txt"
+    text.write_text(f"attached {token}", encoding="utf-8")
+    ctx.attach(text, name=f"attached-{token}.txt")
+    refused = "no"
+    if mode == "binary_attach":
+        blob = ctx.tmp / "blob.bin"
+        blob.write_bytes(b"\\x00\\x01" + token.encode() + b"\\x02")
+        try:
+            ctx.attach(blob, name="blob.bin")
+        except ValueError:
+            refused = "yes"
+    if mode == "binary_output":
+        (ctx.outputs / "blob.bin").write_bytes(b"\\x00\\x01" + token.encode() + b"\\x02")
+    (ctx.outputs / "report.txt").write_text(f"report {token}", encoding="utf-8")
+    if mode == "raise":
+        raise RuntimeError(f"failed with {token}")
+    digest = hashlib.sha256(token.encode()).hexdigest()
+    return {"echo": [token], f"key-{token}": [digest], "refused": [refused]}
+"""
+
+
+def _events(run_dir: Path) -> list[dict[str, Any]]:
+    path = run_dir / "evidence" / "events.ndjson"
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+
+
+def _ledger_rows(run_dir: Path, kind: str) -> list[dict[str, Any]]:
+    path = run_dir / "evidence" / "ledger.ndjson"
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+    return [row for row in rows if row.get("kind") == kind]
+
+
+def _run_leaker(kernel: Kernel, mode: str) -> tuple[RunView, Path]:
+    view = run_ok(kernel, "leaker", {"token": SENTINEL, "mode": mode})
+    return view, run_dir_for(kernel.home, view.run_id)
+
+
+@pytest.mark.proves(
+    "WR-EVID-8",
+    "WR-EVID-8:secret-absent-everywhere",
+    "core",
+    "core",
+    "PROC+MCP",
+    "CI",
+)
+def test_sentinel_absent_everywhere(tmp_path: Path) -> None:
+    kernel = kernel_with(tmp_path, LEAKER_SOURCE, "leaker")
+    runs: dict[str, tuple[RunView, Path]] = {}
+    for mode in ("ok", "raise", "binary_attach", "binary_output"):
+        runs[mode] = _run_leaker(kernel, mode)
+
+    # every mode: 0 occurrences in the whole run directory and in the run's answer
+    for mode, (view, run_dir) in runs.items():
+        assert occurrences(run_dir, SENTINEL) == [], (mode, occurrences(run_dir, SENTINEL))
+        assert SENTINEL not in json.dumps(view.to_dict()), mode
+    assert occurrences(kernel.home, SENTINEL) == []
+
+    ok_view, ok_dir = runs["ok"]
+    assert ok_view.state == "succeeded"
+    console = (ok_dir / "evidence" / "console" / "stdout.log").read_text(encoding="utf-8")
+    assert f"stdout {redact.REDACTED}" in console and f"child {redact.REDACTED}" in console
+    stderr = (ok_dir / "evidence" / "console" / "stderr.log").read_text(encoding="utf-8")
+    assert f"stderr {redact.REDACTED}" in stderr
+    messages = [
+        e["payload"]["message"] for e in _events(ok_dir) if "message" in e.get("payload", {})
+    ]
+    assert f"log {redact.REDACTED}" in messages and f"progress {redact.REDACTED}" in messages
+    result = json.loads((ok_dir / "evidence" / "result.json").read_text(encoding="utf-8"))
+    assert result["echo"] == [redact.REDACTED]
+    # the plugin did receive the real value: the digest it computed is of the sentinel
+    assert result[f"key-{redact.REDACTED}"] == [digest(SENTINEL)]
+    artifacts = sorted((ok_dir / "evidence" / "artifacts").iterdir())
+    bodies = sorted(p.read_text(encoding="utf-8") for p in artifacts)
+    assert bodies == [f"attached {redact.REDACTED}", f"report {redact.REDACTED}"]
+    names = [row["name"] for row in _ledger_rows(ok_dir, "artifact_available")]
+    assert "report.txt" in names
+    assert (ok_dir / "work" / "tmp" / "scratch.txt").read_text() == f"scratch {redact.REDACTED}"
+
+    # a failing run: the message reaches the ledger, meta.json and the answer scrubbed
+    raise_view, raise_dir = runs["raise"]
+    assert raise_view.state == "failed"
+    assert raise_view.error is not None
+    assert raise_view.error["message"] == f"failed with {redact.REDACTED}"
+    child_error = json.loads((raise_dir / "evidence" / "child_error.json").read_text("utf-8"))
+    assert child_error["message"] == f"failed with {redact.REDACTED}"
+    assert _ledger_rows(raise_dir, "error_record")[0]["message"] == child_error["message"]
+
+    # a binary that holds the secret is refused, never written, and marked
+    attach_view, attach_dir = runs["binary_attach"]
+    assert json.loads((attach_dir / "evidence" / "result.json").read_text("utf-8"))["refused"] == [
+        "yes"
+    ]
+    limits = (attach_dir / "evidence" / "capture_limits.ndjson").read_text(encoding="utf-8")
+    assert redact.BINARY_LIMIT in limits
+    output_view, output_dir = runs["binary_output"]
+    limit_rows = _ledger_rows(output_dir, "limit_exceeded")
+    assert [m["limit"] for m in limit_rows[0]["markers"]] == [redact.BINARY_LIMIT]
+    assert (output_dir / "work" / "outputs" / "blob.bin").read_bytes() == redact.REFUSED_BINARY
+    promoted = [row["name"] for row in _ledger_rows(output_dir, "artifact_available")]
+    assert "blob.bin" not in promoted and "report.txt" in promoted
+
+    # over MCP: the run answer and the host's whole home hold no occurrence either
+    plugins = tmp_path / "mcp-home" / "plugins"
+    plugins.mkdir(parents=True)
+    (plugins / "leaker.py").write_text(LEAKER_SOURCE, encoding="utf-8")
+    with mcp_host.McpHost(home=tmp_path / "mcp-home") as host:
+        answer = host.call(
+            "run",
+            {
+                "plugin": "leaker",
+                "args": {"token": SENTINEL, "mode": "raise"},
+                "completion": "terminal",
+                "wait_ms": tolerances.HARNESS_WAIT_MS,
+            },
+        )
+        assert answer["state"] == "failed", answer
+        assert SENTINEL not in json.dumps(answer)
+        run_id = answer["run_id"]
+        for view in ("run", "last_error", "run_tail", "run_events", "run_provenance"):
+            rows = host.call("query", {"view": view, "params": {"run_id": run_id}})
+            assert SENTINEL not in json.dumps(rows), view
+        home = host.home
+    assert occurrences(home, SENTINEL) == []
+
+
+def test_console_scrub_joins_chunks_and_trims_a_capped_tail(tmp_path: Path) -> None:
+    from trestle.wrapper.reactor import _write_console
+
+    secrets = frozenset({SENTINEL})
+    split = [f"a {SENTINEL[:9]}", f"{SENTINEL[9:]} b"]
+    path = tmp_path / "stdout.log"
+    _write_console(path, split, 10_000, secrets)
+    assert path.read_text(encoding="utf-8") == f"a {redact.REDACTED} b"
+    # a capture cut inside the secret leaves no half of it at the end
+    _write_console(path, [f"tail {SENTINEL[:11]}"], 10_000, secrets, capped=True)
+    assert path.read_text(encoding="utf-8") == f"tail {redact.REDACTED}"
+    # without a cap, a partial secret is ordinary text
+    _write_console(path, [f"tail {SENTINEL[:11]}"], 10_000, secrets)
+    assert path.read_text(encoding="utf-8") == f"tail {SENTINEL[:11]}"
+
+
+def test_scrub_forms_and_files(tmp_path: Path) -> None:
+    secret = 'pa"ss\\wörd'
+    escaped = json.dumps(secret)[1:-1]
+    text = f"plain {secret} json {escaped} end"
+    assert redact.scrub(text, {secret}) == f"plain {redact.REDACTED} json {redact.REDACTED} end"
+    assert redact.scrub(text.encode(), {secret}) == redact.scrub(text, {secret}).encode()
+    assert redact.scrub(text, set()) == text
+    assert redact.scrub_json({"k-" + secret: [secret, 1, None]}, {secret}) == {
+        f"k-{redact.REDACTED}": [redact.REDACTED, 1, None]
+    }
+    assert redact.holds_secret(b"\x00" + secret.encode(), {secret})
+    assert not redact.holds_secret(b"\x00 nothing", {secret})
+    # files: text is rewritten, a clean binary is untouched, a holding binary is refused
+    (tmp_path / "t.txt").write_text(f"x {secret}", encoding="utf-8")
+    (tmp_path / "clean.bin").write_bytes(b"\x00\x01clean")
+    (tmp_path / "held.bin").write_bytes(b"\x00" + secret.encode())
+    assert redact.scrub_tree(tmp_path, {secret}) == 1
+    assert (tmp_path / "t.txt").read_text(encoding="utf-8") == f"x {redact.REDACTED}"
+    assert (tmp_path / "clean.bin").read_bytes() == b"\x00\x01clean"
+    assert (tmp_path / "held.bin").read_bytes() == redact.REFUSED_BINARY

@@ -12,6 +12,7 @@ from pathlib import Path
 from types import FrameType
 from typing import IO, cast
 
+from trestle.common import redact
 from trestle.common.fsutil import atomic_write, atomic_write_json
 from trestle.common.limits import CaptureLimits, capture_limits
 
@@ -71,10 +72,18 @@ def run_reactor(
     console_dir: Path,
     report_path: Path,
     limits: CaptureLimits | None = None,
+    secrets: frozenset[str] | None = None,
 ) -> dict[str, object]:
+    """Capture the child's console into `console_dir` and write the wrapper report.
+
+    `secrets` are the run's declared secret values (MC-CORE-13); every console write scrubs them.
+    When it is not given the wrapper reads them from its own environment, where the conductor
+    put them for the child (the wrapper only ever scrubs; it never passes them on).
+    """
     global _flushing
     _flushing = False
     caps = limits or capture_limits()
+    scrub_set = redact.env_strings() if secrets is None else secrets
     console_dir.mkdir(parents=True, exist_ok=True)
     stdout_path = console_dir / "stdout.log"
     stderr_path = console_dir / "stderr.log"
@@ -129,8 +138,12 @@ def run_reactor(
                 take(name, opened.read_available())
     _flushing = True
 
-    _write_console(stdout_path, stdout_buf, caps.max_console_bytes)
-    _write_console(stderr_path, stderr_buf, caps.max_console_bytes)
+    _write_console(
+        stdout_path, stdout_buf, caps.max_console_bytes, scrub_set, bool(stdout_suppressed)
+    )
+    _write_console(
+        stderr_path, stderr_buf, caps.max_console_bytes, scrub_set, bool(stderr_suppressed)
+    )
 
     if stdout_suppressed:
         markers.append(
@@ -202,8 +215,17 @@ def _accumulate(
     return recorded, suppressed
 
 
-def _write_console(path: Path, chunks: list[str], limit: int) -> None:
-    text = "".join(chunks)
+def _write_console(
+    path: Path,
+    chunks: list[str],
+    limit: int,
+    secrets: frozenset[str] = frozenset(),
+    capped: bool = False,
+) -> None:
+    # scrubbed as one text, before it is elided, so no chunk boundary can split a secret; a capture
+    # that hit its byte cap may end inside one, so its tail is scrubbed for a split secret too
+    joined = "".join(chunks)
+    text = redact.scrub_cut(joined, secrets) if capped else redact.scrub(joined, secrets)
     encoded = text.encode("utf-8")
     if len(encoded) <= limit:
         atomic_write(path, encoded)

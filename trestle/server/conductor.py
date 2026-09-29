@@ -106,6 +106,7 @@ class Conductor:
         env.pop(redact.SECRETS_ENV, None)  # only this run's own values, never an inherited variable
         if order.secrets:  # MC-CORE-13: the real values go to the wrapper and child by environment
             env[redact.SECRETS_ENV] = redact.encode_env(order.secrets)
+        secrets = redact.secret_strings(order.secrets)
         started = time.monotonic()
         proc = subprocess.Popen(
             wrapper_cmd,
@@ -213,11 +214,19 @@ class Conductor:
         # MC-15: the run's one explanation, in the ledger, before the row that ends execution
         error = _error_fields(self.home, run_dir, classification, exit_code)
         if error is not None:
+            # the child scrubbed its message; a file a plugin process wrote is scrubbed again
+            error = {key: redact.scrub(value, secrets) for key, value in error.items()}
             ledger.append("error_record", run_id=order.run_id, **error)
 
-        artifact_ids = self._promote_outputs(run_dir, ledger, order.run_id)
+        promotion_markers: list[dict[str, object]] = []
+        artifact_ids = self._promote_outputs(
+            run_dir, ledger, order.run_id, secrets, promotion_markers
+        )
+        # nothing can write to the work directory now: what the plugin left there is scrubbed too,
+        # so the run directory holds no declared secret anywhere (WR-EVID-8)
+        redact.scrub_tree(work_dir(run_dir), secrets)
         child_limits = _read_ndjson(evidence_dir(run_dir) / "capture_limits.ndjson")
-        limits_exceeded = _merge_limit_markers(wrapper_limits + child_limits)
+        limits_exceeded = _merge_limit_markers(wrapper_limits + child_limits + promotion_markers)
         if limits_exceeded:
             ledger.append("limit_exceeded", run_id=order.run_id, markers=limits_exceeded)
 
@@ -266,7 +275,18 @@ class Conductor:
         """Async entry — runs sync drive on a worker thread (wrapper stays sync)."""
         return await asyncio.to_thread(self.drive, order)
 
-    def _promote_outputs(self, run_dir: Path, ledger: RunLedger, run_id: str) -> list[str]:
+    def _promote_outputs(
+        self,
+        run_dir: Path,
+        ledger: RunLedger,
+        run_id: str,
+        secrets: frozenset[str] = frozenset(),
+        markers: list[dict[str, object]] | None = None,
+    ) -> list[str]:
+        """Promote `outputs/` to artifacts. With declared `secrets`, every promoted file passes
+        the write-path scrub (MC-CORE-13): text is copied scrubbed, and a binary file holding a
+        secret is not promoted at all: a `secret_in_binary` marker is appended to `markers` in its
+        place (nothing is written that later needs scrubbing)."""
         outputs_dir = work_dir(run_dir) / "outputs"
         if not outputs_dir.exists():
             return []
@@ -277,12 +297,27 @@ class Conductor:
             art_id = generate_artifact_id()
             dest = evidence_dir(run_dir) / "artifacts" / art_id
             dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(path, dest)
+            if secrets:
+                data, refused = redact.scrub_bytes(path.read_bytes(), secrets)
+                if refused:
+                    if markers is not None:
+                        markers.append(
+                            {
+                                "stream": "artifacts",
+                                "limit": redact.BINARY_LIMIT,
+                                "bytes_recorded": 0,
+                                "bytes_suppressed": path.stat().st_size,
+                            }
+                        )
+                    continue
+                dest.write_bytes(data)
+            else:
+                shutil.copy2(path, dest)
             ledger.append(
                 "artifact_available",
                 run_id=run_id,
                 artifact_id=art_id,
-                name=path.name,
+                name=redact.scrub(path.name, secrets),
                 source="auto_promote",
             )
             artifact_ids.append(art_id)

@@ -209,6 +209,19 @@ def scrub(data: str | bytes, secrets: Iterable[str]) -> str | bytes:
     return text
 
 
+def scrub_cut(text: str, secrets: Iterable[str]) -> str:
+    """`scrub` for text that was cut off at its end (a capped capture): a secret the cut split in
+    two leaves its first half at the very end, and that tail is replaced too."""
+    text = scrub(text, secrets)
+    longest = 0
+    for form in _forms(secrets):
+        for size in range(min(len(form) - 1, len(text)), longest, -1):
+            if text.endswith(form[:size]):
+                longest = size
+                break
+    return text[: len(text) - longest] + REDACTED if longest else text
+
+
 def holds_secret(data: bytes, secrets: Iterable[str]) -> bool:
     """Whether `data` contains any secret (in any form `scrub` would replace)."""
     return any(form.encode("utf-8") in data for form in _forms(secrets))

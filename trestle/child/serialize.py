@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from trestle.child.index import MAX_INDEX_BYTES, Index
+from trestle.common import redact
 from trestle.common.canonical import NonCanonical
 from trestle.plugin._codec import Unencodable, normalize
 
@@ -24,14 +25,16 @@ def write_result(
     *,
     max_bytes: int | None = None,
     declared_return: object = None,
+    secrets: frozenset[str] = frozenset(),
 ) -> Index:
     """Write `value` as canonical JSON at `path`, atomically, and return its index.
 
     The value goes through the one codec first (WR-EVID-5): what has no JSON form
     raises `Unencodable` before a file exists. On any failure the temp file is
-    removed, so a result file is either whole or absent.
+    removed, so a result file is either whole or absent. Every declared secret in `secrets` is
+    scrubbed from the leaves first (MC-CORE-13), before any byte is written.
     """
-    plain = normalize(value, declared_return)
+    plain = redact.scrub_json(normalize(value, declared_return), secrets)
     tmp = path.with_suffix(".json.tmp")
     try:
         with tmp.open("wb") as fh:
