@@ -25,7 +25,7 @@ def _load_ci_yml() -> dict:
     return yaml.safe_load(CI_YML_PATH.read_text())
 
 
-@pytest.mark.parametrize("job_name", ["test", "proof-ledger", "ckpt"])
+@pytest.mark.parametrize("job_name", ["test-shard", "proof-ledger", "ckpt"])
 def test_full_history_checkout(job_name: str) -> None:
     workflow = _load_ci_yml()
     job = workflow["jobs"][job_name]
@@ -40,6 +40,7 @@ def test_ci_yml_parses_and_has_expected_jobs() -> None:
     workflow = _load_ci_yml()
     assert set(workflow["jobs"]) == {
         "lint",
+        "test-shard",  # L.P0-0d.17: `test` aggregates its matrix
         "test",
         "compat",
         "guards",
@@ -47,6 +48,7 @@ def test_ci_yml_parses_and_has_expected_jobs() -> None:
         "d2-straddle",
         "proof-ledger",
         "ckpt",
+        "ck-drill",  # L.P0-0d.17: `ck-isolation` aggregates its matrix
         "ck-isolation",  # L.CS-1.4
     }
 
@@ -59,7 +61,7 @@ def test_lint_job_runs_mypy_ratchet() -> None:
 
 def test_test_and_compat_jobs_set_proof_gate_env() -> None:
     workflow = _load_ci_yml()
-    test_envs = [s.get("env", {}) for s in workflow["jobs"]["test"]["steps"]]
+    test_envs = [s.get("env", {}) for s in workflow["jobs"]["test-shard"]["steps"]]
     assert any(e.get("TRESTLE_PROOF_GATE") == "ci-test" for e in test_envs)
     compat_envs = [s.get("env", {}) for s in workflow["jobs"]["compat"]["steps"]]
     assert any(e.get("TRESTLE_PROOF_GATE") == "ci-compat" for e in compat_envs)
