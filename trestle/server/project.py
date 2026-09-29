@@ -457,13 +457,16 @@ def _spec_snapshot_id(evidence: Path | None) -> str | None:
 def _cleanup_view(ledger: RunLedger, state: str) -> CleanupView | None:
     """The cleanup disposition of a finished run's process-group target (B2-C9, B4-C7, MC-32).
 
-    A run that never started spawned nothing and has no such target. For every run that did, the
-    target is `released` only when the run's `group_stop` row says the supervisor confirmed every
-    attributable process gone, else `unknown`; no row is `unknown`, never clean. It is never
-    `nothing_created`: the run spawned a process. (A core run records no lane, so no folded
-    `InRunGroup` entry can hold `helpers_disclosed` back.)"""
-    if state in _NON_TERMINAL_STATES or not ledger.has_kind("started"):
+    A run that ended without ever starting (finalized while queued, B2-C12) spawned nothing: it has
+    no group target, and its cleanup reads `nothing_created`, the one path on which it does. For
+    every run that did start, the target is `released` only when the run's `group_stop` row says
+    the supervisor confirmed every attributable process gone, else `unknown`; no row is `unknown`,
+    never clean. It is never `nothing_created`: the run spawned a process. (A core run records no
+    lane, so no folded `InRunGroup` entry can hold `helpers_disclosed` back.)"""
+    if state in _NON_TERMINAL_STATES:
         return None
+    if not ledger.has_kind("started"):
+        return CleanupView(processes="nothing_created")
     row = ledger.last_kind("group_stop")
     released = row is not None and row.get("confirmed_gone") is True
     return CleanupView(processes="released" if released else "unknown")

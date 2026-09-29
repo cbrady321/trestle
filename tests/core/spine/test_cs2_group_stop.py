@@ -1,6 +1,7 @@
 """CS-2 GroupStop row and cleanup projection (L.CS-2.6; MC-32, B2-C9): exactly one `group_stop`
 on every terminal path of a spawned run, after the kill and before `evidence_finalized`; the
-run's process-group cleanup is `released` or `unknown`, never `nothing_created`."""
+run's process-group cleanup is `released` or `unknown`, never `nothing_created` (a run finalized
+while queued has no group at all and reads `nothing_created`, L.CL-A1.2)."""
 
 from __future__ import annotations
 
@@ -177,5 +178,6 @@ def test_a_run_that_never_started_has_no_process_group_target() -> None:
     ledger.append("cancelled", run_id="r_gs_queued")
     view = kernel.control.project.status("r_gs_queued")
     assert isinstance(view, RunView)
-    assert view.cleanup is None and "cleanup" not in view.to_dict()
+    # finalized while queued (B2-C12): no group target and no group_stop row, so nothing was created
+    assert view.cleanup is not None and view.cleanup.processes == "nothing_created"
     assert not _group_stops(run_dir)

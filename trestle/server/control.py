@@ -77,6 +77,8 @@ class ControlSurface:
 
     def __post_init__(self) -> None:
         self.lane = AdmissionLane(self.admission)
+        self.scheduler.on_dispatch = self._start
+        self.scheduler.on_expire = self.conductor.finalize_unspawned
 
     def submit_admit(self, request: AdmitRequest) -> Future[AdmitResult]:
         """MC-30: refresh the registry, then admit, on the admission thread."""
@@ -87,12 +89,12 @@ class ControlSurface:
         return self.lane.submit_refresh()
 
     def _drive_background(self, order: WorkOrder) -> None:
-        thread = threading.Thread(
-            target=self.conductor.drive,
-            args=(order,),
-            daemon=True,
-        )
-        thread.start()
+        """Hand an admitted run to the dispatcher: it starts now if a slot is free, else it waits
+        in the FIFO with its admitted deadline still running (MC-30, B2-C5)."""
+        self.scheduler.enqueue(order, self.conductor.admitted_deadline(order))
+
+    def _start(self, order: WorkOrder) -> None:
+        threading.Thread(target=self.conductor.drive, args=(order,), daemon=True).start()
 
     def run(
         self,
@@ -185,7 +187,7 @@ class ControlSurface:
             return await self.project.await_one_async(result.run_id, wait_ms)
 
         order = await asyncio.to_thread(self._work_order, result.run_id, plugin)
-        asyncio.create_task(self.conductor.drive_async(order))
+        await asyncio.to_thread(self._drive_background, order)
 
         if wait_ms == 0:
             return await asyncio.to_thread(self.project.status, result.run_id)

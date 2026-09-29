@@ -128,10 +128,10 @@ class PluginSnapshot:
 
 @dataclass
 class CleanupView:
-    """The cleanup disposition of a spawned run's process-group target (B2-C9, B4-C7): `released`
-    only when the supervisor confirmed every process attributable to the run gone, else
-    `unknown`. It is never `nothing_created` (the run spawned a process), never clean by
-    default."""
+    """The cleanup disposition of a finished run's process-group target (B2-C9, B4-C7): for a
+    spawned run `released` only when the supervisor confirmed every process attributable to the run
+    gone, else `unknown`; never `nothing_created` (the run spawned a process), never clean by
+    default. A run finalized while queued never spawned one and reads `nothing_created` (B2-C12)."""
 
     processes: str
 

@@ -48,10 +48,9 @@ def create_kernel(
         service_epoch = (trestle_home / "service_epoch").read_text(encoding="utf-8").strip()
     else:
         service_epoch = recover_on_startup(trestle_home)
-        config = load_config(trestle_home)
         from trestle.server.idempotency import rebuild_from_ledgers
 
-        rebuild_from_ledgers(trestle_home, ttl_s=config.idempotency_ttl_s)
+        rebuild_from_ledgers(trestle_home, ttl_s=load_config(trestle_home).idempotency_ttl_s)
 
     if plugin_dirs is not None:
         dirs = plugin_dirs
@@ -59,7 +58,8 @@ def create_kernel(
         dirs = resolve_plugin_dirs(trestle_home, cli_dirs=cli_plugin_dirs)
     registry = Registry(home=trestle_home, plugin_dirs=dirs)
     registry.refresh()
-    scheduler = Scheduler()
+    config = load_config(trestle_home)
+    scheduler = Scheduler(max_running=config.max_running_runs, queue_depth=config.queue_depth)
     run_registry = RunRegistry()
     admission = Admission(
         home=trestle_home,

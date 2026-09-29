@@ -9,6 +9,13 @@ from pathlib import Path
 
 _GB = 1024**3
 
+# Run capacity (MC-30, OQ-10): `max_running_runs` runs hold a slot at once and up to `queue_depth`
+# more wait in a FIFO; a run beyond both is refused `admission.queue_full`. The two defaults are
+# provisional: OQ-10 sets them from the Slice A workload measurement (TM-C3).
+CAPACITY_DEFAULT_PROVISIONAL = True
+MAX_RUNNING_RUNS_DEFAULT = 8
+QUEUE_DEPTH_DEFAULT = 256
+
 
 @dataclass(frozen=True)
 class RetentionConfig:
@@ -23,6 +30,8 @@ class TrestleConfig:
     retention: RetentionConfig = RetentionConfig()
     idempotency_ttl_s: int = 3600
     service_log: Path | None = None
+    max_running_runs: int = MAX_RUNNING_RUNS_DEFAULT
+    queue_depth: int = QUEUE_DEPTH_DEFAULT
 
     @classmethod
     def defaults(cls) -> TrestleConfig:
@@ -51,6 +60,8 @@ class TrestleConfig:
             ),
             idempotency_ttl_s=ttl,
             service_log=self.service_log,
+            max_running_runs=max(1, _env_int("TRESTLE_MAX_RUNNING_RUNS", self.max_running_runs)),
+            queue_depth=max(0, _env_int("TRESTLE_QUEUE_DEPTH", self.queue_depth)),
         )
 
 
@@ -82,12 +93,16 @@ def load_config(home: Path) -> TrestleConfig:
                 ),
                 idempotency_ttl_s=int(raw.get("idempotency_ttl_s", cfg.idempotency_ttl_s)),
                 service_log=_optional_path(raw.get("service_log")),
+                max_running_runs=int(raw.get("max_running_runs", cfg.max_running_runs)),
+                queue_depth=int(raw.get("queue_depth", cfg.queue_depth)),
             )
     if cfg.service_log is None:
         cfg = TrestleConfig(
             retention=cfg.retention,
             idempotency_ttl_s=cfg.idempotency_ttl_s,
             service_log=home / "service.log",
+            max_running_runs=cfg.max_running_runs,
+            queue_depth=cfg.queue_depth,
         )
     return cfg.with_env_overrides()
 
