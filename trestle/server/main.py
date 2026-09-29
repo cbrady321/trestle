@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import signal
 from dataclasses import dataclass
@@ -135,6 +136,7 @@ def run_server(
         version: str | None = None,
         wait_ms: int = 2000,
         idempotency_key: str | None = None,
+        completion: str = "bounded",
     ) -> dict[str, Any]:
         """Start a plugin run and optionally wait for a status frame."""
         kernel.registry.maybe_refresh()
@@ -145,6 +147,7 @@ def run_server(
                 version=version,
                 wait_ms=wait_ms,
                 idempotency_key=idempotency_key,
+                completion=completion,
             )
         )
 
@@ -160,27 +163,30 @@ def run_server(
             return result.to_dict()
         return [view.to_dict() for view in result]
 
+    # cancel, query and fetch read the ledger and evidence files: they run on a worker thread so a
+    # held call (or a slow read) never stops the loop answering the others (L.CS-4.2).
     @mcp.tool
-    def cancel(run_id: str) -> dict[str, Any]:
+    async def cancel(run_id: str) -> dict[str, Any]:
         """Request cancellation of a run."""
-        return kernel.control.cancel(run_id).to_dict()
+        outcome = await asyncio.to_thread(kernel.control.cancel, run_id)
+        return outcome.to_dict()
 
     @mcp.tool
-    def query(
+    async def query(
         view: QueryViewArg,
         params: dict[str, Any] | None = None,
         cursor: str | None = None,
     ) -> dict[str, Any]:
         """Query a named view. When to pick each view: trestle://views."""
-        result = kernel.control.query(view, params, cursor)
+        result = await asyncio.to_thread(kernel.control.query, view, params, cursor)
         if isinstance(result, RequestOutcome):
             return result.to_dict()
         return result
 
     @mcp.tool
-    def fetch(target: str, window: FetchWindowArg) -> dict[str, Any]:
+    async def fetch(target: str, window: FetchWindowArg) -> dict[str, Any]:
         """Fetch bytes for a handle within a window. When to pick: trestle://views."""
-        result = kernel.control.fetch(target, window)
+        result = await asyncio.to_thread(kernel.control.fetch, target, window)
         if isinstance(result, RequestOutcome):
             return result.to_dict()
         return result

@@ -119,6 +119,7 @@ Host checklist:
 - Ten MCP tools visible
 - `list_plugins` returns at least `echo` (after `trestle init`)
 - `run(plugin="echo", args={"message": "hi"}, wait_ms=5000)` returns a terminal `RunView`
+- `run(plugin="echo", args={"message": "hi"}, wait_ms=5000, completion="terminal")` also does, and can never return a `running` frame
 
 ## Troubleshooting
 

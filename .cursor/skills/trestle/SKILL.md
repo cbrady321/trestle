@@ -31,7 +31,7 @@ list_plugins → describe_plugin? → run → fetch(result) | query(last_error)
 
 Need a view name? Read MCP resource `trestle://views` first (not plugin schemas).
 
-Long jobs: short `wait_ms` for `run_id`, then `await_runs(timeout_ms=…)`.
+Long jobs: short `wait_ms` for `run_id`, then `await_runs(timeout_ms=…)`. Or pass `completion="terminal"` (with `wait_ms` above zero) so one `run` call returns only a finished run, bounded by the run's deadline plus a margin.
 
 ## Bootstrap (if catalog empty)
 

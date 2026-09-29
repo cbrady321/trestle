@@ -46,6 +46,9 @@ filterwarnings = [
     "ignore:Using `httpx` with `starlette.testclient`:starlette.exceptions.StarletteDeprecationWarning",
 ]
 addopts = "--strict-markers"
+markers = [
+    "spine: the unattended one-call acceptance of the core corrections (MC-29; CI job `spine`, gate ci-spine)",
+]
 
 [tool.mypy]
 python_version = "3.12"

@@ -30,3 +30,14 @@ stop_bound: float = _RELEASE_SLICE_S + grace + kill
 # request is seen within one interval, so the bound from the request is `stop_bound` plus this.
 # It is the interval the conductor has always polled at.
 poll_interval: float = 0.05
+
+# The finalization margin (B2 `OperatorLimits` name, MC-09, published by CS-4): how long after the
+# admitted deadline a call may still be answered. A deadline stop of a plugin that ignores SIGTERM
+# takes `grace` + `kill` (B2-C2 (5) in its plan-less form: `grace + kill <= finalization_margin`;
+# SV-3 extends the check to the release targets), and the finalization writes after the stop need
+# room of their own, so the default is the stop bound plus this reserve (10 s: a plan default
+# disclosed for the maintainer, not a requirement; A-1 publishes the reserve under its own name).
+_FINALIZATION_WRITES_S: float = 10.0
+finalization_margin: float = float(
+    os.environ.get("TRESTLE_FINALIZATION_MARGIN_S", str(stop_bound + _FINALIZATION_WRITES_S))
+)

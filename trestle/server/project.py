@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from trestle.common import codes
+from trestle.common import clock, codes
+from trestle.common.outcome import classify
 from trestle.common.types import (
     CatalogView,
     CleanupView,
@@ -37,17 +40,21 @@ class Project:
     home: Path
     registry: Registry
     run_registry: RunRegistry
+    # Status polls run on worker threads (L.CS-4.2), so two of them can overlap: a projection
+    # rewrites the run's summary.json through one fixed temporary name, one writer at a time.
+    _status_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def status(self, run_id: Handle) -> RunView | RequestOutcome:
-        ledger = self._ledger_for(run_id)
-        if ledger is None:
-            return RequestOutcome(
-                code=codes.INVALID_HANDLE,
-                message=f"unknown run: {run_id}",
-                retryable=False,
-                origin="projection",
-            )
-        return self._run_view(ledger, run_id)
+        with self._status_lock:
+            ledger = self._ledger_for(run_id)
+            if ledger is None:
+                return RequestOutcome(
+                    code=codes.INVALID_HANDLE,
+                    message=f"unknown run: {run_id}",
+                    retryable=False,
+                    origin="projection",
+                )
+            return self._run_view(ledger, run_id)
 
     def await_one(self, run_id: Handle, wait_ms: int) -> RunView | RequestOutcome:
         deadline = time.monotonic() + (wait_ms / 1000.0)
@@ -64,7 +71,7 @@ class Project:
     async def await_one_async(self, run_id: Handle, wait_ms: int) -> RunView | RequestOutcome:
         deadline = time.monotonic() + (wait_ms / 1000.0)
         while True:
-            view = self.status(run_id)
+            view = await asyncio.to_thread(self.status, run_id)
             if isinstance(view, RequestOutcome):
                 return view
             if view.state not in {"queued", "running"}:
@@ -72,6 +79,60 @@ class Project:
             if time.monotonic() >= deadline:
                 return view
             await asyncio.sleep(0.05)
+
+    def await_terminal(self, run_id: Handle) -> RunView | RequestOutcome:
+        """`completion="terminal"`: answer only from the finalized terminal row (the run view's
+        state is terminal exactly when `evidence_finalized` and a terminal kind are both in the
+        ledger), never a running frame. The wait is bounded by the run's admitted deadline plus
+        `clock.finalization_margin`; past it the answer is `projection.terminal_wait_exceeded`."""
+        limit = time.monotonic() + self._terminal_bound_s(run_id)
+        while True:
+            view = self.status(run_id)
+            if isinstance(view, RequestOutcome) or view.state not in _NON_TERMINAL_STATES:
+                return view
+            if time.monotonic() >= limit:
+                return _terminal_wait_exceeded(run_id)
+            time.sleep(clock.poll_interval)
+
+    async def await_terminal_async(self, run_id: Handle) -> RunView | RequestOutcome:
+        limit = time.monotonic() + await asyncio.to_thread(self._terminal_bound_s, run_id)
+        while True:
+            view = await asyncio.to_thread(self.status, run_id)
+            if isinstance(view, RequestOutcome) or view.state not in _NON_TERMINAL_STATES:
+                return view
+            if time.monotonic() >= limit:
+                return _terminal_wait_exceeded(run_id)
+            await asyncio.sleep(clock.poll_interval)
+
+    def _terminal_bound_s(self, run_id: Handle) -> float:
+        """Seconds from now to the moment the terminal wait gives up: the run's admitted
+        `spec.deadline` (wall clock, fixed at admission) plus the finalization margin. A spec
+        without a readable deadline falls back to its `timeout_s` from now, as the conductor
+        does."""
+        run_dir = self._run_dir_for(run_id)
+        spec: dict[str, Any] = {}
+        if run_dir is not None:
+            try:
+                loaded = json.loads((evidence_dir(run_dir) / "spec.json").read_text("utf-8"))
+            except (OSError, ValueError):
+                loaded = None
+            if isinstance(loaded, dict):
+                spec = loaded
+        remaining: float | None = None
+        raw = spec.get("deadline")
+        if isinstance(raw, str):
+            try:
+                fixed = datetime.fromisoformat(raw)
+            except ValueError:
+                fixed = None
+            if fixed is not None:
+                if fixed.tzinfo is None:
+                    fixed = fixed.replace(tzinfo=UTC)
+                remaining = (fixed - datetime.now(tz=UTC)).total_seconds()
+        if remaining is None:
+            timeout = spec.get("timeout_s")
+            remaining = float(timeout) if isinstance(timeout, (int, float)) else 300.0
+        return max(remaining, 0.0) + clock.finalization_margin
 
     async def await_many_async(
         self,
@@ -81,7 +142,7 @@ class Project:
     ) -> list[RunView] | RequestOutcome:
         deadline = time.monotonic() + (timeout_ms / 1000.0)
         while True:
-            views, outcome = self._collect_run_views(run_ids)
+            views, outcome = await asyncio.to_thread(self._collect_run_views, run_ids)
             if outcome is not None:
                 return outcome
             assert views is not None
@@ -334,6 +395,7 @@ class Project:
             limits_exceeded=limits_exceeded if isinstance(limits_exceeded, list) else None,
             cleanup=_cleanup_view(ledger, state),
             error=_error_view(ledger, state),
+            outcome=_outcome_view(ledger, state, evidence),
         )
 
     def _summary_budget(self, ledger: RunLedger) -> int:
@@ -343,6 +405,18 @@ class Project:
         if snap is not None:
             return snap.summary_budget
         return 4096
+
+
+def _terminal_wait_exceeded(run_id: Handle) -> RequestOutcome:
+    return RequestOutcome(
+        code=codes.TERMINAL_WAIT_EXCEEDED,
+        message=(
+            f"run {run_id} has no finalized terminal row within its deadline plus the "
+            "finalization margin; query it by run id"
+        ),
+        retryable=False,
+        origin="projection",
+    )
 
 
 def _error_view(ledger: RunLedger, state: str) -> dict[str, Any] | None:
@@ -355,6 +429,29 @@ def _error_view(ledger: RunLedger, state: str) -> dict[str, Any] | None:
     if row is None:
         return None
     return {key: row.get(key) for key in ("code", "phase", "message")}
+
+
+def _outcome_view(ledger: RunLedger, state: str, evidence: Path | None) -> dict[str, Any] | None:
+    """The run's answer class (MC-17, B4-T4), beside `state`: classified from the terminal kind,
+    the `error_record` row and whether recovery wrote the terminal row. Only `interrupted` is
+    written by recovery. A run that has not ended has none. Identity is the snapshot the run's
+    spec fixed at admission."""
+    if state in _NON_TERMINAL_STATES:
+        return None
+    row = ledger.last_kind("error_record")
+    outcome = classify(state, row, recovered=state == "interrupted")
+    return outcome.to_dict(_spec_snapshot_id(evidence))
+
+
+def _spec_snapshot_id(evidence: Path | None) -> str | None:
+    if evidence is None:
+        return None
+    try:
+        spec = json.loads((evidence / "spec.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    snapshot_id = spec.get("snapshot_id") if isinstance(spec, dict) else None
+    return snapshot_id if isinstance(snapshot_id, str) else None
 
 
 def _cleanup_view(ledger: RunLedger, state: str) -> CleanupView | None:

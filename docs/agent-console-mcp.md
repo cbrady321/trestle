@@ -111,7 +111,7 @@ Typical successful path:
 | 1 | `list_plugins` | Discover plugin `name` values |
 | 2 | `describe_plugin` | Optional — `input_schema` / `return_schema` when args or result shape are unknown (`plugin_id` = plugin name) |
 | 2b | `publish_plugin` | Optional — create or update a plugin from Python `source` at runtime |
-| 3 | `run` | `plugin`, `args`, `wait_ms` — see §3 for blocking behavior |
+| 3 | `run` | `plugin`, `args`, `wait_ms`, optional `completion` — see §3 for blocking behavior |
 | 4a | `fetch` | Success — read return value from `{run_id}/result` |
 | 4b | `query` | Failure — `view: last_error`, `params: {run_id}` |
 
@@ -193,6 +193,15 @@ Filesystem drop-in (copy to `plugins/`) still works and uses the same hot-reload
 - Terminal within `wait_ms` → terminal `RunView` in one call (same as before).
 
 Long jobs: use a short `wait_ms` to get `run_id` quickly, then `await_runs` with a longer `timeout_ms` — or set a large `wait_ms` if the host allows a long stdio `tools/call`.
+
+### `run` honors `completion` (MC-16)
+
+`completion` is the one optional `run` parameter that changes what the call waits for: `"bounded"` (default) is the behavior above; `"terminal"` answers only from the finalized terminal row, never a `running` frame.
+
+- The bound is the run's admitted deadline plus `clock.finalization_margin` (which covers the stop's grace and kill), not `wait_ms`; `wait_ms` above zero is accepted and ignored, `wait_ms<=0` is refused `admission.invalid_args`, and so is an unknown `completion` value. Nothing is admitted on a refusal.
+- Past that bound the call answers `projection.terminal_wait_exceeded` (`origin: projection`, not retryable); the run continues and `await_runs` joins it.
+- The wait runs off the server's event loop, so `cancel`, `query` and `fetch` on other runs (or the same one) are answered while a `terminal` call is held.
+- A finished run's `RunView` carries `outcome` (`class`, `code`, `identity`, `recovered`): one class from `passed | cancelled | timed_out | execution_error | failed | blocked`; a plain plugin reaches the first four.
 
 ### Evidence finalization (R-QB-28)
 
