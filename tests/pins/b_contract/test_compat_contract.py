@@ -11,7 +11,7 @@ import pytest
 
 from tests.pins.b_contract import facets
 from tests.pins.b_contract.kit import run_plugin
-from tests.proof import normalize
+from tests.proof import differ, normalize
 
 
 def _golden(name: str) -> object:
@@ -23,14 +23,20 @@ def _golden(name: str) -> object:
 @pytest.mark.proves("WR-COMPAT-5", "WR-COMPAT-5:preserved", "core", "core", "must", "CI")
 def test_context_surface_preserved() -> None:
     current = normalize.normalize(facets.context_surface())
-    missing, unexpected = normalize.structural_diff(
-        _golden("context_surface"), current, policy="named"
+    # the one growth is a named additive entry of the divergence ledger (Context.event, BFD-10);
+    # anything else new or missing fails
+    diff = differ.named_diff(
+        _golden("context_surface"),
+        current,
+        policy="named",
+        selectors=differ.facet_selectors("context_surface", differ.load_divergence()),
     )
-    assert (missing, unexpected) == ([], [])
+    assert (diff.missing, diff.unexpected) == ([], [])
     # the members plugin authors rely on, stated outright
     context = current["context"]
     assert set(context["attributes"]) == {"tmp", "outputs", "cancelled", "deadline"}
-    assert set(context["methods"]) == {"log", "progress", "artifact", "attach"}
+    assert {"log", "progress", "artifact", "attach"} <= set(context["methods"])
+    assert set(context["methods"]) - {"log", "progress", "artifact", "attach"} == {"event"}
     assert current["decorator"]["bare"] is True
 
 
