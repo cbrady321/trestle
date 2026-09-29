@@ -1364,3 +1364,14 @@ docs = []
 due_checkpoint = "SV-3 (leaf L.SV-3.5)"
 direction = "additive"
 authorized_by = "plan-workflow-runtime.md:979 (MC-06 names admission.* additions); plans/a1-single-level.md L.SV-3.5 (DM-16, A1c3-7; DM-07 for plan_multi_vertex_unsupported)"
+
+# L.SL-8.2: the environment lease's busy refusal (MC-06 seed; B2 ordering step 2).
+[[entry]]
+id = "ADD-code-admission-environment-busy"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.environment_busy"]
+docs = []
+due_checkpoint = "SL-8 (leaf L.SL-8.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seeds admission.environment_busy); plans/a1-single-level.md L.SL-8.2 (DM-16; U7-1 routes the V-11 row)"

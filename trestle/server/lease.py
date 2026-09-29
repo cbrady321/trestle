@@ -82,6 +82,16 @@ def holder_of(run_dir: Path, *, now: float | None = None) -> Holder | None:
     return Holder(run_id=str(created.get("run_id", run_dir.name)), key=key, deadline_epoch=deadline)
 
 
+def leaves_too_little(
+    free_at: float, would_be_deadline: float, worst_case_s: float, release_slice_s: float
+) -> bool:
+    """B2 ordering step 2 (B2-C5): a request that would wait for the environment until `free_at`
+    (the holders' latest recorded deadline) and would then have less than the plan's worst case
+    plus its release slice before its own deadline is refused busy instead of queued. Epoch
+    seconds throughout."""
+    return would_be_deadline - free_at < worst_case_s + release_slice_s
+
+
 @dataclass
 class Holders:
     """The index of runs that may hold a lease, by environment key, in admission order. Entries
@@ -117,6 +127,19 @@ class Holders:
         for holder, run_dir in candidates:
             if holder_of(run_dir, now=now) is None:
                 self.release(holder.run_id)
+
+    def key_of(self, run_id: str) -> str | None:
+        """The environment key a run was admitted with (None: it holds no lease)."""
+        with self._lock:
+            entry = self._entries.get(run_id)
+        return None if entry is None else entry[0].key
+
+    def latest_deadline(self, key: str, *, now: float | None = None) -> float | None:
+        """The latest admitted deadline among the runs holding or waiting on `key`, or None when
+        no run does: the moment the environment is certainly free (every run ends by its own
+        deadline, or earlier at its terminal row)."""
+        deadlines = [h.deadline_epoch for h in self.held(key, now=now)]
+        return max(deadlines) if deadlines else None
 
     def snapshot(self, *, now: float | None = None) -> frozenset[Holder]:
         """Every current holder, as a set (the comparand of a restart's rebuild)."""
