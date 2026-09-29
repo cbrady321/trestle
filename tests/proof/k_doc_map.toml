@@ -185,8 +185,8 @@ must_appear_by = "CL-B1"
 [[k]]
 id = "K-18"
 rows = ["WR-EVID-11"]
-docs = ["docs/agents.md"]
-docs_source = "requirements-workflow-runtime.md:549; doc inferred (evidence honesty)"
+docs = ["docs/operator-sessions-telemetry.md"]
+docs_source = "requirements-workflow-runtime.md:549; plans/core.md L.CS-1.1 (docs/operator-sessions-telemetry.md holds the ledger framing doc)"
 confirm = "no"
 recorded_default = "n/a (not confirm-gated)"
 landing_merge = "CS-1"

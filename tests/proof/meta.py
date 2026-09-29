@@ -67,7 +67,16 @@ def measure_current() -> dict[str, object]:
     # `root_passed` meaning only the non-packs S0 corpus (measured
     # separately below), matching EV-01's separate root/packs fields.
     root_passed, _root_skipped = _pytest_counts(
-        ["--ignore=tests/proof", "--ignore=tests/pins", "--ignore-glob=packages/trestle-packs/*"]
+        [
+            "--ignore=tests/proof",
+            "--ignore=tests/pins",
+            # delivery-phase test trees (core, then A-1/A-2) are not the S0 corpus
+            "--ignore=tests/core",
+            "--ignore=tests/spine",
+            "--ignore=tests/single",
+            "--ignore=tests/tree",
+            "--ignore-glob=packages/trestle-packs/*",
+        ]
     )
     # The packs half is run with the worktree's own trestle_packs source
     # prepended on PYTHONPATH. In CI, `pip install -e ".[dev,packs]"` makes
