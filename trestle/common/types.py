@@ -155,6 +155,7 @@ class RunView:
     next: Handle | None = None
     limits_exceeded: list[dict[str, Any]] | None = None
     cleanup: CleanupView | None = None
+    outcome: dict[str, Any] | None = None  # MC-17: {class, code, identity, recovered}, beside state
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -181,6 +182,8 @@ class RunView:
             out["limits_exceeded"] = self.limits_exceeded
         if self.cleanup is not None:
             out["cleanup"] = self.cleanup.to_dict()
+        if self.outcome is not None:
+            out["outcome"] = self.outcome
         return out
 
 

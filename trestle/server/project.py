@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from trestle.common import codes
+from trestle.common.outcome import classify
 from trestle.common.types import (
     CatalogView,
     CleanupView,
@@ -334,6 +335,7 @@ class Project:
             limits_exceeded=limits_exceeded if isinstance(limits_exceeded, list) else None,
             cleanup=_cleanup_view(ledger, state),
             error=_error_view(ledger, state),
+            outcome=_outcome_view(ledger, state, evidence),
         )
 
     def _summary_budget(self, ledger: RunLedger) -> int:
@@ -355,6 +357,29 @@ def _error_view(ledger: RunLedger, state: str) -> dict[str, Any] | None:
     if row is None:
         return None
     return {key: row.get(key) for key in ("code", "phase", "message")}
+
+
+def _outcome_view(ledger: RunLedger, state: str, evidence: Path | None) -> dict[str, Any] | None:
+    """The run's answer class (MC-17, B4-T4), beside `state`: classified from the terminal kind,
+    the `error_record` row and whether recovery wrote the terminal row. Only `interrupted` is
+    written by recovery. A run that has not ended has none. Identity is the snapshot the run's
+    spec fixed at admission."""
+    if state in _NON_TERMINAL_STATES:
+        return None
+    row = ledger.last_kind("error_record")
+    outcome = classify(state, row, recovered=state == "interrupted")
+    return outcome.to_dict(_spec_snapshot_id(evidence))
+
+
+def _spec_snapshot_id(evidence: Path | None) -> str | None:
+    if evidence is None:
+        return None
+    try:
+        spec = json.loads((evidence / "spec.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    snapshot_id = spec.get("snapshot_id") if isinstance(spec, dict) else None
+    return snapshot_id if isinstance(snapshot_id, str) else None
 
 
 def _cleanup_view(ledger: RunLedger, state: str) -> CleanupView | None:
