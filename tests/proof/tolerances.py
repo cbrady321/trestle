@@ -39,6 +39,21 @@ _S0_FALLBACKS: dict[str, tuple[str | None, str | None]] = {
 }
 
 
+# Harness patience: how long a proof test waits on a process, a join or a
+# settle. These are proof-court scaffolding, not MC-09 product bounds, so
+# they have no `trestle.common.clock` counterpart and are plain constants
+# (SA-05 keeps every literal out of the proof tests themselves).
+HARNESS_WAIT_MS = 5000  # run_to_dir wait for a run to reach a terminal state
+PROC_WAIT_S = 5.0  # Popen.wait after a kill
+JOIN_WAIT_S = 10.0  # thread/host join
+SETTLE_LONG_S = 1.0  # let a forked tree finish reparenting
+STABILITY_GAP_S = 0.5  # gap between two reads that must agree
+SETTLE_S = 0.3  # let a just-spawned process appear in ps
+SETTLE_SHORT_S = 0.2
+POLL_S = 0.1  # poll interval
+POLL_FINE_S = 0.05
+
+
 class ToleranceUnpublished(RuntimeError):
     """Raised on reading a tolerance that is neither published on
     `trestle.common.clock` nor available as an S0 fallback constant."""
