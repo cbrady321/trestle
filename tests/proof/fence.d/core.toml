@@ -69,7 +69,8 @@ name          = "ck-14"
 branch_prefix = "wr/ck-14/"
 globs         = ["trestle/server/init_cmd.py", "packages/trestle-packs/trestle_packs/py.typed", "tests/core/tooling/test_ck14_*.py",
                  "tests/core/tooling/declines/ck_14.py", ".github/workflows/ci.yml", "pyproject.toml", "docs/install.md",
-                 "tests/proof/labels.d/core.toml", "tests/proof/temporary.d/p0.toml"]
+                 "tests/proof/labels.d/core.toml", "tests/proof/temporary.d/p0.toml",
+                 "tests/proof/baseline.json", "tests/proof/selftest/test_ci_checkout.py"]
 
 [[lane]]
 name          = "cl-d"

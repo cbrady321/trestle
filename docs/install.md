@@ -14,6 +14,10 @@ chmod 700 ~/.trestle               # recommended — per-user home
 trestle doctor                     # health: ok, plugins ≥ 1
 ```
 
+<!-- K-14 -->
+**Type checking.** `mypy` runs at zero errors and is gated in CI by its own `typecheck` job. The gate needs the workflow packs installed (`pip install -e ".[dev,packs]"`): `trestle_packs` ships a `py.typed` marker so `import trestle_packs` type-checks, and with `.[dev]` alone the package is absent and `mypy` reports `import-not-found`. Run it locally the same way: `pip install -e ".[dev,packs]" && mypy`.
+<!-- /K-14 -->
+
 Use the **absolute path** to the venv binary in MCP configs so hosts do not depend on `PATH`:
 
 ```bash
