@@ -47,13 +47,13 @@ extractor = "pending"
 id = "ledger_kinds"
 additive = "free"
 golden = "tests/fixtures/golden/s0/ledger_kinds.json"
-extractor = "pending"
+extractor = "tests.pins.a_lifecycle.golden:ledger_kinds"
 
 [[facet]]
 id = "meta_fields"
 additive = "free"
 golden = "tests/fixtures/golden/s0/meta_fields.json"
-extractor = "pending"
+extractor = "tests.pins.a_lifecycle.golden:meta_fields"
 
 [[facet]]
 id = "snapshot_manifest"
@@ -71,4 +71,4 @@ extractor = "pending"
 id = "fossil_projection"
 additive = "free"
 golden = "tests/fixtures/golden/s0/fossil_projection.json"
-extractor = "pending"
+extractor = "tests.pins.a_lifecycle.golden:fossil_projection"
