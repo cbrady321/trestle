@@ -9,7 +9,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from trestle.common import codes
-from trestle.common.types import CatalogView, Handle, JoinMode, PublishView, RequestOutcome, RunView
+from trestle.common.types import (
+    CatalogView,
+    CleanupView,
+    Handle,
+    JoinMode,
+    PublishView,
+    RequestOutcome,
+    RunView,
+)
 from trestle.query.fs import FilesystemQueryBackend
 from trestle.server.ledger import TERMINAL_KINDS, RunLedger, evidence_dir, ledger_path
 from trestle.server.pins import PinStore
@@ -323,6 +331,7 @@ class Project:
             summary=summary,
             next=next_handle,
             limits_exceeded=limits_exceeded if isinstance(limits_exceeded, list) else None,
+            cleanup=_cleanup_view(ledger, state),
         )
 
     def _summary_budget(self, ledger: RunLedger) -> int:
@@ -332,6 +341,21 @@ class Project:
         if snap is not None:
             return snap.summary_budget
         return 4096
+
+
+def _cleanup_view(ledger: RunLedger, state: str) -> CleanupView | None:
+    """The cleanup disposition of a finished run's process-group target (B2-C9, B4-C7, MC-32).
+
+    A run that never started spawned nothing and has no such target. For every run that did, the
+    target is `released` only when the run's `group_stop` row says the supervisor confirmed every
+    attributable process gone, else `unknown`; no row is `unknown`, never clean. It is never
+    `nothing_created`: the run spawned a process. (A core run records no lane, so no folded
+    `InRunGroup` entry can hold `helpers_disclosed` back.)"""
+    if state in _NON_TERMINAL_STATES or not ledger.has_kind("started"):
+        return None
+    row = ledger.last_kind("group_stop")
+    released = row is not None and row.get("confirmed_gone") is True
+    return CleanupView(processes="released" if released else "unknown")
 
 
 _NON_TERMINAL_STATES = frozenset({"queued", "running"})

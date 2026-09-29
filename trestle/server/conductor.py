@@ -72,16 +72,17 @@ class Conductor:
         cancel_flag = cancel_flag_path(run_dir)
         deadline = time.monotonic() + timeout_s
         stop_cause: str | None = None
+        stop: GroupStop | None = None
         try:
             while proc.poll() is None:
                 attribution.observe()
                 if cancel_flag.exists():
                     stop_cause = "cancel"
-                    self.stopper(attribution)
+                    stop = self.stopper(attribution)
                     break
                 if time.monotonic() > deadline:
                     stop_cause = "deadline"
-                    self.stopper(attribution)
+                    stop = self.stopper(attribution)
                     break
                 time.sleep(clock.poll_interval)
             if stop_cause is None:  # the exit was observed: check once more (B2-C10)
@@ -91,14 +92,29 @@ class Conductor:
                     stop_cause = "deadline"
         finally:
             self.run_registry.unregister(order.run_id)
-            # a request-path stop still in flight finishes before this run appends another row
+            # B2-C10: the kill runs on every terminal path, a normal exit included. A request-path
+            # stop still in flight finishes first (one stop at a time), and nothing signals after.
             with attribution.lock:
+                if stop is None:
+                    stop = self.stopper(attribution)
                 attribution.close()
             if proc.stdout is not None:
                 proc.stdout.close()
             if proc.stderr is not None:
                 proc.stderr.close()
-            proc.wait()
+            try:  # after the stop the leader is gone, or could not be killed (never waited on)
+                proc.wait(timeout=clock.kill)
+            except subprocess.TimeoutExpired:
+                pass
+
+        assert stop is not None
+        # MC-32: one group_stop per spawned run, after the kill and before evidence_finalized
+        ledger.append(
+            "group_stop",
+            run_id=order.run_id,
+            confirmed_gone=stop.confirmed_gone,
+            method=stop.method,
+        )
 
         duration_ms = int((time.monotonic() - started) * 1000)
 

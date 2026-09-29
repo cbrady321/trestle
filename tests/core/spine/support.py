@@ -22,6 +22,9 @@ from trestle.common.types import AdmitRequest, RequestOutcome, WorkOrder
 from trestle.server.ledger import RunLedger, ledger_path, run_dir_for
 from trestle.server.main import Kernel
 
+# A marker names one run (its run id or its tmp path); anything shorter matches unrelated processes.
+MIN_MARKER = 8
+
 SPINE_PLUGIN_DIR = Path(__file__).resolve().parent / "plugins"
 
 # A run-scoped deadline, in whole seconds, for a run that must end by its deadline inside a test:
@@ -94,7 +97,9 @@ def wait_ready(run_dir: Path) -> None:
 
 
 def marked(marker: str) -> set[ancestry.ProcInfo]:
-    """Every process in a fresh snapshot whose argv carries `marker`."""
+    """Every process in a fresh snapshot whose argv carries `marker` (a run id or a path: an empty
+    or short marker would match every process the user owns, so it is refused)."""
+    assert len(marker) >= MIN_MARKER, f"marker {marker!r} is too short to name one run"
     return {p for p in ancestry.snapshot() if marker in p.argv}
 
 
