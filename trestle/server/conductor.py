@@ -15,6 +15,7 @@ from trestle.common.fsutil import atomic_write_json
 from trestle.common.ids import generate_artifact_id
 from trestle.common.types import WorkOrder
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, work_dir
+from trestle.server.procident import Attribution, Identity, ProcessSource
 from trestle.server.runs import RunRegistry, cancel_flag_path, terminate_process_group
 from trestle.server.scheduler import Scheduler
 
@@ -24,6 +25,7 @@ class Conductor:
     home: Path
     scheduler: Scheduler
     run_registry: RunRegistry
+    process_source: ProcessSource | None = None
 
     def drive(self, order: WorkOrder) -> str:
         run_dir = self._find_run_dir(order.run_id)
@@ -47,17 +49,27 @@ class Conductor:
         started = time.monotonic()
         proc = subprocess.Popen(
             wrapper_cmd,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             env=_subprocess_env(self.home),
             start_new_session=True,
         )
+        # B2-C16: the leader's identity row goes down after spawn and before the first liveness
+        # poll; the wrapper does not wait on it.
+        attribution = Attribution(
+            group=proc.pid,
+            record=lambda ident: _record_identity(ledger, order.run_id, ident),
+            source=self.process_source,
+        )
+        attribution.attribute_leader(proc.pid)
         self.run_registry.register(order.run_id, proc)
         cancel_flag = cancel_flag_path(run_dir)
         deadline = time.monotonic() + timeout_s
         try:
             while proc.poll() is None:
+                attribution.observe()
                 if cancel_flag.exists():
                     terminate_process_group(proc, grace_s=0.0, kill_s=1.0)
                     break
@@ -175,6 +187,10 @@ class Conductor:
             if candidate.is_dir():
                 return candidate
         raise FileNotFoundError(run_id)
+
+
+def _record_identity(ledger: RunLedger, run_id: str, ident: Identity) -> None:
+    ledger.append("process_identity", run_id=run_id, **ident.fields())
 
 
 def _read_ndjson(path: Path) -> list[dict[str, object]]:

@@ -16,6 +16,7 @@ def spawn_child(run_dir: Path) -> subprocess.Popen[str]:
     env["PYTHONPATH"] = root if not existing else f"{root}{os.pathsep}{existing}"
     return subprocess.Popen(
         cmd,
+        stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
