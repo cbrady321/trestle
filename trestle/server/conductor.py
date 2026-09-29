@@ -19,7 +19,8 @@ from trestle.common.limits import capture_limits
 from trestle.common.plan.compiler import AdmittedPlan
 from trestle.common.pyenv import build_child_env, python_argv
 from trestle.common.types import WorkOrder
-from trestle.server import fold
+from trestle.server import fold, sweep
+from trestle.server.config import load_config
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, work_dir
 from trestle.server.procident import Attribution, GroupStop, Identity, ProcessSource, stop_group
 from trestle.server.projection import count_events
@@ -239,7 +240,15 @@ class Conductor:
         # B2-C7 (MC-19): the lane is folded, and its entries are in the ledger as `lane_folded`
         # rows, before the row that ends execution; a run with no lane writes none. `accepted` is
         # spec.plan's admitted plan (None: the implicit one-vertex plan).
-        folded = fold.fold_into_ledger(run_dir, ledger, _accepted_plan(spec))
+        plan = _accepted_plan(spec)
+        folded = fold.fold_into_ledger(run_dir, ledger, plan)
+
+        # B2-C10: the sweep runs inside the finalization margin, after the fold and the kill; its
+        # rows are durable before the terminal row (B4-C7). A plain plugin has only the process
+        # group target, disposed from the group stop above, so it writes none.
+        limits = load_config(self.home).operator_limits
+        swept = sweep.sweep_detailed(folded, stop, sweep.budget_for(limits), limits, plan)
+        sweep.write_rows(ledger, order.run_id, swept)
 
         duration_ms = int((time.monotonic() - started) * 1000)
 

@@ -21,6 +21,14 @@ from typing import Any, Protocol
 
 from trestle.common import lane_format as lf
 from trestle.common.errtext import sanitize
+
+# The V-10 descriptor forms and the confirmation status are record data the sweep reads (B2-C9); it
+# gets them here, so this module stays the host's one reader of the lane codec.
+from trestle.common.lane_format import ArgvRelease as ArgvRelease
+from trestle.common.lane_format import ConfirmationStatus as ConfirmationStatus
+from trestle.common.lane_format import Durable as Durable
+from trestle.common.lane_format import InRunGroup as InRunGroup
+from trestle.common.lane_format import TicketEntry as TicketEntry
 from trestle.common.plan import bounds
 from trestle.common.plan.compiler import AdmittedPlan
 from trestle.server.ledger import RunLedger, ledger_path
