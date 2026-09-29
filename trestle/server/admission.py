@@ -34,6 +34,14 @@ from trestle.server.registry import Registry
 from trestle.server.scheduler import Scheduler
 from trestle.server.snapshots import deadline_of, load_declared, load_snapshot_schema
 
+# K-1 (MC-CORE-12, OQ-1 recorded default): the same idempotency key joins the run it named even
+# after the plugin was republished, and the key's window covers the run's whole life. A join then
+# needs the same plugin, the same `args_hash` and the run present (the snapshot is not compared);
+# the entry lives until the admitted deadline plus the finalization margin plus the ttl. Cleared,
+# both revert to S0: an equal `snapshot_id` is required and the entry lives `ttl` from admission.
+# The CK-1 decline patch (CM-7) flips this constant.
+JOIN_ACROSS_REPUBLISH: bool = True
+
 
 @dataclass
 class Admission:
@@ -133,7 +141,7 @@ class Admission:
             if existing is not None:
                 if (
                     existing.plugin == snap.plugin
-                    and existing.snapshot_id == snap.snapshot_id
+                    and (JOIN_ACROSS_REPUBLISH or existing.snapshot_id == snap.snapshot_id)
                     and existing.args_hash == a_hash
                     and find_run_dir(self.home, existing.run_id) is not None
                 ):
@@ -214,7 +222,12 @@ class Admission:
                 plugin=snap.plugin,
                 snapshot_id=snap.snapshot_id,
                 args_hash=a_hash,
-                ttl_s=cfg.idempotency_ttl_s,
+                ttl_s=cfg.idempotency_ttl_s
+                + (
+                    math.ceil(snap.timeout_s + clock.finalization_margin)
+                    if JOIN_ACROSS_REPUBLISH
+                    else 0
+                ),
             )
 
         self.scheduler.mint(run_id, snap.snapshot_id, spec_hash)
