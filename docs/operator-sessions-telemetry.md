@@ -112,6 +112,12 @@ While evidence is not finalized, stream views (`last_error`, `run_tail`, …) re
 
 Prefer the smallest answer: result jsonpath for success, `last_error` for failure, artifact `fetch` for files. No log scroller, no live tail.
 
+### Ledger and event files: a newline-less tail is terminated (K-18)
+
+A run's `ledger.ndjson` and `events.ndjson` hold one JSON object per line. If a write was interrupted after a record's closing brace but before its newline, that record is still valid, and the next append now **terminates** it (a newline is written ahead of the new record) instead of writing onto it. Earlier releases merged the two into one unparseable line, and every later row of the file was lost. Only a final fragment that does not parse is cut (at the last newline); no committed byte is rewritten. A run whose terminal row lost its newline still reads as terminal, and recovery adds no `interrupted` suffix to it.
+
+This is a knowing change (K-18) and it is forward-only: the repair of a file that already carries a newline-less tail is not undone by downgrading.
+
 ---
 
 ## 4. CLI vs operator HTTP
