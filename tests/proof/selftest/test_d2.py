@@ -96,3 +96,24 @@ def test_planted_reader_divergence_reported(tmp_path: Path) -> None:
 
     rc = differ.cmd_d2(Namespace(reader="HEAD", fossils=str(fossils_root)))
     assert rc == 1
+
+
+def test_manifest_s0_projection_state_is_the_expectation(tmp_path: Path) -> None:
+    from tests.proof import fossils as fossils_mod
+
+    fossils_root = tmp_path / "fossils"
+    band_dir = fossils_root / "s0"
+    band_dir.mkdir(parents=True)
+    fossils_mod.produce_succeeded(band_dir / "renamed" / "home")
+
+    def manifest(projected: str) -> str:
+        return (
+            '[[state]]\nid = "renamed"\nproducer = "tests.proof.fossils:produce_succeeded"\n'
+            "absent = false\n"
+            f's0_projection = {{ state = "{projected}", kinds = [], meta_keys = [] }}\n'
+        )
+
+    (band_dir / "MANIFEST.toml").write_text(manifest("succeeded"))
+    assert differ.cmd_d2(Namespace(reader="HEAD", fossils=str(fossils_root))) == 0
+    (band_dir / "MANIFEST.toml").write_text(manifest("failed"))
+    assert differ.cmd_d2(Namespace(reader="HEAD", fossils=str(fossils_root))) == 1

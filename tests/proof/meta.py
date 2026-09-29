@@ -215,6 +215,13 @@ def _load_inventories() -> tuple[list[dict], list[dict], list[dict]]:
     return gaps, facets, states
 
 
+def _state_pending(state: dict) -> bool:
+    """A fossil state is pending iff its producer is "pending" and it is not
+    declared `absent = true`: an absent state (K-13, e.g. `crashed`) has no
+    S0 producer by design, so there is nothing to discharge."""
+    return state.get("producer") == "pending" and not state.get("absent")
+
+
 def cmd_inventory(args: argparse.Namespace) -> int:
     """Report the gap/facet/fossil-state inventories (L.P0-0a.4).
 
@@ -238,7 +245,7 @@ def cmd_inventory(args: argparse.Namespace) -> int:
                 count += 1
         if not lane:
             count += sum(1 for f in facets if f.get("extractor") == "pending")
-            count += sum(1 for s in states if s.get("producer") == "pending")
+            count += sum(1 for s in states if _state_pending(s))
         print(count)
         return 0 if count >= 1 else 1
 
@@ -252,7 +259,7 @@ def cmd_inventory(args: argparse.Namespace) -> int:
         pending = (
             [g["id"] for g in gaps if g.get("entry") == "pending"]
             + [f["id"] for f in facets if f.get("extractor") == "pending"]
-            + [s["id"] for s in states if s.get("producer") == "pending"]
+            + [s["id"] for s in states if _state_pending(s)]
         )
         if pending:
             print(f"STRICT: {len(pending)} pending entries")

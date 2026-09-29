@@ -219,7 +219,10 @@ def cmd_d2(args: argparse.Namespace) -> int:
     ok = True
     for state_id, result in report.items():
         band, _entry = states[state_id]
-        expected = state_id
+        # The MANIFEST's declared `s0_projection.state` (what the S0 reader
+        # projects after recovery); a state without one expects its own id.
+        projection = states[state_id][1].get("s0_projection") or {}
+        expected = projection.get("state", state_id)
         actual = result.get("projected_state")
         if actual != expected:
             state_path = f"{band}/{state_id}"
