@@ -169,7 +169,7 @@ def _conforms(value: object, tp: object) -> bool:
     "WR-PLAN-7:admitted-values-same-meaning",
     "core",
     "core",
-    "must",
+    "PROC",
     "CI",
 )
 @pytest.mark.parametrize("annotation", ANNOTATIONS)
@@ -252,7 +252,7 @@ def test_dict_annotated_gets_dict() -> None:
     "WR-PLAN-7:dict-annotated-gets-dict",
     "core",
     "core",
-    "must",
+    "PROC",
     "CI",
 )
 def test_dict_and_typeddict_params_stay_dicts_through_the_child(tmp_path: Path) -> None:

@@ -42,7 +42,7 @@ def _run(host: mcp_host.McpHost, args: dict[str, object]) -> dict[str, object]:
     "WR-PLAN-8:naive-or-malformed-no-run-id",
     "core",
     "core",
-    "must",
+    "MCP",
     "CI",
 )
 def test_naive_and_malformed_datetime_refused_via_mcp(tmp_path: Path) -> None:
