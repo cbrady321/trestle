@@ -7,16 +7,18 @@ observation (V-3.2, V-3.6 last line). Pure: no I/O, no clock read (`clock` is an
 module state. The record is read only through `units.NodeRecordView` (MC-B2-02), never a second
 definition of V-4's entry shape.
 
-This module holds groups 1, 3 and 4 for `RECORDED` leaves plus J-24 (L.SV-5.4); L.SV-5.5 adds
-the `OBSERVED` rows, the currency and lifetime rows and J-15; L.SL-6.1 fills group 5a.
+Groups 1, 3 and the `RECORDED` rows of group 4 plus J-24 are L.SV-5.4's; the `OBSERVED` rows of
+group 4, J-25/J-25a (group 5) and J-15 (group 6) are L.SV-5.5's; group 5a (J-3, J-3a) is a hook
+returning nothing until L.SL-6.1 fills it with the remedy path.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from trestle.workflow import codes, human_actions
-from trestle.workflow.declarations import CompletionSource, Repeat
+from trestle.workflow.declarations import CompletionSource, RemedyDeclaration, Repeat
 from trestle.workflow.units import NodeRecordView, StepView, TicketView
 from trestle.workflow.values import (
     AttemptSummary,
@@ -59,6 +61,71 @@ class _Ctx:
     def attempts_left(self) -> bool:
         """V-3.1: the latest ticket's `attempt` < `terms.max_attempts`."""
         return self.latest is not None and self.latest.attempt < self.terms.max_attempts
+
+    @property
+    def wait_anchor(self) -> datetime | None:
+        """V-3.1 "within its wait": a NoAction step recorded after the latest ticket (or with no
+        ticket) when one stands, else the latest ticket's `issued_at`."""
+        no_action = [s for s in self.steps_after if s.kind is StepKind.NO_ACTION]
+        if no_action:
+            return no_action[-1].at
+        return self.latest.issued_at if self.latest is not None else None
+
+    def wait_elapsed(self, anchor: datetime | None) -> bool:
+        return anchor is not None and self.clock.now >= anchor + self.terms.wait.max_wait
+
+    @property
+    def within_slice(self) -> bool:
+        return self.clock.now < self.terms.slice_end
+
+    def remedy_used(self, code: str) -> int:
+        return sum(1 for t in self.record.tickets if t.remedy is not None and t.remedy.code == code)
+
+    def remedy_issuable(self, code: str) -> RemedyDeclaration | None:
+        """V-3.1 "a remedy is issuable for code c": a declared remedy for c has attempts left (a
+        raw count), and the lane would ticket its effect: the leaf is SAFE, or the record holds no
+        ticket for that effect other than ones resolved NOT_APPLIED."""
+        for decl in self.terms.remedies:
+            if decl.code != code or self.remedy_used(code) >= decl.attempts:
+                continue
+            if self.terms.flags.repeat is Repeat.SAFE:
+                return decl
+            if not any(
+                t.effect == decl.effect
+                and not (
+                    t.confirmation is not None
+                    and t.confirmation.status is ConfirmationStatus.NOT_APPLIED
+                )
+                for t in self.record.tickets
+            ):
+                return decl
+        return None
+
+    def first_remedy(self, trigger_codes: tuple[str, ...]) -> RemedyGrant | None:
+        for code in trigger_codes:
+            decl = self.remedy_issuable(code)
+            if decl is not None:
+                return RemedyGrant(decl.code, decl.effect, self.remedy_used(code) + 1)
+        return None
+
+    def new_ticket_issuable(self, trigger_codes: tuple[str, ...]) -> bool:
+        """V-3.1 "a new ticket is issuable for c": a remedy is issuable for c, or the leaf is SAFE
+        with attempts left."""
+        if self.first_remedy(trigger_codes) is not None:
+            return True
+        return self.terms.flags.repeat is Repeat.SAFE and self.attempts_left
+
+    def reading(self, subject: object) -> str | None:
+        """The latest host-scope reading for `subject`, or None when it has none (V-9.6, V-9.7)."""
+        best: tuple[datetime, str] | None = None
+        for ref, generation, observed_at in self.host_scope.readings:
+            if ref == subject and (best is None or observed_at >= best[0]):
+                best = (observed_at, generation)
+        return best[1] if best is not None else None
+
+    def differs(self, fact: CurrencyFact) -> bool:
+        """String inequality with the latest reading; no reading joins as if it differed (V-9.7)."""
+        return self.reading(fact.subject) != fact.observed_generation
 
 
 def _context(
@@ -242,10 +309,188 @@ def _group4_recorded(ctx: _Ctx) -> Verdict:
     return _verdict(ctx, Provenance.ABSENT, Condition.UNSATISFIED)  # J-9
 
 
+def _timeout_codes(obs: Observation) -> tuple[str, ...]:
+    """The codes J-20 and J-23 read: the observation's own code, then POSTCONDITION_TIMEOUT."""
+    return (*((obs.code,) if obs.code is not None else ()), codes.POSTCONDITION_TIMEOUT)
+
+
+def _confirmed_rows(ctx: _Ctx, obs: Observation, present: bool, provenance: Provenance) -> Verdict:
+    """J-22, J-22a, J-21, J-18, J-19, J-20, J-23, J-23a for a confirmed effect (`present` is the
+    presence the row reads, V-3.1 "Which presence a row reads"); V-3.1b applies when the
+    provenance is FOUND: a confirmed row's UNSATISFIED and J-22a's FAILED become INCOMPATIBLE
+    with that row's code and no remedy."""
+    found = provenance is Provenance.FOUND
+    if not present:  # J-23 / J-23a: the confirmed resource is absent
+        if not ctx.wait_elapsed(ctx.wait_anchor):
+            return _verdict(ctx, provenance, Condition.CONVERGING)
+        trigger = _timeout_codes(obs)
+        if ctx.new_ticket_issuable(trigger):
+            return _verdict(
+                ctx, provenance, Condition.UNSATISFIED, remedy=ctx.first_remedy(trigger)
+            )
+        return _verdict(ctx, provenance, Condition.FAILED, codes.POSTCONDITION_TIMEOUT)
+    older = next((f for f in obs.currency if f.older is not None), None)
+    if older is not None and older.older is not None:  # J-22 / J-22a
+        code = older.older
+        subject = older.subject.value
+        if found:
+            return _verdict(ctx, provenance, Condition.INCOMPATIBLE, code, subject=subject)
+        if ctx.new_ticket_issuable((code,)):
+            return _verdict(
+                ctx, provenance, Condition.UNSATISFIED, remedy=ctx.first_remedy((code,))
+            )
+        return _verdict(ctx, provenance, Condition.FAILED, code)
+    stale = tuple(f for f in obs.currency if ctx.differs(f))
+    if stale:  # J-21
+        if ctx.within_slice:
+            return _verdict(ctx, provenance, Condition.STALE, currency=stale)
+        return _verdict(
+            ctx,
+            provenance,
+            Condition.BLOCKED,
+            codes.CURRENCY_UNCONFIRMED,
+            currency=stale,
+            subject=stale[0].subject.value,
+        )
+    if obs.postcondition.satisfied:  # J-18
+        return _verdict(ctx, provenance, Condition.SATISFIED)
+    if not ctx.wait_elapsed(ctx.wait_anchor):  # J-19
+        return _verdict(ctx, provenance, Condition.CONVERGING)
+    trigger = _timeout_codes(obs)  # J-20: only a remedy re-advances a confirmed effect
+    grant = ctx.first_remedy(trigger)
+    if grant is None:
+        return _verdict(ctx, provenance, Condition.FAILED, codes.POSTCONDITION_TIMEOUT)
+    if found:
+        return _verdict(ctx, provenance, Condition.INCOMPATIBLE, grant.code)
+    return _verdict(ctx, provenance, Condition.UNSATISFIED, remedy=grant)
+
+
+def _observed_with_ticket(ctx: _Ctx, obs: Observation, latest: TicketView) -> Verdict:
+    """J-16, J-17, J-17b, J-17a for an issued, unconfirmed ticket; otherwise the confirmed rows."""
+    conf = latest.confirmation
+    if conf is None or conf.status is ConfirmationStatus.UNKNOWN:
+        if obs.selector_present:  # J-16: CREATED (the loop confirms); condition as J-18..J-23a
+            return _confirmed_rows(ctx, obs, True, Provenance.CREATED)
+        elapsed = ctx.wait_elapsed(ctx.wait_anchor)
+        if ctx.terms.flags.repeat is Repeat.SAFE:
+            if not elapsed:  # J-17
+                return _verdict(ctx, Provenance.CLAIMED, Condition.CONVERGING)
+            if ctx.attempts_left:  # J-17
+                return _verdict(ctx, Provenance.CLAIMED, Condition.UNSATISFIED)
+            return _verdict(  # J-17b
+                ctx, Provenance.CLAIMED, Condition.BLOCKED, codes.EFFECT_UNCONFIRMED
+            )
+        if not elapsed:  # J-17a: ONCE; the wait-elapsed row below turns it into BLOCKED
+            return _verdict(ctx, Provenance.CLAIMED, Condition.IN_DOUBT)
+        return _verdict(ctx, Provenance.CLAIMED, Condition.BLOCKED, codes.EFFECT_UNCONFIRMED)
+    # confirmed (APPLIED): the node reads selector_present when its record holds a CreatedHandle,
+    # else present (V-3.1b)
+    if ctx.has_handle:
+        return _confirmed_rows(ctx, obs, obs.selector_present, Provenance.CREATED)
+    provenance = Provenance.FOUND if obs.present else Provenance.ABSENT
+    return _confirmed_rows(ctx, obs, obs.present, provenance)
+
+
+def _observed_no_ticket(ctx: _Ctx, obs: Observation) -> Verdict:
+    """J-10, J-12, J-13, J-13a, J-14, J-11, then J-24 where J-10 gives UNSATISFIED."""
+    if not obs.present:
+        if any(not result.satisfied for _, result in obs.preconditions):  # J-24
+            return _verdict(
+                ctx, Provenance.ABSENT, Condition.BLOCKED, codes.PRECONDITION_UNSATISFIED
+            )
+        return _verdict(ctx, Provenance.ABSENT, Condition.UNSATISFIED)  # J-10
+    found = Provenance.FOUND
+    if not (obs.identity_proven and obs.configuration_compatible):  # J-12
+        return _verdict(ctx, found, Condition.INCOMPATIBLE, codes.FOUND_INCOMPATIBLE)
+    older = next((f for f in obs.currency if f.older is not None), None)
+    if older is not None and older.older is not None:  # J-13
+        return _verdict(
+            ctx, found, Condition.INCOMPATIBLE, older.older, subject=older.subject.value
+        )
+    stale = tuple(f for f in obs.currency if ctx.differs(f))
+    if stale:  # J-13a
+        if ctx.within_slice:
+            return _verdict(ctx, found, Condition.STALE, currency=stale)
+        return _verdict(
+            ctx,
+            found,
+            Condition.BLOCKED,
+            codes.CURRENCY_UNCONFIRMED,
+            currency=stale,
+            subject=stale[0].subject.value,
+        )
+    if not obs.postcondition.satisfied:  # J-14
+        return _verdict(ctx, found, Condition.INCOMPATIBLE, codes.FOUND_UNHEALTHY)
+    return _verdict(ctx, found, Condition.SATISFIED)  # J-11
+
+
+def _group4_observed(ctx: _Ctx) -> Verdict:
+    obs = ctx.observation
+    if obs is None:
+        raise ValueError("an OBSERVED leaf is joined only after an observation (V-3.5)")
+    if ctx.latest is None:
+        return _observed_no_ticket(ctx, obs)
+    return _observed_with_ticket(ctx, obs, ctx.latest)
+
+
 def _group4(ctx: _Ctx) -> Verdict:
-    if ctx.recorded:
-        return _group4_recorded(ctx)
-    raise NotImplementedError("OBSERVED rows J-10..J-23a arrive with L.SV-5.5")
+    return _group4_recorded(ctx) if ctx.recorded else _group4_observed(ctx)
+
+
+def _group5(ctx: _Ctx, resolved: Verdict) -> Verdict:
+    """J-25 / J-25a: a SATISFIED result whose currency fact's `valid_until` is earlier than the
+    root deadline plus the margin. J-25 downgrades it to UNSATISFIED while the node has no ticket
+    yet or a new ticket is issuable for CREDENTIAL_LIFETIME_INSUFFICIENT; J-25a gives BLOCKED
+    otherwise (disjoint and complete, V-3.6 point 5)."""
+    if resolved.condition is not Condition.SATISFIED:
+        return resolved
+    limit = ctx.clock.root_deadline + ctx.terms.currency_margin
+    short = tuple(
+        f for f in resolved.currency if f.valid_until is not None and f.valid_until < limit
+    )
+    if not short:
+        return resolved
+    trigger = (codes.CREDENTIAL_LIFETIME_INSUFFICIENT,)
+    if ctx.latest is None or ctx.new_ticket_issuable(trigger):  # J-25
+        return _verdict(
+            ctx,
+            resolved.provenance,
+            Condition.UNSATISFIED,
+            currency=resolved.currency,
+            remedy=ctx.first_remedy(trigger),
+        )
+    return _verdict(  # J-25a
+        ctx,
+        resolved.provenance,
+        Condition.BLOCKED,
+        codes.CREDENTIAL_LIFETIME_INSUFFICIENT,
+        currency=resolved.currency,
+        subject=short[0].subject.value,
+    )
+
+
+def _group5a(ctx: _Ctx, resolved: Verdict) -> Verdict | None:
+    """J-3, J-3a against the verdict groups 3-5 produced (V-3.6 5a). L.SL-6.1 fills this with the
+    remedy path; until then no remedy is ever exhausted or without progress, so it matches
+    nothing and J-15 is evaluated."""
+    return None
+
+
+def _group6(ctx: _Ctx, resolved: Verdict) -> Verdict:
+    """J-15: a NoAction step (no handle) recorded after the latest ticket, if any, against the
+    verdict groups 4 and 5 produced; it overrides only a verdict that is not SATISFIED."""
+    no_action = [s for s in ctx.steps_after if s.kind is StepKind.NO_ACTION]
+    if not no_action or resolved.condition is Condition.SATISFIED:
+        return resolved
+    if not ctx.wait_elapsed(no_action[-1].at):
+        return _verdict(ctx, resolved.provenance, Condition.CONVERGING, currency=resolved.currency)
+    return _verdict(
+        ctx,
+        resolved.provenance,
+        Condition.FAILED,
+        codes.POSTCONDITION_TIMEOUT,
+        currency=resolved.currency,
+    )
 
 
 def join(
@@ -259,7 +504,11 @@ def join(
     first = _group1(ctx)  # 1: J-1, J-2   (group 2 is empty: J-3 is in group 5a)
     if first is not None:
         return first
-    third = _group3(ctx)  # 3: J-5a, J-4, J-5
-    if third is not None:
-        return third
-    return _group4(ctx)  # 4: J-6..J-9 (RECORDED), then J-24
+    resolved = _group3(ctx)  # 3: J-5a, J-4, J-5
+    if resolved is None:
+        resolved = _group4(ctx)  # 4: J-6..J-9 / J-10..J-23a, then J-24
+    resolved = _group5(ctx, resolved)  # 5: J-25, J-25a
+    remedied = _group5a(ctx, resolved)  # 5a: J-3, J-3a (L.SL-6.1)
+    if remedied is not None:
+        return remedied
+    return _group6(ctx, resolved)  # 6: J-15
