@@ -56,8 +56,10 @@ def test_ci_yml_parses_and_has_expected_jobs() -> None:
     }
 
 
+@pytest.mark.proves("WR-PROOF-10", "WR-PROOF-10:K-14", "core", "core", "INSPECT", "CI")
 def test_typecheck_job_runs_mypy() -> None:
-    """L.CK-14.1 (K-14): mypy is zero-gated in its own job; the P0 ratchet step is gone."""
+    """L.CK-14.1 (K-14): mypy is zero-gated in its own job; the P0 ratchet step is gone. A K-14
+    node: the CK-14 decline drill deselects it (the file is left in place by later merges)."""
     workflow = _load_ci_yml()
     runs = [s.get("run", "") for s in workflow["jobs"]["typecheck"]["steps"]]
     assert "mypy" in runs

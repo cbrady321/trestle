@@ -214,7 +214,8 @@ def lane_globs_for(merge_id: str, cfg: fence_mod.FenceConfig | None = None) -> l
 
 @dataclass
 class Span:
-    """The CK merge's diff: `base..head`; `landing` is its carrier commit, or None on its PR."""
+    """The CK merge's diff: `base..head`; `landing` is its carrier commit (on a bundle PR, its
+    `Bundle-Merge:` marker), or None on its own PR."""
 
     base: str
     head: str
@@ -223,14 +224,54 @@ class Span:
 
 def span_for(repo: Path, merge_id: str, *, pr_base: str | None = None) -> Span:
     """The landing diff `trailers.landing(M)` against its first parent; before M lands (its
-    own PR, its CK leaves' verifiers) the PR diff X..H, X the current origin/master."""
+    own PR, its CK leaves' verifiers) the PR diff X..H, X the current origin/master. On a
+    bundle PR (`Bundle-Merge:` markers) the PR diff is every gate's: M's own is its chunk
+    (`bundle_span`)."""
     sha = trailers_mod.landing(merge_id, "HEAD", repo)
     if sha is not None:
         return Span(base=f"{sha}^1", head=sha, landing=sha)
     base = pr_base
     if base is None:
         base = _git(repo, "merge-base", "HEAD", "origin/master").strip()
+    chunk = bundle_span(repo, merge_id, base)
+    if chunk is not None:
+        return chunk
     return Span(base=base, head="HEAD", landing=None)
+
+
+def _marked_line(repo: Path, base: str) -> tuple[str, list[trailers_mod.Commit]] | None:
+    """The bundle branch's tip and its first-parent commits after `base` (oldest first), when
+    that line carries `Bundle-Merge:` markers; `None` on an ordinary PR. The tip is HEAD, or on a
+    PR's merge ref (`refs/pull/N/merge`, HEAD's first parent the base) the parent that is the
+    bundle head; a marker off that line (a lane branch's) is never read."""
+    parents = _git(repo, "rev-list", "--parents", "-n", "1", "HEAD").split()[1:]
+    for tip in ["HEAD", *parents[1:]]:
+        commits = trailers_mod._commits(f"{base}..{tip}", cwd=repo)  # noqa: SLF001
+        if any(c.bundle_markers() for c in commits):
+            return tip, commits
+    return None
+
+
+def bundle_span(repo: Path, merge_id: str, base: str) -> Span | None:
+    """M's chunk of a bundle branch (CM-2 boundaries, as `fence.resolve_bundle` reads them): from
+    the previous gate's `Bundle-Merge:` marker (the fork point for the first gate) to M's own
+    marker, which is M's landing for CM-7 step 2: a chunk file a later chunk changed is left in
+    place, like a file a later merge changed after M landed. M with no marker yet is the trailing
+    chunk (last marker..tip, nothing later). `None` when the branch carries no markers."""
+    found = _marked_line(repo, base)
+    if found is None:
+        return None
+    tip, commits = found
+    previous: str | None = None
+    for commit in commits:
+        marks = commit.bundle_markers()
+        if merge_id in marks:
+            start = previous or _git(repo, "merge-base", tip, base).strip()
+            return Span(base=start, head=commit.sha, landing=commit.sha)
+        if marks:
+            previous = commit.sha
+    assert previous is not None
+    return Span(base=previous, head=tip, landing=None)
 
 
 # ---------------------------------------------------------------------------
@@ -636,6 +677,12 @@ class RegressionResult:
 
 Regression = Callable[[Path, dict[str, Any]], RegressionResult]
 
+# Deselected from the drill's REG pytest (speed plan item 7). `test_baseline.py` compares the
+# environment's mypy count with EV-01 and re-runs the corpus; in the scratch run mypy still finds
+# the installed (typed) trestle_packs, so it reads the environment, not the declined tree. The
+# `test` job runs it on the same head.
+REG_NOT_RUN = ("tests/proof/selftest/test_baseline.py",)
+
 
 def _run(root: Path, cmd: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, cwd=root, env=env, capture_output=True, text=True)
@@ -667,17 +714,20 @@ def run_regression(root: Path, decline: dict[str, Any]) -> RegressionResult:
     """REG (CSC-12) over the patched tree in `root`, every node outside the CK's registered nodes
     passing, then the ledger render: the CK's labels and clauses are never PROVEN."""
     result = RegressionResult()
+    # the scratch root first: spawned wrapper/child processes start with `python -P` and import
+    # `trestle` from the path, so without it they would run the un-declined tree (the checkout's
+    # editable install, or an inherited PYTHONPATH)
     env = dict(
         os.environ,
         PYTHONPATH=os.pathsep.join(
-            [str(root / "packages" / "trestle-packs")]
+            [str(root), str(root / "packages" / "trestle-packs")]
             + ([os.environ["PYTHONPATH"]] if os.environ.get("PYTHONPATH") else [])
         ),
         **{NESTED_ENV: "1"},
     )
     env.pop("TRESTLE_PROOF_GATE", None)
     ids = set(decline.get("labels", [])) | set(decline.get("clauses", []))
-    deselect = registered_nodes(root, ids, env)
+    deselect = registered_nodes(root, ids, env) + list(REG_NOT_RUN)
     results_dir = root / "tests" / "proof" / "results"
     shutil.rmtree(results_dir, ignore_errors=True)
     gate_env = dict(env, TRESTLE_PROOF_GATE="ci-test", GITHUB_ACTIONS="true")
