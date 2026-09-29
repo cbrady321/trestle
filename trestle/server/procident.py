@@ -21,9 +21,12 @@ from __future__ import annotations
 import ctypes
 import ctypes.util
 import functools
+import os
+import signal
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -151,8 +154,6 @@ def _linux_row(pid: int) -> ProcRow | None:
 
 
 def _linux_pids() -> list[int]:
-    import os
-
     try:
         return [int(name) for name in os.listdir("/proc") if name.isdigit()]
     except OSError:
@@ -284,6 +285,7 @@ class Attribution:
         self.lock = threading.RLock()
         self.signalled = False
         self.closed = False
+        self.last_stop: GroupStop | None = None
         self._record = record
         self._known: dict[tuple[int, int], Identity] = {}
         self._group_live = True
@@ -329,6 +331,19 @@ class Attribution:
             live = self._live(table if table is not None else self.source.table())
             return {pid: live[pid] for pid in self._attributable(live)}
 
+    def group_members(self, alive: dict[int, ProcRow]) -> set[int]:
+        """The processes of `alive` that are in the recorded group, while that group has not
+        emptied (a signal to the group then reaches only the run's own processes)."""
+        with self.lock:
+            if not self._group_live:
+                return set()
+            return {pid for pid, row in alive.items() if row.pgid == self.group}
+
+    def close(self) -> None:
+        """The run is over: a later stop returns the last stop's answer and touches nothing."""
+        with self.lock:
+            self.closed = True
+
     def _register(self, ident: Identity) -> None:
         self._record(ident)
         self._known[(ident.pid, ident.start)] = ident
@@ -359,3 +374,111 @@ class Attribution:
                     attributed.add(pid)
                     changed = True
         return attributed
+
+
+# --- the one stopper ---------------------------------------------------------------------------
+
+
+class Signaller(Protocol):
+    """Sends signals. The real one is `os.kill`/`os.killpg`; a test plants its own."""
+
+    def signal_pid(self, pid: int, signum: int) -> None: ...
+
+    def signal_group(self, pgid: int, signum: int) -> None: ...
+
+
+class OsSignaller:
+    def signal_pid(self, pid: int, signum: int) -> None:
+        try:
+            os.kill(pid, signum)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+    def signal_group(self, pgid: int, signum: int) -> None:
+        try:
+            os.killpg(pgid, signum)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+
+@dataclass(frozen=True)
+class GroupStop:
+    """B2's `GroupStop`: `confirmed_gone` is the host's observation that no live process
+    attributable to the run remains after the kill (V-2.3). `signalled` says a signal was sent, so
+    the recorded `method` is `signal`, else `exit` (nothing was left alive to signal)."""
+
+    confirmed_gone: bool
+    signalled: bool
+
+    @property
+    def method(self) -> str:
+        return "signal" if self.signalled else "exit"
+
+
+def stop_group(
+    attribution: Attribution,
+    *,
+    signaller: Signaller | None = None,
+    grace: float | None = None,
+    kill: float | None = None,
+    poll: float | None = None,
+) -> GroupStop:
+    """B2-C10's kill, the one stopper both stop sites call: SIGTERM to every process attributable
+    to the run that is still alive (the recorded group, and the descendants by parent id of an
+    attributable process, whatever session they moved to), then at most `grace` of waiting, then
+    SIGKILL to what is left, then at most `kill` of waiting for confirmation. No sleep before the
+    first signal. Every process it signals has its identity row first (`Attribution.observe`
+    appends it before returning the process). Whether the leader has exited never exempts its
+    descendants. One stop runs at a time per run, and a stop after the run's supervisor closed the
+    attribution touches nothing and returns the last answer."""
+    from trestle.common import clock
+
+    out = signaller if signaller is not None else OsSignaller()
+    grace_s = clock.grace if grace is None else grace
+    kill_s = clock.kill if kill is None else kill
+    poll_s = clock.poll_interval if poll is None else poll
+    with attribution.lock:
+        if attribution.closed:
+            return attribution.last_stop or GroupStop(False, attribution.signalled)
+        alive = attribution.observe()
+        if alive:
+            _send(attribution, out, alive, signal.SIGTERM)
+            attribution.signalled = True
+            alive = _wait_gone(attribution, grace_s, poll_s)
+        if alive:
+            alive = attribution.observe()  # immediately before the signal (V-2.3)
+            _send(attribution, out, alive, signal.SIGKILL)
+            alive = _wait_gone(attribution, kill_s, poll_s)
+        stop = GroupStop(confirmed_gone=not alive, signalled=attribution.signalled)
+        attribution.last_stop = stop
+        return stop
+
+
+def _wait_gone(attribution: Attribution, bound: float, poll: float) -> dict[int, ProcRow]:
+    """Observe until nothing attributable is alive or `bound` seconds have passed."""
+    end = time.monotonic() + bound
+    while True:
+        alive = attribution.observe()
+        remaining = end - time.monotonic()
+        if not alive or remaining <= 0:
+            return alive
+        time.sleep(min(poll, remaining))
+
+
+def _send(
+    attribution: Attribution,
+    out: Signaller,
+    alive: dict[int, ProcRow],
+    signum: int,
+) -> None:
+    """One signal to the recorded group (while it has members) and to each attributable process
+    outside it, after re-reading the process's start so a reused pid is never signalled."""
+    in_group = attribution.group_members(alive)
+    if in_group:
+        out.signal_group(attribution.group, signum)
+    for pid, row in sorted(alive.items()):
+        if pid in in_group:
+            continue
+        current = attribution.source.row(pid)
+        if current is not None and current.start == row.start and not current.zombie:
+            out.signal_pid(pid, signum)

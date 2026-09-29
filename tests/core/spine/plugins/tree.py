@@ -6,6 +6,9 @@
   it, only attribution by parent id can;
 - a readiness-poll loop, the shape survey E5 found blocking a stop.
 
+`orphan_via` puts the setsid'd process under an intermediate that leaves when `release_mid` is
+written, so the setsid'd process is reparented to init while the run is still live.
+
 Every spawned process carries this run's tmp path in its argv, so a process-table read can tell
 the run's processes from every other. `hold_term` makes the setsid child ignore SIGTERM and log
 when one arrives, so a test can see SIGTERM come first and SIGKILL only after the grace.
@@ -32,6 +35,19 @@ end = time.monotonic() + seconds
 while time.monotonic() < end:
     time.sleep(0.05)
 """
+_MID = """
+import pathlib, subprocess, sys, time
+seconds, marker, release = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3])
+subprocess.Popen(
+    [sys.executable, "-c", "import sys, time; time.sleep(float(sys.argv[1]))", seconds, marker],
+    start_new_session=True,
+    stdin=subprocess.DEVNULL,
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+)
+while not release.exists():
+    time.sleep(0.05)
+"""
 
 
 def _spawn(code: str, *args: str, new_session: bool) -> subprocess.Popen[bytes]:
@@ -45,10 +61,16 @@ def _spawn(code: str, *args: str, new_session: bool) -> subprocess.Popen[bytes]:
 
 
 @trestle
-def tree(ctx: Context, seconds: float = 120.0, hold_term: bool = False) -> dict[str, bool]:
+def tree(
+    ctx: Context, seconds: float = 120.0, hold_term: bool = False, orphan_via: bool = False
+) -> dict[str, bool]:
     marker = str(ctx.tmp)
     _spawn(_HOLD, str(seconds), marker, new_session=False)  # same-group grandchild
-    if hold_term:
+    if orphan_via:
+        # the setsid'd process is a child of an intermediate that exits when told to, leaving it
+        # reparented to init: attributable only through the record made while its parent lived
+        _spawn(_MID, str(seconds), marker, str(ctx.tmp / "release_mid"), new_session=False)
+    elif hold_term:
         _spawn(_HOLD_TERM, str(seconds), str(ctx.tmp / "term_at"), marker, new_session=True)
     else:
         _spawn(_HOLD, str(seconds), marker, new_session=True)  # setsid child, parent alive

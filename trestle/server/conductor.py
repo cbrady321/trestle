@@ -8,15 +8,17 @@ import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from trestle.common import clock
 from trestle.common.fsutil import atomic_write_json
 from trestle.common.ids import generate_artifact_id
 from trestle.common.types import WorkOrder
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, work_dir
-from trestle.server.procident import Attribution, Identity, ProcessSource
-from trestle.server.runs import RunRegistry, cancel_flag_path, terminate_process_group
+from trestle.server.procident import Attribution, GroupStop, Identity, ProcessSource, stop_group
+from trestle.server.runs import RunRegistry, cancel_flag_path
 from trestle.server.scheduler import Scheduler
 
 
@@ -26,6 +28,8 @@ class Conductor:
     scheduler: Scheduler
     run_registry: RunRegistry
     process_source: ProcessSource | None = None
+    # B2-C10's kill: the one stopper, at both call sites; a test injects its own
+    stopper: Callable[[Attribution], GroupStop] = stop_group
 
     def drive(self, order: WorkOrder) -> str:
         run_dir = self._find_run_dir(order.run_id)
@@ -64,21 +68,32 @@ class Conductor:
             source=self.process_source,
         )
         attribution.attribute_leader(proc.pid)
-        self.run_registry.register(order.run_id, proc)
+        self.run_registry.register(order.run_id, proc, attribution)
         cancel_flag = cancel_flag_path(run_dir)
         deadline = time.monotonic() + timeout_s
+        stop_cause: str | None = None
         try:
             while proc.poll() is None:
                 attribution.observe()
                 if cancel_flag.exists():
-                    terminate_process_group(proc, grace_s=0.0, kill_s=1.0)
+                    stop_cause = "cancel"
+                    self.stopper(attribution)
                     break
                 if time.monotonic() > deadline:
-                    terminate_process_group(proc, grace_s=0.0, kill_s=1.0)
+                    stop_cause = "deadline"
+                    self.stopper(attribution)
                     break
-                time.sleep(0.05)
+                time.sleep(clock.poll_interval)
+            if stop_cause is None:  # the exit was observed: check once more (B2-C10)
+                if cancel_flag.exists():
+                    stop_cause = "cancel"
+                elif time.monotonic() > deadline:
+                    stop_cause = "deadline"
         finally:
             self.run_registry.unregister(order.run_id)
+            # a request-path stop still in flight finishes before this run appends another row
+            with attribution.lock:
+                attribution.close()
             if proc.stdout is not None:
                 proc.stdout.close()
             if proc.stderr is not None:
@@ -91,18 +106,21 @@ class Conductor:
         classification = "failed"
         exit_code = proc.returncode if proc.returncode is not None else 1
         wrapper_limits: list[dict[str, object]] = []
-        timed_out = time.monotonic() > deadline and not cancel_flag.exists()
-        if cancel_flag.exists():
+        report: dict[str, object] = {}
+        if report_path.exists():
+            loaded = json.loads(report_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                report = loaded
+        raw_limits = report.get("limits_exceeded", [])
+        if isinstance(raw_limits, list):
+            wrapper_limits = [item for item in raw_limits if isinstance(item, dict)]
+        if stop_cause == "cancel":
             classification = "cancelled"
-        elif report_path.exists():
-            report = json.loads(report_path.read_text(encoding="utf-8"))
-            classification = str(report.get("classification", classification))
-            exit_code = int(report.get("exit_code", exit_code))
-            raw_limits = report.get("limits_exceeded", [])
-            if isinstance(raw_limits, list):
-                wrapper_limits = [item for item in raw_limits if isinstance(item, dict)]
-        elif timed_out:
+        elif stop_cause == "deadline":
             classification = "timed_out"
+        elif report:
+            classification = str(report.get("classification", classification))
+            exit_code = _as_int(report.get("exit_code", exit_code), exit_code)
         elif proc.returncode == 0:
             classification = "succeeded"
 
