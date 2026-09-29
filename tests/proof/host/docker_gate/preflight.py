@@ -242,7 +242,7 @@ def read_endpoint(docker_bin: str, runner=None, env=None) -> str | None:
     return endpoint or None
 
 
-def _repo_of(ref: str) -> str:
+def repo_of(ref: str) -> str:
     """`postgres:16-alpine` -> `postgres`; a registry port is not a tag."""
     name = ref.split("@", 1)[0]
     tail = name.rsplit("/", 1)[-1]
@@ -264,7 +264,7 @@ def repo_digest_of(ref: str, inspect_json: str) -> str | None:
     except ValueError:
         return None
     items = data if isinstance(data, list) else [data]
-    want = _normal_repo(_repo_of(ref))
+    want = _normal_repo(repo_of(ref))
     for item in items:
         for entry in item.get("RepoDigests") or []:
             repo, _, digest = str(entry).partition("@")
@@ -320,7 +320,7 @@ def strict_checks(
     for role, spec in images.items():
         digest = spec.get("digest", "")
         if digest:
-            ref = f"{_repo_of(spec['ref'])}@{digest}"
+            ref = f"{repo_of(spec['ref'])}@{digest}"
             found = runner(
                 inventory.docker_cmd(docker_bin, endpoint, "image", "inspect", ref), environ
             )
@@ -352,12 +352,14 @@ def strict_preflight(
     lock_path: Path | None = None,
     host_run_max: float | None = None,
     clock: Callable[[], float] | None = None,
+    facts: dict | None = None,
 ) -> int:
     """`preflight --strict`: exit 0 (everything holds, no record) or `STRICT_UNMET_EXIT` (3) with a
     PRECONDITION_UNMET record for the head. Takes the CSC-12 host lock only when
     `TRESTLE_HOST_LOCK_HELD` is unset (`host_lock.hold`); a docker call still running at
     `HOST_RUN_MAX` is killed with its process group and `HostRunTimedOut` propagates (lock freed,
-    no record)."""
+    no record). When `facts` is given it is filled with the engine facts (`cli_path`, `endpoint`,
+    `server_version`) so `docker_gate run` reads the endpoint once per invocation."""
     cwd = cwd or ROOT
     record_dir = record_dir or RECORD_DIR
     run = runner or bounded_runner(host_run_max, clock)
@@ -370,6 +372,8 @@ def strict_preflight(
     except host_lock.VenvUnavailable as exc:  # MC-27: never another interpreter
         unmet, engine = [str(exc)], _engine_facts(docker_bin, None, None, False)
         py_version = py_platform = "unavailable"
+    if facts is not None:
+        facts.update(engine)
     if not unmet:
         return 0
     record = {

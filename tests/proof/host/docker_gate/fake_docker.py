@@ -29,10 +29,16 @@ from __future__ import annotations
 import json
 import os
 import re
-import select
-import signal
 import sys
 from pathlib import Path
+
+# This directory holds a `select.py` (the run-set plugin) that would shadow the stdlib `select`
+# when the shim runs as a script (sys.path[0] is its directory): drop it before importing.
+_HERE = str(Path(__file__).resolve().parent)
+sys.path[:] = [p for p in sys.path if not p or str(Path(p).resolve()) != _HERE]
+
+import select  # noqa: E402
+import signal  # noqa: E402
 
 STATE_ENV = "FAKE_DOCKER_STATE"
 LOG_ENV = "FAKE_DOCKER_LOG"

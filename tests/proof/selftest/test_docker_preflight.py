@@ -68,13 +68,23 @@ def test_strict_built(monkeypatch, capsys):
     rc = docker_gate_main.main(["preflight", "--strict"])
     assert rc == 3
     assert "not built" not in capsys.readouterr().out
-    assert "strict" not in docker_gate_main.NOT_BUILT_MODES
 
 
-def test_run_not_built(capsys):
-    rc = docker_gate_main.main(["run"])
-    assert rc == 2
-    assert "L.NW-2.10" in capsys.readouterr().out
+def test_run_built(monkeypatch, capsys):
+    """L.NW-2.10 inverts P0's `test_run_not_built`: `run` is built (it reaches the gate's runner,
+    with `--select` ids and the `--` pytest args) and no longer exits 2 as "not built"."""
+    seen = {}
+
+    def fake_run(select_ids=None, pytest_args=None, **kwargs):
+        seen.update(select_ids=select_ids, pytest_args=pytest_args)
+        return 0
+
+    monkeypatch.setattr(docker_gate_main.run_mod, "run", fake_run)
+    rc = docker_gate_main.main(["run", "--select", "t.py::a", "--", "-m", "docker_host"])
+    assert rc == 0
+    assert seen == {"select_ids": ["t.py::a"], "pytest_args": ["-m", "docker_host"]}
+    assert "not built" not in capsys.readouterr().out
+    assert not hasattr(docker_gate_main, "NOT_BUILT_MODES")
 
 
 def test_tm_p0_13_probe_exits_1_absent():
