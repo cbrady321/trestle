@@ -20,6 +20,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 TRAILER_RE = re.compile(r"^(WR-Merge|WR-Fix): (\S+)$", re.MULTILINE)
+# A bundle branch (one PR carrying several plan merges) marks where each
+# gate's chunk ends with an empty commit carrying `Bundle-Merge: <id>`. It is
+# not a CM-1 trailer: it names no landing, so R5 and `anomalies` ignore it and
+# `TRAILER_RE` never matches it (a typed `WR-Merge:` is still refused).
+BUNDLE_RE = re.compile(r"^Bundle-Merge: (\S+)$", re.MULTILINE)
 RECORD_SEP = "\x02"
 FIELD_SEP = "\x01"
 
@@ -36,6 +41,9 @@ class Commit:
 
     def trailers(self) -> list[tuple[str, str]]:
         return TRAILER_RE.findall(self.message)
+
+    def bundle_markers(self) -> list[str]:
+        return BUNDLE_RE.findall(self.message)
 
 
 def _commits(ref: str, cwd: Path | None = None) -> list[Commit]:
