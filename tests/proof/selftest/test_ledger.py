@@ -198,3 +198,40 @@ def test_enforce_print_mode_prints_report() -> None:
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert proc.stdout.strip() == "report"
+
+
+def _review(reviews_dir: Path, outcome: str = "pass") -> None:
+    reviews_dir.mkdir(exist_ok=True)
+    verdict = "pass" if outcome == "pass" else "fail"
+    (reviews_dir / "RV-5-j0.toml").write_text(
+        f'id = "RV-5"\nmode = "stage-critic review"\noutcome = "{outcome}"\n'
+        f'sha = "3e82d1f"\ntranscribe_log = "ok"\n\n[criteria]\n'
+        f'verbatim_fragments = "pass"\nrow_set = "{verdict}"\nowner = "pass"\nk_docs = "pass"\n'
+    )
+
+
+def _render_with_reviews(tmp_path: Path, reviews_dir: Path) -> dict:
+    results_dir = tmp_path / "results"
+    _record(results_dir, "CLAUSE-R", "passed", "ci-test", "CI")
+    return ledger_mod.render(
+        results_dir=results_dir,
+        meta_config_path=_meta_config(tmp_path, ["ci-test"]),
+        gates_dir=_gates_dir(tmp_path),
+        reviews_dir=reviews_dir,
+    )
+
+
+def test_valid_passing_review_renders_review_key(tmp_path: Path) -> None:
+    reviews_dir = tmp_path / "reviews"
+    _review(reviews_dir)
+    report = _render_with_reviews(tmp_path, reviews_dir)
+    assert report["review:RV-5"]["status"] == ledger_mod.PROVEN
+
+
+def test_failing_or_absent_or_malformed_review_renders_nothing(tmp_path: Path) -> None:
+    reviews_dir = tmp_path / "reviews"
+    assert "review:RV-5" not in _render_with_reviews(tmp_path, reviews_dir)
+    _review(reviews_dir, outcome="fail")
+    assert "review:RV-5" not in _render_with_reviews(tmp_path, reviews_dir)
+    (reviews_dir / "RV-5-j0.toml").write_text('id = "RV-5"\noutcome = "pass"\n')
+    assert "review:RV-5" not in _render_with_reviews(tmp_path, reviews_dir)
