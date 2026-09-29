@@ -20,7 +20,7 @@ globs         = ["trestle/common/fsutil.py", "trestle/common/outcome.py", "trest
                  "tests/proof/drift/core/__init__.py", "tests/proof/drift/core/test_sa03_*.py", "tests/proof/drift/core/test_sa05_*.py",
                  "tests/proof/drift/core/test_sa06_*.py", "tests/proof/drift/core/test_sa10_*.py", "tests/proof/drift/core/test_sa13_*.py",
                  "tests/proof/fence.d/core.toml", "tests/proof/temporary.d/core.toml", "tests/proof/labels.d/core.toml",
-                 "tests/proof/gates.d/core.toml", "tests/proof/rollback.toml",
+                 "tests/proof/gates.d/core.toml", "tests/proof/rollback.toml", "tests/proof/divergence.toml",
                  "tests/proof/selftest/test_ci_checkout.py", "tests/proof/selftest/test_rollback.py",
                  "tests/proof/drift/test_sa06_reader_seam.py", "tests/proof/selftest/test_tolerances_cli.py",
                  "tests/pins/a_lifecycle/fossil_producers.py", "tests/pins/c_surface/test_goldens.py",

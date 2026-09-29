@@ -1,6 +1,6 @@
 """G-B3 (BFD-04, BFD-15): a plugin exception leaves no explanation in the
-run view. The child's `except Exception` returns 1 and nothing writes the
-message, so no run file holds it and `RunView.error` stays empty."""
+run view. Inverted by L.CS-3.1: the child now writes `evidence/child_error.json`, the one run
+file that holds the message; `RunView.error` stays empty until L.CS-3.3 reads the ledger row."""
 
 from __future__ import annotations
 
@@ -20,12 +20,12 @@ def _run(tmp_path: Path):
 
 
 @pytest.mark.pin("G-B3")
-def test_pin_no_run_file_contains_message(tmp_path: Path) -> None:
+def test_pin_only_child_error_file_holds_message(tmp_path: Path) -> None:
     view, run_dir = _run(tmp_path)
     files = [p for p in run_dir.rglob("*") if p.is_file()]
     assert files
     holders = [p for p in files if SENTINEL.encode() in p.read_bytes()]
-    assert holders == []
+    assert [p.name for p in holders] == ["child_error.json"]
     assert view.error is None
 
 

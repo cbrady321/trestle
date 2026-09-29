@@ -23,3 +23,29 @@ PUBLICATION_NO_ENTRYPOINT = "publication.no_entrypoint"
 PUBLICATION_NAME_MISMATCH = "publication.name_mismatch"
 PUBLICATION_SOURCE_TOO_LARGE = "publication.source_too_large"
 PUBLICATION_VALIDATION_FAILED = "publication.validation_failed"
+
+# MC-CORE-04: the execution-code vocabulary, additive only (DM-16). A run that started and ended
+# without an answer carries exactly one of these in its `error_record` (MC-15).
+EXECUTION_IMPORT_FAILED = "execution.import_failed"
+EXECUTION_BIND_FAILED = "execution.bind_failed"
+EXECUTION_PLUGIN_RAISED = "execution.plugin_raised"
+EXECUTION_RESULT_UNENCODABLE = "execution.result_unencodable"
+EXECUTION_PROVENANCE_MISMATCH = "execution.provenance_mismatch"
+EXECUTION_CANCELLED = "execution.cancelled"
+EXECUTION_DEADLINE_EXCEEDED = "execution.deadline_exceeded"
+EXECUTION_WORKER_EXIT = "execution.worker_exit"
+EXECUTION_INTERRUPTED = "execution.interrupted"
+
+EXECUTION_CODES: frozenset[str] = frozenset(
+    {
+        EXECUTION_IMPORT_FAILED,
+        EXECUTION_BIND_FAILED,
+        EXECUTION_PLUGIN_RAISED,
+        EXECUTION_RESULT_UNENCODABLE,
+        EXECUTION_PROVENANCE_MISMATCH,
+        EXECUTION_CANCELLED,
+        EXECUTION_DEADLINE_EXCEEDED,
+        EXECUTION_WORKER_EXIT,
+        EXECUTION_INTERRUPTED,
+    }
+)
