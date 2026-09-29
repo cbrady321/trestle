@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -39,17 +40,21 @@ class Project:
     home: Path
     registry: Registry
     run_registry: RunRegistry
+    # Status polls run on worker threads (L.CS-4.2), so two of them can overlap: a projection
+    # rewrites the run's summary.json through one fixed temporary name, one writer at a time.
+    _status_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def status(self, run_id: Handle) -> RunView | RequestOutcome:
-        ledger = self._ledger_for(run_id)
-        if ledger is None:
-            return RequestOutcome(
-                code=codes.INVALID_HANDLE,
-                message=f"unknown run: {run_id}",
-                retryable=False,
-                origin="projection",
-            )
-        return self._run_view(ledger, run_id)
+        with self._status_lock:
+            ledger = self._ledger_for(run_id)
+            if ledger is None:
+                return RequestOutcome(
+                    code=codes.INVALID_HANDLE,
+                    message=f"unknown run: {run_id}",
+                    retryable=False,
+                    origin="projection",
+                )
+            return self._run_view(ledger, run_id)
 
     def await_one(self, run_id: Handle, wait_ms: int) -> RunView | RequestOutcome:
         deadline = time.monotonic() + (wait_ms / 1000.0)
@@ -66,7 +71,7 @@ class Project:
     async def await_one_async(self, run_id: Handle, wait_ms: int) -> RunView | RequestOutcome:
         deadline = time.monotonic() + (wait_ms / 1000.0)
         while True:
-            view = self.status(run_id)
+            view = await asyncio.to_thread(self.status, run_id)
             if isinstance(view, RequestOutcome):
                 return view
             if view.state not in {"queued", "running"}:
@@ -90,9 +95,9 @@ class Project:
             time.sleep(clock.poll_interval)
 
     async def await_terminal_async(self, run_id: Handle) -> RunView | RequestOutcome:
-        limit = time.monotonic() + self._terminal_bound_s(run_id)
+        limit = time.monotonic() + await asyncio.to_thread(self._terminal_bound_s, run_id)
         while True:
-            view = self.status(run_id)
+            view = await asyncio.to_thread(self.status, run_id)
             if isinstance(view, RequestOutcome) or view.state not in _NON_TERMINAL_STATES:
                 return view
             if time.monotonic() >= limit:
@@ -137,7 +142,7 @@ class Project:
     ) -> list[RunView] | RequestOutcome:
         deadline = time.monotonic() + (timeout_ms / 1000.0)
         while True:
-            views, outcome = self._collect_run_views(run_ids)
+            views, outcome = await asyncio.to_thread(self._collect_run_views, run_ids)
             if outcome is not None:
                 return outcome
             assert views is not None

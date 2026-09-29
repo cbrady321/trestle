@@ -8,10 +8,15 @@ literal appears here.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import queue
+import threading
 import time
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -185,3 +190,133 @@ def test_wait_past_the_bound_is_the_named_code_never_running(
         lambda: records.node_record(run_dir).terminal is not None,
         tolerances.HARNESS_WAIT_MS / 1000,
     )
+
+
+# ---- L.CS-4.2: no blocking work on the event loop while a call is held ----------------------
+
+# A plugin that outlives every check below; each run is cancelled before its test ends.
+LONG_S = tolerances.JOIN_WAIT_S * 6
+
+
+def _run_ids(host: mcp_host.McpHost) -> list[str]:
+    return sorted(path.name for path in (host.home / "runs").glob("*/r_*"))
+
+
+@pytest.mark.proves(
+    "WR-TERM-7", "WR-TERM-7:held-wait-cancel-query-bound", "core", "core", "MCP", "CI"
+)
+def test_cancel_and_query_answer_while_terminal_call_held(tmp_path: Path) -> None:
+    with mcp_host.McpHost(home=tmp_path / "host-home") as host:
+        other = host.call("run", {"plugin": "slow", "args": {"seconds": LONG_S}})["run_id"]
+        held = host.hold(
+            "run",
+            {
+                "plugin": "slow",
+                "args": {"seconds": LONG_S},
+                "completion": "terminal",
+                "wait_ms": tolerances.HARNESS_WAIT_MS,
+            },
+        )
+        assert support.wait_until(lambda: len(_run_ids(host)) == 2, tolerances.JOIN_WAIT_S), (
+            "the held call never admitted its run"
+        )
+        (held_run,) = [run_id for run_id in _run_ids(host) if run_id != other]
+
+        # the other run's calls are answered while the held call is still waiting
+        answered = host.call("query", {"view": "run", "params": {"run_id": other}})
+        assert answered["items"][0]["run_id"] == other
+        cancelled_at = time.monotonic()
+        assert host.call("cancel", {"run_id": other})["code"] == codes.CANCEL_ACCEPTED
+        with pytest.raises(queue.Empty):  # neither answer was the held call's
+            host.join(held, timeout=tolerances.SETTLE_SHORT_S)
+
+        # the cancel takes effect within the stop bound, the supervisor's poll and a tolerance
+        other_dir = _run_dir(host, other)
+        bound = clock.stop_bound + clock.poll_interval + tolerances.SETTLE_LONG_S
+        assert support.wait_until(
+            lambda: records.node_record(other_dir).terminal is not None, bound
+        )
+        assert time.monotonic() - cancelled_at <= bound
+        assert records.node_record(other_dir).terminal == "cancelled"
+
+        # the held call is still waiting on its own run; cancelling that run releases it
+        assert host.call("cancel", {"run_id": held_run})["code"] == codes.CANCEL_ACCEPTED
+        released = host.join(held, timeout=tolerances.HARNESS_WAIT_MS / 1000)
+        assert released["state"] == "cancelled" and released["run_id"] == held_run
+
+
+def _slow_first_call(
+    target: object, name: str, seen: set[int], pause_s: float
+) -> Callable[..., Any]:
+    """`target.<name>` wrapped to note the thread it runs on and to block for `pause_s` first, the
+    way a slow ledger read or a slow admission would."""
+    real = getattr(target, name)
+
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
+        seen.add(threading.get_ident())
+        time.sleep(pause_s)
+        return real(*args, **kwargs)
+
+    return wrapped
+
+
+@pytest.mark.parametrize("blocking", ["admit", "status"])
+def test_admit_and_status_polls_do_not_block_the_event_loop(
+    blocking: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    kernel = support.spine_kernel()
+    seen: set[int] = set()
+    target = kernel.control.admission if blocking == "admit" else kernel.control.project
+    monkeypatch.setattr(
+        target, blocking, _slow_first_call(target, blocking, seen, tolerances.SETTLE_LONG_S)
+    )
+
+    async def scenario() -> tuple[float, int, RunView | RequestOutcome]:
+        gaps: list[float] = []
+        done = asyncio.Event()
+
+        async def ticker() -> None:  # what any other call on the loop would experience
+            last = time.monotonic()
+            while not done.is_set():
+                await asyncio.sleep(tolerances.POLL_FINE_S)
+                now = time.monotonic()
+                gaps.append(now - last)
+                last = now
+
+        beat = asyncio.create_task(ticker())
+        answer = await kernel.control.run_async(
+            plugin="echo", args={"message": "x"}, wait_ms=tolerances.HARNESS_WAIT_MS
+        )
+        done.set()
+        await beat
+        return max(gaps), threading.get_ident(), answer
+
+    longest_gap, loop_thread, answer = asyncio.run(scenario())
+    assert isinstance(answer, RunView) and answer.state == "succeeded"
+    assert seen and loop_thread not in seen  # the blocking call ran on a worker thread
+    assert longest_gap < tolerances.SETTLE_LONG_S / 2  # and the loop kept turning meanwhile
+
+
+def test_concurrent_admissions_stay_serialized() -> None:
+    """Off the loop, two admissions with one idempotency key still mint one run: admit is one at
+    a time, as the loop's single thread made it before."""
+    kernel = support.spine_kernel()
+
+    async def scenario() -> list[RunView | RequestOutcome]:
+        return list(
+            await asyncio.gather(
+                *(
+                    kernel.control.run_async(
+                        plugin="echo",
+                        args={"message": "x"},
+                        wait_ms=tolerances.HARNESS_WAIT_MS,
+                        idempotency_key="cs4-one-key",
+                    )
+                    for _ in range(3)
+                )
+            )
+        )
+
+    answers = asyncio.run(scenario())
+    views = [_as_view(answer) for answer in answers]
+    assert len({view.run_id for view in views}) == 1

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 from trestle.common import codes
 from trestle.common.types import (
     AdmitRequest,
+    AdmitResult,
     JoinMode,
     PublishView,
     RequestOutcome,
@@ -45,6 +46,7 @@ class ControlSurface:
     project: Project
     conductor: Conductor
     scheduler: Scheduler
+    _admit_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def _drive_background(self, order: WorkOrder) -> None:
         thread = threading.Thread(
@@ -67,7 +69,7 @@ class ControlSurface:
         if refused is not None:
             return refused
         self.admission.registry.maybe_refresh()
-        result = self.admission.admit(
+        result = self._admit_serialized(
             AdmitRequest(
                 plugin=plugin,
                 args=args or {},
@@ -123,50 +125,57 @@ class ControlSurface:
         refused = _refuse_completion(completion, wait_ms)
         if refused is not None:
             return refused
+        # The registry refresh stays inline until L.CL-A1.1 moves it into the admission lane
+        # (it flips G-A4); admission itself runs on a worker thread, so a slow admit does not
+        # stop the loop answering other calls (L.CS-4.2, until CL-A1's lane replaces this).
         self.admission.registry.maybe_refresh()
-        result = self.admission.admit(
+        result = await asyncio.to_thread(
+            self._admit_serialized,
             AdmitRequest(
                 plugin=plugin,
                 args=args or {},
                 version=version,
                 idempotency_key=idempotency_key,
-            )
+            ),
         )
         if result.tag == "refused":
             return result.outcome
 
         if result.existing:
             if wait_ms == 0:
-                view = self.project.status(result.run_id)
-                if isinstance(view, RequestOutcome):
-                    return view
-                return view
+                return await asyncio.to_thread(self.project.status, result.run_id)
             if completion == "terminal":
                 return await self.project.await_terminal_async(result.run_id)
             return await self.project.await_one_async(result.run_id, wait_ms)
 
-        from trestle.server.ledger import RunLedger, ledger_path, run_dir_for
-
-        run_dir = run_dir_for(self.admission.home, result.run_id)
-        ledger = RunLedger.open(ledger_path(run_dir))
-        created = ledger.last_kind("created")
-        spec_hash = str(created.get("spec_hash", "")) if created else ""
-        snap = self.admission.registry.get(plugin)
-        order = WorkOrder(
-            run_id=result.run_id,
-            snapshot_id=snap.snapshot_id if snap else "",
-            spec_hash=spec_hash,
-        )
+        order = await asyncio.to_thread(self._work_order, result.run_id, plugin)
         asyncio.create_task(self.conductor.drive_async(order))
 
         if wait_ms == 0:
-            view = self.project.status(result.run_id)
-            if isinstance(view, RequestOutcome):
-                return view
-            return view
+            return await asyncio.to_thread(self.project.status, result.run_id)
         if completion == "terminal":
             return await self.project.await_terminal_async(result.run_id)
         return await self.project.await_one_async(result.run_id, wait_ms)
+
+    def _admit_serialized(self, request: AdmitRequest) -> AdmitResult:
+        """One admit at a time: what the event loop's single thread gave every caller before
+        admission moved to a worker (an idempotency key checked twice at once would mint two
+        runs). CL-A1's admission lane replaces this."""
+        with self._admit_lock:
+            return self.admission.admit(request)
+
+    def _work_order(self, run_id: str, plugin: str) -> WorkOrder:
+        from trestle.server.ledger import RunLedger, ledger_path, run_dir_for
+
+        run_dir = run_dir_for(self.admission.home, run_id)
+        created = RunLedger.open(ledger_path(run_dir)).last_kind("created")
+        spec_hash = str(created.get("spec_hash", "")) if created else ""
+        snap = self.admission.registry.get(plugin)
+        return WorkOrder(
+            run_id=run_id,
+            snapshot_id=snap.snapshot_id if snap else "",
+            spec_hash=spec_hash,
+        )
 
     def await_runs(
         self,
