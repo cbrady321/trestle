@@ -709,6 +709,7 @@ row_or_k = "MC-14"
 docs = []
 due_checkpoint = "CS-2 (leaf L.CS-2.1)"
 direction = "additive"
+items = [{ path = "$.sequences.*", value = "process_identity" }]
 authorized_by = "plans/core.md MC-14 (L.CS-2.1: the leader's process identity after spawn, every attributed descendant)"
 
 # L.CS-2.6 (MC-32): a group_stop row on every terminal path, and after recovery.
@@ -723,6 +724,7 @@ row_or_k = "MC-32"
 docs = []
 due_checkpoint = "CS-2 (leaf L.CS-2.6)"
 direction = "additive"
+items = [{ path = "$.sequences.*", value = "group_stop" }]
 authorized_by = "plans/core.md MC-32 (L.CS-2.6: GroupStop row on every terminal path)"
 
 [[entry]]
@@ -732,6 +734,7 @@ row_or_k = "MC-32"
 docs = []
 due_checkpoint = "CS-2 (leaves L.CS-2.4, L.CS-2.6)"
 direction = "additive"
+items = [{ path = "$.*.reader.after_recovery.kinds", value = "group_stop" }]
 authorized_by = "plans/core.md MC-32 (L.CS-2.6) and L.CS-2.4 (recovery takes B2-C11's branch and writes the stop row)"
 
 # L.CS-2.6 (MC-32): RunView.cleanup, the stop report's projection.
@@ -744,4 +747,6 @@ row_or_k = "MC-32"
 docs = ["docs/agents.md"]
 due_checkpoint = "CS-2 (leaf L.CS-2.6)"
 direction = "additive"
+keys = ["$.frames.*.cleanup"]
+items = [{ path = "$.fields", value = ["cleanup", "CleanupView | None"] }]
 authorized_by = "plans/core.md MC-32 (L.CS-2.6: the cleanup projection on RunView)"
