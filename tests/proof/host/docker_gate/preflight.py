@@ -11,10 +11,8 @@ side-effect free.
 from __future__ import annotations
 
 import json
-import platform
 import shutil
 import subprocess
-import sys
 import tomllib
 from pathlib import Path
 
@@ -70,18 +68,21 @@ def run_preflight(
     runner=None,
     which=None,
     images: dict[str, dict[str, str]] | None = None,
+    venv: Path | None = None,
+    info_runner=None,
 ) -> dict:
     """Runs the actual checks (never inside the lock — the caller wraps
     this in `host_lock.hold()`). Returns the record dict; never writes."""
     cwd = cwd or ROOT
     sha = _current_sha(cwd)
+    py_version, py_platform = host_lock.venv_interpreter_info(venv, runner=info_runner)
     base = {
         "schema": 1,
         "gate": "host-docker",
         "sha": sha,
         "mode": "preflight",
-        "python": platform.python_version(),
-        "platform": sys.platform,
+        "python": py_version,
+        "platform": py_platform,
         "results": [],
     }
 
@@ -125,15 +126,36 @@ def preflight(
     which=None,
     images: dict[str, dict[str, str]] | None = None,
     pip_runner=None,
+    venv: Path | None = None,
+    info_runner=None,
 ) -> dict:
     """Runs inside `host_lock.hold()` (CSC-12), writes the record, and
     exits 0 always (report mode)."""
     cwd = cwd or ROOT
     record_dir = record_dir or RECORD_DIR
-    with host_lock.hold(worktree=cwd, pip_runner=pip_runner):
-        record = run_preflight(
-            cwd=cwd, docker_path=docker_path, runner=runner, which=which, images=images
-        )
+    try:
+        with host_lock.hold(worktree=cwd, pip_runner=pip_runner, venv=venv):
+            record = run_preflight(
+                cwd=cwd,
+                docker_path=docker_path,
+                runner=runner,
+                which=which,
+                images=images,
+                venv=venv,
+                info_runner=info_runner,
+            )
+    except host_lock.VenvUnavailable as exc:  # MC-27: never another interpreter
+        record = {
+            "schema": 1,
+            "gate": "host-docker",
+            "sha": _current_sha(cwd),
+            "mode": "preflight",
+            "python": "unavailable",
+            "platform": "unavailable",
+            "results": [],
+            "status": "PRECONDITION_UNMET",
+            "engine": str(exc),
+        }
     record_dir.mkdir(parents=True, exist_ok=True)
     (record_dir / f"{record['sha']}.json").write_text(json.dumps(record, indent=2))
     return record

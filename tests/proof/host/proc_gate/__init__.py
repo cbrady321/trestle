@@ -10,16 +10,14 @@ from __future__ import annotations
 
 import json
 import os
-import platform
 import signal
 import subprocess
-import sys
 from pathlib import Path
 
 from tests.proof import fence as fence_mod
 from tests.proof.host import host_lock
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[4]
 RECORD_DIR = ROOT / "tests" / "proof" / "host" / "host-proc"
 
 # plan-gap: this delivery reads the default set as every collected
@@ -48,6 +46,8 @@ def run(
     host_run_max: float | None = None,
     lock_path: Path | None = None,
     command: list[str] | None = None,
+    venv: Path | None = None,
+    info_runner=None,
 ) -> int:
     cwd = cwd or ROOT
     record_dir = record_dir or RECORD_DIR
@@ -56,6 +56,24 @@ def run(
     if record_path.exists():
         print(f"proc_gate run: a record for {sha} already exists; refusing (one run per sha)")
         return 2
+
+    real_interpreter = pip_runner is None or (pytest_runner is None and command is None)
+    if real_interpreter and not host_lock.venv_python(venv).exists():
+        # MC-27: no fallback to any other interpreter
+        print(f"proc_gate run: clean venv missing: {host_lock.venv_python(venv)}")
+        record = {
+            "schema": 1,
+            "gate": "host-proc",
+            "sha": sha,
+            "mode": "run",
+            "python": "unavailable",
+            "platform": "unavailable",
+            "results": [],
+            "status": "PRECONDITION_UNMET",
+        }
+        record_dir.mkdir(parents=True, exist_ok=True)
+        record_path.write_text(json.dumps(record, indent=2))
+        return 1
 
     env = dict(os.environ)
     env["TRESTLE_HOST_GATE"] = "proc"
@@ -72,7 +90,11 @@ def run(
 
     def _bounded(a, e):
         # own process group; killed whole at the bound (L.P0-0d.3, HOST_RUN_MAX)
-        argv = command if command is not None else [sys.executable, "-m", "pytest", "-q", *a]
+        argv = (
+            command
+            if command is not None
+            else [str(host_lock.venv_python(venv)), "-m", "pytest", "-q", *a]
+        )
         child = subprocess.Popen(  # noqa: S603
             argv,
             cwd=cwd,
@@ -102,16 +124,17 @@ def run(
     runner = pytest_runner or _bounded
 
     # a timeout raises out of the lock context (lock freed) before any record
-    with host_lock.hold(worktree=cwd, pip_runner=pip_runner, lock_path=lock_path):
+    with host_lock.hold(worktree=cwd, pip_runner=pip_runner, venv=venv, lock_path=lock_path):
         proc = runner(args, env)
 
+    py_version, py_platform = host_lock.venv_interpreter_info(venv, runner=info_runner)
     record = {
         "schema": 1,
         "gate": "host-proc",
         "sha": sha,
         "mode": "run",
-        "python": platform.python_version(),
-        "platform": sys.platform,
+        "python": py_version,
+        "platform": py_platform,
         "results": [],
         "status": "PASSED" if proc.returncode == 0 else "FAILED",
     }
