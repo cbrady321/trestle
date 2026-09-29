@@ -24,10 +24,13 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from collections.abc import Iterable, Mapping, MutableMapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, overload
 
+from trestle.common.errtext import replace_roots
 from trestle.common.fsutil import atomic_write
 
 # What replaces a secret, everywhere: one fixed token (an agent reading a record sees that a value
@@ -233,22 +236,71 @@ def scrub_json(value: Any, secrets: Iterable[str]) -> Any:
     forms = frozenset(secrets)
     if not forms:
         return value
-    return _scrub_json(value, forms)
+    return _map_strings(value, lambda text: scrub(text, forms))
 
 
-def _scrub_json(value: Any, secrets: frozenset[str]) -> Any:
+# --- the scrub every write path applies --------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Scrubber:
+    """What one process applies before it writes: the run's declared secret values (replaced by
+    `REDACTED`) and its host roots (`errtext.replace_roots`: TRESTLE_HOME, the run directory, the
+    work directory and $HOME become their fixed tokens, so an answer built from a record never
+    carries a host path). Secrets go first. An empty scrubber changes nothing."""
+
+    secrets: frozenset[str] = frozenset()
+    roots: Mapping[str, Path] = field(default_factory=dict)
+
+    def text(self, value: str) -> str:
+        return replace_roots(scrub(value, self.secrets), self.roots)
+
+    def capped_text(self, value: str) -> str:
+        """`text` for text that a byte cap cut off at its end (see `scrub_cut`)."""
+        return replace_roots(scrub_cut(value, self.secrets), self.roots)
+
+    def data(self, data: bytes) -> tuple[bytes, bool]:
+        """What a write of `data` should put on disk: (bytes, refused). Text has secrets and host
+        paths scrubbed; a binary that holds a secret is refused (`REFUSED_BINARY`)."""
+        if not self.secrets and not self.roots:
+            return data, False
+        if is_text(data):
+            return self.text(data.decode("utf-8")).encode("utf-8"), False
+        if holds_secret(data, self.secrets):
+            return REFUSED_BINARY, True
+        return data, False
+
+    def json(self, value: Any) -> Any:
+        """A JSON-shaped value with `text` applied to every string in it, keys included."""
+        if not self.secrets and not self.roots:
+            return value
+        return _map_strings(value, self.text)
+
+
+NO_SCRUB = Scrubber()
+
+
+def _map_strings(value: Any, fn: Any) -> Any:
     if isinstance(value, str):
-        return scrub(value, secrets)
+        return fn(value)
     if isinstance(value, dict):
-        return {
-            (scrub(k, secrets) if isinstance(k, str) else k): _scrub_json(v, secrets)
-            for k, v in value.items()
-        }
+        return {(fn(k) if isinstance(k, str) else k): _map_strings(v, fn) for k, v in value.items()}
     if isinstance(value, list):
-        return [_scrub_json(v, secrets) for v in value]
+        return [_map_strings(v, fn) for v in value]
     if isinstance(value, tuple):
-        return tuple(_scrub_json(v, secrets) for v in value)
+        return tuple(_map_strings(v, fn) for v in value)
     return value
+
+
+def run_roots(run_dir: Path, home: Path | None = None) -> dict[str, Path]:
+    """The host roots a run's writes are scrubbed of: TRESTLE_HOME (`home`, else the environment's),
+    the run directory, the plugin's work directory and the user's home."""
+    roots: dict[str, Path] = {"run": run_dir, "cwd": run_dir / "work", "user-home": Path.home()}
+    if home is None and os.environ.get("TRESTLE_HOME"):
+        home = Path(os.environ["TRESTLE_HOME"])
+    if home is not None:
+        roots["home"] = home
+    return roots
 
 
 # --- files -------------------------------------------------------------------------------------
@@ -289,6 +341,22 @@ def _file_holds_secret(path: Path, secrets: frozenset[str]) -> bool:
             if any(n in window for n in needles):
                 return True
             tail = window[-keep:] if keep else b""
+    return False
+
+
+def copy_scrubbed(src: Path, dest: Path, scrubber: Scrubber) -> bool:
+    """Copy `src` to `dest` through the scrubber (a promotion). Returns True when the file is
+    refused (a binary holding a secret): nothing is written to `dest`. A file above
+    `TEXT_SCRUB_MAX` is streamed for a secret and otherwise copied as it is."""
+    if src.stat().st_size > TEXT_SCRUB_MAX:
+        if scrubber.secrets and _file_holds_secret(src, scrubber.secrets):
+            return True
+        shutil.copy2(src, dest)
+        return False
+    data, refused = scrubber.data(src.read_bytes())
+    if refused:
+        return True
+    dest.write_bytes(data)
     return False
 
 

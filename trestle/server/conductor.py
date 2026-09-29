@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import shutil
 import subprocess
 import time
 from collections.abc import Callable
@@ -219,8 +218,9 @@ class Conductor:
             ledger.append("error_record", run_id=order.run_id, **error)
 
         promotion_markers: list[dict[str, object]] = []
+        scrubber = redact.Scrubber(secrets=secrets, roots=redact.run_roots(run_dir, self.home))
         artifact_ids = self._promote_outputs(
-            run_dir, ledger, order.run_id, secrets, promotion_markers
+            run_dir, ledger, order.run_id, scrubber, promotion_markers
         )
         # nothing can write to the work directory now: what the plugin left there is scrubbed too,
         # so the run directory holds no declared secret anywhere (WR-EVID-8)
@@ -280,13 +280,13 @@ class Conductor:
         run_dir: Path,
         ledger: RunLedger,
         run_id: str,
-        secrets: frozenset[str] = frozenset(),
+        scrubber: redact.Scrubber = redact.NO_SCRUB,
         markers: list[dict[str, object]] | None = None,
     ) -> list[str]:
-        """Promote `outputs/` to artifacts. With declared `secrets`, every promoted file passes
-        the write-path scrub (MC-CORE-13): text is copied scrubbed, and a binary file holding a
-        secret is not promoted at all: a `secret_in_binary` marker is appended to `markers` in its
-        place (nothing is written that later needs scrubbing)."""
+        """Promote `outputs/` to artifacts. Every promoted file passes the write-path scrub
+        (MC-CORE-13): text is copied with declared secrets and host paths scrubbed, and a binary
+        file holding a secret is not promoted at all: a `secret_in_binary` marker is appended to
+        `markers` in its place (nothing is written that later needs scrubbing)."""
         outputs_dir = work_dir(run_dir) / "outputs"
         if not outputs_dir.exists():
             return []
@@ -297,27 +297,22 @@ class Conductor:
             art_id = generate_artifact_id()
             dest = evidence_dir(run_dir) / "artifacts" / art_id
             dest.parent.mkdir(parents=True, exist_ok=True)
-            if secrets:
-                data, refused = redact.scrub_bytes(path.read_bytes(), secrets)
-                if refused:
-                    if markers is not None:
-                        markers.append(
-                            {
-                                "stream": "artifacts",
-                                "limit": redact.BINARY_LIMIT,
-                                "bytes_recorded": 0,
-                                "bytes_suppressed": path.stat().st_size,
-                            }
-                        )
-                    continue
-                dest.write_bytes(data)
-            else:
-                shutil.copy2(path, dest)
+            if redact.copy_scrubbed(path, dest, scrubber):
+                if markers is not None:
+                    markers.append(
+                        {
+                            "stream": "artifacts",
+                            "limit": redact.BINARY_LIMIT,
+                            "bytes_recorded": 0,
+                            "bytes_suppressed": path.stat().st_size,
+                        }
+                    )
+                continue
             ledger.append(
                 "artifact_available",
                 run_id=run_id,
                 artifact_id=art_id,
-                name=redact.scrub(path.name, secrets),
+                name=scrubber.text(path.name),
                 source="auto_promote",
             )
             artifact_ids.append(art_id)

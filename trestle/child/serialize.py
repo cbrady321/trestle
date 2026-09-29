@@ -25,16 +25,16 @@ def write_result(
     *,
     max_bytes: int | None = None,
     declared_return: object = None,
-    secrets: frozenset[str] = frozenset(),
+    scrubber: redact.Scrubber = redact.NO_SCRUB,
 ) -> Index:
     """Write `value` as canonical JSON at `path`, atomically, and return its index.
 
     The value goes through the one codec first (WR-EVID-5): what has no JSON form
     raises `Unencodable` before a file exists. On any failure the temp file is
-    removed, so a result file is either whole or absent. Every declared secret in `secrets` is
-    scrubbed from the leaves first (MC-CORE-13), before any byte is written.
+    removed, so a result file is either whole or absent. The scrubber (declared secrets, host
+    paths; MC-CORE-13) is applied to the leaves first, before any byte is written.
     """
-    plain = redact.scrub_json(normalize(value, declared_return), secrets)
+    plain = scrubber.json(normalize(value, declared_return))
     tmp = path.with_suffix(".json.tmp")
     try:
         with tmp.open("wb") as fh:

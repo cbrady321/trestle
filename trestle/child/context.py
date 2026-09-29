@@ -21,9 +21,9 @@ class RuntimeContext:
         deadline: datetime,
         events_path: Path,
         limits: CaptureLimits | None = None,
-        secrets: frozenset[str] = frozenset(),
+        scrubber: redact.Scrubber = redact.NO_SCRUB,
     ) -> None:
-        self._secrets = secrets
+        self._scrubber = scrubber
         self._work = work
         self._evidence = evidence
         self.deadline = deadline
@@ -67,11 +67,10 @@ class RuntimeContext:
             raise ValueError("attach path must be under work/")
         data = path.read_bytes()
         size = len(data)
-        if self._secrets:
-            data, refused = redact.scrub_bytes(data, self._secrets)
-            if refused:  # MC-CORE-13: a binary holding a declared secret is never written
-                self._record_limit("artifacts", redact.BINARY_LIMIT, 0, size)
-                raise ValueError("attachment holds a declared secret and is binary: refused")
+        data, refused = self._scrubber.data(data)
+        if refused:  # MC-CORE-13: a binary holding a declared secret is never written
+            self._record_limit("artifacts", redact.BINARY_LIMIT, 0, size)
+            raise ValueError("attachment holds a declared secret and is binary: refused")
         art_id = generate_artifact_id()
         dest = self._evidence / "artifacts" / art_id
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -81,7 +80,7 @@ class RuntimeContext:
             {
                 "kind": "artifact_available",
                 "artifact_id": art_id,
-                "name": redact.scrub(name, self._secrets),
+                "name": self._scrubber.text(name),
                 "at": _now(),
             },
         )
@@ -98,7 +97,7 @@ class RuntimeContext:
         return markers
 
     def _emit(self, kind: str, payload: dict[str, object]) -> None:
-        payload = redact.scrub_json(payload, self._secrets)  # before it is encoded or measured
+        payload = self._scrubber.json(payload)  # before it is encoded or measured
         encoded = json.dumps({"kind": kind, "payload": payload}, separators=(",", ":")).encode(
             "utf-8"
         )

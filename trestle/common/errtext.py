@@ -31,16 +31,22 @@ def sanitize(message: str, roots: Mapping[str, Path]) -> str:
     so a run directory under the home reads `<run>`, never `<home>/runs/...`. A path matches only at
     a boundary: `/a/b` is replaced in `/a/b/c` and `/a/b:` but not in `/a/bc`.
     """
+    return _bound(replace_roots(message, roots))
+
+
+def replace_roots(text: str, roots: Mapping[str, Path]) -> str:
+    """`sanitize` without the bound: every root prefix replaced by its token, the text otherwise
+    whole. The write-path scrub applies it to what a run writes (L.CL-B2.3, MC-CORE-13), where
+    cutting the text would lose data."""
     pairs: list[tuple[str, str]] = []
     for name, root in roots.items():
         token = TOKENS.get(name, f"<{name}>")
         for form in {str(root), _resolved(root)}:
             if len(form.rstrip("/")) > 1:  # a bare "/" would replace every slash
                 pairs.append((form.rstrip("/"), token))
-    text = message
     for form, token in sorted(pairs, key=lambda pair: len(pair[0]), reverse=True):
         text = re.sub(re.escape(form) + r"(?![\w.\-])", token.replace("\\", "\\\\"), text)
-    return _bound(text)
+    return text
 
 
 def _resolved(root: Path) -> str:

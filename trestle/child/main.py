@@ -74,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         deadline=deadline,
         events_path=evidence / "events.ndjson",
         limits=limits,
-        secrets=secrets,
+        scrubber=redact.Scrubber(secrets=secrets, roots=roots),
     )
 
     try:
@@ -97,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
                 result,
                 max_bytes=limits.max_result_bytes,
                 declared_return=declared_return,
-                secrets=secrets,
+                scrubber=redact.Scrubber(secrets=secrets, roots=roots),
             )
         except ResultTooLarge:
             atomic_write(evidence / "result.state", b"too_large")

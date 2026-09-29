@@ -4,7 +4,9 @@ L.CL-B2.1: admission writes `spec.json` with the declared arguments redacted and
 values to the plugin in memory; the sentinel is absent from the spec, the ledger and the
 idempotency store. L.CL-B2.2: the write-path scrub keeps the sentinel out of every file the run
 writes (events, console, result, child_error, artifacts, the work directory) and out of the MCP
-answer. L.CL-B2.3 adds the host-path scan.
+answer. L.CL-B2.3 adds the host-path scan: the same scrub replaces TRESTLE_HOME, the run directory,
+the work directory and $HOME by fixed tokens in what a plugin writes, so no answer, view row or
+fetch carries a host path.
 
 Every timing bound comes from `tests.proof.tolerances` (SA-05); no timing literal appears here.
 """
@@ -13,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -339,16 +342,16 @@ def test_sentinel_absent_everywhere(tmp_path: Path) -> None:
 def test_console_scrub_joins_chunks_and_trims_a_capped_tail(tmp_path: Path) -> None:
     from trestle.wrapper.reactor import _write_console
 
-    secrets = frozenset({SENTINEL})
+    scrubber = redact.Scrubber(secrets=frozenset({SENTINEL}))
     split = [f"a {SENTINEL[:9]}", f"{SENTINEL[9:]} b"]
     path = tmp_path / "stdout.log"
-    _write_console(path, split, 10_000, secrets)
+    _write_console(path, split, 10_000, scrubber)
     assert path.read_text(encoding="utf-8") == f"a {redact.REDACTED} b"
     # a capture cut inside the secret leaves no half of it at the end
-    _write_console(path, [f"tail {SENTINEL[:11]}"], 10_000, secrets, capped=True)
+    _write_console(path, [f"tail {SENTINEL[:11]}"], 10_000, scrubber, capped=True)
     assert path.read_text(encoding="utf-8") == f"tail {redact.REDACTED}"
     # without a cap, a partial secret is ordinary text
-    _write_console(path, [f"tail {SENTINEL[:11]}"], 10_000, secrets)
+    _write_console(path, [f"tail {SENTINEL[:11]}"], 10_000, scrubber)
     assert path.read_text(encoding="utf-8") == f"tail {SENTINEL[:11]}"
 
 
@@ -372,3 +375,121 @@ def test_scrub_forms_and_files(tmp_path: Path) -> None:
     assert (tmp_path / "t.txt").read_text(encoding="utf-8") == f"x {redact.REDACTED}"
     assert (tmp_path / "clean.bin").read_bytes() == b"\x00\x01clean"
     assert (tmp_path / "held.bin").read_bytes() == redact.REFUSED_BINARY
+
+
+# --- L.CL-B2.3: handles, never host paths -----------------------------------------------------
+
+# A plugin that puts every host path it can name on every channel it writes: its log and progress
+# events, its stdout and stderr, an outputs file, an attachment, an exception message and its
+# return. Nothing here is a secret; a host path is not one, but an agent has no use for it.
+PATHY_SOURCE = """\
+import os
+import sys
+from pathlib import Path
+
+from trestle.plugin.surface import Context, trestle
+
+
+@trestle
+def pathy(ctx: Context, mode: str = "ok") -> dict[str, str]:
+    home = os.environ["TRESTLE_HOME"]
+    cwd = os.getcwd()
+    user = str(Path.home())
+    line = f"home={home} tmp={ctx.tmp} cwd={cwd} user={user}/x"
+    ctx.log(line)
+    ctx.progress(line)
+    print(line, flush=True)
+    print(line, file=sys.stderr, flush=True)
+    report = ctx.outputs / "where.txt"
+    report.write_text(line, encoding="utf-8")
+    ctx.attach(report, name="where-attached.txt")
+    if mode == "raise":
+        raise RuntimeError(line)
+    return {"home": home, "cwd": cwd, "tmp": str(ctx.tmp), "user": f"{user}/x"}
+"""
+
+VIEWS = (
+    "run",
+    "last_error",
+    "run_tail",
+    "run_events",
+    "recent_runs",
+    "recent_failures",
+    "run_provenance",
+    "run_artifacts",
+    "artifact_refs",
+)
+
+
+def _host_paths(home: Path, run_dir: Path) -> list[str]:
+    """The strings a run's answer must never carry: TRESTLE_HOME, the run and work directories,
+    the process's working directory and $HOME, each as given and resolved."""
+    paths = {home, run_dir, run_dir / "work", Path.cwd(), Path.home()}
+    return sorted({str(p) for p in paths} | {str(p.resolve()) for p in paths})
+
+
+@pytest.mark.proves(
+    "WR-EVID-8",
+    "WR-EVID-8:no-host-path-in-answer",
+    "core",
+    "core",
+    "MCP",
+    "CI",
+)
+def test_no_host_path_in_run_answers_views_fetch(tmp_path: Path) -> None:
+    plugins = tmp_path / "home" / "plugins"
+    plugins.mkdir(parents=True)
+    (plugins / "pathy.py").write_text(PATHY_SOURCE, encoding="utf-8")
+    with mcp_host.McpHost(home=tmp_path / "home") as host:
+        answers: dict[str, Any] = {}
+        run_ids: dict[str, str] = {}
+        for mode in ("ok", "raise"):
+            answers[f"run-{mode}"] = host.call(
+                "run",
+                {
+                    "plugin": "pathy",
+                    "args": {"mode": mode},
+                    "completion": "terminal",
+                    "wait_ms": tolerances.HARNESS_WAIT_MS,
+                },
+            )
+            run_ids[mode] = answers[f"run-{mode}"]["run_id"]
+        assert answers["run-ok"]["state"] == "succeeded", answers["run-ok"]
+        assert answers["run-raise"]["state"] == "failed", answers["run-raise"]
+
+        for mode, run_id in run_ids.items():
+            for view in VIEWS:
+                params = {"run_id": run_id} if view in RUN_SCOPED else {}
+                answers[f"{view}-{mode}"] = host.call("query", {"view": view, "params": params})
+            artifact_rows = answers[f"run_artifacts-{mode}"]["items"]
+            handles = [f"{run_id}/result"] + [row["artifact_id"] for row in artifact_rows]
+            for handle in handles:
+                windows = (
+                    [{"kind": "head", "count": 50}, {"kind": "jsonpath", "expr": "$"}]
+                    if handle.endswith("/result")
+                    else [{"kind": "head", "count": 50}, {"kind": "grep", "pattern": "="}]
+                )
+                for window in windows:
+                    key = f"fetch-{handle}-{window['kind']}"
+                    answers[key] = host.call("fetch", {"target": handle, "window": window})
+        home = host.home
+        run_dir = next(iter((home / "runs").glob("*/r_*")))
+
+    forbidden = _host_paths(home, run_dir)
+    for name, answer in answers.items():
+        text = json.dumps(answer)
+        leaked = [path for path in forbidden if path in text]
+        assert leaked == [], (name, leaked, text[:400])
+    # the answers still say something: the tokens stand where the paths were
+    assert "<home>" in json.dumps(answers["run_tail-ok"]), answers["run_tail-ok"]
+    ok_result = answers[f"fetch-{run_ids['ok']}/result-head"]
+    assert "<cwd>" in json.dumps(ok_result), ok_result
+    assert answers["last_error-raise"]["items"], answers["last_error-raise"]
+    artifact_id = answers["run_artifacts-ok"]["items"][0]["artifact_id"]
+    assert "<home>" in json.dumps(answers[f"fetch-{artifact_id}-head"])
+    assert os.path.isdir(run_dir)
+
+
+RUN_SCOPED = frozenset(
+    {"run", "last_error", "run_tail", "run_events", "run_provenance", "run_artifacts"}
+)
