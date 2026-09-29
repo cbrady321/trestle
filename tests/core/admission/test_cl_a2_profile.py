@@ -7,11 +7,21 @@ Every timing bound comes from `tests.proof.tolerances` (SA-05); no timing litera
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
+import socket
+import subprocess
+import sys
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
+from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
 
 from tests.proof import ancestry, mcp_host, tolerances
 from trestle.common import codes
@@ -29,6 +39,11 @@ FULL_TOOLS = (
     "describe_plugin",
     "publish_plugin",
 )
+# A plugin that outlives the whole test; the run holding it is cancelled before the test ends.
+LONG_S = tolerances.JOIN_WAIT_S * 6
+NO_WAIT_MS = 0
+# A short join, to show a run has not ended.
+GLANCE_MS = int(tolerances.SETTLE_LONG_S * 1000)
 # A plugin the operator allowlists, and one that exists but is not on the list.
 ALLOWED = "echo"
 FORBIDDEN = "slow"
@@ -163,3 +178,141 @@ def test_profile_config_is_validated_and_defaults_to_full(tmp_path: Path) -> Non
         (home / "config.toml").write_text(f"[profile]\n{bad}\n", encoding="utf-8")
         with pytest.raises(ValueError, match="profile"):
             load_config(home)
+
+
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+@contextmanager
+def _http_server(home: Path) -> Iterator[str]:
+    """`trestle serve` over loopback streamable HTTP on `home`; yields the MCP url."""
+    port = _free_port()
+    env = os.environ.copy()
+    env["TRESTLE_HOME"] = str(home)
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "trestle.cli", "serve", "--transport", "streamable-http"]
+        + ["--port", str(port)],
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    url = f"http://127.0.0.1:{port}/mcp"
+    try:
+        asyncio.run(_wait_ready(url))
+        yield url
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=tolerances.PROC_WAIT_S)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=tolerances.PROC_WAIT_S)
+
+
+async def _wait_ready(url: str) -> None:
+    deadline = time.monotonic() + tolerances.JOIN_WAIT_S
+    while True:
+        try:
+            async with Client(transport=StreamableHttpTransport(url=url)) as client:
+                await client.list_tools()
+                return
+        except Exception:
+            if time.monotonic() >= deadline:
+                raise
+            await asyncio.sleep(tolerances.POLL_S)
+
+
+def _seed_plugins(home: Path) -> None:
+    (home / "plugins").mkdir(parents=True, exist_ok=True)
+    for path in (mcp_host.REPO / "tests" / "fixtures" / "plugins").glob("*.py"):
+        (home / "plugins" / path.name).write_bytes(path.read_bytes())
+
+
+async def _call(client: Client[Any], tool: str, args: dict[str, Any]) -> dict[str, Any]:
+    result = await client.call_tool(tool, args)
+    assert isinstance(result.data, dict), result
+    return result.data
+
+
+async def _cross_session_cancel(url: str, home: Path) -> tuple[dict[str, Any], ...]:
+    """Session A starts a long run; session B cancels it; then A does. Returns B's answer, the
+    run's view after B's attempt, A's answer, and the run's final view."""
+    transport_a = StreamableHttpTransport(url=url)
+    transport_b = StreamableHttpTransport(url=url)
+    async with Client(transport=transport_a) as a, Client(transport=transport_b) as b:
+        started = await _call(
+            a, "run", {"plugin": FORBIDDEN, "args": {"seconds": LONG_S}, "wait_ms": NO_WAIT_MS}
+        )
+        run_id = started["run_id"]
+        try:
+            by_b = await _call(b, "cancel", {"run_id": run_id})
+            [after_b] = (
+                await a.call_tool(
+                    "await_runs", {"run_ids": [run_id], "mode": "all", "timeout_ms": GLANCE_MS}
+                )
+            ).data
+            by_a = await _call(a, "cancel", {"run_id": run_id})
+            [final] = (
+                await a.call_tool(
+                    "await_runs",
+                    {"run_ids": [run_id], "mode": "all", "timeout_ms": tolerances.HARNESS_WAIT_MS},
+                )
+            ).data
+        finally:
+            await a.call_tool("cancel", {"run_id": run_id}, raise_on_error=False)
+        return by_b, after_b, by_a, final
+
+
+def _created_session(home: Path, run_id: str) -> object:
+    (run_dir,) = sorted((home / "runs").glob(f"*/{run_id}"))
+    rows = [
+        json.loads(line)
+        for line in (run_dir / "evidence" / "ledger.ndjson").read_text("utf-8").splitlines()
+    ]
+    (created,) = [row for row in rows if row["kind"] == "created"]
+    assert "caller_session" in created, created
+    return created["caller_session"]
+
+
+@pytest.mark.proves(
+    "WR-AUTH-1", "WR-AUTH-1:cancel-only-own-session-runs", "core", "core", "MCP", "CI"
+)
+def test_restricted_cancel_foreign_run_refused(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    _seed_plugins(home)
+    _write_profile(home, PROFILE_RESTRICTED, [ALLOWED, FORBIDDEN])
+    with _http_server(home) as url:
+        by_b, after_b, by_a, final = asyncio.run(_cross_session_cancel(url, home))
+    # B did not receive the run: refused, and the run went on
+    assert by_b["code"] == codes.NOT_OWNER, by_b
+    assert by_b["origin"] == "projection", by_b
+    assert after_b["state"] in {"queued", "running"}, after_b
+    # A did: accepted, and the run ends cancelled
+    assert by_a["code"] == codes.CANCEL_ACCEPTED, by_a
+    assert final["state"] == "cancelled", final
+    # the created row names an MCP session (the key is always there)
+    session = _created_session(home, final["run_id"])
+    assert isinstance(session, str) and session, session
+
+
+def test_full_profile_cancel_is_not_session_scoped(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    _seed_plugins(home)
+    _write_profile(home, None)  # no [profile]: the full profile
+    with _http_server(home) as url:
+        by_b, _after_b, by_a, final = asyncio.run(_cross_session_cancel(url, home))
+    assert by_b["code"] == codes.CANCEL_ACCEPTED, by_b
+    assert final["state"] == "cancelled", final
+    assert by_a["code"] != codes.NOT_OWNER, by_a
+
+
+def test_created_row_carries_a_null_session_outside_mcp(tmp_path: Path) -> None:
+    from tests.core.spine import support
+
+    kernel = support.spine_kernel(home=tmp_path / "home")
+    view = kernel.control.run(plugin="echo", args={"message": "x"}, wait_ms=NO_WAIT_MS)
+    assert not hasattr(view, "code"), view
+    assert _created_session(kernel.home, view.run_id) is None

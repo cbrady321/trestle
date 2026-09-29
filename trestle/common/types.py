@@ -31,6 +31,9 @@ class AdmitRequest:
     args: dict[str, Any]
     version: str | None = None
     idempotency_key: str | None = None
+    # The MCP session the call arrived on (None outside an MCP session); written on the `created`
+    # row so the restricted profile can scope `cancel` to the session that started a run.
+    caller_session: str | None = None
 
 
 @dataclass

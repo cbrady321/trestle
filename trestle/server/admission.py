@@ -225,6 +225,7 @@ class Admission:
             "version": snap.version,
             "snapshot_id": snap.snapshot_id,
             "args_hash": a_hash,
+            "caller_session": req.caller_session,
         }
         if req.idempotency_key is not None:
             created_fields["idempotency_key"] = req.idempotency_key

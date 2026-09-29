@@ -78,6 +78,7 @@ def create_kernel(
         home=trestle_home,
         registry=registry,
         run_registry=run_registry,
+        session_scoped_cancel=config.profile.restricted,
     )
     control = ControlSurface(
         admission=admission,
@@ -96,6 +97,16 @@ def _wire_result(value: RequestOutcome | RunView | PublishView | dict[str, Any])
     if isinstance(value, PublishView):
         return value.to_dict()
     return value
+
+
+def _caller_session() -> str | None:
+    """The MCP session id of the tool call being served, or None outside an MCP session."""
+    from fastmcp.server.dependencies import get_context
+
+    try:
+        return get_context().session_id
+    except RuntimeError:
+        return None
 
 
 def attach_registry_version_mirror(mcp: Any, kernel: Kernel) -> None:
@@ -150,6 +161,7 @@ def run_server(
                 wait_ms=wait_ms,
                 idempotency_key=idempotency_key,
                 completion=completion,
+                caller_session=_caller_session(),
             )
         )
 
@@ -170,7 +182,7 @@ def run_server(
     @mcp.tool
     async def cancel(run_id: str) -> dict[str, Any]:
         """Request cancellation of a run."""
-        outcome = await asyncio.to_thread(kernel.control.cancel, run_id)
+        outcome = await asyncio.to_thread(kernel.control.cancel, run_id, _caller_session())
         return outcome.to_dict()
 
     @mcp.tool
