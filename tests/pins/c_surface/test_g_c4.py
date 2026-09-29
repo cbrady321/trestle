@@ -4,7 +4,8 @@ An undeclaring plugin gets a greedy fill of its result's fields in sorted-key
 order that skips a field that does not fit and continues; an index over
 `MAX_INDEX_BYTES` (64 KiB) coarsens the summary to a field count. The target
 needs a declared summary field, which does not exist at S0, so it is written
-as the first step of L.CL-B1.1 (DM-20). These pins carry no matrix `proves`.
+as the first step of L.CL-B1.1 (DM-20): `test_target_declared_field_survives_budget`. The pins
+carry no matrix `proves`; the target carries the clause it targets.
 """
 
 from __future__ import annotations
@@ -15,8 +16,9 @@ import pytest
 
 from tests.pins.c_surface._support import as_view
 from tests.proof import harness, tolerances
+from tests.proof.markers import target_check
 from trestle.child.index import MAX_INDEX_BYTES
-from trestle.common.types import RunView
+from trestle.common.types import PublishView, RunView
 
 GAP = "G-C4"
 PLUGINS = Path(__file__).resolve().parent / "plugins"
@@ -66,3 +68,45 @@ def test_pin_index_coarsened_summary_is_field_count() -> None:
     assert view.summary == {"field_count": count}
     assert view.omitted == ["*"]
     assert view.next is not None
+
+
+DECLARED_FILL = """\
+from trestle.plugin.surface import Context, trestle
+
+
+@trestle(summary_fields=("status",))
+def declared_fill(ctx: Context, width: int = 200) -> dict[str, str]:
+    filler = "z" * width
+    return {"aaa": filler, "bbb": filler, "ccc": filler, "status": "y" * (width - 50)}
+"""
+
+
+@pytest.mark.target(GAP)
+@pytest.mark.proves(
+    "WR-TERM-5", "WR-TERM-5:early-sorted-large-result-no-hide", "core", "core", "PROC", "CI"
+)
+@pytest.mark.xfail(strict=True, reason="defect:G-C4")
+def test_target_declared_field_survives_budget(tmp_path: Path) -> None:
+    """A declared `summary_fields` entry is reserved before the greedy fill, so a large
+    early-sorted field cannot hide it. Alone it fits the budget; after two `FIELD_WIDTH` fields
+    in sorted order it does not, so today's fill drops it."""
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    kernel = harness.fresh_kernel([plugin_dir], home=tmp_path / "home")
+    assert isinstance(kernel.control.publish_plugin(DECLARED_FILL), PublishView)
+    with harness.patch_snapshot(kernel, "declared_fill", summary_budget=FILL_BUDGET):
+        view = as_view(
+            kernel.control.run(
+                plugin="declared_fill",
+                args={"width": FIELD_WIDTH},
+                wait_ms=tolerances.HARNESS_WAIT_MS,
+            )
+        )
+    assert view.state == "succeeded"
+    target_check(
+        isinstance(view.summary, dict) and "status" in view.summary,
+        GAP,
+        f"declared summary field 'status' is absent from the summary "
+        f"(summary keys {sorted(view.summary) if isinstance(view.summary, dict) else None}, "
+        f"omitted {view.omitted})",
+    )
