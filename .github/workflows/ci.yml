@@ -26,7 +26,20 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: ruff check trestle tests packages/trestle-packs conftest.py scripts/smoke_packs.py scripts/demo_pack_workflows.py
       - run: ruff format --check trestle tests packages/trestle-packs conftest.py scripts/smoke_packs.py scripts/demo_pack_workflows.py
-      - run: python -m tests.proof.meta mypy-ratchet --max 1
+
+  # K-14 (L.CK-14.1): mypy at zero errors. It needs `.[dev,packs]`: with `.[dev]` alone
+  # trestle_packs is absent and its py.typed marker cannot fix `import-not-found`. The job
+  # produces no proof result (CSC-13); a pull_request job, so a required job (CM-4).
+  # CK-14's decline patch (tests/core/tooling/declines/ck_14.py) flips the `mypy` command.
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev,packs]"
+      - run: mypy
 
   # The `test` job's work, split into path groups (tests/proof/ci_shards.py SHARDS; C1).
   # One runner per shard, so shards share no fixture dir, port or results file. Each
@@ -306,7 +319,7 @@ jobs:
   ckpt:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    needs: [lint, test-shard, test, compat, guards, spine, ancestry, d2-straddle, proof-ledger, ck-drill, ck-isolation]
+    needs: [lint, typecheck, test-shard, test, compat, guards, spine, ancestry, d2-straddle, proof-ledger, ck-drill, ck-isolation]
     permissions:
       contents: write
       checks: read

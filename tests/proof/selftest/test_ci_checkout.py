@@ -40,6 +40,7 @@ def test_ci_yml_parses_and_has_expected_jobs() -> None:
     workflow = _load_ci_yml()
     assert set(workflow["jobs"]) == {
         "lint",
+        "typecheck",  # L.CK-14.1 (K-14)
         "test-shard",  # L.P0-0d.17: `test` aggregates its matrix
         "test",
         "compat",
@@ -54,10 +55,13 @@ def test_ci_yml_parses_and_has_expected_jobs() -> None:
     }
 
 
-def test_lint_job_runs_mypy_ratchet() -> None:
+def test_typecheck_job_runs_mypy() -> None:
+    """L.CK-14.1 (K-14): mypy is zero-gated in its own job; the P0 ratchet step is gone."""
     workflow = _load_ci_yml()
+    runs = [s.get("run", "") for s in workflow["jobs"]["typecheck"]["steps"]]
+    assert "mypy" in runs
     lint_runs = [s.get("run", "") for s in workflow["jobs"]["lint"]["steps"]]
-    assert any("mypy-ratchet --max 1" in r for r in lint_runs)
+    assert not any("mypy-ratchet" in r for r in lint_runs)
 
 
 def test_test_and_compat_jobs_set_proof_gate_env() -> None:
