@@ -3,10 +3,10 @@ from __future__ import annotations
 import argparse
 import sys
 
+from tests.proof.host import host_lock
 from tests.proof.host.docker_gate import preflight as preflight_mod
 
 NOT_BUILT_MODES = {
-    "strict": "L.NW-2.2",
     "run": "L.NW-2.10",
     "select": "L.NW-2.10",
     "inventory": "L.NW-2.10",
@@ -17,10 +17,20 @@ NOT_BUILT_MODES = {
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m tests.proof.host.docker_gate")
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("preflight")
+    preflight_parser = sub.add_parser("preflight")
+    preflight_parser.add_argument("--strict", action="store_true")
     for mode in NOT_BUILT_MODES:
         sub.add_parser(mode)
     args = parser.parse_args(argv)
+
+    if args.command == "preflight" and args.strict:
+        try:
+            rc = preflight_mod.strict_preflight()
+        except host_lock.HostRunTimedOut as exc:
+            print(f"docker_gate preflight --strict: {exc}")
+            return 1
+        print(f"docker_gate preflight --strict: exit {rc}")
+        return rc
 
     if args.command == "preflight":
         record = preflight_mod.preflight()

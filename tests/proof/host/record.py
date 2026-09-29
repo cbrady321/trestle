@@ -16,7 +16,14 @@ ROOT = Path(__file__).resolve().parents[2]
 HOST_DIR = ROOT / "tests" / "proof" / "host"
 
 REQUIRED_KEYS = {"schema", "gate", "sha", "mode", "python", "platform", "results", "status"}
-OPTIONAL_KEYS = {"engine", "images", "inventory_before", "inventory_after", "diff"}
+OPTIONAL_KEYS = {
+    "engine",
+    "images",
+    "inventory_before",
+    "inventory_after",
+    "diff",
+    "residue",
+}
 ALL_KEYS = REQUIRED_KEYS | OPTIONAL_KEYS
 VALID_MODES = {"run", "preflight"}
 VALID_STATUSES = {"PASSED", "FAILED", "PRECONDITION_UNMET"}

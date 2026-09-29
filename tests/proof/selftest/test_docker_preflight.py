@@ -60,11 +60,15 @@ def test_engine_addressed_on_working_socket_not_default_context():
         assert env.get("DOCKER_CONTEXT", "") != "default"
 
 
-def test_strict_not_built(capsys):
-    assert preflight_mod.STRICT_BUILT is False
-    rc = docker_gate_main.main(["strict"])
-    assert rc == 2
-    assert "L.NW-2.2" in capsys.readouterr().out
+def test_strict_built(monkeypatch, capsys):
+    """L.NW-2.2 inverts P0's `test_strict_not_built`: `--strict` is built (the flag TM-P0-13's
+    probe reads is True) and no longer exits 2 as "not built"."""
+    assert preflight_mod.STRICT_BUILT is True
+    monkeypatch.setattr(preflight_mod, "strict_preflight", lambda: 3)
+    rc = docker_gate_main.main(["preflight", "--strict"])
+    assert rc == 3
+    assert "not built" not in capsys.readouterr().out
+    assert "strict" not in docker_gate_main.NOT_BUILT_MODES
 
 
 def test_run_not_built(capsys):
@@ -73,9 +77,9 @@ def test_run_not_built(capsys):
     assert "L.NW-2.10" in capsys.readouterr().out
 
 
-def test_tm_p0_13_probe_exits_0_present():
-    """TM-P0-13's probe imports the module and reads `STRICT_BUILT`
-    (side-effect free: no docker call, no record)."""
+def test_tm_p0_13_probe_exits_1_absent():
+    """TM-P0-13's probe imports the module and reads `STRICT_BUILT` (side-effect free: no docker
+    call, no record); with the strict mode built it exits 1, i.e. the entry is absent."""
     import subprocess
     import sys
 
@@ -90,4 +94,4 @@ def test_tm_p0_13_probe_exits_0_present():
         capture_output=True,
         text=True,
     )
-    assert proc.returncode == 0
+    assert proc.returncode == 1

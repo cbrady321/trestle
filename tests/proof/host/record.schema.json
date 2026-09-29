@@ -22,11 +22,32 @@
         }
       }
     },
-    "engine": {"type": "string"},
-    "images": {"type": "array", "items": {"type": "string"}},
-    "inventory_before": {"type": "array"},
-    "inventory_after": {"type": "array"},
-    "diff": {"type": "array"},
+    "engine": {
+      "type": ["string", "object"],
+      "properties": {
+        "cli_path": {"type": "string"},
+        "endpoint": {"type": ["string", "null"]},
+        "server_version": {"type": ["string", "null"]},
+        "reachable_before": {"type": "boolean"},
+        "reachable_after": {"type": "boolean"},
+        "reason": {"type": "string"}
+      }
+    },
+    "images": {
+      "type": ["array", "object"],
+      "items": {"type": "string"},
+      "additionalProperties": {"type": "string"}
+    },
+    "inventory_before": {"type": ["array", "object"]},
+    "inventory_after": {"type": ["array", "object"]},
+    "diff": {
+      "type": ["array", "object"],
+      "properties": {
+        "unattributed": {"type": "array"},
+        "engine_state_changed": {"type": "boolean"}
+      }
+    },
+    "residue": {"type": "array"},
     "status": {"type": "string", "enum": ["PASSED", "FAILED", "PRECONDITION_UNMET"]}
   },
   "additionalProperties": false
