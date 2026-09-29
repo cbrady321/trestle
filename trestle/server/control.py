@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -40,13 +41,50 @@ def _refuse_completion(completion: str, wait_ms: int) -> RequestOutcome | None:
     )
 
 
+class AdmissionLane:
+    """MC-30: the one admission thread. The registry refresh (validation of dropped-in plugins, a
+    subprocess import) and `Admission.admit` both run here, one job at a time, so nothing blocks the
+    event loop and admission stays serialized (the BFD-29 condition: an idempotency key is checked
+    once, never twice at once)."""
+
+    THREAD_NAME = "trestle-admission"
+
+    def __init__(self, admission: Admission) -> None:
+        self._admission = admission
+        self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix=self.THREAD_NAME)
+
+    def submit_admit(self, request: AdmitRequest) -> Future[AdmitResult]:
+        return self._pool.submit(self._refresh_then_admit, request)
+
+    def submit_refresh(self) -> Future[None]:
+        return self._pool.submit(self._admission.registry.maybe_refresh)
+
+    def _refresh_then_admit(self, request: AdmitRequest) -> AdmitResult:
+        self._admission.registry.maybe_refresh()
+        return self._admission.admit(request)
+
+    def close(self) -> None:
+        self._pool.shutdown(wait=False, cancel_futures=True)
+
+
 @dataclass
 class ControlSurface:
     admission: Admission
     project: Project
     conductor: Conductor
     scheduler: Scheduler
-    _admit_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+    lane: AdmissionLane = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        self.lane = AdmissionLane(self.admission)
+
+    def submit_admit(self, request: AdmitRequest) -> Future[AdmitResult]:
+        """MC-30: refresh the registry, then admit, on the admission thread."""
+        return self.lane.submit_admit(request)
+
+    def submit_refresh(self) -> Future[None]:
+        """The registry refresh alone (the `tools/list` hook), on the admission thread."""
+        return self.lane.submit_refresh()
 
     def _drive_background(self, order: WorkOrder) -> None:
         thread = threading.Thread(
@@ -68,15 +106,14 @@ class ControlSurface:
         refused = _refuse_completion(completion, wait_ms)
         if refused is not None:
             return refused
-        self.admission.registry.maybe_refresh()
-        result = self._admit_serialized(
+        result = self.submit_admit(
             AdmitRequest(
                 plugin=plugin,
                 args=args or {},
                 version=version,
                 idempotency_key=idempotency_key,
             )
-        )
+        ).result()
         if result.tag == "refused":
             return result.outcome
 
@@ -125,18 +162,17 @@ class ControlSurface:
         refused = _refuse_completion(completion, wait_ms)
         if refused is not None:
             return refused
-        # The registry refresh stays inline until L.CL-A1.1 moves it into the admission lane
-        # (it flips G-A4); admission itself runs on a worker thread, so a slow admit does not
-        # stop the loop answering other calls (L.CS-4.2, until CL-A1's lane replaces this).
-        self.admission.registry.maybe_refresh()
-        result = await asyncio.to_thread(
-            self._admit_serialized,
-            AdmitRequest(
-                plugin=plugin,
-                args=args or {},
-                version=version,
-                idempotency_key=idempotency_key,
-            ),
+        # The registry refresh and the admit both run on the admission thread (MC-30), so a slow
+        # plugin probe or admit never stops the loop answering other calls (G-A4).
+        result = await asyncio.wrap_future(
+            self.submit_admit(
+                AdmitRequest(
+                    plugin=plugin,
+                    args=args or {},
+                    version=version,
+                    idempotency_key=idempotency_key,
+                )
+            )
         )
         if result.tag == "refused":
             return result.outcome
@@ -156,13 +192,6 @@ class ControlSurface:
         if completion == "terminal":
             return await self.project.await_terminal_async(result.run_id)
         return await self.project.await_one_async(result.run_id, wait_ms)
-
-    def _admit_serialized(self, request: AdmitRequest) -> AdmitResult:
-        """One admit at a time: what the event loop's single thread gave every caller before
-        admission moved to a worker (an idempotency key checked twice at once would mint two
-        runs). CL-A1's admission lane replaces this."""
-        with self._admit_lock:
-            return self.admission.admit(request)
 
     def _work_order(self, run_id: str, plugin: str) -> WorkOrder:
         from trestle.server.ledger import RunLedger, ledger_path, run_dir_for

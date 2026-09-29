@@ -105,7 +105,8 @@ def attach_registry_version_mirror(mcp: Any, kernel: Kernel) -> None:
     async def list_tools_with_registry_version(
         request: mt.ListToolsRequest,
     ) -> mt.ListToolsResult:
-        kernel.registry.maybe_refresh()
+        # the refresh validates dropped-in plugins: it runs on the admission thread, not the loop
+        await asyncio.wrap_future(kernel.control.submit_refresh())
         result = await original(request)
         return mt.ListToolsResult(
             tools=result.tools,
@@ -139,7 +140,6 @@ def run_server(
         completion: str = "bounded",
     ) -> dict[str, Any]:
         """Start a plugin run and optionally wait for a status frame."""
-        kernel.registry.maybe_refresh()
         return _wire_result(
             await kernel.control.run_async(
                 plugin=plugin,
