@@ -1155,7 +1155,11 @@ def _land_single(
         return FenceMergeExit.VERDICT_REFUSED, f"{result.rule}: {result.message}"
     from tests.proof import kdoc as kdoc_mod
 
-    missing = kdoc_mod.missing_docs(gate.merge, merge_sha, cwd=cwd)
+    # The K-doc rule reads a merge's landing commit, never a `WR-Fix`
+    # (kdoc.missing_docs): a fix to an already-landed gate owes no doc edit.
+    missing = (
+        kdoc_mod.missing_docs(gate.merge, merge_sha, cwd=cwd) if trailer_kind == "WR-Merge" else []
+    )
     if missing:
         return FenceMergeExit.VERDICT_REFUSED, f"kdoc: missing docs {missing}"
     return merge_sha

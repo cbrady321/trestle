@@ -141,6 +141,14 @@ def test_p2_kdoc_miss_refused_before_push(rig, monkeypatch):
     assert "kdoc" in msg
 
 
+def test_p2_kdoc_not_owed_by_a_fix_to_a_landed_gate(rig, monkeypatch):
+    k_items = [{"id": "K-1", "landing_merge": "M1", "docs": ["docs/a.md"]}]
+    monkeypatch.setattr("tests.proof.kdoc.load_k_doc_map", lambda *a, **kw: k_items)
+    monkeypatch.setattr("tests.proof.trailers.landing", lambda *a, **kw: "0" * 40)
+    exit_code, _msg = _merge(rig)
+    assert exit_code == fence_mod.FenceMergeExit.LANDED
+
+
 def test_p2_required_job_failed_exits_2(rig):
     exit_code, msg = _merge(rig, job_conclusions={"lint": "failure"}, required=["lint"])
     assert exit_code == fence_mod.FenceMergeExit.VERDICT_REFUSED
