@@ -121,4 +121,3 @@ def count_bytes_read(watched: Path) -> Iterator[_Counter]:
         os.pread = real_pread
         os.read = real_read
         os.open = real_os_open  # type: ignore[assignment]
-

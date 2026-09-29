@@ -41,3 +41,13 @@ tier = "must"
 venue = "CI"
 posture = "proven"
 declared_by = "L.P0-1D.3"
+
+[[label]]
+id = "WR-EVID-6:artifact-limits"
+row = "WR-EVID-6"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-1D.4"

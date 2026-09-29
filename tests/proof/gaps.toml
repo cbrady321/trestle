@@ -132,7 +132,7 @@ id = "G-D5"
 lane = "D"
 flip_merge = "CL-B1"
 target = "required"
-entry = "pending"
+entry = "tests.pins.d_evidence.test_g_d5:test_target_cap_marked_and_staged_promoted_or_refused"
 
 [[gap]]
 id = "G-E1"
