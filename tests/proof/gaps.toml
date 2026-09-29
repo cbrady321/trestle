@@ -104,14 +104,14 @@ id = "G-D1"
 lane = "D"
 flip_merge = "CS-1"
 target = "required"
-entry = "pending"
+entry = "tests.pins.d_evidence.test_g_d1:test_target_bytes_read_nongrowing_2000_vs_4000"
 
 [[gap]]
 id = "G-D2"
 lane = "D"
 flip_merge = "CS-1"
 target = "required"
-entry = "pending"
+entry = "tests.pins.d_evidence.test_g_d2:test_target_no_valid_row_lost"
 
 [[gap]]
 id = "G-D3"
