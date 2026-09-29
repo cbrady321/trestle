@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import ast
 import json
-import os
 import subprocess
-import sys
 from pathlib import Path
+
+from trestle.common.pyenv import build_child_env, python_argv
 
 PACK_IMPORT_PREFIX = "trestle_packs"
 VALIDATE_TIMEOUT_S = 10.0
@@ -15,23 +15,6 @@ VALIDATE_TIMEOUT_S = 10.0
 
 class PluginValidationError(ValueError):
     """Throwaway-subprocess validation failed; do not snapshot."""
-
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
-
-
-def _subprocess_env() -> dict[str, str]:
-    env = os.environ.copy()
-    root = _repo_root()
-    parts = [str(root)]
-    packs = root / "packages" / "trestle-packs"
-    if packs.is_dir():
-        parts.append(str(packs))
-    existing = env.get("PYTHONPATH", "")
-    prefix = os.pathsep.join(parts)
-    env["PYTHONPATH"] = prefix if not existing else f"{prefix}{os.pathsep}{existing}"
-    return env
 
 
 def _imports_packs_module(name: str) -> bool:
@@ -55,11 +38,12 @@ def packs_import_error() -> str | None:
     """Probe trestle_packs in a throwaway interpreter (not the MCP process)."""
     try:
         proc = subprocess.run(
-            [sys.executable, "-c", "import trestle_packs"],
+            python_argv("-c", "import trestle_packs"),
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             timeout=VALIDATE_TIMEOUT_S,
-            env=_subprocess_env(),
+            env=build_child_env(),
             start_new_session=True,
             check=False,
         )
@@ -76,16 +60,17 @@ def validate_plugin(source_path: Path, *, entry: str | None = None) -> str | Non
 
     `entry`, when given, is the entry name the publisher derived from the source; the child
     refuses a plugin whose one marked callable is not that."""
-    argv = [sys.executable, "-m", "trestle.child.validate", "--plugin", str(source_path)]
+    argv = python_argv("-m", "trestle.child.validate", "--plugin", str(source_path))
     if entry is not None:
         argv += ["--entry", entry]
     try:
         proc = subprocess.run(
             argv,
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             timeout=VALIDATE_TIMEOUT_S,
-            env=_subprocess_env(),
+            env=build_child_env(),
             start_new_session=True,
             check=False,
         )
