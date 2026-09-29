@@ -15,6 +15,7 @@ from trestle.common import clock, codes
 from trestle.common.canonical import args_hash
 from trestle.common.fsutil import atomic_write_json, fsync_dir
 from trestle.common.ids import generate_run_id
+from trestle.common.redact import redact_args, secret_values
 from trestle.common.types import (
     AdmitRequest,
     AdmitResult,
@@ -177,11 +178,13 @@ class Admission:
         fsync_dir(run_dir)
 
         deadline = datetime.now(tz=UTC) + timedelta(seconds=deadline_s)
+        declared = load_declared(snap)
         spec = RunSpec(
             plugin=snap.plugin,
             version=snap.version,
             snapshot_id=snap.snapshot_id,
-            args=req.args,
+            # declared secrets are redacted (MC-CORE-13); args_hash above is over the real intent
+            args=redact_args(req.args, declared.secrets),
             args_hash=a_hash,
             source_sha256=snap.source_sha256,
             schema_sha256=snap.schema_sha256,
@@ -192,7 +195,7 @@ class Admission:
             timeout_s=math.ceil(deadline_s),
             deadline=deadline.isoformat(),
             # what publication recorded for the declared packages; the child checks it first
-            provenance={"packages": dict(load_declared(snap).package_digests)},
+            provenance={"packages": dict(declared.package_digests)},
         )
         spec_dict = spec.to_dict()
         atomic_write_json(ev_dir / "spec.json", spec_dict)
@@ -231,4 +234,7 @@ class Admission:
             )
 
         self.scheduler.mint(run_id, snap.snapshot_id, spec_hash)
-        return AdmitResultAdmitted(tag="admitted", run_id=run_id)
+        # the real values travel in memory to the run's WorkOrder and no further
+        return AdmitResultAdmitted(
+            tag="admitted", run_id=run_id, secrets=secret_values(req.args, declared.secrets)
+        )

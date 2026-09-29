@@ -44,6 +44,10 @@ class AdmitResultAdmitted:
     tag: Literal["admitted"]
     run_id: Handle
     existing: bool = False
+    # The real values of the run's declared secret arguments, by declared name (MC-CORE-13). Held
+    # in memory from admission to the run's start and never written: not in `spec.json`, the
+    # ledger or the idempotency store; hidden from repr and comparison.
+    secrets: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
 
 AdmitResult = AdmitResultRefused | AdmitResultAdmitted
@@ -54,6 +58,9 @@ class WorkOrder:
     run_id: Handle
     snapshot_id: str
     spec_hash: str
+    # In-memory only (see `AdmitResultAdmitted.secrets`): delivered to the wrapper and child
+    # through the environment, never persisted; hidden from repr and comparison.
+    secrets: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
 
 @dataclass

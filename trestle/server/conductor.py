@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from trestle.common import clock, codes
+from trestle.common import clock, codes, redact
 from trestle.common.errtext import sanitize
 from trestle.common.fsutil import atomic_write_json
 from trestle.common.ids import generate_artifact_id
@@ -102,6 +102,10 @@ class Conductor:
         spec = self._read_spec(run_dir)
 
         wrapper_cmd = python_argv("-m", "trestle.wrapper.main", "--run-dir", str(run_dir))
+        env = build_child_env(home=self.home)
+        env.pop(redact.SECRETS_ENV, None)  # only this run's own values, never an inherited variable
+        if order.secrets:  # MC-CORE-13: the real values go to the wrapper and child by environment
+            env[redact.SECRETS_ENV] = redact.encode_env(order.secrets)
         started = time.monotonic()
         proc = subprocess.Popen(
             wrapper_cmd,
@@ -109,7 +113,7 @@ class Conductor:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            env=build_child_env(home=self.home),
+            env=env,
             start_new_session=True,
         )
         # B2-C16: the leader's identity row goes down after spawn and before the first liveness

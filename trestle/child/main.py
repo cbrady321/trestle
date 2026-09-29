@@ -20,7 +20,7 @@ from trestle.child.validate import (
     check_package_digests,
     select_entry,
 )
-from trestle.common import codes
+from trestle.common import codes, redact
 from trestle.common.errtext import sanitize
 from trestle.common.fsutil import atomic_write, atomic_write_json
 from trestle.common.limits import capture_limits
@@ -40,6 +40,10 @@ def main(argv: list[str] | None = None) -> int:
     evidence = run_dir / "evidence"
     work = run_dir / "work"
     spec = RunSpec.from_dict(json.loads((evidence / "spec.json").read_text(encoding="utf-8")))
+    # MC-CORE-13: the run's real secret values arrive in the environment and leave it here, before
+    # any plugin code is imported, so nothing the plugin starts inherits them. They are held in
+    # memory only: `spec.json` carries the redacted arguments.
+    plugin_args = redact.restore_args(spec.args, redact.take_env(os.environ))
 
     os.chdir(work)
     os.environ["TMPDIR"] = str(work / "tmp")
@@ -69,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        bound_args = _bind_args(fn, spec.args)
+        bound_args = _bind_args(fn, plugin_args)
     except Exception as exc:
         return _fail(evidence, "bind", codes.EXECUTION_BIND_FAILED, exc, roots)
     try:
