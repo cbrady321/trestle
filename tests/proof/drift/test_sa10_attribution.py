@@ -12,7 +12,7 @@ import uuid
 
 import pytest
 
-from tests.proof import ancestry
+from tests.proof import ancestry, tolerances
 
 _SLEEP_SNIPPET = "import sys, time; time.sleep(float(sys.argv[1]))"
 
@@ -59,7 +59,7 @@ def test_setsid_grandchild_attributed_by_marker_and_sid(sa: str) -> None:
     )
     grandchild_pids: set[int] = set()
     try:
-        time.sleep(1.0)
+        time.sleep(tolerances.SETTLE_LONG_S)
         root_sid = os.getsid(root.pid)
         assert root_sid == root.pid  # root did start a new session
 
@@ -81,11 +81,11 @@ def test_setsid_grandchild_attributed_by_marker_and_sid(sa: str) -> None:
             assert other.pid not in attributed_pids
         finally:
             other.kill()
-            other.wait(timeout=5)
+            other.wait(timeout=tolerances.PROC_WAIT_S)
     finally:
         root.kill()
         try:
-            root.wait(timeout=5)
+            root.wait(timeout=tolerances.PROC_WAIT_S)
         except subprocess.TimeoutExpired:
             pass
         for pid in grandchild_pids:
@@ -100,14 +100,14 @@ def test_numeric_start_stable_for_process_life(sa: str) -> None:
     proc = _spawn_marked_sleeper(2.0, "start-stability")
     try:
         first = ancestry.start_time(proc.pid)
-        time.sleep(0.5)
+        time.sleep(tolerances.STABILITY_GAP_S)
         second = ancestry.start_time(proc.pid)
         assert first is not None
         assert first == second
         assert isinstance(first, int)
     finally:
         proc.kill()
-        proc.wait(timeout=5)
+        proc.wait(timeout=tolerances.PROC_WAIT_S)
 
 
 @pytest.mark.parametrize("sa", ["SA-10"])
@@ -125,7 +125,7 @@ def test_start_stable_across_tz(sa: str, tz: str) -> None:
         assert isinstance(value, int)
     finally:
         proc.kill()
-        proc.wait(timeout=5)
+        proc.wait(timeout=tolerances.PROC_WAIT_S)
 
 
 @pytest.mark.parametrize("sa", ["SA-10"])
@@ -142,4 +142,4 @@ def test_start_stable_under_lc_all_c(sa: str) -> None:
         assert isinstance(value, int)
     finally:
         proc.kill()
-        proc.wait(timeout=5)
+        proc.wait(timeout=tolerances.PROC_WAIT_S)

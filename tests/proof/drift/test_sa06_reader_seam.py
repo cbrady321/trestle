@@ -6,13 +6,15 @@ from __future__ import annotations
 
 import pytest
 
-from tests.proof import harness, records
+from tests.proof import harness, records, tolerances
 
 
 @pytest.mark.parametrize("sa", ["SA-06"])
 def test_seam_reads_harness_run(sa: str) -> None:
     kernel = harness.fresh_kernel()
-    run_dir = harness.run_to_dir(kernel, "echo", {"message": "sa-06"}, wait_ms=5000)
+    run_dir = harness.run_to_dir(
+        kernel, "echo", {"message": "sa-06"}, wait_ms=tolerances.HARNESS_WAIT_MS
+    )
 
     rows = records.ledger_rows(run_dir)
     assert not rows.torn

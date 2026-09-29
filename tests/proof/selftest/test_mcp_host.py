@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.proof import records
+from tests.proof import records, tolerances
 from tests.proof.mcp_host import McpHost, rejoin
 
 
@@ -66,14 +66,14 @@ def test_sever_cancel_notification_run_reaches_terminal() -> None:
     with McpHost() as host:
         home = host.home
         held = host.hold("run", {"plugin": "slow", "args": {"seconds": 1.0}, "wait_ms": 10_000})
-        time.sleep(0.2)
+        time.sleep(tolerances.SETTLE_SHORT_S)
         host.sever("cancel_notification", req_id=held)
         # today the server answers a cancelled MCP request with a JSON-RPC
         # error (mcp SDK cancellation support) rather than the tool's own
         # result; the underlying run itself is not stopped by this —
         # it keeps running and reaches a terminal state on its own.
         with pytest.raises(RuntimeError, match="cancelled"):
-            host.join(held, timeout=10)
+            host.join(held, timeout=tolerances.JOIN_WAIT_S)
 
         deadline = time.monotonic() + 5
         run_dirs: list[Path] = []
@@ -81,12 +81,12 @@ def test_sever_cancel_notification_run_reaches_terminal() -> None:
             run_dirs = _run_dirs(home)
             if run_dirs:
                 break
-            time.sleep(0.1)
+            time.sleep(tolerances.POLL_S)
         assert len(run_dirs) == 1
         node = records.node_record(run_dirs[0])
         deadline = time.monotonic() + 5
         while node.terminal is None and time.monotonic() < deadline:
-            time.sleep(0.1)
+            time.sleep(tolerances.POLL_S)
             node = records.node_record(run_dirs[0])
         assert node.terminal is not None
 
@@ -105,14 +105,14 @@ def test_sever_close_server_exits_run_recovered_interrupted() -> None:
     home = host.home
     try:
         host.hold("run", {"plugin": "slow", "args": {"seconds": 5.0}, "wait_ms": 200})
-        time.sleep(0.3)
+        time.sleep(tolerances.SETTLE_S)
         host.sever("stdin_close")
         grace_deadline = time.monotonic() + 1.0
         while host.proc.poll() is None and time.monotonic() < grace_deadline:
-            time.sleep(0.05)
+            time.sleep(tolerances.POLL_FINE_S)
         if host.proc.poll() is None:
             host.sever("sigkill")
-        host.proc.wait(timeout=5)
+        host.proc.wait(timeout=tolerances.PROC_WAIT_S)
         assert host.proc.poll() is not None, "server did not exit"
     finally:
         host.close()
