@@ -43,14 +43,16 @@ to whole seconds.
 
 `packages` names the modules or packages the plugin imports from outside its own file, and is
 **recorded, not snapshotted** (R-J). Publication resolves each name on the import path the child
-process will use, without importing it, and records a digest of its files in the manifest; the
+process will use, without importing it, and records a digest of its `.py` files (a package's other files are not covered) in the manifest; the
 digests are part of the snapshot's identity. Trestle does not copy the package into the snapshot:
 the code that runs is whatever is on the import path when the run starts. At run start the child
 compares each declared package with the recorded digest, before it loads the plugin, and a
-mismatch (the package was edited, moved or removed after publication) stops the run with
+mismatch (the package was edited, moved off the import path or removed after publication) stops the run with
 `execution.provenance_mismatch` instead of running different code under the same snapshot id.
 Republish to accept the edit. A module the plugin imports but does not declare is not covered:
-it is neither recorded nor checked. `query(run_provenance)` lists the recorded `packages` and
+it is neither recorded nor checked. Neither is anything a declared package itself imports, the
+interpreter, or the installed distributions: only the Trestle version is recorded, and none of
+these is checked at run start. `query(run_provenance)` lists the recorded `packages` and
 their digests for each run.
 
 - Return a small mapping that fits the default agent summary.
@@ -95,9 +97,12 @@ cancel. The values are published in `trestle.common.clock` (`grace`, `kill`, `st
 that needs to clean up on SIGTERM has `grace` to do it.
 
 Subprocesses a plugin starts run non-interactively: their stdin is `/dev/null`, never the MCP
-transport. They are inside the run's cancellable scope, so a daemon a plugin leaves behind is
-stopped when the run ends, on every terminal path. A process that double-forks between two looks of
-the supervisor can escape attribution; that limit is disclosed, not hidden.
+transport. They are inside the run's cancellable scope, so a daemon a plugin leaves behind in the run's
+process group, or under a process the run still owns, is stopped when the run ends, on every
+terminal path. A daemon that daemonizes by the classic double fork leaves attribution: it can
+outlive the run, and the answer does not report it (`cleanup.processes` can still read `released`).
+Do not rely on Trestle to stop such a process; see
+[What stopping a run does not cover](security.md#what-stopping-a-run-does-not-cover).
 
 ## Supported types
 
