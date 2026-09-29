@@ -967,6 +967,20 @@ direction = "additive"
 items = [{ path = "$.sequences.*", value = "stop_row" }]
 authorized_by = "plans/a1-single-level.md L.SV-3.6 (B2-C15 StopRow; MC-21); plan-workflow-runtime.md:979 (ledger kind stop)"
 
+# L.SV-4.2 (B4-C6): the TerminalAnswer, one additive key on the run view (the run / await_runs
+# terminal response carries the same view), wire name `answer` (hld-wr-answer.md).
+# runview_shape: $.frames.*.answer on every terminal frame, and the RunView field list.
+[[entry]]
+id = "ADD-runview-answer"
+facet = "runview_shape"
+row_or_k = "MC-06"
+docs = ["docs/agents.md", "docs/agent-console-mcp.md"]
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+keys = ["$.frames.*.answer"]
+items = [{ path = "$.fields", value = ["answer", "dict[str, Any] | None"] }]
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed: the additive TerminalAnswer field on the terminal response and the run view, B4-C6); hld-wr-answer.md (wire name `answer`)"
+
 # L.CL-C1.4 (MC-18): run_provenance records the declared packages.
 # query_row_shapes: $.views.run_provenance.declared_fields[5],
 # $.views.run_provenance.observed.{failed,succeeded}.row_shape.packages.
@@ -1007,3 +1021,266 @@ docs = []
 due_checkpoint = "SV-2 (leaf L.SV-2.4)"
 direction = "additive"
 authorized_by = "interfaces/interface-work-unit.md B1-E1 (D-b: a root entry importing the environment or process ports names an env_key_field); plans/a1-single-level.md L.SV-2.4 (DM-16, V-11 closed)"
+
+# L.SV-4.2 (DM-16): the single-level node and publication codes (V-11; plans/a1-single-level.md L.SV-4.1's
+# closed set, re-exported by trestle/common/codes.py). One named entry per wire code.
+
+[[entry]]
+id = "ADD-code-execution-declaration-stale"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.declaration_stale"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-ticket-refused"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.ticket_refused"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-unit-raised"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.unit_raised"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-lane-unavailable"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.lane_unavailable"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-stop-seen"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.stop_seen"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-effect-unconfirmed"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.effect_unconfirmed"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-plan-precondition-uncovered"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.plan_precondition_uncovered"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-precondition-unsatisfied"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.precondition_unsatisfied"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-postcondition-timeout"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.postcondition_timeout"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-remedy-exhausted"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.remedy_exhausted"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-remedy-no-progress"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.remedy_no_progress"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-found-unhealthy"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.found_unhealthy"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-found-incompatible"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.found_incompatible"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-carve-exceeded"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.carve_exceeded"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-currency-unconfirmed"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.currency_unconfirmed"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-vertex-unended"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.vertex_unended"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-plan-contract-missing"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.plan_contract_missing"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-safe-start-verb-invalid"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.safe_start_verb_invalid"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-facet-lifetime-mismatch"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.facet_lifetime_mismatch"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-release-timeout-missing"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.release_timeout_missing"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-max-attempts-invalid"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.max_attempts_invalid"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-release-effect-once"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.release_effect_once"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-flags-contradict-type"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.flags_contradict_type"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-recorded-with-remedies"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.recorded_with_remedies"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-owned-remedy-on-found"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.owned_remedy_on_found"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-budget-exceeds-leaf"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.budget_exceeds_leaf"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"

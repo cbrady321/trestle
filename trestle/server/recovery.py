@@ -12,7 +12,7 @@ from trestle.common.fsutil import atomic_write, atomic_write_json, fsync_dir
 from trestle.common.ids import generate_service_epoch
 from trestle.common.plan.compiler import AdmittedPlan
 from trestle.common.plan.formats import PlanInvalid, UnknownPlanFormat
-from trestle.server import fold, procident, sweep
+from trestle.server import answer, fold, procident, sweep
 from trestle.server.config import OperatorLimits, load_config
 from trestle.server.ledger import (
     TERMINAL_KINDS,
@@ -196,6 +196,12 @@ def append_recovery_suffix(
         )
 
     if ledger.terminal_state() is None:
+        # B4 Ordering (B2-C11): the answer is projected from the durable inputs, `recovered`,
+        # before the terminal row
+        answer.write_finalized(
+            run_dir,
+            answer.answer_for_run(run_dir, ledger.records, "interrupted", _read_spec(run_dir)),
+        )
         ledger.append("interrupted", run_id=run_id)
 
     fsync_dir(evidence_dir(run_dir))
