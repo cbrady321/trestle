@@ -1007,3 +1007,83 @@ docs = []
 due_checkpoint = "SV-2 (leaf L.SV-2.4)"
 direction = "additive"
 authorized_by = "interfaces/interface-work-unit.md B1-E1 (D-b: a root entry importing the environment or process ports names an env_key_field); plans/a1-single-level.md L.SV-2.4 (DM-16, V-11 closed)"
+
+[[entry]]
+id = "ADD-code-admission-plan-multi-vertex-unsupported"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.plan_multi_vertex_unsupported"]
+docs = []
+due_checkpoint = "SV-3 (leaf L.SV-3.5)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names admission.* additions); plans/a1-single-level.md L.SV-3.5 (DM-16, A1c3-7; DM-07 for plan_multi_vertex_unsupported)"
+
+[[entry]]
+id = "ADD-code-admission-bound-exceeded"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.bound_exceeded"]
+docs = []
+due_checkpoint = "SV-3 (leaf L.SV-3.5)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names admission.* additions); plans/a1-single-level.md L.SV-3.5 (DM-16, A1c3-7; DM-07 for plan_multi_vertex_unsupported)"
+
+[[entry]]
+id = "ADD-code-admission-unknown-identifier"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.unknown_identifier"]
+docs = []
+due_checkpoint = "SV-3 (leaf L.SV-3.5)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names admission.* additions); plans/a1-single-level.md L.SV-3.5 (DM-16, A1c3-7; DM-07 for plan_multi_vertex_unsupported)"
+
+[[entry]]
+id = "ADD-code-admission-unit-unresolved"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.unit_unresolved"]
+docs = []
+due_checkpoint = "SV-3 (leaf L.SV-3.5)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names admission.* additions); plans/a1-single-level.md L.SV-3.5 (DM-16, A1c3-7; DM-07 for plan_multi_vertex_unsupported)"
+
+[[entry]]
+id = "ADD-code-admission-dependency-cycle"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.dependency_cycle"]
+docs = []
+due_checkpoint = "SV-3 (leaf L.SV-3.5)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names admission.* additions); plans/a1-single-level.md L.SV-3.5 (DM-16, A1c3-7; DM-07 for plan_multi_vertex_unsupported)"
+
+[[entry]]
+id = "ADD-code-admission-declaration-conflict"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.declaration_conflict"]
+docs = []
+due_checkpoint = "SV-3 (leaf L.SV-3.5)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names admission.* additions); plans/a1-single-level.md L.SV-3.5 (DM-16, A1c3-7; DM-07 for plan_multi_vertex_unsupported)"
+
+[[entry]]
+id = "ADD-code-admission-lease-set-undecidable"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.lease_set_undecidable"]
+docs = []
+due_checkpoint = "SV-3 (leaf L.SV-3.5)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names admission.* additions); plans/a1-single-level.md L.SV-3.5 (DM-16, A1c3-7; DM-07 for plan_multi_vertex_unsupported)"
+
+[[entry]]
+id = "ADD-code-admission-route-unsupported"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.route_unsupported"]
+docs = []
+due_checkpoint = "SV-3 (leaf L.SV-3.5)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names admission.* additions); plans/a1-single-level.md L.SV-3.5 (DM-16, A1c3-7; DM-07 for plan_multi_vertex_unsupported)"
