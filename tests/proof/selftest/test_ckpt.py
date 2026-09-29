@@ -186,3 +186,20 @@ def test_ckpt_job_not_on_pull_request():
     others = set(workflow["jobs"]) - {"ckpt"}
     assert set(job["needs"]) == others
     assert job["permissions"] == {"contents": "write", "checks": "read"}
+
+
+def test_preview_evaluates_a_non_carrier_pr_head(tmp_path, monkeypatch):
+    """CM-5: `--preview` runs on the PR head, which never carries the
+    trigger trailer; a real run there is a no-op."""
+    repo = _repo(tmp_path)
+    sha = _sh(repo, "rev-parse", "HEAD")
+    calls = []
+    mod = _fake_module(
+        conditions=[ckpt_mod.Condition("c1", lambda _c: calls.append(1) or (False, "why"))],
+    )
+    monkeypatch.setattr(ckpt_mod, "load_module", lambda name: mod)
+    monkeypatch.setattr(meta_mod, "ROOT", repo)
+    real = argparse.Namespace(name="x", dry=False, preview=False, commit=sha)
+    assert meta_mod.cmd_ckpt(real) == 0 and calls == []
+    preview = argparse.Namespace(name="x", dry=False, preview=True, commit=sha)
+    assert meta_mod.cmd_ckpt(preview) == 1 and calls == [1]
