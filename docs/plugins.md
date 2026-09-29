@@ -20,6 +20,29 @@ Worked example: [`examples/plugins/echo.py`](../examples/plugins/echo.py).
 - Use `ctx.log` for structured events; wrapper stdout/`print` appears in `query(run_tail)`.
 - Write keepers under `outputs/` — the foundation attaches them as artifacts.
 
+## Deadlines, cancel and subprocesses
+
+`ctx.deadline` is the run's deadline, fixed at admission (`timeout_s` from admission, queue time
+included), and it is **enforced**: when it passes, the supervisor stops the run's whole process
+tree, whether or not the plugin ever reads `ctx.deadline` or `ctx.cancelled`. It is no longer a hint
+a plugin may ignore. Reading `ctx.cancelled` still lets a plugin stop cooperatively and cleanly
+first.
+
+A stop sends SIGTERM to every process attributable to the run (the run's process group and every
+descendant by parent id, in whatever session it has moved to), waits at most `grace` (default 10 s),
+sends SIGKILL, and waits at most `kill` (default 5 s) for confirmation: `stop_bound` in all
+(`grace` + `kill`, 15 s by default), plus at most one supervisor `poll_interval` (0.05 s) to notice a
+cancel. The values are published in `trestle.common.clock` (`grace`, `kill`, `stop_bound`,
+`poll_interval`); the operator sets `TRESTLE_CANCEL_GRACE_S` and `TRESTLE_CANCEL_KILL_S`. A plugin
+that needs to clean up on SIGTERM has `grace` to do it.
+
+Subprocesses a plugin starts run non-interactively: their stdin is `/dev/null`, never the MCP
+transport. They are inside the run's cancellable scope, so a daemon a plugin leaves behind is
+stopped when the run ends, on every terminal path. A process that double-forks between two looks of
+the supervisor can escape attribution; that limit is disclosed, not hidden.
+
+---
+
 ## Publish paths
 
 ### Filesystem drop-in
