@@ -86,10 +86,10 @@ def runview_shape() -> dict[str, Any]:
     }
 
 
-# Spec keys added since S0 (MC-18: `provenance`), listed after the S0 keys so the golden stays a
-# prefix of the current list and an additive key shows as an addition rather than shifting
-# every S0 key's position.
-_LATER_SPEC_KEYS = frozenset({"provenance"})
+# Spec keys added since S0 (MC-18: `provenance`; MC-20: `plan`), listed after the S0 keys so the
+# golden stays a prefix of the current list and an additive key shows as an addition rather than
+# shifting every S0 key's position.
+_LATER_SPEC_KEYS = frozenset({"provenance", "plan"})
 
 
 def _spec_key_list(spec: dict[str, Any]) -> list[str]:

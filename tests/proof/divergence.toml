@@ -954,6 +954,19 @@ keys = ["$.frames.*.outcome"]
 items = [{ path = "$.fields", value = ["outcome", "dict[str, Any] | None"] }]
 authorized_by = "plans/core.md MC-17 (L.CS-4.3: outcome class for the six plain-plugin conditions); DM-03"
 
+# L.SV-3.6 (MC-21): U2 appends one stop_row (cause, lane committed length) when it sees a cancel or
+# the release point, before the group is stopped.
+# ledger_kinds: $.sequences.<state>[n] (stop_row before group_stop, on the cancelled and timed_out paths).
+[[entry]]
+id = "ADD-ledger-kind-stop-row"
+facet = "ledger_kinds"
+row_or_k = "MC-21"
+docs = ["docs/plugins.md", "docs/agents.md"]
+due_checkpoint = "SV-3 (leaf L.SV-3.6)"
+direction = "additive"
+items = [{ path = "$.sequences.*", value = "stop_row" }]
+authorized_by = "plans/a1-single-level.md L.SV-3.6 (B2-C15 StopRow; MC-21); plan-workflow-runtime.md:979 (ledger kind stop)"
+
 # L.CL-C1.4 (MC-18): run_provenance records the declared packages.
 # query_row_shapes: $.views.run_provenance.declared_fields[5],
 # $.views.run_provenance.observed.{failed,succeeded}.row_shape.packages.
