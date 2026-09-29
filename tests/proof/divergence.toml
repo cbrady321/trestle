@@ -855,6 +855,7 @@ row_or_k = "MC-15"
 docs = []
 due_checkpoint = "CS-3 (leaf L.CS-3.2)"
 direction = "additive"
+items = [{ path = "$.sequences.*", value = "error_record" }]
 authorized_by = "plans/core.md MC-15 (L.CS-3.2: error_record ledger row is the sole authority; meta derived)"
 
 [[entry]]
@@ -864,4 +865,5 @@ row_or_k = "MC-15"
 docs = []
 due_checkpoint = "CS-3 (leaf L.CS-3.2)"
 direction = "additive"
+items = [{ path = "$.*.reader.after_recovery.kinds", value = "error_record" }]
 authorized_by = "plans/core.md MC-15 (L.CS-3.2: recovery finalizes with an error_record row)"
