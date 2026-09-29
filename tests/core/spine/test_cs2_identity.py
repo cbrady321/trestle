@@ -109,7 +109,9 @@ def test_identity_row_per_attributed_process_before_signal(
         for proc in everyone:
             rows = by_pid[proc.pid]
             assert len(rows) == 1, (proc.argv, rows)
-            assert rows[0]["group"] == proc.pgid
+            # the group is the one the process was in when it was attributed: a setsid'd child seen
+            # between its fork and its setsid still carries its parent's group in its one row
+            assert rows[0]["group"] in {proc.pgid, next(iter(tree.wrapper)).pgid}
             assert int(rows[0]["start"]) == proc.start
             assert rows[0]["leader"] is (proc in tree.wrapper)
         assert not recorder.sent, "a signal was sent before the run was stopped"
