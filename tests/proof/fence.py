@@ -1289,7 +1289,7 @@ def cmd_merge(
         work = _landing_worktree(cwd, landing_dir)
         _git(work, "fetch", "origin", branch)
         code, message = fence_merge(
-            cfg,
+            _fence_config_at(work, f"origin/{branch}", cfg),
             work,
             branch,
             expect_sha,
@@ -1326,6 +1326,28 @@ def _refresh_stale(work: Path, branch: str, head: str) -> str:
     if pushed.returncode != 0:
         return "push refused"
     return new_head
+
+
+def _fence_config_at(cwd: Path, ref: str, fallback: FenceConfig) -> FenceConfig:
+    """CM-2/DM-40: the gates a landing is judged by come from the tree being
+    landed, because a phase's first PR creates its own fragment (R4 lets a
+    branch create or edit only its phase's fragment). Reads `fence.toml`
+    and `fence.d/*.toml` as `ref` carries them; `fallback` when `ref` has no
+    `fence.toml`."""
+    import tempfile
+
+    base = _git(cwd, "show", f"{ref}:tests/proof/fence.toml")
+    if base.returncode != 0:
+        return fallback
+    names = _git(cwd, "ls-tree", "--name-only", ref, "tests/proof/fence.d/").stdout.split()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "fence.toml").write_text(base.stdout)
+        (root / "fence.d").mkdir()
+        for name in names:
+            shown = _git(cwd, "show", f"{ref}:{name}")
+            (root / "fence.d" / Path(name).name).write_text(shown.stdout)
+        return load_fence(root / "fence.toml", root / "fence.d")
 
 
 def _real_deps(
@@ -1366,7 +1388,7 @@ def _real_deps(
     except FenceRemoteOutage:
         return "remote unavailable"
     return LandingDeps(
-        cfg=cfg,
+        cfg=_fence_config_at(work, f"origin/{branch}", cfg),
         cwd=work,
         state_dir=state_dir,
         pr_head_sha=pr_head,
