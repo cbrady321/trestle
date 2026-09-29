@@ -41,6 +41,8 @@ globs = [
   "tests/fixtures/golden/s0/meta_fields.json",
   "tests/fixtures/golden/s0/fossil_projection.json",
   "tests/proof/labels.d/p0-1a.toml",
+  "tests/proof/gaps.toml",
+  "tests/proof/facets.toml",
 ]
 
 [[lane]]
@@ -51,6 +53,8 @@ globs = [
   "tests/fixtures/golden/s0/context_surface.json",
   "tests/fixtures/golden/s0/snapshot_manifest.json",
   "tests/proof/labels.d/p0-1b.toml",
+  "tests/proof/gaps.toml",
+  "tests/proof/facets.toml",
 ]
 
 [[lane]]
@@ -63,6 +67,8 @@ globs = [
   "tests/fixtures/golden/s0/spec_keys.json",
   "tests/fixtures/golden/s0/refusal_codes.json",
   "tests/proof/labels.d/p0-1c.toml",
+  "tests/proof/gaps.toml",
+  "tests/proof/facets.toml",
 ]
 
 [[lane]]
@@ -73,6 +79,8 @@ globs = [
   "tests/fixtures/golden/s0/query_row_shapes.json",
   "tests/fixtures/golden/s0/event_row_shape.json",
   "tests/proof/labels.d/p0-1d.toml",
+  "tests/proof/gaps.toml",
+  "tests/proof/facets.toml",
 ]
 
 [[lane]]
@@ -81,6 +89,8 @@ branch_prefix = "wr/p0-lane-e/"
 globs = [
   "tests/pins/e_packs/**",
   "tests/proof/labels.d/p0-1e.toml",
+  "tests/proof/gaps.toml",
+  "tests/proof/facets.toml",
 ]
 
 [[gate]]
