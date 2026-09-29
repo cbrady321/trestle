@@ -541,6 +541,57 @@ def required_jobs_from_ci(path: Path | None = None) -> list[str]:
     return required
 
 
+def required_check_names(path: Path | None = None) -> list[str]:
+    """CM-4's required jobs as GitHub names their check runs: a matrix job
+    `ancestry` runs as `ancestry (ubuntu-latest)` and `ancestry (macos-latest)`,
+    and every one of those must conclude `success`. Job ids are
+    `required_jobs_from_ci`'s; this expands each to its check-run names."""
+    import itertools
+
+    import yaml
+
+    path = path or CI_YML_PATH
+    jobs = yaml.safe_load(path.read_text()).get("jobs", {})
+    names: list[str] = []
+    for job_id in required_jobs_from_ci(path):
+        job = jobs[job_id] if isinstance(jobs[job_id], dict) else {}
+        label = job.get("name")
+        base = label if isinstance(label, str) and "${{" not in label else job_id
+        matrix = (job.get("strategy") or {}).get("matrix") or {}
+        axes = [
+            v for k, v in matrix.items() if k not in ("include", "exclude") and isinstance(v, list)
+        ]
+        if not axes:
+            names.append(base)
+            continue
+        for combo in itertools.product(*axes):
+            names.append(f"{base} ({', '.join(str(c) for c in combo)})")
+    return names
+
+
+def pr_head_via_gh(branch: str, cwd: Path) -> str | None:
+    """The open PR's head sha for `branch` via `gh pr view`, or `None` when
+    no open PR exists. Raises `FenceRemoteOutage` on any other failure."""
+    try:
+        proc = subprocess.run(
+            ["gh", "pr", "view", branch, "--json", "headRefOid,state"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=FENCE_PROC_MAX,
+            stdin=subprocess.DEVNULL,
+            env={**os.environ, **NO_PROMPT_ENV},
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        raise FenceRemoteOutage(f"pr view for {branch} failed: {exc}") from exc
+    if proc.returncode != 0:
+        if "no pull requests found" in proc.stderr.lower():
+            return None
+        raise FenceRemoteOutage(f"pr view for {branch} failed: {proc.stderr}")
+    data = json.loads(proc.stdout)
+    return data["headRefOid"] if data.get("state") == "OPEN" else None
+
+
 def job_conclusions_via_gh(sha: str, cwd: Path) -> dict[str, str | None]:
     """Read every check run's conclusion for `sha` via `gh` (the
     executor's own authentication; CM-3 (b)). Raises `FenceRemoteOutage`
@@ -625,7 +676,7 @@ def ready_mark(
     read failed/timed out, 6 not all concluded); exits 0 when it marks."""
     clock = clock or _time.time
     try:
-        req = required if required is not None else required_jobs_from_ci()
+        req = required if required is not None else required_check_names()
         head = _git(cwd, "rev-parse", branch).stdout.strip()
         concl = conclusions if conclusions is not None else job_conclusions_via_gh(head, cwd)
     except (FenceRemoteOutage, FenceProcTimeout) as exc:
@@ -722,7 +773,7 @@ def ci_status(
     clock = clock or _time.time
     sleep = sleep or _time.sleep
     reader = conclusions_reader or job_conclusions_via_gh
-    required = required if required is not None else required_jobs_from_ci()
+    required = required if required is not None else required_check_names()
     started = since if since is not None else clock()
 
     while True:
@@ -810,7 +861,7 @@ def fence_merge(
             gate = match_gate(branch, cfg.gates)
         except GateMatchError as exc:
             return FenceMergeExit.VERDICT_REFUSED, f"R1: {exc}"
-        required = required if required is not None else required_jobs_from_ci()
+        required = required if required is not None else required_check_names()
         if isinstance(job_conclusions, Exception):
             raise job_conclusions
         concl = job_conclusions if job_conclusions is not None else {}
@@ -1084,7 +1135,9 @@ def attempt_landing(merge_id: str, deps: LandingDeps) -> str:
     return "fence merge crashed"
 
 
-def next_fifo_entry(state_dir: Path, clock=None) -> str | None:
+def next_fifo_entry(
+    state_dir: Path, clock=None, exclude: frozenset[str] = frozenset()
+) -> str | None:
     """P4: the oldest READY entry by `marked_at`, except during a bounded
     checkpoint-first period: a checkpoint whose `ckpt_rebases` reached
     `LANDING_RETURNS_MAX` holds every other landing until it lands, or
@@ -1092,7 +1145,11 @@ def next_fifo_entry(state_dir: Path, clock=None) -> str | None:
     return without a re-mark, which lapses the hold and resumes FIFO
     (root CM-3 P4, K11K-18)."""
     clock = clock or _time.time
-    ready = [e for e in ready_status(state_dir) if e.get("state") == "ready"]
+    ready = [
+        e
+        for e in ready_status(state_dir)
+        if e.get("state") == "ready" and e["_merge_id"] not in exclude
+    ]
     if not ready:
         return None
     for entry in ready:
@@ -1149,6 +1206,198 @@ def take_land_lock(state_dir: Path):
     return fh
 
 
+# --- CLI paths with real dependencies (git, gh) ------------------------------
+
+
+def _current_gate(cwd: Path) -> tuple[FenceConfig, str, Gate]:
+    branch = _git(cwd, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    cfg = load_fence()
+    return cfg, branch, match_gate(branch, cfg.gates)
+
+
+def _required_at(cwd: Path, ref: str) -> list[str]:
+    """CM-4: the required names, read from `ci.yml` as `ref` carries it
+    (the checkout's own copy when `ref` has none)."""
+    import tempfile
+
+    shown = _git(cwd, "show", f"{ref}:.github/workflows/ci.yml")
+    if shown.returncode != 0:
+        return required_check_names()
+    with tempfile.TemporaryDirectory() as tmp:
+        ci = Path(tmp) / "ci.yml"
+        ci.write_text(shown.stdout)
+        return required_check_names(ci)
+
+
+def cmd_ready(action: str, clear: bool, cwd: Path | None = None) -> int:
+    cwd = cwd or ROOT
+    try:
+        _cfg, branch, gate = _current_gate(cwd)
+    except GateMatchError as exc:
+        print(f"ready {action}: R1: {exc}")
+        return 2
+    state_dir = default_state_dir(cwd)
+    if action == "status":
+        for entry in ready_status(state_dir, gate.merge):
+            print(json.dumps(entry, sort_keys=True))
+        return 0
+    if action == "unmark":
+        return ready_unmark(state_dir, gate.merge)
+    if clear:
+        return ready_clear(state_dir, gate.merge)
+    return ready_mark(state_dir, gate.merge, branch, cwd)
+
+
+def _drop_worktree(cwd: Path, path: Path) -> None:
+    _git(cwd, "worktree", "remove", "--force", str(path))
+    _git(cwd, "worktree", "prune")
+    _git(cwd, "branch", "-D", "_fence_merge_master")
+
+
+def _landing_worktree(cwd: Path, path: Path) -> Path:
+    """The clean worktree the landing runs in, re-created for each landing
+    and detached at the fetched `origin/master` (CM-3 step 2)."""
+    _drop_worktree(cwd, path)
+    if _git(cwd, "fetch", "origin", "master").returncode != 0:
+        raise FenceRemoteOutage("fetch of origin/master failed")
+    added = _git(cwd, "worktree", "add", "--detach", str(path), "origin/master")
+    if added.returncode != 0:
+        raise RuntimeError(f"landing worktree: {added.stderr}")
+    return path
+
+
+def cmd_merge(
+    branch: str, expect_sha: str, cwd: Path | None = None, landing_dir: Path | None = None
+) -> int:
+    """`fence merge <branch> --expect-sha <sha>` with the real PR head,
+    check-run conclusions and required jobs, and a plain non-force push."""
+    cwd = cwd or ROOT
+    landing_dir = landing_dir or cwd.parent / "landing"
+    try:
+        cfg = load_fence()
+        pr_head = pr_head_via_gh(branch, cwd)
+        conclusions: dict[str, str | None] | Exception = job_conclusions_via_gh(expect_sha, cwd)
+    except FenceRemoteOutage as exc:
+        print(f"fence merge: outage: {exc}")
+        return int(FenceMergeExit.REMOTE_UNAVAILABLE)
+    except Exception as exc:  # noqa: BLE001 - P6: any crash is exit 1
+        print(f"fence merge: crash: {exc}")
+        return int(FenceMergeExit.CRASHED)
+    try:
+        work = _landing_worktree(cwd, landing_dir)
+        _git(work, "fetch", "origin", branch)
+        code, message = fence_merge(
+            cfg,
+            work,
+            branch,
+            expect_sha,
+            pr_head,
+            job_conclusions=conclusions,
+            required=_required_at(work, f"origin/{branch}"),
+        )
+    except (FenceRemoteOutage, FenceProcTimeout) as exc:
+        code, message = FenceMergeExit.REMOTE_UNAVAILABLE, str(exc)
+    except Exception as exc:  # noqa: BLE001
+        code, message = FenceMergeExit.CRASHED, f"crash: {exc}"
+    finally:
+        _drop_worktree(cwd, landing_dir)
+    print(f"fence merge: {message}")
+    return int(code)
+
+
+def _real_deps(
+    merge_id: str, entry: dict, cfg: FenceConfig, cwd: Path, state_dir: Path, work: Path
+) -> LandingDeps | str:
+    """`LandingDeps` from real `gh`; a string is a return reason to record
+    instead of attempting the landing. Rebase and the P11 re-runs are not
+    wired here (a stale head surfaces as `fence merge` exit 3)."""
+    branch = entry.get("branch", merge_id)
+    expected = entry.get("landing_sha") or entry.get("head_sha")
+    try:
+        pr_head = pr_head_via_gh(branch, cwd)
+        required = _required_at(work, f"origin/{branch}")
+        if pr_head == expected:
+            wait = ci_status(
+                cwd,
+                branch=branch,
+                wait=True,
+                conclusions_reader=lambda _sha, where: job_conclusions_via_gh(expected, where),
+                required=required,
+                state_dir=state_dir,
+            )
+            if wait == 5:
+                return "remote unavailable"
+            conclusions: dict[str, str | None] | Exception = job_conclusions_via_gh(expected, cwd)
+        else:
+            wait, conclusions = 0, {}
+    except FenceRemoteOutage:
+        return "remote unavailable"
+    return LandingDeps(
+        cfg=cfg,
+        cwd=work,
+        state_dir=state_dir,
+        pr_head_sha=pr_head,
+        job_conclusions=conclusions,
+        ci_wait_result=wait,
+        required=required,
+    )
+
+
+def cmd_land(cwd: Path | None = None, once: bool = False, landing_dir: Path | None = None) -> int:
+    """`fence land`: the CM-3 single-writer loop. Holds the lifetime lock
+    (exit 10 if another loop has it) and lands READY entries FIFO. Forever
+    by default; `--once` drains the READY queue (each entry attempted at
+    most once) and exits 0."""
+    cwd = cwd or ROOT
+    landing_dir = landing_dir or cwd.parent / "landing"
+    state_dir = default_state_dir(cwd)
+    try:
+        lock = take_land_lock(state_dir)
+    except SecondLandRefused as exc:
+        print(f"fence land: {exc}")
+        return 10
+    try:
+        cfg = load_fence()
+        tried: set[str] = set()
+        while True:
+            merge_id = next_fifo_entry(state_dir, exclude=frozenset(tried))
+            if merge_id is None:
+                write_progress(state_dir, None, "idle")
+                if once:
+                    return 0
+                _time.sleep(CI_POLL_S)
+                tried.clear()
+                continue
+            tried.add(merge_id)
+            started = _time.time()
+            while True:
+                write_progress(state_dir, merge_id, "prepare")
+                entry = json.loads(_ready_path(state_dir, merge_id).read_text())
+                try:
+                    work = _landing_worktree(cwd, landing_dir)
+                    deps = _real_deps(merge_id, entry, cfg, cwd, state_dir, work)
+                    if isinstance(deps, str):
+                        record_return(state_dir, merge_id, deps)
+                        outcome = deps
+                    else:
+                        outcome = attempt_landing(merge_id, deps)
+                except FenceRemoteOutage:
+                    record_return(state_dir, merge_id, "remote unavailable")
+                    outcome = "remote unavailable"
+                finally:
+                    _drop_worktree(cwd, landing_dir)
+                if outcome != "recheck-ci":
+                    print(f"fence land: {merge_id}: {outcome}")
+                    break
+                if _time.time() - started >= CI_WAIT_MAX:
+                    record_return(state_dir, merge_id, "CI wait exceeded")
+                    print(f"fence land: {merge_id}: CI wait exceeded")
+                    break
+                _time.sleep(CI_POLL_S)
+    finally:
+        lock.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
@@ -1172,7 +1421,8 @@ def main(argv: list[str] | None = None) -> int:
     ci_status_parser.add_argument("--ckpt", default=None)
     ci_status_parser.add_argument("--wait", action="store_true")
 
-    sub.add_parser("land")
+    land_parser = sub.add_parser("land")
+    land_parser.add_argument("--once", action="store_true")
 
     args = parser.parse_args(argv)
     if args.command == "check":
@@ -1181,8 +1431,13 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_check_history(args.history)
     if args.command == "ci-status":
         return ci_status(ROOT, branch=args.branch, ckpt=args.ckpt, wait=args.wait)
-    parser.error(f"'{args.command}' is only exercised through this module's own tests today")
-    return 2
+    if args.command == "merge":
+        return cmd_merge(args.branch, args.expect_sha)
+    if args.command == "ready":
+        if args.clear and args.action != "mark":
+            parser.error("--clear applies to `ready mark` only")
+        return cmd_ready(args.action, args.clear)
+    return cmd_land(once=args.once)
 
 
 if __name__ == "__main__":  # pragma: no cover
