@@ -1,0 +1,115 @@
+# CSC-1 labels registry fragment for P0 (MC-04).
+# Schema: [[label]] {id, row, composes?, step, slice, tier, venue, posture, oq?, reason?, declared_by}
+# Declared here at collection-schema granularity only (L.P0-0a.2); the
+# matrix ids this composes against switch on at L.P0-0c.1.
+
+[[label]]
+id = "WR-PROOF-8:baseline-preserved"
+row = "WR-PROOF-8"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-0a.1"
+
+[[label]]
+id = "WR-COMPAT-12:preserved"
+row = "WR-COMPAT-12"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-0a.1"
+
+[[label]]
+id = "WR-COMPAT-1:preserved"
+row = "WR-COMPAT-1"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-0a.5"
+
+[[label]]
+id = "WR-COMPAT-3:preserved"
+row = "WR-COMPAT-3"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-0a.5"
+
+[[label]]
+id = "WR-COMPAT-6:preserved"
+row = "WR-COMPAT-6"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-0a.5"
+
+[[label]]
+id = "WR-COMPAT-7:preserved"
+row = "WR-COMPAT-7"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-0a.5"
+
+[[label]]
+id = "WR-COMPAT-8:preserved"
+row = "WR-COMPAT-8"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-0a.5"
+
+[[label]]
+id = "WR-COMPAT-9:preserved"
+row = "WR-COMPAT-9"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-0a.5"
+
+[[label]]
+id = "WR-COMPAT-10:preserved"
+row = "WR-COMPAT-10"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-0a.5"
+
+[[label]]
+id = "WR-COMPAT-11:preserved"
+row = "WR-COMPAT-11"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "proven"
+declared_by = "L.P0-0a.5"
+
+[[label]]
+id = "WR-PROOF-2:pack-docker-live"
+row = "WR-PROOF-2"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "unproven"
+reason = "alpine:3.20 image absent on this host; skip renders UNPROVEN, never a silent pass"
+declared_by = "L.P0-0a.5"

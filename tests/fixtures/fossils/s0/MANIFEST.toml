@@ -1,0 +1,117 @@
+# S0 fossil-state manifest (L.P0-0a.4). Schema (p0-court.md "## Leaves and
+# joins" verifier text): [[state]] {id, producer = "module:function" |
+# "pending", s0_projection = {state, kinds, meta_keys}, absent = bool}
+#
+# 19 states total: 2 spine (L.P0-0c.6), 16 lane-A (L.P0-1A.5), 1 straddle
+# (L.P0-1A.6) — per p0-court.md's own cross-reference (row "P0-1A" join,
+# citing exactly these three leaves for "19 states"). `crashed` is a real
+# run-ledger terminal kind (trestle/server/ledger.py TERMINAL_KINDS) but has
+# no S0-fossil producer, so it is declared `absent = true` per K-13 rather
+# than omitted outright.
+#
+# PLAN-GAP (p0-court.md does not spell out the 16 lane-A state ids in one
+# place; this delivery reconstructs plausible names from L.P0-1A.5's
+# intended_delta prose rather than a single canonical id list — see
+# P0-0a-RETURN.md).
+
+[[state]]
+id = "succeeded"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "failed"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "created"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "admitted"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "started"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "execution_ended"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "finalized_no_terminal"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "cancelled"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "timed_out"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "worker_exit"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "interrupted"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "partial_limits"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "too_large"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "invalid_synthesized"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "torn_tail"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "newline_less_tail"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "artifacts_present"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "idempotency_keyed"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "straddle"
+producer = "pending"
+absent = false
+
+[[state]]
+id = "crashed"
+producer = "pending"
+absent = true
+# K-13: a real run-ledger terminal kind (trestle/server/ledger.py
+# TERMINAL_KINDS) with no S0-fossil producer.

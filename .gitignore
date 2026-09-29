@@ -9,3 +9,4 @@ __pycache__/
 /.loop-state.yaml
 _tmp/
 node_modules/
+/tests/proof/results/

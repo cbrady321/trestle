@@ -41,10 +41,11 @@ line-length = 100
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "packages/trestle-packs/tests"]
 filterwarnings = [
     "ignore:Using `httpx` with `starlette.testclient`:starlette.exceptions.StarletteDeprecationWarning",
 ]
+addopts = "--strict-markers"
 
 [tool.mypy]
 python_version = "3.12"

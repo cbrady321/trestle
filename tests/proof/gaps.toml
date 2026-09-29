@@ -1,0 +1,156 @@
+# Gap inventory (MC-09-adjacent; L.P0-0a.4). Schema (p0-court.md
+# "## Leaves and joins" verifier text):
+# [[gap]] {id, lane, rows, clause, slice, step, tier, venue, flip_merge,
+#          target = "required" | "none(reason)", entry = "module:function" | "pending"}
+#
+# Every entry is `entry = "pending"` until its lane's leaf builds the
+# real entry point (P0-1A..E). `target` is "required" for every id except
+# G-C4, whose target is "none(DM-20)": G-C4 is pin-only at L.P0-1C.4 and its
+# target is born only later, at L.CL-B1.1.
+
+[[gap]]
+id = "G-A1"
+lane = "A"
+flip_merge = "CS-2"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-A2"
+lane = "A"
+flip_merge = "CS-2"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-A3"
+lane = "A"
+flip_merge = "CS-2"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-A4"
+lane = "A"
+flip_merge = "CL-A1"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-B1"
+lane = "B"
+flip_merge = "CL-C1"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-B2"
+lane = "B"
+flip_merge = "CK-3/4"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-B3"
+lane = "B"
+flip_merge = "CS-3"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-B4"
+lane = "B"
+flip_merge = "CL-C1"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-B5"
+lane = "B"
+flip_merge = "CL-C1"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-C1"
+lane = "C"
+flip_merge = "CS-4"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-C2"
+lane = "C"
+flip_merge = "CL-B1"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-C3"
+lane = "C"
+flip_merge = "CK-1"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-C4"
+lane = "C"
+flip_merge = "CL-B1"
+target = "none(DM-20)"
+entry = "pending"
+
+[[gap]]
+id = "G-D1"
+lane = "D"
+flip_merge = "CS-1"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-D2"
+lane = "D"
+flip_merge = "CS-1"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-D3"
+lane = "D"
+flip_merge = "CS-3"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-D4"
+lane = "D"
+flip_merge = "CL-B1"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-D5"
+lane = "D"
+flip_merge = "CL-B1"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-E1"
+lane = "E"
+flip_merge = "NW-1"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-E2"
+lane = "E"
+flip_merge = "NW-2"
+target = "required"
+entry = "pending"
+
+[[gap]]
+id = "G-E3"
+lane = "E"
+flip_merge = "NW-1"
+target = "required"
+entry = "pending"

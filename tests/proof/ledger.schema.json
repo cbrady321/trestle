@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Derived proof ledger report (MC-02)",
+  "type": "object",
+  "patternProperties": {
+    "^.+$": {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "enum": ["PROVEN", "UNPROVEN"] },
+        "corroborating_314": { "type": "boolean" },
+        "n_results": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["status", "corroborating_314", "n_results"],
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
