@@ -68,24 +68,47 @@ def _safe_getsid(pid: int) -> int | None:
         return None
 
 
-def _start_time_linux(pid: int) -> int | None:
-    """Field 22 of `/proc/<pid>/stat` (clock ticks since boot). `comm` can
-    contain spaces or parentheses, so skip to the last `)` before
-    splitting on whitespace."""
-    try:
-        raw = open(f"/proc/{pid}/stat", encoding="utf-8").read()
-    except OSError:
-        return None
+def parse_linux_stat_start(raw: str) -> int | None:
+    """Field 22 of a `/proc/<pid>/stat` line (clock ticks since boot).
+    `comm` (field 2) can contain spaces or parentheses, so skip to the
+    last `)` before splitting on whitespace; `state` (field 3) is then
+    `fields[0]`, making field 22 `fields[19]`."""
     close = raw.rfind(")")
     if close == -1:
         return None
-    fields = raw[close + 2 :].split()
+    fields = raw[close + 1 :].split()
     if len(fields) < 20:
         return None
     try:
-        return int(fields[19])  # field 22 overall: 3 (state) is fields[0]
+        return int(fields[19])
     except ValueError:
         return None
+
+
+def parse_linux_cmdline(raw: bytes) -> str:
+    """A `/proc/<pid>/cmdline` blob (NUL-separated, NUL-terminated) as one
+    space-joined string, the shape `ps args=` prints. Empty for a kernel
+    thread or a zombie."""
+    return " ".join(part.decode("utf-8", "replace") for part in raw.split(b"\0") if part)
+
+
+def _start_time_linux(pid: int) -> int | None:
+    try:
+        with open(f"/proc/{pid}/stat", encoding="utf-8", errors="replace") as fh:
+            raw = fh.read()
+    except OSError:
+        return None
+    return parse_linux_stat_start(raw)
+
+
+def _argv_linux(pid: int) -> str:
+    """The full, untruncated argv from `/proc/<pid>/cmdline`, or `""` when
+    it cannot be read (gone, permission denied, kernel thread)."""
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as fh:
+            return parse_linux_cmdline(fh.read())
+    except OSError:
+        return ""
 
 
 _MAXCOMLEN = 16
@@ -155,7 +178,10 @@ def start_time(pid: int) -> int | None:
 
 def _ps_rows() -> list[tuple[int, int, str]]:
     proc = subprocess.run(
-        ["ps", "-eo", PS_FIELDS],
+        # `-ww`: never truncate `args` to the terminal width. Without it a
+        # non-tty procps `ps` cuts each line at 80 columns, which hides a
+        # trailing argv marker on Linux.
+        ["ps", "-ww", "-eo", PS_FIELDS],
         capture_output=True,
         text=True,
         check=False,
@@ -183,7 +209,10 @@ def snapshot() -> set[ProcInfo]:
     (call again after spawn, at each poll, and immediately before sending
     a signal — V-2.3)."""
     result: set[ProcInfo] = set()
+    linux = sys.platform.startswith("linux")
     for pid, ppid, argv in _ps_rows():
+        if linux:
+            argv = _argv_linux(pid) or argv
         result.add(
             ProcInfo(
                 pid=pid,
@@ -248,16 +277,30 @@ def reap(procs: set[ProcInfo]) -> None:
             pass
 
 
+def _self_and_ancestors(procs: set[ProcInfo]) -> set[int]:
+    """This process and every ancestor: each carries the marker in its own
+    argv (this CLI, and any `sh -c` that launched it), so none is a
+    survivor."""
+    by_pid = {p.pid: p for p in procs}
+    excluded: set[int] = set()
+    pid = os.getpid()
+    while pid in by_pid and pid not in excluded:
+        excluded.add(pid)
+        pid = by_pid[pid].ppid
+    excluded.add(os.getpid())
+    return excluded
+
+
 def _cli_survivors(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="tests.proof.ancestry survivors")
-    parser.add_argument("--marker", default=None)
+    parser.add_argument("--marker", action="append", default=[])
     args = parser.parse_args(argv)
 
-    procs = snapshot()
-    if args.marker is not None:
-        procs = {p for p in procs if args.marker in p.argv}
-    else:
-        procs = set()
+    snap = snapshot()
+    excluded = _self_and_ancestors(snap)
+    procs = {
+        p for p in snap if p.pid not in excluded and any(marker in p.argv for marker in args.marker)
+    }
 
     for proc in sorted(procs, key=lambda p: p.pid):
         print(f"{proc.pid}\t{proc.argv}")

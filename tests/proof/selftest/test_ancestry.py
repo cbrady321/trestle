@@ -8,7 +8,7 @@ import time
 import uuid
 from pathlib import Path
 
-from tests.proof import ancestry
+from tests.proof import ancestry, tolerances
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -39,7 +39,7 @@ def test_planted_unrelated_process_not_attributed() -> None:
     root = _spawn_marked_sleeper(2.0, marker, new_session=True)
     other = _spawn_unrelated_sleeper(2.0)
     try:
-        time.sleep(0.3)
+        time.sleep(tolerances.SETTLE_S)
         snap = ancestry.snapshot()
         root_info = next(p for p in snap if p.pid == root.pid)
         attributed = ancestry.attribute(root_info, snap, marker=marker)
@@ -47,21 +47,21 @@ def test_planted_unrelated_process_not_attributed() -> None:
     finally:
         root.kill()
         other.kill()
-        root.wait(timeout=5)
-        other.wait(timeout=5)
+        root.wait(timeout=tolerances.PROC_WAIT_S)
+        other.wait(timeout=tolerances.PROC_WAIT_S)
 
 
 def test_reap_leaves_no_marker_process() -> None:
     marker = f"trestle-anc-{uuid.uuid4().hex[:12]}"
     proc = _spawn_marked_sleeper(30.0, marker)
     try:
-        time.sleep(0.3)
+        time.sleep(tolerances.SETTLE_S)
         before = ancestry.snapshot()
         planted = {p for p in before if marker in p.argv}
         assert len(planted) == 1
 
         ancestry.reap(planted)
-        proc.wait(timeout=5)
+        proc.wait(timeout=tolerances.PROC_WAIT_S)
 
         deadline = time.monotonic() + 3
         remaining = planted
@@ -70,12 +70,12 @@ def test_reap_leaves_no_marker_process() -> None:
             remaining = ancestry.survivors(planted, after)
             if not remaining:
                 break
-            time.sleep(0.1)
+            time.sleep(tolerances.POLL_S)
         assert not remaining
     finally:
         if proc.poll() is None:
             proc.kill()
-            proc.wait(timeout=5)
+            proc.wait(timeout=tolerances.PROC_WAIT_S)
 
 
 def test_start_is_zone_and_locale_free() -> None:
@@ -89,7 +89,7 @@ def test_start_is_zone_and_locale_free() -> None:
         assert first == second
     finally:
         proc.kill()
-        proc.wait(timeout=5)
+        proc.wait(timeout=tolerances.PROC_WAIT_S)
 
 
 def test_start_never_parsed_from_ps_text() -> None:
@@ -110,11 +110,11 @@ def test_survivors_cli_exit_status() -> None:
     marker = f"trestle-anc-{uuid.uuid4().hex[:12]}"
     proc = _spawn_marked_sleeper(3.0, marker)
     try:
-        time.sleep(0.3)
+        time.sleep(tolerances.SETTLE_S)
         assert ancestry.main(["survivors", "--marker", marker]) == 1
 
         proc.kill()
-        proc.wait(timeout=5)
+        proc.wait(timeout=tolerances.PROC_WAIT_S)
 
         deadline = time.monotonic() + 3
         code = 1
@@ -122,13 +122,56 @@ def test_survivors_cli_exit_status() -> None:
             code = ancestry.main(["survivors", "--marker", marker])
             if code == 0:
                 break
-            time.sleep(0.1)
+            time.sleep(tolerances.POLL_S)
         assert code == 0
     finally:
         if proc.poll() is None:
             proc.kill()
-            proc.wait(timeout=5)
+            proc.wait(timeout=tolerances.PROC_WAIT_S)
 
 
 def test_no_marker_reports_nothing() -> None:
     assert ancestry.main(["survivors"]) == 0
+
+
+def test_parse_linux_stat_start_handles_awkward_comm() -> None:
+    # 52-field /proc/<pid>/stat layout; start (field 22) is 987654.
+    tail = "S 1 100 100 0 -1 4194560 100 0 0 0 1 2 0 0 20 0 1 0 987654 1000000 200 rest"
+    for comm in ("python", "my prog", "a) b (c", "x)y)"):
+        assert ancestry.parse_linux_stat_start(f"4242 ({comm}) {tail}") == 987654
+    assert ancestry.parse_linux_stat_start("4242 (no tail) S 1 2") is None
+    assert ancestry.parse_linux_stat_start("garbage") is None
+    assert ancestry.parse_linux_stat_start("4242 (p) " + "S " + "x " * 30) is None
+
+
+def test_parse_linux_cmdline_is_nul_separated() -> None:
+    raw = b"python\0-c\0import time; time.sleep(1)\0" + b"6\0trestle-anc-abc\0"
+    assert (
+        ancestry.parse_linux_cmdline(raw)
+        == "python -c import time; time.sleep(1) 6 trestle-anc-abc"
+    )
+    assert "trestle-anc-abc" in ancestry.parse_linux_cmdline(raw)
+    assert ancestry.parse_linux_cmdline(b"") == ""
+
+
+def test_survivors_cli_accepts_repeated_markers_and_ignores_itself() -> None:
+    first = f"trestle-anc-{uuid.uuid4().hex[:12]}"
+    second = f"trestle-anc-{uuid.uuid4().hex[:12]}"
+    proc = _spawn_marked_sleeper(3.0, second)
+    try:
+        time.sleep(tolerances.SETTLE_S)
+        # only the *second* marker is planted; the first (absent) must not
+        # mask it, and this CLI's own argv carrying both must not count.
+        assert ancestry.main(["survivors", "--marker", second, "--marker", first]) == 1
+        assert ancestry.main(["survivors", "--marker", first]) == 0
+        cli = subprocess.run(
+            [sys.executable, "-m", "tests.proof.ancestry", "survivors", "--marker", first],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert cli.returncode == 0, cli.stdout
+    finally:
+        proc.kill()
+        proc.wait(timeout=tolerances.PROC_WAIT_S)
