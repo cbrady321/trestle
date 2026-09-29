@@ -493,3 +493,33 @@ def test_no_host_path_in_run_answers_views_fetch(tmp_path: Path) -> None:
 RUN_SCOPED = frozenset(
     {"run", "last_error", "run_tail", "run_events", "run_provenance", "run_artifacts"}
 )
+
+
+# --- MJ.CL-B2 ---------------------------------------------------------------------------------
+
+# Each spine fixture plugin that ends by itself, with the arguments that keep it short.
+SPINE_FIXTURE_RUNS: dict[str, dict[str, Any]] = {
+    "exiter": {},
+    "raiser": {},
+    "stdin_probe": {},
+    "unencodable": {},
+    "pipe_holder": {"seconds": tolerances.SETTLE_SHORT_S},
+    "leaver": {"seconds": tolerances.SETTLE_SHORT_S, "fail": True},
+}
+
+
+def test_spine_fixtures_carry_no_sentinel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A whole-run-dir sentinel scan over every spine fixture finds 0: with the sentinel in the
+    environment the server and every process it starts inherit, no fixture run copies it into its
+    run directory, its ledger or its answer (nothing the runtime writes reads the environment)."""
+    from tests.core.spine import support
+
+    monkeypatch.setenv("TRESTLE_TEST_SENTINEL", SENTINEL)
+    kernel = support.spine_kernel(tmp_path / "home")
+    for plugin, args in SPINE_FIXTURE_RUNS.items():
+        view = kernel.control.run(plugin=plugin, args=args, wait_ms=tolerances.HARNESS_WAIT_MS)
+        assert isinstance(view, RunView), (plugin, view)
+        run_dir = run_dir_for(kernel.home, view.run_id)
+        assert occurrences(run_dir, SENTINEL) == [], plugin
+        assert SENTINEL not in json.dumps(view.to_dict()), plugin
+    assert occurrences(kernel.home, SENTINEL) == []
