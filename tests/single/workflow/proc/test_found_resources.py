@@ -147,8 +147,12 @@ def test_found_process_untouched_on_every_path(
             if path == "timed_out":
                 monkeypatch.setattr(clock, "release_slice", support.TEST_GRACE_S)
                 monkeypatch.setattr(clock, "FINALIZATION_RESERVE_S", support.TEST_GRACE_S)
-                budget, deadline = 3, 5  # whole seconds: the run reaches its release point in ~4 s
-                kernel = procrun.kernel_over_fixture(tmp_path, budget_s=budget, deadline_s=deadline)
+                # whole seconds. The wait fits the budget (4 + release 1 <= 5, L.SL-2.1), so the
+                # leaf stalls its first observation 6 s: it creates at ~6 s, its wait would end at
+                # ~10 s, and the release point (deadline 9 - slice 1) comes first, at 8 s.
+                kernel = procrun.kernel_over_fixture(
+                    tmp_path, budget_s=5, deadline_s=9, max_wait_s=4, release_s=1
+                )
             else:
                 kernel = procrun.kernel_over_fixture(tmp_path)
 
@@ -166,6 +170,8 @@ def test_found_process_untouched_on_every_path(
                     args["mode"] = "found"
                 if path in ("failed", "blocked"):
                     args["outcome"] = "fail" if path == "failed" else "block"
+                if path == "timed_out":
+                    args["stall"] = 6
                 view, run_dir = _to_terminal(kernel, args)
                 terminal = support.kinds(run_dir)[-1]
                 assert view.answer is not None
