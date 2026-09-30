@@ -34,7 +34,7 @@ def resolved_docker(tmp_path: Path) -> str:
     "CI",
 )
 def test_default_allowlist_empty_and_reference_config_populated(tmp_path: Path) -> None:
-    # the library default is empty, whatever a home's config.toml lists (F-11(b) neutral)
+    # the library default is empty when nothing lists an executable (F-11(b) neutral)
     assert TrestleConfig.defaults().operator_limits.release_executables == frozenset()
     docker = resolved_docker(tmp_path)
     config = operator.load_operator_config(
@@ -47,10 +47,12 @@ def test_default_allowlist_empty_and_reference_config_populated(tmp_path: Path) 
     assert limits.release_executables == {docker}
     assert TrestleConfig(operator_limits=limits).operator_limits.release_executables == {docker}
     assert OperatorLimits().release_executables == frozenset()
-    # the rendered text is a home's config.toml: the server reads its plugin path from it, and
-    # reading it does not put an executable in the default allowlist
+    # the rendered text is a home's config.toml: the server reads its plugin path AND its
+    # release-executable allowlist from it (L.RB-0.3.fix1); a home that lists none, or has no
+    # config.toml at all, keeps the empty default
     home = tmp_path / "home"
     home.mkdir()
+    assert load_config(home).operator_limits.release_executables == frozenset()
     (home / "config.toml").write_text(
         operator.render_operator_config(
             REFERENCE_CONFIG, docker=docker, plugin_dir=REFERENCE_PLUGINS
@@ -58,7 +60,22 @@ def test_default_allowlist_empty_and_reference_config_populated(tmp_path: Path) 
         encoding="utf-8",
     )
     assert resolve_plugin_dirs(home) == [REFERENCE_PLUGINS.resolve()]
-    assert load_config(home).operator_limits.release_executables == frozenset()
+    assert load_config(home).operator_limits.release_executables == frozenset({docker})
+    unset = tmp_path / "unset"
+    unset.mkdir()
+    (unset / "config.toml").write_text("[plugins]\npaths = []\n", encoding="utf-8")
+    assert load_config(unset).operator_limits.release_executables == frozenset()
+
+
+@pytest.mark.parametrize(
+    "listed",
+    ['release_executables = ["docker"]', 'release_executables = "/usr/bin/docker"'],
+    ids=["relative", "not-a-list"],
+)
+def test_a_malformed_operator_allowlist_stops_the_load(tmp_path: Path, listed: str) -> None:
+    (tmp_path / "config.toml").write_text(f"[operator]\n{listed}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="release_executables"):
+        load_config(tmp_path)
 
 
 @pytest.mark.parametrize("docker", ["", "docker", "bin/docker", "./docker"])
