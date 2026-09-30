@@ -6,10 +6,11 @@ one execution and returns its terminal answer, never a running frame. Whether a 
 cancels is open (row default: no); the `cancel` tool stays the explicit path, so no stop row of
 cause `cancel` appears in any sever mode.
 
-The run is `spine_leaf` in `hang` mode (its marker never turns ready, so only the deadline ends it),
-with the deadline shortened to `SHORT_DEADLINE_S`. Each sever mode of the host is exercised:
-`cancel_notification` (the JSON-RPC notice; the server stays up), `stdin_close` (EOF on the
-server's read loop) and `sigkill` (the server is gone). Where the server is gone, the run's own
+The run is `spine_leaf` in `stall` mode (its marker never turns ready and its first observation
+takes `STALL_S`, so the wait, which fits the leaf's budget (L.SL-2.1), starts late and only the
+deadline ends it), with the deadline shortened to `SHORT_DEADLINE_S`. Each sever mode of the host is
+exercised: `cancel_notification` (the JSON-RPC notice; the server stays up), `stdin_close` (EOF on
+the server's read loop) and `sigkill` (the server is gone). Where the server is gone, the run's own
 process tree ends by itself at the release point (the loop releases its marker) and the next server
 on the same home recovers the run to a terminal row. The lane is read through the proof court's
 oracle (`tests.proof.records`); every bound comes from `tests.proof.tolerances` or
@@ -33,9 +34,9 @@ from trestle.common import clock
 FIXTURES = Path(__file__).resolve().parents[3] / "fixtures" / "workflows"
 FIXTURE = "spine_leaf"
 DECLARED_DEADLINE_S = 120  # the fixture's own literal; the tests substitute the shorter one
-SHORT_DEADLINE_S = 24  # budget 8 + release slice 10 fit inside it (as in SV-5.9)
+SHORT_DEADLINE_S = 20  # budget 8 + release slice 10 fit inside it (as in test_w_a1's deadline run)
 KEY = "sever-rejoin-key"
-ARGS: dict[str, Any] = {"env": "dev", "mode": "hang"}
+ARGS: dict[str, Any] = {"env": "dev", "mode": "stall"}
 NONTERMINAL = ("queued", "running")
 # a call that waits for its terminal answer waits out the deadline and the finalization margin
 BOUND_S = float(SHORT_DEADLINE_S) + clock.finalization_margin
