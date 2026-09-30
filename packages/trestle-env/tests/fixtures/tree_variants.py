@@ -6,7 +6,7 @@ second created container and a fake step, so the root's release phase has real c
 back in reverse dependency order:
 
     variants (all-of)
-      +-- backend.postgres   the reference Postgres child (`trestle_env.tree.DockerServiceUnit`)
+      +-- backend.postgres   the reference Postgres child (`trestle_env.tree.ServiceUnit`)
       +-- backend.helper     a second created container (the alpine role), needs backend.postgres
       +-- step.sibling       a fake step (no port, no effect), needs backend.helper
 
@@ -83,7 +83,7 @@ STEP_BUDGET_S = 8
 RUN: dict[str, Any] = {"mode": "passed"}
 
 
-class PostgresUnit(tree.DockerServiceUnit):
+class PostgresUnit(tree.ServiceUnit):
     """The reference Postgres child with a shorter wait and budget (same effects and readiness)."""
 
     def declare(self) -> LeafDeclaration:
@@ -92,7 +92,7 @@ class PostgresUnit(tree.DockerServiceUnit):
         return replace(declared, wait=wait, budget=timedelta(seconds=POSTGRES_BUDGET_S))
 
 
-class HelperUnit(tree.DockerServiceUnit):
+class HelperUnit(tree.ServiceUnit):
     """A second created container; in `child_exception` mode it raises once its container
     exists (the root must still release both containers)."""
 
