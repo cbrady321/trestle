@@ -6,15 +6,20 @@ entry points and reaches a terminal state, and the `ChoiceNode` case follows the
 and no run dir; `absent`, from L.TR-5.3: admitted), so the test stays true after L.TR-5.3 with no
 edit. T1's file half: `lift_set_trl.toml` equals the frozen literal below, and its checker rejects
 a ledger that lacks or fails a listed host node. T2's check function (`host_path_violations`) and
-its planted self-test; L.TR-L.11 adds the live node `test_lift_tests_are_host_path` over the
-committed TREE-L modules, and T6, which read inputs that exist only after them."""
+its planted self-test; L.TR-L.11 added the live node `test_lift_tests_are_host_path` over the
+committed TREE-L modules, T6 (`test_trl_rollback_class_consistent`, over `d2_outcomes.toml` and
+`rollback.toml`) and the drain-check case over the tree-trl fossils."""
 
 from __future__ import annotations
 
 import ast
+import fnmatch
 import json
 import os
 import shutil
+import subprocess
+import sys
+import tomllib
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -32,6 +37,9 @@ from trestle.server.main import Kernel
 
 REPO = Path(__file__).resolve().parents[3]
 TREES = REPO / "tests" / "fixtures" / "trees"
+FOSSILS = REPO / "tests" / "fixtures" / "fossils" / "tree-trl"
+D2_OUTCOMES = Path(__file__).with_name("d2_outcomes.toml")
+ROLLBACK = REPO / "tests" / "proof" / "rollback.toml"
 TERMINAL_STATES = ("succeeded", "failed", "cancelled", "timed_out")
 HOST_TIMEOUT_S = tolerances.JOIN_WAIT_S * 6
 
@@ -314,3 +322,154 @@ def test_lift_tests_are_host_path_rejects_planted_harness_import(tmp_path: Path)
     assert "does not import tests/tree/hostpath.py" in problem
     (problem,) = host_path_violations([tmp_path / "test_trl_absent.py"])
     assert "does not exist" in problem
+
+
+def test_lift_tests_are_host_path() -> None:
+    """T2's live node (L.TR-L.11): every module `lift_set_trl.toml` lists exists, imports
+    `tests/tree/hostpath.py` and imports nothing from `tests/proof/harness.py`. A listed module that
+    is missing fails it, never skips it."""
+    modules = lift_set_modules()
+    assert modules, "the lift set lists no module"
+    assert host_path_violations(modules) == []
+
+
+def test_lift_tests_are_host_path_fails_when_a_listed_module_is_removed(tmp_path: Path) -> None:
+    """The live check over a temporary copy of the committed modules passes; removing one listed
+    module from the copy fails it (never skips), naming the module."""
+    copies = []
+    for module in lift_set_modules():
+        target = tmp_path / module.name
+        shutil.copy(module, target)
+        copies.append(target)
+    assert host_path_violations(copies) == []
+    copies[0].unlink()
+    (problem,) = host_path_violations(copies)
+    assert copies[0].name in problem and "does not exist" in problem
+
+
+# T5/T6 (MC-31, DM-79): the D2 outcome record and the class TR-L's boundary carries.
+INFLIGHT_STATES = "*/trl-inflight-*"
+EVIDENCE = "tests/tree/joins/test_j_trl.py::test_trl_rollback_class_consistent"
+
+
+def trl_class_for(runs: list[dict[str, Any]]) -> str | None:
+    """The class the recorded TR-L D2 runs imply (DM-79, A2c3-10): `transparent` iff every exit is
+    0; `drain` iff some exit is non-zero, some unexcused state diverged and every diverged path is
+    an in-flight state; `None` otherwise (a terminal or views state diverged, or a run failed
+    without naming a diverging state: no class is written, the band escalates to the root)."""
+    tr_l = [run for run in runs if run.get("merge") == "TR-L"]
+    if not tr_l:
+        return None
+    if all(run["exit"] == 0 for run in tr_l):
+        return "transparent"
+    diverged = [path for run in tr_l for path in run["diverged"]]
+    if diverged and all(fnmatch.fnmatch(path, INFLIGHT_STATES) for path in diverged):
+        return "drain"
+    return None
+
+
+def trl_class_problems(runs: list[dict[str, Any]], boundaries: list[dict[str, Any]]) -> list[str]:
+    """T6's check over the two records: TR-L's boundary carries the class the D2 runs imply and
+    names this test as its evidence."""
+    expected = trl_class_for(runs)
+    if expected is None:
+        return [
+            "no class follows from the recorded TR-L D2 runs (a terminal or views state diverged, "
+            f"or no TR-L run is recorded): {runs}"
+        ]
+    entries = [b for b in boundaries if b["merge"] == "TR-L"]
+    if len(entries) != 1:
+        return [f"TR-L is registered {len(entries)} times in rollback.toml"]
+    problems = []
+    if entries[0]["class"] != expected:
+        problems.append(f"TR-L is {entries[0]['class']!r}, the D2 outcomes imply {expected!r}")
+    if entries[0]["evidence"] != EVIDENCE:
+        problems.append(f"TR-L's evidence is {entries[0]['evidence']!r}, not {EVIDENCE!r}")
+    return problems
+
+
+@pytest.mark.proves(
+    "C-CONTAIN-AND-CLOCK",
+    "C-CONTAIN-AND-CLOCK:trl-rollback-class-recorded",
+    "A",
+    "tree",
+    "LOGIC",
+    "CI",
+)
+def test_trl_rollback_class_consistent() -> None:
+    """T6: TR-L's MC-31 class is consistent with its recorded D2 outcome, whichever class it is:
+    `transparent` iff every recorded TR-L exit is 0, `drain` iff some exit is non-zero and every
+    diverged path is an in-flight state. Reads only `d2_outcomes.toml` and `rollback.toml`: never
+    re-runs d2 and never reads the live `d2_exceptions.toml` (DM-79)."""
+    runs = tomllib.loads(D2_OUTCOMES.read_text(encoding="utf-8")).get("run", [])
+    boundaries = tomllib.loads(ROLLBACK.read_text(encoding="utf-8")).get("boundary", [])
+    assert trl_class_problems(runs, boundaries) == []
+
+
+def _run(exit_code: int, *diverged: str) -> dict[str, Any]:
+    return {
+        "merge": "TR-L",
+        "reader": "wr-ckpt/single",
+        "reader_sha": "0" * 40,
+        "fossils": "tests/fixtures/fossils/tree-trl",
+        "exit": exit_code,
+        "diverged": list(diverged),
+    }
+
+
+def test_rollback_class_rule_rejects_planted_inconsistencies() -> None:
+    """The class rule follows exit codes and diverged paths: a planted `transparent` beside a
+    non-zero exit and a planted `drain` beside a diverged `trl-terminal-*` (or views) path are both
+    inconsistent with what the rule derives."""
+    assert trl_class_for([_run(0), _run(0)]) == "transparent"
+    inflight = "tree-trl/trl-inflight-readiness_sibling"
+    assert trl_class_for([_run(0), _run(1, inflight)]) == "drain"
+    # a planted `transparent` beside a non-zero exit fails T6's check; the matching `drain` passes
+    planted = [{"merge": "TR-L", "class": "transparent", "evidence": EVIDENCE}]
+    (problem,) = trl_class_problems([_run(0), _run(1, inflight)], planted)
+    assert "'transparent'" in problem and "'drain'" in problem
+    assert (
+        trl_class_problems([_run(0), _run(1, inflight)], [{**planted[0], "class": "drain"}]) == []
+    )
+    # a planted `drain` beside a diverged terminal or views path: no class follows at all
+    terminal = "tree-trl/trl-terminal-exception_branch"
+    views = "tree-trl/trl-views-upstream_covered"
+    assert trl_class_for([_run(1, inflight, terminal)]) is None
+    drain = [{"merge": "TR-L", "class": "drain", "evidence": EVIDENCE}]
+    (problem,) = trl_class_problems([_run(1, terminal)], drain)
+    assert "no class follows" in problem
+    assert trl_class_for([_run(1, views)]) is None
+    # a run that failed without naming a diverging state is not a drain
+    assert trl_class_for([_run(1)]) is None
+    assert trl_class_for([]) is None
+
+
+@pytest.mark.parametrize("band", ["trl"])
+def test_drain_check_counts_nonterminal_tree_root(band: str, tmp_path: Path) -> None:
+    """SV-3's drain procedure covers a TR-L root (A2c3-8): `meta drain-check` over a copy of a
+    `trl-inflight-*` fossil home exits 1 and names the root; over a `trl-terminal-*` home it
+    exits 0."""
+
+    def drain_check(state: Path) -> subprocess.CompletedProcess[str]:
+        home = tmp_path / f"home-{state.name}"
+        shutil.copytree(state / "home", home)
+        return subprocess.run(
+            [sys.executable, "-m", "tests.proof.meta", "drain-check", "--home", str(home)],
+            cwd=REPO,
+            env={"PYTHONPATH": str(REPO), "PATH": "/usr/bin:/bin"},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    inflight = sorted(FOSSILS.glob(f"{band}-inflight-*"))
+    terminal = sorted(FOSSILS.glob(f"{band}-terminal-*"))
+    assert inflight and terminal, "the tree-trl fossils are not committed"
+    for state in inflight:
+        blocked = drain_check(state)
+        assert blocked.returncode == 1, blocked.stdout
+        assert "1 non-terminal plan-bearing root" in blocked.stdout, blocked.stdout
+    for state in terminal:
+        drained = drain_check(state)
+        assert drained.returncode == 0, drained.stdout
+        assert "0 non-terminal plan-bearing root" in drained.stdout, drained.stdout
