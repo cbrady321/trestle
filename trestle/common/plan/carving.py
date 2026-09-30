@@ -290,3 +290,24 @@ def margin_needed(plan: AdmittedPlan, limits: MarginLimits) -> float:
         for timeouts in ranks.values()
     )
     return limits.grace + limits.kill + sweep
+
+
+def margin_misfit(
+    plan: AdmittedPlan, limits: MarginLimits, finalization_margin_s: float
+) -> Refusal | None:
+    """B2-C2 (5): `BUDGET_DOES_NOT_FIT` naming the root when `margin_needed(plan, limits)` exceeds
+    `finalization_margin_s` (`OperatorLimits.finalization_margin`), else None. V-11 gives the code
+    one spelling for every budget misfit. A plan with no release target (no CREATE+RUN effect: a
+    plain plugin, a root that declares no release walk) is never refused here: the misfit is
+    possible only for a root whose declared release timeouts make the sweep sum too long, and the
+    stop of such a root is core's bound (`grace + kill`). Pure."""
+    if not any(v.create_run for v in plan.vertices):
+        return None
+    needed = margin_needed(plan, limits)
+    if needed <= finalization_margin_s:
+        return None
+    return _misfit(
+        ROOT_PATH,
+        f"finalization needs {needed:g}s after the deadline, over the margin "
+        f"{finalization_margin_s:g}s",
+    )

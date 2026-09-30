@@ -25,3 +25,17 @@ removal_condition = "none while F-11(b) (allowlist owner/default) is open; RB-0 
 removed_by        = "named-not-removed"
 permanent         = false
 citation          = "root C.9 F-11(a/b); design §10 F-11(b)"
+
+[[entry]]
+id                = "multi-vertex-refusal"        # plan id TM-B2-1
+mechanism         = "Admission.admit refuses a declared root with more than one vertex (AllDeclaration, ChoiceNode, ChildBinding) before a run id: admission.plan_multi_vertex_unsupported (the only home of the refusal, DM-07)"
+introduced_by     = "L.SV-3.5"
+serves            = []
+phases            = [
+  { name = "full", serves = ["A1.5", "A2.6", "A4.2", "A5.4", "A6.3", "A6.4", "A8.4", "A8.5"], probe = "python -m tests.proof.probes.single multi-vertex-refusal --phase full" },
+  { name = "choice-only", serves = ["A2.6", "WR-UNIT-8:selection-validated-only", "WR-UNIT-8:live-state-stops"], probe = "python -m tests.proof.probes.single multi-vertex-refusal --phase choice-only" },
+]                                                  # one inline table per line: Python 3.12's tomllib is TOML 1.0
+probe             = "python -m tests.proof.probes.single multi-vertex-refusal"   # exit 0 = present
+removal_condition = "full -> choice-only when the J-TRL lift set is green (narrowed by L.TR-L.1); choice-only -> absent when ChoiceNode selection and live-state are green"
+removed_by        = "L.TR-5.3"
+permanent         = false

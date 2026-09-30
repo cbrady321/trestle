@@ -18,6 +18,7 @@ from trestle.common.fsutil import atomic_write_json, fsync_dir
 from trestle.common.ids import generate_run_id
 from trestle.common.plan import carving, compiler
 from trestle.common.plan.compiler import AdmittedPlan
+from trestle.common.plan.declared import ROOT_PATH
 from trestle.common.redact import redact_args, secret_values
 from trestle.common.types import (
     AdmitRequest,
@@ -182,6 +183,13 @@ class Admission:
                     ),
                 )
 
+        # TM-B2-1: A-1 admits one-vertex roots only; a composite root is refused whatever its other
+        # defects (the tree band's TR-L / TR-5 narrow and remove this call, register entry
+        # `multi-vertex-refusal`), still before any run id exists.
+        composite = multi_vertex_refusal(snap)
+        if composite is not None:
+            return composite
+
         # B2-C2: every root is compiled and carved to a plan before any run id exists (a refusal
         # is not a run); a plan-less root gets the implicit depth-1 plan (B2-C1).
         planned = plan_for_admission(snap, req, deadline_s)
@@ -206,6 +214,39 @@ def _plan_refusal(refusal: compiler.Refusal) -> AdmitResultRefused:
         outcome=RequestOutcome(
             code=refusal.code,
             message=" ".join(parts)[: compiler.REFUSAL_TEXT_MAX],
+            retryable=False,
+            origin="admission",
+        ),
+    )
+
+
+def multi_vertex_refusal(snap: PluginSnapshot) -> AdmitResultRefused | None:
+    """TM-B2-1 (register entry `multi-vertex-refusal`, phase `full`), the one home of the
+    refusal (DM-07): a declared root with more than one vertex, an `AllDeclaration` with children
+    or a `ChoiceNode` with alternatives, is refused `admission.plan_multi_vertex_unsupported`.
+    Decided on the declaration alone (the tree's descendants are unresolved in A-1), so it
+    precedes every plan refusal; `plan_for_admission` and `write_admitted_run` (the harness's
+    path, MC-B2-08) never refuse a composite. A plain plugin and a leaf root are not refused."""
+    declared = load_declared_tree(snap)
+    if declared is None:
+        return None
+    root = declared.nodes[ROOT_PATH]
+    compose = root["compose"]
+    if compose == "all":
+        composite = bool(root["children"])
+    elif compose == "choice":
+        composite = bool(root["choice"]["alternatives"])
+    else:
+        composite = False
+    if not composite:
+        return None
+    return AdmitResultRefused(
+        tag="refused",
+        outcome=RequestOutcome(
+            code=codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED,
+            message=(
+                f"a workflow root with more than one vertex is not supported yet: {snap.plugin}"
+            ),
             retryable=False,
             origin="admission",
         ),
@@ -237,6 +278,16 @@ def plan_for_admission(
     )
     if isinstance(slices, compiler.Refusal):
         return _plan_refusal(slices)
+    # B2-C2 (5): the finalization the host needs after the deadline must fit the margin
+    misfit = carving.margin_misfit(
+        plan,
+        carving.MarginLimits(
+            grace=clock.grace, kill=clock.kill, sweep_parallelism=clock.sweep_parallelism
+        ),
+        clock.finalization_margin,
+    )
+    if misfit is not None:
+        return _plan_refusal(misfit)
     return carving.attach(plan, slices, release_slice)
 
 
