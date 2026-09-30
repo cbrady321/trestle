@@ -731,12 +731,68 @@ def load_open_questions() -> list[dict[str, object]]:
     return list(tomllib.loads(OPEN_QUESTIONS_PATH.read_text()).get("oq", []))
 
 
-def cmd_open_questions(_args: argparse.Namespace) -> int:
-    """`python -m tests.proof.meta open-questions` (L.P0-0c.3): exit 0 iff
-    every label bound to a listed open-question id carries posture
-    `gated_on` or `both_variant` and no claimed label or `proves` marker
-    decides one. A label whose `oq` names an id outside `open_questions.toml`
-    is a load error."""
+# C.9's twelve open questions, the postures they may take, and the two the maintainer answered
+# (maintainer_decisions_2026_09_28): those appear in no label's `oq`.
+OQ_FINAL_IDS = frozenset(
+    {
+        "OQ-25", "OQ-26", "OQ-27", "OQ-29", "OQ-30", "OQ-31", "F-13(d)", "F-11(a)", "F-11(b)",
+        "F-12", "F-B3-2", "OPEN-MISE-HOST",
+    }
+)  # fmt: skip
+OQ_POSTURES = ("gated_on", "both_variant", "neutral")
+OQ_ANSWERED = ("OQ-32", "Q-STRADDLE-ORPHAN")
+
+
+def open_question_problems(
+    labels: list[dict[str, Any]],
+    oqs: list[dict[str, Any]],
+    deferrals: list[dict[str, Any]],
+) -> list[str]:
+    """`open-questions --final` (L.CZ.7, CSC-15, DM-87): the twelve ids of `open_questions.toml`
+    are exactly C.9's, each with a posture (gated_on, both_variant or neutral); every label bound
+    to one carries gated_on or both_variant and none is claimed; OQ-32 and Q-STRADDLE-ORPHAN,
+    answered, appear in no label's `oq` and in no open question; no deferral carries `until` (a
+    PX-bound deferral)."""
+    problems: list[str] = []
+    ids = {str(o["id"]) for o in oqs}
+    for missing in sorted(OQ_FINAL_IDS - ids):
+        problems.append(f"{missing} is not in open_questions.toml")
+    for extra in sorted(ids - OQ_FINAL_IDS):
+        problems.append(f"{extra} is in open_questions.toml but is not one of C.9's twelve")
+    for oq in oqs:
+        if oq.get("posture") not in OQ_POSTURES:
+            problems.append(
+                f"{oq['id']}: posture {oq.get('posture')!r} is not {'|'.join(OQ_POSTURES)}"
+            )
+    for label in labels:
+        oq = label.get("oq")
+        if oq is None:
+            continue
+        if oq in OQ_ANSWERED:
+            problems.append(
+                f"{label.get('id')}: oq={oq!r} names a question the maintainer answered"
+            )
+        elif str(oq) not in ids:
+            problems.append(f"{label.get('id')}: oq={oq!r} is not an open question")
+        elif label.get("posture") not in ("gated_on", "both_variant"):
+            problems.append(
+                f"{label.get('id')}: is bound to {oq} but posture {label.get('posture')!r} "
+                "claims it (must be gated_on or both_variant)"
+            )
+    for answered in OQ_ANSWERED:
+        if answered in ids:
+            problems.append(f"{answered} is answered, yet is in open_questions.toml")
+    for entry in deferrals:
+        if "until" in entry:
+            problems.append(f"{entry.get('label')}: a PX-bound deferral (until={entry['until']!r})")
+    return problems
+
+
+def cmd_open_questions(args: argparse.Namespace) -> int:
+    """`python -m tests.proof.meta open-questions [--final]` (L.P0-0c.3, L.CZ.7): exit 0 iff
+    every label bound to a listed open-question id carries posture `gated_on` or `both_variant`
+    and no claimed label or `proves` marker decides one. A label whose `oq` names an id outside
+    `open_questions.toml` is a load error. `--final` adds `open_question_problems`."""
     oq_ids = {o["id"] for o in load_open_questions()}
     labels = _load_all_labels()
 
@@ -758,6 +814,15 @@ def cmd_open_questions(_args: argparse.Namespace) -> int:
             )
             return 1
 
+    if getattr(args, "final", False):
+        from tests.proof import deferrals as deferrals_mod
+
+        problems = open_question_problems(
+            labels, load_open_questions(), deferrals_mod.load_deferrals()
+        )
+        for problem in problems:
+            print(f"open-questions --final: {problem}")
+        return 1 if problems else 0
     return 0
 
 
@@ -971,7 +1036,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("check-map")
     audit_parser = sub.add_parser("audit-rows")
     audit_parser.add_argument("--enforce", action="store_true")
-    sub.add_parser("open-questions")
+    oq_parser = sub.add_parser("open-questions")
+    oq_parser.add_argument("--final", action="store_true")
     register_parser = sub.add_parser("register")
     register_parser.add_argument("--probe", default=None)
     register_parser.add_argument("--final", action="store_true")
