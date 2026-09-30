@@ -9,7 +9,8 @@ Configuration is environment only, because the caller's argv is fixed:
   STUB_ENGINE_STATE  path of the stub engine's state file (`up` once started, `down` before)
   STUB_ENGINE_MODE   `starts` (default: the engine comes up, exit 0), `no-progress` (exit 0 and
                      the engine stays down: a start that did nothing) or `refuses` (exit 3)
-  STUB_ENGINE_LOG    path; one JSON line per call `{"argv": [...], "mode": ..., "state_before": ...}`
+  STUB_ENGINE_LOG    path; one JSON line per call
+                     `{"argv": [...], "mode": ..., "state_before": ...}`
 """
 
 from __future__ import annotations
