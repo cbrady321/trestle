@@ -15,6 +15,7 @@ globs = [
   "tests/proof/**",
   "tests/core/tooling/test_core_fence.py",
   "tests/core/docs/test_cl_d1_ckpt.py",
+  "tests/core/admission/test_cl_a1_capacity.py",
   "tests/pins/c_surface/test_goldens.py",
   "!tests/proof/labels.d/p0-1*.toml",
   "tests/fixtures/golden/s0/nodeids.txt",
