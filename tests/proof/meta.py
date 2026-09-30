@@ -1004,14 +1004,61 @@ def cmd_ckpt(args: argparse.Namespace) -> int:
     return 0
 
 
+MC31_CLASSES = ("forward_only", "drain", "transparent")
+
+
+def register_final_problems(
+    entries: list[dict[str, Any]],
+    boundaries: list[dict[str, Any]],
+    present: Callable[[dict[str, Any]], object] | None = None,
+) -> list[str]:
+    """`register --final` (L.CZ.5, CM-7): every entry's probe exits non-zero (the mechanism is
+    gone), or the entry is `named-not-removed` with a citation and `serves = []` (T-5..T-7,
+    TM-B4-1.x, TM-B2-2, TM-C4a/b: it stays, and serves no clause); nothing is scheduled for later
+    (DM-77), and permanent test infrastructure is never registered. MC-31 records every rollback
+    boundary's class, and none is still `pending:` once the merges have landed. SC-5 is met here,
+    at J-ROOT."""
+    from tests.proof import register as register_mod
+
+    present = present or register_mod.active_phase
+    problems: list[str] = []
+    for entry in entries:
+        eid, removed_by = entry["id"], entry["removed_by"]
+        if entry.get("permanent") is not False:
+            problems.append(f"{eid}: permanent infrastructure is not registered (CM-7)")
+        if removed_by == "named-not-removed":
+            if entry.get("serves") != []:
+                problems.append(f"{eid}: named-not-removed but serves {entry.get('serves')!r}")
+            if not str(entry.get("citation", "")).strip():
+                problems.append(f"{eid}: named-not-removed without a citation")
+        elif present(entry) is not None:
+            problems.append(f"{eid} is present and its remover is {removed_by}")
+    for boundary in boundaries:
+        merge = boundary.get("merge")
+        if boundary.get("class") not in MC31_CLASSES:
+            problems.append(f"rollback {merge}: class {boundary.get('class')!r} is not recorded")
+        if str(boundary.get("evidence", "")).startswith("pending:"):
+            problems.append(f"rollback {merge}: evidence is still {boundary['evidence']!r}")
+    return problems
+
+
 def cmd_register(args: argparse.Namespace) -> int:
-    """`python -m tests.proof.meta register[, --probe <id>, --final]`
-    (L.P0-0d.1): exactly CM-7's register rule, probe and `--final` commands,
-    implemented in `tests/proof/register.py`."""
+    """`python -m tests.proof.meta register[, --probe <id>, --final]` (L.P0-0d.1, L.CZ.5):
+    exactly CM-7's register rule and probe command, implemented in `tests/proof/register.py`;
+    `--final` is `register_final_problems` over the loaded register."""
     from tests.proof import register as register_mod
 
     if args.final:
-        return register_mod.cmd_final()
+        try:
+            entries = register_mod.load_entries()
+            boundaries = register_mod.load_rollback()
+        except (register_mod.RegisterLoadError, FileNotFoundError) as exc:
+            print(f"register --final: {exc}")
+            return 1
+        problems = register_final_problems(entries, boundaries)
+        for problem in problems:
+            print(f"register --final: {problem}")
+        return 1 if problems else 0
     if args.probe:
         return register_mod.cmd_probe(args.probe)
     return register_mod.cmd_register()
