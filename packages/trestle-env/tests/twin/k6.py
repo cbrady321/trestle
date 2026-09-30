@@ -49,7 +49,7 @@ FIXTURE_LABEL = "trestle.proof.fixture"
 FIXTURE = "k6"
 VOLUME = "k6data"
 SEED_FILE = "/data/seed"
-BROKEN_IMAGE_ENV = "TRESTLE_K6_BROKEN_IMAGE"
+BROKEN_IMAGE_ENV = "TRESTLE_IMAGE_K6_BROKEN"
 MISSING_IMAGE = "alpine@sha256:" + "0" * 64  # never cached, never pulled (pull_policy: never)
 HOST_TIMEOUT_S = 180.0
 

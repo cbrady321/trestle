@@ -16,7 +16,7 @@ services:
       trestle.proof.fixture: k6
 
   broken:
-    image: ${TRESTLE_K6_BROKEN_IMAGE}
+    image: ${TRESTLE_IMAGE_K6_BROKEN}
     pull_policy: never
     labels:
       trestle.proof.fixture: k6
