@@ -119,7 +119,13 @@ def test_core_deferrals_cited_and_unproven() -> None:
         if trailers_mod.landing(closes_at, cwd=REPO_ROOT) is not None:
             continue  # the band is on master: its checkpoint asserts the PROVEN side (CM-8)
         assert statuses.get(label, ledger_mod.UNPROVEN) == ledger_mod.UNPROVEN, label
-        posture = declared.get(label, {}).get("posture")
+        declaration = declared.get(label, {})
+        posture = declaration.get("posture")
+        if declaration.get("step") == "single":
+            # the single phase declares the labels it will claim at their closing merge (L.SV-0.2,
+            # `claim`); the status assertion above is what holds until a node registers one
+            assert posture in ("claim", "deferred"), f"{label}: posture {posture!r}"
+            continue
         if label in P0_TARGET_DEFERRALS:
             # P0's declared claim; its node is a strict-xfail target until the slice-B flip
             assert posture == "claim", f"{label}: posture {posture!r}"
