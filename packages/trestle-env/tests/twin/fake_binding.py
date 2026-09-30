@@ -39,9 +39,11 @@ from typing import Any
 from trestle.workflow import ports
 from trestle_packs.fakes.compose import FakeComposeResolver
 from trestle_packs.fakes.container import FakeContainerEngine, _Container, _host_port
+from trestle_packs.fakes.provision import FakeProvision
 
 from trestle_env import tree
 from trestle_env.plugins import _bind
+from trestle_env.plugins._route import RealizationRouter
 
 STATE_ENV = "TRESTLE_ENV_FAKE_STATE"
 SEAM = f"{__name__}:fake_ports"
@@ -192,6 +194,38 @@ def _checks(readiness_environment: Mapping[str, str] | None) -> dict[str, dict[s
     return {name: dict(check.environment) for name, check in bound.items()}
 
 
+RECORDS_ENV = "TRESTLE_ENV_FAKE_RECORDS"
+
+
+class DurableFakeProvision(FakeProvision):
+    """`FakeProvision` whose records and submit count persist to the JSON file `RECORDS_ENV`
+    names: the fake's stand-in for an environment store that outlives a run (the real binding's
+    `TRESTLE_ENV_RECORD_STORE`, L.RB-6.3). Without a file it is the in-memory fake."""
+
+    def __init__(self, path: Path | None) -> None:
+        super().__init__()
+        self._path = path
+        if path is not None and path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            self.records = {k: (v[0], v[1]) for k, v in data.get("records", {}).items()}
+            self.submits = int(data.get("submits", 0))
+
+    def create(self, spec: Any, ticket: Any) -> Any:
+        answer = super().create(spec, ticket)
+        if self._path is not None:
+            data = {"records": {k: list(v) for k, v in self.records.items()}}
+            data["submits"] = self.submits  # type: ignore[assignment]
+            self._path.write_text(json.dumps(data), encoding="utf-8")
+        return answer
+
+
+def read_records(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {"records": {}, "submits": 0}
+    loaded: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    return loaded
+
+
 def _ports(
     environ: Mapping[str, str], readiness_environment: Mapping[str, str] | None
 ) -> Mapping[type, object]:
@@ -203,6 +237,14 @@ def _ports(
         ports.ResourceOwned: engine,
         ports.ResourceSafeStart: engine,
     }
+    if tree.PROVISION_UNIT in tree.ENTRY.units:
+        # the tree provisions a fixture record (L.RB-6.3): its `PROVISIONED` resource goes to the
+        # fake record store, routed as the real binding routes it
+        records = environ.get(RECORDS_ENV)
+        store = DurableFakeProvision(Path(records) if records else None)
+        router = RealizationRouter(engine, store)
+        mapping[ports.ResourceReads] = router
+        mapping[ports.ResourceCreate] = router
     compose = environ.get(_bind.COMPOSE_ENV)
     if compose:
         # the same operator variable the real binding reads (L.RB-1.4): the closure is derived
