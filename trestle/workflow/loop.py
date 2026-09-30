@@ -146,6 +146,11 @@ def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def plan_path(text: str) -> NodePath:
+    """A plan vertex's canonical path text (`""` the root, else `/`-separated) as a `NodePath`."""
+    return NodePath(tuple(text.split("/")) if text else ())
+
+
 def _path_text(path: NodePath) -> str:
     return "/".join(path.segments) or "(root)"
 
@@ -908,6 +913,17 @@ class Loop:
             human_action=human_action,
             resend=resend,
         )
+        self.end_unstarted_but(ROOT)
+
+    def end_unstarted_but(self, *ended: NodePath) -> None:
+        """Every vertex of `V_run` that has no `NodeEnd` yet is written `cut=NOT_STARTED` with no
+        condition (B1-C11, B1-O7): a stop before the walk (B1-E7) started nothing, so each vertex
+        below the root is one. `ended` are the paths already written. Plan order, root first."""
+        done = set(ended)
+        for vertex in self.services.admitted().accepted.vertices:
+            path = plan_path(vertex.path)
+            if path not in done:
+                self.end_vertex(path, condition=None, code=None, cut=svc.Cut.NOT_STARTED)
 
     # ------------------------------------------------------------------ B1-C11
 
