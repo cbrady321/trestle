@@ -125,6 +125,51 @@ POSTGRES_READINESS: Final = ExecReadiness(
 READINESS: Final[Mapping[str, ExecReadiness]] = {POSTGRES_READY: POSTGRES_READINESS}
 """Every exec readiness check the tree declares, by check id."""
 
+# Reuse proof (WR-OWN-7, KDD 3): a found Postgres is reused only on PROVEN identity and
+# configuration, and only when it is ready. Both proofs are read from inside the found container
+# and need no running server, so a container whose server is down still has its identity proven
+# (and is then unhealthy, not foreign):
+#   identity      - it was created for the reference stack: the fixture role and database in its
+#                   own environment (the values the run itself creates its container with);
+#   configuration - it runs the Postgres major version the reference image pins.
+POSTGRES_IDENTITY: Final = "postgres_identity"
+POSTGRES_CONFIGURATION: Final = "postgres_configuration"
+POSTGRES_MAJOR: Final = 16
+
+POSTGRES_IDENTITY_PROOF: Final = ExecReadiness(
+    check=POSTGRES_IDENTITY,
+    argv=(
+        "sh",
+        "-c",
+        f'test "$POSTGRES_USER" = {POSTGRES_USER} && test "$POSTGRES_DB" = {POSTGRES_DATABASE}',
+    ),
+)
+POSTGRES_CONFIGURATION_PROOF: Final = ExecReadiness(
+    check=POSTGRES_CONFIGURATION,
+    argv=("sh", "-c", f'postgres --version | grep -q "(PostgreSQL) {POSTGRES_MAJOR}\\."'),
+)
+
+EXEC_CHECKS: Final[Mapping[str, ExecReadiness]] = {
+    **READINESS,
+    POSTGRES_IDENTITY: POSTGRES_IDENTITY_PROOF,
+    POSTGRES_CONFIGURATION: POSTGRES_CONFIGURATION_PROOF,
+}
+"""Every exec check the tree declares (readiness and reuse proof), bound by the composition root."""
+
+
+@dataclass(frozen=True)
+class ReuseProof:
+    """The checks that prove a FOUND resource is this service's: its identity and its
+    configuration (check ids, read from inside the found resource). Declared by a unit that
+    may reuse what it finds; a unit that declares none never does (a found resource is then
+    incompatible, WR-OWN-7)."""
+
+    identity: str
+    configuration: str
+
+
+POSTGRES_REUSE: Final = ReuseProof(POSTGRES_IDENTITY, POSTGRES_CONFIGURATION)
+
 
 @dataclass(frozen=True)
 class HttpReadiness:
@@ -167,10 +212,16 @@ class ServiceUnit:
     is the port's."""
 
     def __init__(
-        self, unit: str, service: str, readiness: str, spec: ResourceSpec | None = None
+        self,
+        unit: str,
+        service: str,
+        readiness: str,
+        spec: ResourceSpec | None = None,
+        reuse: ReuseProof | None = None,
     ) -> None:
         self._unit = unit
         self._readiness = readiness
+        self._reuse = reuse
         # the entry is the catalog identifier the port maps to the container definition
         self._spec = (
             spec
@@ -218,16 +269,33 @@ class ServiceUnit:
         seen = resource.observe(self._spec, ctx.lineage, UP)
         ready = CheckResult(False, None, "")
         code = seen.code
+        identity, configuration = seen.identity_proven, seen.configuration_compatible
         if seen.selector_ref is not None and code is None:
             # the authoritative observation: the declared authenticated call, never a convenience
             # read that can lag behind the write (KDD 2)
             ready = resource.check(self._readiness, seen.selector_ref)
             code = ready.code
+        elif seen.found and code is None and self._reuse is not None:
+            # a found resource of this service: reused only on proven identity and configuration,
+            # and only when its own readiness passes; the proofs are read, never assumed. It is
+            # never created over, stopped, adopted or released (V-4.2).
+            found = seen.found[0]
+            proofs = (
+                resource.check(self._reuse.identity, found),
+                resource.check(self._reuse.configuration, found),
+                resource.check(self._readiness, found),
+            )
+            code = next((c.code for c in proofs if c.code is not None), None)
+            identity, configuration, ready = (
+                proofs[0].satisfied,
+                proofs[1].satisfied,
+                proofs[2],
+            )
         return Observation(
             present=seen.selector_present or bool(seen.found),
             selector_present=seen.selector_present,
-            identity_proven=seen.identity_proven,
-            configuration_compatible=seen.configuration_compatible,
+            identity_proven=identity,
+            configuration_compatible=configuration,
             postcondition=ready,
             preconditions=(),
             currency=seen.currency,
@@ -282,7 +350,9 @@ ENTRY = WorkflowEntry(
             env_key_field=ENV_ARG,
         ),
         HTTP_SUPPORT_UNIT: ServiceUnit(HTTP_SUPPORT_UNIT, HTTP_SUPPORT_SERVICE, HTTP_SUPPORT_READY),
-        POSTGRES_UNIT: ServiceUnit(POSTGRES_UNIT, POSTGRES_SERVICE, POSTGRES_READY),
+        POSTGRES_UNIT: ServiceUnit(
+            POSTGRES_UNIT, POSTGRES_SERVICE, POSTGRES_READY, reuse=POSTGRES_REUSE
+        ),
     },
     deadline=timedelta(seconds=DEADLINE_S),
 )

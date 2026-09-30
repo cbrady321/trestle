@@ -15,7 +15,7 @@ from typing import Any
 from tests.tree import treekit as tk
 from trestle.workflow import ports
 from trestle.workflow.values import CheckResult
-from trestle_packs.fakes.container import FakeContainerEngine
+from trestle_packs.fakes.container import FakeContainerEngine, selector_name
 
 from trestle_env import schema, tree
 
@@ -25,11 +25,21 @@ REFUSED = 3  # the fake serves the declared response from the request after this
 class SupportEngine(FakeContainerEngine):
     """A fake Docker engine whose declared checks answer as the real ones would."""
 
-    def __init__(self, *, serves_declared: bool = True, password_ok: bool = True) -> None:
+    def __init__(
+        self,
+        *,
+        serves_declared: bool = True,
+        password_ok: bool = True,
+        identity_ok: bool = True,
+        configuration_ok: bool = True,
+    ) -> None:
         super().__init__()
         self.serves_declared = serves_declared
         self.password_ok = password_ok
+        self.identity_ok = identity_ok  # a found Postgres carries the reference role and database
+        self.configuration_ok = configuration_ok  # ... and the pinned major version
         self.asked: list[str] = []
+        self.effects: list[tuple[str, str]] = []  # every effect the engine was asked for, by name
 
     def check(self, check: str, target: Any) -> CheckResult:
         running = super().check("running", target)
@@ -42,7 +52,32 @@ class SupportEngine(FakeContainerEngine):
             return CheckResult(ok, None, f"GET {tree.HTTP_SUPPORT_READINESS.path}: answer {asked}")
         if check == tree.POSTGRES_READY:
             return CheckResult(self.password_ok, None, "psql SELECT 1")
+        if check == tree.POSTGRES_IDENTITY:
+            return CheckResult(self.identity_ok, None, "role and database of the reference stack")
+        if check == tree.POSTGRES_CONFIGURATION:
+            return CheckResult(self.configuration_ok, None, "the pinned Postgres major version")
         return CheckResult(False, None, f"{check} is not a check this engine knows")
+
+    # every effect is recorded by the name it acts on, so a test can show what was never touched
+    def create(self, spec: Any, ticket: Any) -> Any:
+        self.effects.append(("create", selector_name(ticket.lineage)))
+        return super().create(spec, ticket)
+
+    def stop(self, target: Any, ticket: Any) -> Any:
+        self.effects.append(("stop", target.selector))
+        return super().stop(target, ticket)
+
+    def restart(self, target: Any, ticket: Any) -> Any:
+        self.effects.append(("restart", target.selector))
+        return super().restart(target, ticket)
+
+    def recreate(self, target: Any, ticket: Any) -> Any:
+        self.effects.append(("recreate", target.selector))
+        return super().recreate(target, ticket)
+
+    def start(self, target: Any, ticket: Any) -> Any:
+        self.effects.append(("start", target.selector))
+        return super().start(target, ticket)
 
 
 def rig_over(tmp_path: Path, engine: SupportEngine) -> tk.TreeRig:

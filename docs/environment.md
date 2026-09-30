@@ -59,6 +59,15 @@ passes, never after a sleep or when its port is open: the supporting service
 (`backend.postgres`, which starts only after the supporting service is ready) when an authenticated
 `SELECT 1` succeeds over TCP.
 
+### Reusing what is already running
+
+A container already running under a service's own name (a Postgres you started yourself) is reused,
+not replaced, when the run can prove it is that service's: its role and database are the reference
+identity, it runs the pinned Postgres major version, and the authenticated `SELECT 1` succeeds. All
+three are read from inside it. It is reported as `reused`, and it is never created over, stopped,
+restarted, adopted or removed, whatever happens to the run (passed, failed or cancelled): only the
+containers the run created are released.
+
 ### When a stage fails
 
 A failure names the stage and the service. A service that never becomes ready ends when its declared
