@@ -243,9 +243,10 @@ def test_e6_rerun_quartile_ratio(tmp_path: Path) -> None:
         elapsed.append(time.perf_counter() - started)
     assert len(read_ndjson(evidence / "events.ndjson")) == EVENTS  # every event recorded
 
-    # Per-event rate from each quartile's MEDIAN cost, not its sum: one scheduler or GC stall moves a
-    # sum by more than the whole tolerance on a shared CI runner (it flaked three times), while an
-    # append whose cost grows with history moves the last quartile's median by orders of magnitude.
+    # Per-event rate from each quartile's MEDIAN cost, not its sum: one scheduler
+    # or GC stall moves a sum by more than the whole tolerance on a shared CI
+    # runner (it flaked three times), while an append whose cost grows with
+    # history moves the last quartile's median by orders of magnitude.
     first = 1.0 / statistics.median(elapsed[:QUARTER])
     last = 1.0 / statistics.median(elapsed[-QUARTER:])
     assert last / first >= tolerances.append_cost_ratio(), (first, last)
