@@ -100,6 +100,7 @@ ROOT = NodePath(())
 _EVIDENCE_STEP = "loop_step_evidence"
 _EVIDENCE_UNIT_RAISED = "loop_unit_raised"
 _EVIDENCE_FAILED = "loop_failed_detail"
+_EVIDENCE_UNCOVERED = "loop_precondition_uncovered"
 
 _ESCAPED: object = object()  # `advance` ended in an `EffectRefused` rather than returning
 
@@ -186,6 +187,16 @@ def _observation_problem(observation: object, declaration: LeafDeclaration) -> s
     return None
 
 
+def _uncovered_preconditions(observation: object, declaration: LeafDeclaration) -> tuple[str, ...]:
+    """The declared preconditions `observation` carries no check for (B1-E1, V-8 L-7): a
+    precondition is covered at one vertex only by an inline check the node's own `observe` returns.
+    Empty for anything that is not an `Observation` (that is `_observation_problem`'s)."""
+    if not isinstance(observation, Observation):
+        return ()
+    checked = {name for name, _ in observation.preconditions}
+    return tuple(name for name in declaration.preconditions if name not in checked)
+
+
 def _step_problem(step: object) -> str | None:
     """Why a `Step` a unit returned breaks its contract (B1-E5, B1-C7 receipt checks), or None.
     A `Blocked` needs a human action; every code is measured on its encoded bytes against
@@ -268,8 +279,10 @@ class LeafWalk:
         return self._loop.goal is not Goal.CONVERGE
 
     def start(self) -> None:
-        """B1-C2: observe once before the first join, then join."""
-        self._observation = self._observe() or self._observation
+        """B1-C2: observe once before the first join, then join. That first observation is also
+        the one before any claim, so it is where a declared precondition with no inline check
+        stops the node (`_observe(first=True)`, B1-E1, L.SL-7.2)."""
+        self._observation = self._observe(first=True) or self._observation
         self._rejoin()
 
     def step(self) -> bool:
@@ -383,15 +396,23 @@ class LeafWalk:
     def _note_refusal(self) -> None:
         self._refusal_seen = True
 
-    def _observe(self, handle: CreatedHandle | None = None) -> Observation | None:
+    def _observe(
+        self, handle: CreatedHandle | None = None, *, first: bool = False
+    ) -> Observation | None:
         """Call the unit's `observe` through read facets only (B1-C2). A raise or a malformed
         observation is UNIT_RAISED (B1-E6; from the release pass, that handle's cleanup outcome)
-        and gives None."""
+        and gives None. `first` marks the walk's opening observation, the last thing that happens
+        before the first claim: a declared precondition it carries no check for stops the node
+        there instead (`_stop_uncovered`)."""
         context = _CallContext(self._lineage, self._loop.services)
         try:
             observation = self._unit.observe(self._params, ReadBinder(self._facets(None)), context)
         except Exception as exc:  # noqa: BLE001 (plugin code: any raise is the unit's, B1-E6)
             self._unit_raised(f"observe raised {type(exc).__name__}: {exc}", handle)
+            return None
+        uncovered = _uncovered_preconditions(observation, self._decl) if first else ()
+        if uncovered:
+            self._stop_uncovered(uncovered)
             return None
         problem = _observation_problem(observation, self._decl)
         if problem is not None:
@@ -408,6 +429,15 @@ class LeafWalk:
         seconds = wait.poll_every.total_seconds() * wait.backoff**self._polls
         left = (self._terms.slice_end - self._loop.now()).total_seconds()
         return timedelta(seconds=max(min(seconds, left), 0.0))
+
+    def _stop_uncovered(self, names: tuple[str, ...]) -> None:
+        """B1-E1 at run time, before the first claim: the node ends `FAILED` with
+        `PLAN_PRECONDITION_UNCOVERED`, one `StepEntry` and no ticket, so nothing was issued and
+        nothing needs releasing. The declaration is what is wrong, so no human action helps (the
+        presence rule gives none for `FAILED`); the node reached the condition itself, not the
+        goal (B1-C11), and the class the decision table gives it is `FAILED`, never `PASSED`."""
+        self._evidence(_EVIDENCE_UNCOVERED, {"preconditions": list(names)})
+        self._record_step(StepKind.FAILED, codes.PLAN_PRECONDITION_UNCOVERED)
 
     def _poll(self) -> None:
         """POLL under CONVERGE: wait the policy's next interval through `CancelSignal.wait`, then

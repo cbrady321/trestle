@@ -19,9 +19,14 @@ import trestle.workflow as _workflow_package
 from trestle.common import codes
 from trestle.common.fsutil import sha256_file
 from trestle.common.plan.declared import DeclaredTree
+from trestle.common.plan.vocabulary import SINGLE_LEVEL_CODES
 from trestle.plugin.surface import is_trestle_plugin
 from trestle.workflow.declarations import WorkflowEntry
 from trestle.workflow.extract import ExtractionRefused, extract_declared_tree
+
+# The registration refusals (B1-E1; L.SL-7.1) the extractor may report: each is its own stable
+# `publication.*` code from the single-level vocabulary, never folded into declaration_invalid.
+PUBLICATION_REFUSAL_CODES = frozenset(c for c in SINGLE_LEVEL_CODES if c.startswith("publication."))
 
 FORBIDDEN_PREFIXES = (
     "trestle.server",
@@ -341,7 +346,9 @@ def main(argv: list[str] | None = None) -> int:
         payload = {
             "ok": False,
             "error": str(exc)[:500],
-            "code": codes.PUBLICATION_DECLARATION_INVALID,
+            "code": exc.code
+            if exc.code in PUBLICATION_REFUSAL_CODES
+            else codes.PUBLICATION_DECLARATION_INVALID,
         }
         print(json.dumps(payload), flush=True)
         return 1
