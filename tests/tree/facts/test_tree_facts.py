@@ -510,8 +510,15 @@ def _assert_frozen_after_terminal(admitted: harness.AdmittedTree, view: RunView,
     assert view.answer is not None
     assert view.answer["outcome"] == "timed_out"
     assert view.answer["root_stop"] == "release_point"
-    writer_end = ends_of(run_dir)["writer"]
-    assert writer_end["cut"] in ("stopped", "not_started"), writer_end
+    # the writer is stopped, never ended on its own: its account is a stopped node's, and its
+    # `NodeEnd`, when the child wrote one, is cut. The root declares no release walk, so its release
+    # slice is 0 (B2-C1) and the kill follows the stop row at once (B2-C10): whether the child wrote
+    # the end first is a race with the kill (a loaded runner loses it), not part of this proof.
+    accounts = [view.answer["primary"], *view.answer["listed"]]
+    writer = [n for n in accounts if n["path"] == ["writer"]]
+    assert [n["listing"] for n in writer] in (["stopped"], ["unended"], ["not_started"]), writer
+    writer_end = ends_of(run_dir).get("writer")
+    assert writer_end is None or writer_end["cut"] in ("stopped", "not_started"), writer_end
     kinds = records.node_record(run_dir).kinds
     assert kinds[-1] == "timed_out"
     assert kinds.index("group_stop") < kinds.index("evidence_finalized")  # writers stopped first
