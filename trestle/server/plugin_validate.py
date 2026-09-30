@@ -10,6 +10,7 @@ from pathlib import Path
 
 from trestle.common import codes
 from trestle.common.plan.declared import DeclaredTree, DeclaredTreeInvalid
+from trestle.common.plan.vocabulary import SINGLE_LEVEL_CODES
 from trestle.common.pyenv import build_child_env, python_argv
 
 PACK_IMPORT_PREFIX = "trestle_packs"
@@ -36,8 +37,10 @@ class DeclarationInvalid(PublicationRefused):
 
 
 # The stable codes the throwaway child may report; anything else it prints is a plain failure.
+# That includes the registration refusals the single-level vocabulary names (B1-E1; L.SL-7.1).
 CHILD_REFUSAL_CODES = frozenset(
     {codes.PUBLICATION_DECLARATION_INVALID, codes.PUBLICATION_ENV_ARG_MISSING}
+    | {c for c in SINGLE_LEVEL_CODES if c.startswith("publication.")}
 )
 
 
