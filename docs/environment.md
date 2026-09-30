@@ -63,11 +63,19 @@ run with `execution.provenance_mismatch` until you republish.
 
 `describe_plugin(plugin_id="reference_env")` gives the input schema. There is no free-form field:
 `env` names the environment (the Compose project name; two runs with the same `env` exclude each
-other) and `services` selects services from a closed list of identifiers.
+other), and `services`, `tests` and `overrides` are sets of catalog identifiers.
 
 ```json
 {"env": "checkout-dev", "services": ["postgres"]}
 ```
 
-An identifier outside the list is refused before a run id exists, with the identifier and where the
-valid ones are listed.
+An identifier the catalog does not hold is refused before a run id exists, with
+`admission.unknown_identifier`, the identifier and where the valid ones are listed
+(`identifier_sets.services`, `.tests` or `.overrides` of the declared plan). A repeated identifier is
+refused by the schema with `admission.invalid_args`. Neither costs an effect: no container is
+created, no command is run.
+
+When the operator configures a Compose definition (`TRESTLE_ENV_COMPOSE_FILE`), the plugin derives
+the dependency closure of the selection from it before anything starts; a service the catalog does
+not hold, or a definition Compose cannot read, ends the run with the resolver's own code and no
+container created.

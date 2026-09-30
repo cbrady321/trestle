@@ -88,9 +88,8 @@ def test_the_port_map_binds_the_container_ports_and_the_execution_port(tmp_path:
         ports.ResourceCreate,
         ports.ResourceOwned,
         ports.ResourceSafeStart,
-        ports.ComposeResolver,
         ports.ExecutionPort,
-    }
+    }  # no Compose definition configured: no resolver bound
     assert bound[ports.ExecutionPort] is recorder
     assert bound[ports.ResourceReads] is bound[ports.ResourceCreate]
 
@@ -183,4 +182,4 @@ def test_the_compose_resolver_is_bound_to_the_reference_definition(tmp_path: Pat
     bound = _bind.reference_ports(
         make_env(tmp_path, **{_bind.COMPOSE_ENV: str(compose)}), execution=Recorder()
     )
-    assert bound[ports.ComposeResolver] is not None
+    assert ports.ComposeResolver in bound

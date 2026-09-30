@@ -51,14 +51,16 @@ from trestle.workflow.ports import ResourceCreate, ResourceOwned, ResourceReads,
 from trestle.workflow.units import ActContext, Acted, EffectFacets, ObserveContext, ReadFacets, Step
 from trestle.workflow.values import CheckResult, CreatedHandle, Observation, Verdict
 
-from trestle_env.catalog_v0 import CATALOG_V0
-from trestle_env.schema import ENV_ARG, SERVICES_ARG
+from trestle_env.catalog import Catalog, load_reference
+from trestle_env.schema import ENV_ARG, OVERRIDES_ARG, SERVICES_ARG, TESTS_ARG
 
 ROOT_UNIT: Final = "reference_env"
 POSTGRES_UNIT: Final = "backend.postgres"
 POSTGRES_SERVICE: Final = "postgres"  # the catalog identifier and the logical system
 POSTGRES_ROLE: Final = "postgres"  # the MC-B-10 image role the composition root resolves
-SERVICES_SET: Final = "services"  # the declared identifier set the `services` argument names
+SERVICES_SET: Final = "services"  # the declared identifier sets the request arguments name
+TESTS_SET: Final = "tests"
+OVERRIDES_SET: Final = "overrides"
 
 # Declared effects of a Docker-service leaf (V-14): one run-lifetime create and its owned release.
 UP: Final = "up"
@@ -195,6 +197,19 @@ class DockerServiceUnit:
         return Acted()
 
 
+CATALOG: Final[Catalog] = load_reference()
+"""The trusted catalog the tree's identifier sets are drawn from (`catalog/reference.json`)."""
+
+
+def identifier_sets(catalog: Catalog) -> dict[str, frozenset[str]]:
+    """The identifier set each request argument is bound to, from the catalog."""
+    return {
+        SERVICES_SET: frozenset(str(s.id) for s in catalog.services),
+        TESTS_SET: frozenset(str(t.id) for t in catalog.tests),
+        OVERRIDES_SET: frozenset(str(o.id) for o in catalog.overrides),
+    }
+
+
 ENTRY = WorkflowEntry(
     root=ROOT_UNIT,
     units={
@@ -204,10 +219,14 @@ ENTRY = WorkflowEntry(
             children=(ChildBinding(unit=POSTGRES_UNIT, params={}, needs=()),),
             concurrency=CONCURRENCY,
             budget=timedelta(seconds=ROOT_BUDGET_S),
-            # the services a request may name: admission refuses any other before a run id
-            # (B2-C2 (1)); v0 draws the set from the hard-coded catalog (TM-B4-3)
-            identifier_sets={SERVICES_SET: frozenset(CATALOG_V0)},
-            arg_bindings=(ArgBinding(SERVICES_ARG, SERVICES_SET, False),),
+            # what a request may name: admission refuses any other identifier before a run id
+            # (B2-C2 (1)) with UNKNOWN_IDENTIFIER, naming it and where the valid ones are listed
+            identifier_sets=identifier_sets(CATALOG),
+            arg_bindings=(
+                ArgBinding(SERVICES_ARG, SERVICES_SET, False),
+                ArgBinding(TESTS_ARG, TESTS_SET, False),
+                ArgBinding(OVERRIDES_ARG, OVERRIDES_SET, False),
+            ),
             env_key_field=ENV_ARG,
         ),
         POSTGRES_UNIT: DockerServiceUnit(POSTGRES_UNIT, POSTGRES_SERVICE, POSTGRES_READY),

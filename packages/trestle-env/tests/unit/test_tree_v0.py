@@ -23,7 +23,7 @@ from trestle.workflow.extract import extract_declared_tree
 from trestle.workflow.ports import ResourceSpec
 
 import trestle_env
-from trestle_env import catalog_v0, schema, tree
+from trestle_env import schema, tree
 
 PROJECT = "refproj"
 TREE_SOURCE = Path(tree.__file__)
@@ -132,10 +132,11 @@ def test_unknown_service_is_refused_at_compile_naming_it_and_where_valid_ones_ar
     assert isinstance(compiler.compile(extract_declared_tree(tree.ENTRY), known), AdmittedPlan)
 
 
-def test_catalog_v0_is_the_schemas_closed_set() -> None:
-    assert catalog_v0.CATALOG_V0 == tuple(member.value for member in schema.ServiceName)
-    assert tree.POSTGRES_SERVICE in catalog_v0.CATALOG_V0
-    assert len(catalog_v0.CATALOG_V0) == 1
+def test_the_identifier_sets_are_the_catalogs() -> None:
+    sets = tree.ENTRY.units[tree.ROOT_UNIT].identifier_sets  # type: ignore[union-attr]
+    assert sets == tree.identifier_sets(tree.CATALOG)
+    assert sets[tree.SERVICES_SET] == {str(s.id) for s in tree.CATALOG.services}
+    assert tree.POSTGRES_SERVICE in sets[tree.SERVICES_SET]
 
 
 def test_the_tree_module_binds_no_adapter() -> None:
