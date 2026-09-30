@@ -761,6 +761,97 @@ def cmd_open_questions(_args: argparse.Namespace) -> int:
     return 0
 
 
+# RV-1 and RV-2's paired automated presence checks (reviews.py, C.4): the disclosure docs an RV
+# review records, checked as tests. `kdoc --enforce` runs them; a missing node is a failed check.
+RV_PRESENCE_NODES = {
+    "RV-1": "tests/core/docs/test_cl_d1_disclosures.py",
+    "RV-2": "tests/proof/b/test_stub_labels.py::test_docs_state_real_tool_unverified",
+}
+
+
+def _run_presence(node: str) -> tuple[int, str]:
+    """One bounded pytest run of a presence node (the seam the self-test replaces)."""
+    proc = _run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", node])
+    return proc.returncode, (proc.stdout + proc.stderr)[-300:]
+
+
+def kdoc_problems(
+    k_items: list[dict[str, Any]],
+    *,
+    cwd: Path | None = None,
+    history: str | None = None,
+    row_problems: Callable[[list[str]], list[str]] = lambda rows: [],  # noqa: ARG005
+    presence: Callable[[str], tuple[int, str]] | None = None,
+) -> list[str]:
+    """`kdoc --enforce` (L.CZ.3, WR-PROOF-10): every K-item's landing merge has landed, every doc
+    file `k_doc_map` names for it was edited in that landing commit, and its rows are closed
+    (`row_problems`). `history` (`wr-ckpt/core..HEAD`) bounds the doc check to the landings inside
+    that range: an earlier landing was K-doc-checked by `fence merge` before it landed (CM-3), and
+    the landing-only read means no later edit could repair a miss, so this check never edits a doc.
+    The RV-1 and RV-2 presence checks run once. A K-item with no landing merge that is marked
+    conditional (K-16) is skipped."""
+    from tests.proof import fence as fence_mod
+    from tests.proof import kdoc as kdoc_mod
+    from tests.proof import trailers as trailers_mod
+
+    cwd = cwd or ROOT
+    presence = presence or _run_presence
+    problems: list[str] = []
+    if history is not None and fence_mod._git(cwd, "rev-list", "-n1", history).returncode != 0:  # noqa: SLF001
+        return [f"history range {history!r} is not readable in this checkout (fetch-depth 0, tags)"]
+    for k in k_items:
+        kid, merge = str(k["id"]), str(k.get("landing_merge") or "")
+        if not merge:
+            if "conditional" not in str(k.get("confirm", "")):
+                problems.append(f"{kid}: no landing merge and not conditional")
+            continue
+        landing = trailers_mod.landing(merge, cwd=cwd)
+        if landing is None:
+            problems.append(f"{kid}: landing merge {merge} has not landed")
+        elif history is None or trailers_mod.landing(merge, ref=history, cwd=cwd) is not None:
+            missing = kdoc_mod.missing_docs(merge, landing, cwd=cwd, k_items=[k])
+            if missing:
+                problems.append(
+                    f"{kid}: {merge} landed at {landing[:12]} without editing {missing}"
+                )
+        problems += [f"{kid}: {p}" for p in row_problems([str(r) for r in k.get("rows", [])])]
+    for rv, node in RV_PRESENCE_NODES.items():
+        rc, tail = presence(node)
+        if rc != 0:
+            problems.append(f"{rv} presence check {node} failed (exit {rc}): {tail.strip()[-160:]}")
+    return problems
+
+
+def cmd_kdoc(args: argparse.Namespace) -> int:
+    """`python -m tests.proof.meta kdoc [--history <range>] [--enforce]`: the report mode is
+    `kdoc.cmd_kdoc` (L.P0-0d.10); `--enforce` is `kdoc_problems` over the live checkout."""
+    from tests.proof import kdoc as kdoc_mod
+    from tests.proof import ledger as ledger_mod
+
+    if not getattr(args, "enforce", False):
+        return kdoc_mod.cmd_kdoc(args)
+    try:
+        world = live_world("ci")
+    except ledger_mod.VacuousLedgerError as exc:
+        print(f"error: {exc}")
+        return 1
+    rows = {str(r["id"]): r for r in tomllib.loads(ROW_OWNERS_PATH.read_text()).get("row", [])}
+
+    def row_problems(ids: list[str]) -> list[str]:
+        known = [rows[i] for i in ids if i in rows]
+        found = [f"{i} is not a row of row_owners.toml" for i in ids if i not in rows]
+        return found + audit_rows_problems(known, world.labels, world.clauses, world)
+
+    problems = kdoc_problems(
+        kdoc_mod.load_k_doc_map(), history=args.history, row_problems=row_problems
+    )
+    for problem in problems:
+        print(f"kdoc --enforce: {problem}")
+    if not problems:
+        print("kdoc --enforce: every K-item landed with its docs and closed rows")
+    return 1 if problems else 0
+
+
 def mypy_error_sites() -> list[str]:
     """`file:line` for every current `mypy trestle` error."""
     proc = _run([sys.executable, "-m", "mypy", "trestle"])
@@ -886,6 +977,7 @@ def build_parser() -> argparse.ArgumentParser:
     register_parser.add_argument("--final", action="store_true")
     kdoc_parser = sub.add_parser("kdoc")
     kdoc_parser.add_argument("--history", default=None)
+    kdoc_parser.add_argument("--enforce", action="store_true")
     drain_parser = sub.add_parser("drain-check")
     drain_parser.add_argument("--home", default=None)
     ckpt_parser = sub.add_parser("ckpt")
@@ -918,9 +1010,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "register":
         return cmd_register(args)
     if args.command == "kdoc":
-        from tests.proof import kdoc as kdoc_mod
-
-        return kdoc_mod.cmd_kdoc(args)
+        return cmd_kdoc(args)
     if args.command == "ckpt":
         return cmd_ckpt(args)
     if args.command == "drain-check":
