@@ -55,13 +55,14 @@ STOP_EFFECT = "stop"
 SPEC = ResourceSpec("marker", RealizationKind.AGENT_LAUNCHED_PROJECT, "marker-entry", None)
 
 # One CREATE + RUN target: at the published defaults B2-C2 (5) covers a release timeout of at most
-# 4 s (finalization margin 35 s; see the SV-3.4 return), so the fixture keeps it small.
+# 4 s (finalization margin 35 s; see the SV-3.4 return), so the fixture keeps it small. The wait
+# fits the budget with the release timeout (6 + 2 <= 8 s, L.SL-2.1's registration rule).
 DECLARATION = LeafDeclaration(
     unit=UNIT,
     flags=LoopFlags(Compose.LEAF, CompletionSource.OBSERVED, Repeat.SAFE),
     preconditions=(),
     postcondition="ready",
-    wait=WaitPolicy(timedelta(seconds=0.2), 1.0, timedelta(seconds=30)),
+    wait=WaitPolicy(timedelta(seconds=0.2), 1.0, timedelta(seconds=6)),
     resource_kind="marker",
     may_touch=frozenset({"marker"}),
     effects=(
