@@ -1,12 +1,12 @@
 """L.SV-3.4: admission compiles a depth-1 plan for every root and writes it into `spec.json`
 (MC-20); the plan digest joins run identity; clock publishes the reserve and the release slice;
-`write_admitted_run` is the post-refusal half (MC-B2-08) with the TM-B2-8 audit hook."""
+`write_admitted_run` is the post-refusal half (MC-B2-08). (The TM-B2-8 audit hook and its test
+were removed by L.TR-1.1.)"""
 
 from __future__ import annotations
 
 import hashlib
 import json
-import os
 from dataclasses import replace
 from pathlib import Path
 
@@ -202,26 +202,3 @@ def test_write_admitted_run_equals_admit_for_one_vertex(tmp_path: Path) -> None:
     # the idempotency record is written by both
     store = IdempotencyStore.open(kernel.home)
     assert store.lookup("key-1") is not None and store.lookup("key-2") is not None
-
-
-def test_write_admitted_run_records_admission_only_when_audit_set(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    kernel = _kernel(tmp_path, wf=support.workflow_source("wf"))
-    audit = tmp_path / "audit.ndjson"
-    monkeypatch.delenv("TRESTLE_ADMISSION_AUDIT", raising=False)
-    _admit(kernel, "wf")
-    assert not audit.exists()  # unset: no write, no other effect
-
-    monkeypatch.setenv("TRESTLE_ADMISSION_AUDIT", str(audit))
-    run_dir = _admit(kernel, "wf")
-    lines = [json.loads(line) for line in audit.read_text(encoding="utf-8").splitlines()]
-    assert len(lines) == 1  # exactly one line per admission
-    line = lines[0]
-    assert set(line) == {"run_dir", "vertex_count", "plugin", "pid", "nodeid"}
-    assert line["run_dir"] == str(run_dir)
-    assert line["vertex_count"] == len(_plan(run_dir).vertices) == 1
-    assert line["plugin"] == "wf" and line["pid"] == os.getpid()
-    assert line["nodeid"] == os.environ["PYTEST_CURRENT_TEST"]
-    _admit(kernel, "wf")
-    assert len(audit.read_text(encoding="utf-8").splitlines()) == 2
