@@ -11,7 +11,7 @@ globs         = ["trestle/common/fsutil.py", "trestle/common/outcome.py", "trest
                  "trestle/server/runs.py", "trestle/server/recovery.py", "trestle/server/project.py", "trestle/server/scheduler.py",
                  "trestle/server/main.py", "trestle/server/control.py", "trestle/wrapper/main.py", "trestle/wrapper/spawn.py",
                  "trestle/wrapper/reactor.py", "trestle/child/main.py", "trestle/query/fs.py", "trestle/query/catalog.py",
-                 "docs/agents.md", "docs/plugins.md", "docs/agent-console-mcp.md", "docs/install.md",
+                 "docs/agents.md", "docs/plugins.md", "docs/security.md", "tests/core/docs/test_cl_d1_disclosures.py", "docs/agent-console-mcp.md", "docs/install.md",
                  "docs/operator-sessions-telemetry.md", ".cursor/skills/trestle/SKILL.md", "pyproject.toml",
                  ".github/workflows/ci.yml", "tests/core/__init__.py", "tests/core/spine/**", "tests/core/tooling/__init__.py",
                  "tests/core/tooling/ck_drill.py", "tests/core/tooling/declines/__init__.py", "tests/core/tooling/declines/ck_8.py",
