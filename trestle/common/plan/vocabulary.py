@@ -78,6 +78,28 @@ RECORDED_WITH_REMEDIES = "publication.recorded_with_remedies"
 OWNED_REMEDY_ON_FOUND = "publication.owned_remedy_on_found"
 BUDGET_EXCEEDS_LEAF = "publication.budget_exceeds_leaf"
 
+# ---- tree publication refusals (V-11: the whole tree check sits at publication; L.TR-0.4)
+#
+# `UNIT_UNRESOLVED`, `DEPENDENCY_CYCLE` and `DECLARATION_CONFLICT` place their check at publication
+# for what the declaration alone decides (no snapshot is promoted, so no run id exists); admission
+# keeps its own spellings above as V-11's defensive second reach. `PLAN_PRECONDITION_UNCOVERED` at
+# publication is the root-entry eligibility refusal (OQ-31, `refuse_at_publication`) and the
+# cross-node coverage refusal (L.TR-1.5).
+
+PUBLICATION_UNIT_UNRESOLVED = "publication.unit_unresolved"
+PUBLICATION_DEPENDENCY_CYCLE = "publication.dependency_cycle"
+PUBLICATION_DECLARATION_CONFLICT = "publication.declaration_conflict"
+PUBLICATION_PLAN_PRECONDITION_UNCOVERED = "publication.plan_precondition_uncovered"
+
+TREE_PUBLICATION_CODES: frozenset[str] = frozenset(
+    {
+        PUBLICATION_UNIT_UNRESOLVED,
+        PUBLICATION_DEPENDENCY_CYCLE,
+        PUBLICATION_DECLARATION_CONFLICT,
+        PUBLICATION_PLAN_PRECONDITION_UNCOVERED,
+    }
+)
+
 SINGLE_LEVEL_CODES: frozenset[str] = frozenset(
     {
         DECLARATION_STALE,

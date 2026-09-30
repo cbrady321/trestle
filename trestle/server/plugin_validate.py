@@ -9,8 +9,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from trestle.common import codes
+from trestle.common.plan import declared as declared_format
 from trestle.common.plan.declared import DeclaredTree, DeclaredTreeInvalid
-from trestle.common.plan.vocabulary import SINGLE_LEVEL_CODES
+from trestle.common.plan.vocabulary import SINGLE_LEVEL_CODES, TREE_PUBLICATION_CODES
 from trestle.common.pyenv import build_child_env, python_argv
 
 PACK_IMPORT_PREFIX = "trestle_packs"
@@ -41,6 +42,7 @@ class DeclarationInvalid(PublicationRefused):
 CHILD_REFUSAL_CODES = frozenset(
     {codes.PUBLICATION_DECLARATION_INVALID, codes.PUBLICATION_ENV_ARG_MISSING}
     | {c for c in SINGLE_LEVEL_CODES if c.startswith("publication.")}
+    | TREE_PUBLICATION_CODES
 )
 
 
@@ -122,6 +124,7 @@ def validate_and_extract(
     entry: str | None = None,
     packages: tuple[str, ...] = (),
     env_arg: str | None = None,
+    root_eligibility: str | None = None,
 ) -> ValidationOutcome:
     """`validate_and_digest`, and the declared tree the child extracted from a workflow plugin's
     `WorkflowEntry` (MC-34). A refused extraction carries `code`
@@ -135,6 +138,12 @@ def validate_and_extract(
         argv += ["--env-arg", env_arg]
     for name in packages:
         argv += ["--package", name]
+    # OQ-31's variant is read here, at call time, and handed to the child (the server never
+    # imports plugin code, so the child cannot read the server's module attribute)
+    argv += [
+        "--root-eligibility",
+        root_eligibility if root_eligibility is not None else declared_format.ROOT_ELIGIBILITY,
+    ]
     try:
         proc = subprocess.run(
             argv,

@@ -1389,3 +1389,47 @@ docs = []
 due_checkpoint = "SL-8 (leaf L.SL-8.2)"
 direction = "additive"
 authorized_by = "plan-workflow-runtime.md:979 (MC-06 seeds admission.environment_busy); plans/a1-single-level.md L.SL-8.2 (DM-16; U7-1 routes the V-11 row)"
+
+# L.TR-0.4 (V-11, MC-34): the whole-tree check that the declaration alone decides sits at publication,
+# so a defective tree is refused there (no snapshot promoted, no run id) with the publication spelling of
+# each code. Admission keeps its own spellings as V-11's defensive second reach (L.TR-1.1).
+
+[[entry]]
+id = "ADD-code-publication-unit-unresolved"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.unit_unresolved"]
+docs = []
+due_checkpoint = "TR-0 (leaf L.TR-0.4)"
+direction = "additive"
+authorized_by = "interfaces/00-shared-vocabulary.md V-11 UNIT_UNRESOLVED (publication); plans/a2-tree.md L.TR-0.4 (DM-16, F-3, AM-15)"
+
+[[entry]]
+id = "ADD-code-publication-dependency-cycle"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.dependency_cycle"]
+docs = []
+due_checkpoint = "TR-0 (leaf L.TR-0.4)"
+direction = "additive"
+authorized_by = "interfaces/00-shared-vocabulary.md V-11 DEPENDENCY_CYCLE (publication); plans/a2-tree.md L.TR-0.4 (DM-16, F-3, AM-15)"
+
+[[entry]]
+id = "ADD-code-publication-declaration-conflict"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.declaration_conflict"]
+docs = []
+due_checkpoint = "TR-0 (leaf L.TR-0.4)"
+direction = "additive"
+authorized_by = "interfaces/00-shared-vocabulary.md V-1.2 and V-11 DECLARATION_CONFLICT (literal parameters at publication); plans/a2-tree.md L.TR-0.4 (DM-16, F-3, AM-15)"
+
+[[entry]]
+id = "ADD-code-publication-plan-precondition-uncovered"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.plan_precondition_uncovered"]
+docs = []
+due_checkpoint = "TR-0 (leaf L.TR-0.4)"
+direction = "additive"
+authorized_by = "plans/a2-tree.md L.TR-0.4 (OQ-31 refuse_at_publication variant) and L.TR-1.5 (cross-node coverage) (DM-16, F-3, AM-15)"

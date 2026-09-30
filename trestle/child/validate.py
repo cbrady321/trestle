@@ -18,15 +18,22 @@ import trestle.plugin as _plugin_package
 import trestle.workflow as _workflow_package
 from trestle.common import codes
 from trestle.common.fsutil import sha256_file
+from trestle.common.plan import declared as _declared
 from trestle.common.plan.declared import DeclaredTree
-from trestle.common.plan.vocabulary import SINGLE_LEVEL_CODES
+from trestle.common.plan.vocabulary import SINGLE_LEVEL_CODES, TREE_PUBLICATION_CODES
 from trestle.plugin.surface import is_trestle_plugin
 from trestle.workflow.declarations import WorkflowEntry
-from trestle.workflow.extract import ExtractionRefused, extract_declared_tree
+from trestle.workflow.extract import (
+    ExtractionRefused,
+    extract_declared_tree,
+    publication_refusal,
+)
 
 # The registration refusals (B1-E1; L.SL-7.1) the extractor may report: each is its own stable
 # `publication.*` code from the single-level vocabulary, never folded into declaration_invalid.
-PUBLICATION_REFUSAL_CODES = frozenset(c for c in SINGLE_LEVEL_CODES if c.startswith("publication."))
+PUBLICATION_REFUSAL_CODES = frozenset(
+    c for c in SINGLE_LEVEL_CODES if c.startswith("publication.")
+) | frozenset(TREE_PUBLICATION_CODES)
 
 FORBIDDEN_PREFIXES = (
     "trestle.server",
@@ -294,13 +301,17 @@ def _load_plugin(path: Path, entry: str | None = None) -> ModuleType:
     return module
 
 
-def declared_tree_of(module: ModuleType) -> DeclaredTree | None:
+def declared_tree_of(
+    module: ModuleType, root_eligibility: _declared.RootEligibility | None = None
+) -> DeclaredTree | None:
     """The declared tree of a workflow plugin (MC-34), or None for a plain plugin.
 
     A workflow plugin binds one module-level `WorkflowEntry` (B1-C8); the tree is extracted from
     it here, in the throwaway validator, because this is the only place plugin code is imported at
     publication. More than one entry, or an entry whose extraction fails, raises
-    `ExtractionRefused` (never a partial declaration)."""
+    `ExtractionRefused` (never a partial declaration), and so does a tree the declaration alone
+    shows to be unpublishable (`publication_refusal`, L.TR-0.4; `root_eligibility` is OQ-31's
+    variant, default the shipped one)."""
     entries = {id(v): v for v in vars(module).values() if isinstance(v, WorkflowEntry)}
     if not entries:
         return None
@@ -308,7 +319,13 @@ def declared_tree_of(module: ModuleType) -> DeclaredTree | None:
         raise ExtractionRefused(
             module.__name__, f"{len(entries)} WorkflowEntry objects; expected one"
         )
-    return extract_declared_tree(next(iter(entries.values())))
+    tree = extract_declared_tree(next(iter(entries.values())))
+    refusal = publication_refusal(
+        tree, root_eligibility if root_eligibility is not None else _declared.ROOT_ELIGIBILITY
+    )
+    if refusal is not None:
+        raise refusal
+    return tree
 
 
 class ValidationFailed(Exception):
@@ -321,6 +338,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--entry")
     parser.add_argument("--package", action="append", default=[])
     parser.add_argument("--env-arg")
+    parser.add_argument("--root-eligibility", choices=["refuse_at_publication", "admit_and_stop"])
     args = parser.parse_args(argv)
     path = Path(args.plugin)
     try:
@@ -332,7 +350,7 @@ def main(argv: list[str] | None = None) -> int:
         refusal = env_declaration_error(ports, args.env_arg, None) if ports else None
         if refusal is None:
             module = _load_plugin(path, args.entry)
-            tree = declared_tree_of(module)
+            tree = declared_tree_of(module, args.root_eligibility)
             refusal = env_declaration_error(ports, args.env_arg, tree)
         if refusal is not None:
             code, message = refusal
