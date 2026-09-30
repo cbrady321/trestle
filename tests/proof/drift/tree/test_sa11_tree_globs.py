@@ -106,9 +106,15 @@ def test_tree_globs_exclude_leave_targets(sa: str, tmp_path: Path) -> None:
 def test_tree_gate_order_encodes_merge_order(sa: str) -> None:
     cfg = fence_mod.load_fence()
     _lanes, gates = _tree(cfg)
+    # L.TR-6.fix5: the one prefix gate is the fix route of the landed bundle (its gates resolve only
+    # through Bundle-Merge markers): `wr/tree/<fix>` lands TR-6 again, as `WR-Fix: TR-6`
+    fix_gates = [g for g in gates if g.branch.endswith("/")]
+    assert [(g.branch, g.merge, g.requires_merge) for g in fix_gates] == [
+        ("wr/tree/", "TR-6", ["TR-5"])
+    ]
+    gates = [g for g in gates if g not in fix_gates]
     by_branch: dict[str, list[fence_mod.Gate]] = {}
     for gate in gates:
-        assert not gate.branch.endswith("/"), gate.branch
         by_branch.setdefault(gate.branch, []).append(gate)
     assert set(by_branch) == {BUNDLE_BRANCH, CKPT_BRANCH}
 
