@@ -18,7 +18,14 @@ return, write exactly one `NodeEnd`, and stay within the plan's measure:
 A path past the cap is reported as `Unbounded`: S-8's flip condition, escalate, never patch. The
 sweep also collects the (flags, condition, goal) rows `decide` was asked; it must reach every
 condition the model says the join produces for those flags (the SA-09 drift check reads
-`INPUTS` and `reachable_conditions`). SL leaves widen `INPUTS` (L.SL-4.1, L.SL-5.1, L.SL-6.1).
+`INPUTS` and `reachable_conditions`). SL leaves widen `INPUTS`: L.SL-6.1 adds the four re-advance
+fixtures of SL-4, SL-5 and SL-6 (transient_leaf: retry on declared codes; slow_converge_leaf and
+lagging_leaf: the wait policy's backoff; remedy_leaf: remedy grants with a cooldown), each swept
+over its own declaration, with the bound extended by the remedy budget (A1c2-10, HYBRID §3.4 (d)):
+
+* CONVERGE iterations gain, per declared remedy, attempts x (1 + ceil(total / poll_every));
+* waiting polls gain attempts x ceil(max_wait / poll_every) per declared remedy, and a remedy ticket
+  never exceeds its declared attempts on top of the leaf's own max_attempts.
 """
 
 from __future__ import annotations
@@ -58,17 +65,21 @@ from trestle.workflow.declarations import (
     EffectFacetClass,
     HostScopeRef,
     LeafDeclaration,
+    Lifetime,
     LoopFlags,
+    RemedyDeclaration,
     Repeat,
 )
 from trestle.workflow.units import Acted, Blocked, Failed, NoAction
 from trestle.workflow.values import (
+    Condition,
     Confirmation,
     ConfirmationStatus,
     CurrencyFact,
     Goal,
     Observation,
     RecordedResult,
+    RemedyGrant,
     Resend,
 )
 
@@ -112,6 +123,8 @@ class OneVertexInput:
     max_attempts: int
     slice_end_s: float
     release_timeout_s: float = RELEASE_TIMEOUT_S
+    remedies: tuple[RemedyDeclaration, ...] = ()
+    backoff: float = 1.0
 
     @property
     def params(self) -> Params:
@@ -137,16 +150,61 @@ class OneVertexInput:
             + self.max_attempts
             + waits
             + 2
+            + self.remedy_iterations
         )
+
+    @property
+    def remedy_iterations(self) -> int:
+        """The remedy budget: per declared remedy, attempts x (1 + ceil(total / poll_every))
+        (A1c2-10; HYBRID §3.4 (d))."""
+        return sum(
+            r.attempts * (1 + math.ceil(r.total.total_seconds() / self.poll_s))
+            for r in self.remedies
+        )
+
+    @property
+    def remedy_attempts(self) -> int:
+        return sum(r.attempts for r in self.remedies)
+
+    @property
+    def max_polls(self) -> int:
+        """The waits (polls and cooldowns) one run may spend: every attempt's whole wait, the
+        polls to the slice end, and each remedy attempt's wait plus its cooldown wait."""
+        return (
+            self.max_attempts * math.ceil(self.max_wait_s / self.poll_s)
+            + math.ceil(self.slice_end_s / self.poll_s)
+            + self.remedy_attempts * (math.ceil(self.max_wait_s / self.poll_s) + 1)
+        )
+
+    @property
+    def full_wait_polls(self) -> int:
+        """Polls one attempt spends waiting out `max_wait` on the wait policy's intervals
+        (`poll_every * backoff ** n`, V-14)."""
+        spent, n, interval = 0.0, 0, self.poll_s
+        while spent < self.max_wait_s:
+            spent += interval
+            interval *= self.backoff
+            n += 1
+        return n
 
     @property
     def release_cost(self) -> int:
         return 1 + math.ceil(self.release_timeout_s / self.poll_s)
 
 
-def _effects(completion: CompletionSource) -> tuple[Any, ...]:
+def _effects(completion: CompletionSource, repeat: Repeat) -> tuple[Any, ...]:
     if completion is CompletionSource.RECORDED:
         return (effect(RUN_EFFECT, EffectFacetClass.EVENT, release_timeout_s=None),)
+    if repeat is Repeat.ONCE:
+        # a ONCE leaf declares no release effect and its marker is durable (B1-E1, L.SL-7.1)
+        return (
+            effect(
+                kit.EFFECT,
+                EffectFacetClass.CREATE,
+                lifetime=Lifetime.DURABLE,
+                release_timeout_s=None,
+            ),
+        )
     return MARKER_EFFECTS
 
 
@@ -155,7 +213,7 @@ def _swept(id_: str, completion: CompletionSource, repeat: Repeat) -> OneVertexI
         return declaration(
             completion=completion,
             repeat=repeat,
-            effects=_effects(completion),
+            effects=_effects(completion, repeat),
             preconditions=("pre0",),
             retryable=frozenset({RETRYABLE}),
             max_attempts=MAX_ATTEMPTS,
@@ -175,14 +233,30 @@ def _swept(id_: str, completion: CompletionSource, repeat: Repeat) -> OneVertexI
 
 
 def fixture_declaration(name: str) -> LeafDeclaration:
-    """The `DECLARATION` a published fixture file declares (imported by path, never run)."""
+    """The declaration a published fixture file declares (imported by path, never run): its
+    `DECLARATION`, else the declaration of the unit its `ENTRY` walks."""
     spec = importlib.util.spec_from_file_location(f"_termination_fixture_{name}", FIXTURES / name)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    found = module.DECLARATION
+    found = (
+        module.DECLARATION
+        if hasattr(module, "DECLARATION")
+        else module.ENTRY.units[module.ENTRY.root].declare()
+    )
     assert isinstance(found, LeafDeclaration)
     return found
+
+
+def _full_wait_s(poll: float, backoff: float, max_wait: float) -> float:
+    """Seconds one attempt waits before its wait has elapsed: the wait policy's intervals
+    (`poll * backoff ** n`, V-14) run until their sum reaches `max_wait`, so the last one may
+    overshoot it (L.SL-5.1)."""
+    spent, interval = 0.0, poll
+    while spent < max_wait:
+        spent += interval
+        interval *= backoff
+    return spent
 
 
 def _fixture_input(name: str) -> OneVertexInput:
@@ -210,19 +284,33 @@ def _fixture_input(name: str) -> OneVertexInput:
         poll,
         max_wait,
         decl.max_attempts,
-        # room for every attempt's whole wait, so the sweep can reach the bound's polling class
-        decl.max_attempts * max_wait + 2 * poll,
+        # room for every attempt's whole wait (and every remedy attempt's wait and cooldown), so
+        # the sweep can reach the bound's polling class
+        decl.max_attempts * _full_wait_s(poll, decl.wait.backoff, max_wait)
+        + 2 * poll
+        + sum(
+            r.attempts
+            * (_full_wait_s(poll, decl.wait.backoff, max_wait) + r.cooldown.total_seconds())
+            for r in decl.remedies
+        ),
+        remedies=decl.remedies,
+        backoff=decl.wait.backoff,
     )
 
 
-# The swept leaf shapes. SL leaves add theirs (transient_leaf, slow_converge_leaf, lagging_leaf,
-# remedy_leaf: L.SL-4.1, L.SL-5.1, L.SL-6.1) with the bound extended by the remedy budget.
+# The swept leaf shapes: the four flag combinations and the published fixtures. The SL leaves'
+# re-advance paths are the last four (transient_leaf, slow_converge_leaf, lagging_leaf, remedy_leaf:
+# L.SL-4.1, L.SL-5.1, L.SL-5.3, L.SL-6.1), the bound extended by the remedy budget.
 INPUTS: dict[str, OneVertexInput] = {
     "observed-safe": _swept("observed-safe", CompletionSource.OBSERVED, Repeat.SAFE),
     "observed-once": _swept("observed-once", CompletionSource.OBSERVED, Repeat.ONCE),
     "recorded-safe": _swept("recorded-safe", CompletionSource.RECORDED, Repeat.SAFE),
     "recorded-once": _swept("recorded-once", CompletionSource.RECORDED, Repeat.ONCE),
     "spine_leaf": _fixture_input("spine_leaf.py"),
+    "transient_leaf": _fixture_input("transient_leaf.py"),
+    "slow_converge_leaf": _fixture_input("slow_converge_leaf.py"),
+    "lagging_leaf": _fixture_input("lagging_leaf.py"),
+    "remedy_leaf": _fixture_input("remedy_leaf.py"),
 }
 
 
@@ -260,10 +348,22 @@ RECORDED_SHAPES: dict[str, Observation] = {
 }
 
 
-def observation_scripts(completion: CompletionSource) -> dict[str, list[Observation]]:
+def observation_scripts(
+    completion: CompletionSource, remedies: tuple[RemedyDeclaration, ...] = ()
+) -> dict[str, list[Observation]]:
     """What `observe` answers on its n-th call (the last answer repeats): each shape held, and
-    each shape reached after the resource was absent twice (a resource that comes up later)."""
+    each shape reached after the resource was absent twice (a resource that comes up later). A leaf
+    that declares remedies also meets a resource that stays unready reporting each declared
+    trigger code (J-20 reads the observation's `code`, V-3.1), so a grant is reachable."""
     shapes = RECORDED_SHAPES if completion is CompletionSource.RECORDED else OBSERVED_SHAPES
+    if completion is CompletionSource.OBSERVED and remedies:
+        shapes = {
+            **shapes,
+            **{
+                f"selector-unready-{r.code}": _shape(selector_present=True, code=r.code)
+                for r in remedies
+            },
+        }
     scripts = {name: [shape] for name, shape in shapes.items()}
     if completion is CompletionSource.OBSERVED:
         first = shapes["absent"]
@@ -346,10 +446,27 @@ UNIT_ADVANCES: dict[str, Callable[..., Any]] = {
 }
 
 
-def advance_scenarios(completion: CompletionSource) -> list[str]:
+def _remedy_advance(base: Unit) -> Callable[..., Any]:
+    """The unit's `advance` under a remedy grant restarts the owned handle (the granted effect);
+    otherwise it is `base`'s (creates)."""
+
+    def advance(unit: Unit, params: Any, state: Any, effects: Any, ctx: Any) -> Any:
+        if state.remedy is not None and state.owned:
+            effects.owned(kit.ports.ResourceOwned).restart(state.owned[-1], state.remedy.effect)
+            return Acted()
+        return base._advance(unit, params, state, effects, ctx)
+
+    return advance
+
+
+def advance_scenarios(
+    completion: CompletionSource, remedies: tuple[RemedyDeclaration, ...] = ()
+) -> list[str]:
     names = [f"port-{name}" for name in MARKER_OUTCOMES]
     if completion is CompletionSource.RECORDED:
         names += ["port-raises", "port-applied-passed", "port-applied-failed"]
+    if remedies:  # the repair is confirmed, or the port declines it with a retryable code
+        names += ["remedy-applied", "remedy-not-applied"]
     return names + list(UNIT_ADVANCES)
 
 
@@ -397,6 +514,15 @@ def _build_run(
             port_ports = marker_ports(marker)
             base = marker_unit(marker, decl)
             unit = Unit(decl, observe, base._advance, base._release)
+    elif scenario.startswith("remedy-"):
+        declined = scenario == "remedy-not-applied"
+        marker = Marker(
+            restart_status=NOT_APPLIED if declined else APPLIED,
+            restart_code=RETRYABLE if declined else None,
+        )
+        port_ports = marker_ports(marker)
+        base = marker_unit(marker, decl)
+        unit = Unit(decl, observe, _remedy_advance(base), base._release)
     else:
         port_ports = {}
         marker = Marker()
@@ -447,14 +573,16 @@ class Sweep:
     conditions: set[str] = field(default_factory=set)
     rows: set[tuple[str, str, str, str, str]] = field(default_factory=set)
     ends: int = 0
+    remedy_tickets: int = 0
+    end_codes: set[str] = field(default_factory=set)
 
 
 def sweep_input(inp: OneVertexInput, tmp_path: Path) -> Sweep:
     """Drive the real loop for every (observation script x advance scenario) of `inp`."""
     out = Sweep()
     cap = inp.bound * 2 + 10
-    for s_name, script in observation_scripts(inp.flags.completion).items():
-        for scenario in advance_scenarios(inp.flags.completion):
+    for s_name, script in observation_scripts(inp.flags.completion, inp.remedies).items():
+        for scenario in advance_scenarios(inp.flags.completion, inp.remedies):
             out.runs += 1
             where = tmp_path / f"run{out.runs:04d}"
             where.mkdir()
@@ -467,15 +595,18 @@ def sweep_input(inp: OneVertexInput, tmp_path: Path) -> Sweep:
             # every run ends: exactly one NodeEnd per vertex (B1-C11)
             assert len(run.rig.ends()) == 1, label
             out.ends += 1
-            polls = sum(1 for w in run.rig.cancel.waits if w == timedelta(seconds=inp.poll_s))
+            out.remedy_tickets += sum(1 for t in run.rig.rows("issue") if t["remedy"] is not None)
+            out.end_codes |= {
+                str(end["code"]).removeprefix("execution.") for end in run.rig.ends() if end["code"]
+            }
+            polls = len(run.rig.cancel.waits)  # every CONVERGE wait: poll intervals and cooldowns
             # tickets of the node's own effects; the release pass's `stop` tickets are its own
             handles = sum(1 for t in run.rig.rows("issue") if t["effect"] != kit.STOP_EFFECT)
             release_steps = run.unit.releases + len(run.rig.sleeps)
             assert iterations <= inp.bound, (label, iterations, inp.bound)
-            assert polls <= inp.max_attempts * math.ceil(inp.max_wait_s / inp.poll_s) + math.ceil(
-                inp.slice_end_s / inp.poll_s
-            ), (label, polls)
-            assert handles <= inp.max_attempts, (label, handles)  # never past max_attempts
+            assert polls <= inp.max_polls, (label, polls, inp.max_polls)
+            # never past max_attempts per effect, plus the declared remedy attempts
+            assert handles <= inp.max_attempts + inp.remedy_attempts, (label, handles)
             assert release_steps <= inp.max_attempts * inp.release_cost, (label, release_steps)
             out.max_iterations = max(out.max_iterations, iterations)
             out.max_polls = max(out.max_polls, polls)
@@ -513,7 +644,7 @@ def test_run_tree_terminates_over_every_one_vertex_input(input_id: str, tmp_path
     swept = sweep_input(inp, tmp_path)
     # not vacuous: real paths of every length class ran, every condition the join produces was
     # asked of `decide` under CONVERGE, and the release pass ran
-    assert swept.runs >= 2 * len(advance_scenarios(inp.flags.completion))
+    assert swept.runs >= 2 * len(advance_scenarios(inp.flags.completion, inp.remedies))
     assert swept.ends == swept.runs
     assert swept.max_iterations >= 3
     missing = reachable_conditions(inp.flags) - swept.conditions
@@ -523,7 +654,13 @@ def test_run_tree_terminates_over_every_one_vertex_input(input_id: str, tmp_path
         assert swept.max_polls >= 1
         # a resource that never turns ready spends the whole wait, so the sweep reaches the bound's
         # polling class, not only the short paths
-        assert swept.max_polls >= inp.max_attempts * math.ceil(inp.max_wait_s / inp.poll_s) - 1
+        assert swept.max_polls >= inp.max_attempts * inp.full_wait_polls - 1
+    if inp.remedies:
+        # a remedy was granted, ticketed and (by the marker adversary) both confirmed and declined
+        assert (
+            swept.remedy_tickets >= 1 and swept.remedy_tickets <= swept.runs * inp.remedy_attempts
+        )
+        assert {"remedy_no_progress", "remedy_exhausted"} <= swept.end_codes
 
 
 # ------------------------------------------------------------------------------ planted defects
@@ -599,3 +736,63 @@ def test_bound_check_is_not_vacuous(tmp_path: Path) -> None:
     assert iterations > 3
     assert iterations <= inp.bound
     assert iterations > inp.bound // 4
+
+
+def test_planted_remedy_grant_that_spends_no_attempt_is_reported_unbounded(tmp_path: Path) -> None:
+    """S-8's flip condition for remedies (L.SL-6.1): a join that grants a remedy again and again
+    (the raw count never consulted) to a unit that answers each grant with a NoAction spends no
+    attempt, so the record changes but no ticket is ever issued; where the wait costs no time
+    either, nothing bounds the walk and the drive reports it unbounded. The real join ends the same
+    leaf at once (the second half)."""
+    inp = INPUTS["remedy_leaf"]
+    script = observation_scripts(inp.flags.completion, inp.remedies)[
+        f"selector-unready-{inp.remedies[0].code}"
+    ]
+    grant = RemedyGrant(inp.remedies[0].code, inp.remedies[0].effect, 1)
+    real_join = loop.join
+
+    def planted(terms: Any, observation: Any, record: Any, *rest: Any) -> Any:
+        verdict = real_join(terms, observation, record, *rest)
+        if verdict.condition.value == "satisfied" or verdict.code == codes.UNIT_RAISED:
+            return verdict
+        return replace(verdict, condition=Condition.UNSATISFIED, code=None, remedy=grant)
+
+    def declines(unit: Unit, params: Any, state: Any, effects: Any, ctx: Any) -> Any:
+        return NoAction("unit.declined_the_repair")
+
+    def build(where: Path) -> Run:
+        where.mkdir()
+        decl = inp.decl()
+        seen = 0
+
+        def observe(unit: Unit, params: Any, reads: Any, ctx: Any) -> Observation:
+            nonlocal seen
+            seen += 1
+            return script[min(seen - 1, len(script) - 1)]
+
+        marker = Marker()
+        base = marker_unit(marker, decl)
+        unit = Unit(decl, observe, declines, base._release)
+        rig = kit.build(
+            where,
+            unit,
+            ports=marker_ports(marker),
+            deadline_s=DEADLINE_S,
+            slice_end_s=inp.slice_end_s,
+        )
+        return Run(rig, unit)
+
+    def frozen(self: kit.RigCancel, timeout: Any) -> bool:
+        """A wait that costs no time: a grant costing no attempt either is bounded by nothing."""
+        self.waits.append(timeout)
+        return self.stop is not None
+
+    with mock.patch.object(loop, "join", planted), mock.patch.object(kit.RigCancel, "wait", frozen):
+        with pytest.raises(Unbounded):
+            drive(build(tmp_path / "planted"), inp.bound * 2 + 10)
+    # the real join grants nothing to a resource this node never created (V-3.1b: found, so
+    # J-14) and the same unit and script end the node at once, within the bound
+    calm = build(tmp_path / "calm")
+    assert drive(calm, inp.bound * 2 + 10) <= inp.bound
+    (end,) = calm.rig.ends()
+    assert end["code"] == codes.FOUND_UNHEALTHY
