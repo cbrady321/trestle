@@ -1,0 +1,131 @@
+# Core fossil-state manifest (L.J-CORE.1, CM-5 role 1; J-CORE condition (j)).
+# The S0 MANIFEST's producers (tests/fixtures/fossils/s0/MANIFEST.toml, P0, read only)
+# run by core code at the J-CORE candidate head, one state each. Same schema, producers,
+# `absent` flags and `s0_projection` (what the S0 reader must still project, d2) as s0;
+# ids carry a `core-` prefix because a state id may be declared in one MANIFEST only
+# (tests/proof/fossils.py load_states). Generated with
+#   python -m tests.proof.fossils generate --checkpoint core --states all --fossils-root <scratch>
+# over a scratch root holding only this band (so `--states all` cannot rewrite the s0
+# corpus), then copied here.
+
+[[state]]
+id = "core-succeeded"
+producer = "tests.proof.fossils:produce_succeeded"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "core-failed"
+producer = "tests.proof.fossils:produce_failed"
+absent = false
+s0_projection = { state = "failed", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "failed"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "core-created"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_created"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created"], meta_keys = [] }
+
+[[state]]
+id = "core-admitted"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_admitted"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted"], meta_keys = [] }
+
+[[state]]
+id = "core-started"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_started"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started"], meta_keys = [] }
+
+[[state]]
+id = "core-execution_ended"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_execution_ended"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started", "execution_ended"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "core-finalized_no_terminal"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_finalized_no_terminal"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "core-cancelled"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_cancelled"
+absent = false
+s0_projection = { state = "cancelled", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "cancelled"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "core-timed_out"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_timed_out"
+absent = false
+s0_projection = { state = "timed_out", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "timed_out"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "core-worker_exit"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_worker_exit"
+absent = false
+s0_projection = { state = "worker_exit", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "worker_exit"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "core-interrupted"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_interrupted"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started", "evidence_finalized", "interrupted"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "recovered", "result_state", "run_id"] }
+
+[[state]]
+id = "core-partial_limits"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_partial_limits"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "limit_exceeded", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "core-too_large"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_too_large"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "core-invalid_synthesized"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_invalid_synthesized"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "core-torn_tail"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_torn_tail"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "core-newline_less_tail"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_newline_less_tail"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "core-artifacts_present"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_artifacts_present"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "artifact_available", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "core-idempotency_keyed"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_idempotency_keyed"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "core-straddle"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_straddle"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started"], meta_keys = [] }
+
+[[state]]
+id = "core-crashed"
+producer = "pending"
+absent = true
+# K-13: a real run-ledger terminal kind (trestle/server/ledger.py
+# TERMINAL_KINDS) with no S0-fossil producer. `absent = true` states are
+# never pending (meta inventory skips them); their producer stays "pending".
