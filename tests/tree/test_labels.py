@@ -14,6 +14,8 @@ from argparse import Namespace
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from tests.proof import meta, register
 from tests.proof import trailers as trailers_mod
 from tests.proof import transcribe as transcribe_mod
@@ -160,7 +162,7 @@ def label_status(label: dict[str, Any], registrants: dict[str, list[Any]], lande
     return "unregistered"
 
 
-def test_every_label_registered_or_gated() -> None:
+def test_every_label_registered_or_gated(monkeypatch: pytest.MonkeyPatch) -> None:
     labels = _tree_labels()
 
     # -- planted: a label whose declared_by merge is on HEAD, with no registered test and not
@@ -186,8 +188,12 @@ def test_every_label_registered_or_gated() -> None:
 
     # -- real: over the real fragment at this HEAD. A merge is landed when its `WR-Merge:` carrier
     # is reachable; the collect-only registrant scan is run only when some tree merge is landed
-    # (before that every label is pending and there is nothing to look for)
+    # (before that every label is pending and there is nothing to look for). A HOST-venue label's
+    # registrant is a `host_only` node (CSC-9), which the root plugin deselects in every session
+    # unless `TRESTLE_HOST_GATE=proc`; the scan runs under that gate so such a node is seen as the
+    # registrant it is (nothing is run: the scan is collect-only)
     landed = {m for m in _merges(labels) if trailers_mod.landing(m) is not None}
+    monkeypatch.setenv("TRESTLE_HOST_GATE", "proc")
     registrants = register._label_registrants() if landed else {}  # noqa: SLF001
     statuses = {lb["id"]: label_status(lb, registrants, landed) for lb in labels}
     unregistered = sorted(lid for lid, st in statuses.items() if st == "unregistered")

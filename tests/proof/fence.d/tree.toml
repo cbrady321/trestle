@@ -125,6 +125,11 @@ branch         = "wr/tree-bundle/tree"
 merge          = "TR-6"
 requires_merge = ["TR-5"]
 
+[[gate]]                     # L.TR-6.fix5: the fix route of the landed tree bundle. The bundle gates above
+branch         = "wr/tree/"  # resolve only through their Bundle-Merge markers (resolve_bundle), which a branch cut
+merge          = "TR-6"      # from the landed base cannot carry, so a post-landing fix to a tree merge rides an
+requires_merge = ["TR-5"]    # ordinary `wr/tree/<fix>` branch; TR-6 is landed, so it lands as `WR-Fix: TR-6`.
+
 [[gate]]                     # never bundled (a checkpoint id: match_gates refuses it in a bundle)
 branch         = "wr/tree-ckpt/j-slice-a"
 merge          = "J-SLICE-A"
