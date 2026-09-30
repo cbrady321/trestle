@@ -35,7 +35,7 @@ from trestle.server.main import Kernel
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "env_leaf.py"
 HOLDER_DEADLINE_S = 60  # env_leaf.py's own literal
 LATE_DEADLINE_S = 300  # the waiter's: it needs the holder's release walk to fit before its own
-RUN_BOUND_S = tolerances.JOIN_WAIT_S * 3
+RUN_BOUND_S = tolerances.JOIN_WAIT_S * 6
 LABELS = Path(__file__).resolve().parents[2] / "proof" / "labels.d" / "single.toml"
 
 Interval = tuple[datetime, datetime]

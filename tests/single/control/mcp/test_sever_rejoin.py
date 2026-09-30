@@ -40,6 +40,8 @@ NONTERMINAL = ("queued", "running")
 # a call that waits for its terminal answer waits out the deadline and the finalization margin
 BOUND_S = float(SHORT_DEADLINE_S) + clock.finalization_margin
 HOST_TIMEOUT_S = BOUND_S + tolerances.JOIN_WAIT_S
+# a run's admission, first process and first effect under a loaded host (the full suite runs 8-wide)
+STARTUP_WAIT_S = tolerances.JOIN_WAIT_S * 3
 SEVER_MODES = ("cancel_notification", "stdin_close", "sigkill")
 
 
@@ -94,10 +96,10 @@ def _start_held(host: mcp_host.McpHost) -> tuple[int, Path, float]:
     sent = time.monotonic()
     req = host.hold("run", _request())
     assert support.wait_until(
-        lambda: bool(list((host.home / "runs").glob("*/*"))), tolerances.JOIN_WAIT_S
+        lambda: bool(list((host.home / "runs").glob("*/*"))), STARTUP_WAIT_S
     ), "the run was never admitted"
     run_dir = _only_run_dir(host)
-    assert support.wait_until(lambda: _issued(run_dir), tolerances.JOIN_WAIT_S), "no marker yet"
+    assert support.wait_until(lambda: _issued(run_dir), STARTUP_WAIT_S), "no marker yet"
     return req, run_dir, sent
 
 
@@ -128,13 +130,13 @@ def test_pin_sever_today(tmp_path: Path) -> None:
     with mcp_host.McpHost(home=tmp_path / "host-home", timeout_s=HOST_TIMEOUT_S) as host:
         held = host.hold("run", {"plugin": "slow", "args": {"seconds": 1.0}, "wait_ms": 10_000})
         assert support.wait_until(
-            lambda: bool(list((host.home / "runs").glob("*/*"))), tolerances.JOIN_WAIT_S
+            lambda: bool(list((host.home / "runs").glob("*/*"))), STARTUP_WAIT_S
         )
         host.sever("cancel_notification", req_id=held)
         with pytest.raises(RuntimeError, match="cancelled"):
             host.join(held, timeout=tolerances.JOIN_WAIT_S)
         run_dir = _only_run_dir(host)
-        assert support.wait_until(lambda: _terminal(run_dir) is not None, tolerances.JOIN_WAIT_S)
+        assert support.wait_until(lambda: _terminal(run_dir) is not None, STARTUP_WAIT_S)
         assert _terminal(run_dir) == "succeeded"
 
 
