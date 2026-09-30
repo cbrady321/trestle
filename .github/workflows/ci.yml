@@ -179,7 +179,9 @@ jobs:
             packages/trestle-env/pyproject.toml
       - run: pip install -e ".[dev,packs,env]"
       - run: python -m tests.proof.guards clean-path --github-env
-      - run: pytest -q -m spine
+      # L.CZ.8: the junit rides with this job's results, so the `ckpt` job (J-ROOT's root.py) reads it
+      # beside them and holds the gate to its 15-minute budget (tests/proof/selftest/spine_budget_check.py).
+      - run: pytest -q -m spine --junitxml=tests/proof/results/spine-junit.xml
         env:
           TRESTLE_PROOF_GATE: ci-spine
       - uses: actions/upload-artifact@v4
