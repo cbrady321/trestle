@@ -271,6 +271,8 @@ COMPILE_REQUESTS: dict[str, dict[str, Any]] = {
     "lease_pair": {"env": "dev", "env_b": "dev"},
     "slice_coop": {"env": "dev"},
     "failure_dependents": {"env": "dev"},
+    "exception_branch": {"env": "dev"},
+    "readiness_sibling": {"env": "dev"},
 }
 
 # What MC-23 says of each ground: a refusal code, or None when the declaration alone compiles
