@@ -23,3 +23,9 @@ merge = "TR-L"
 class = "transparent"
 evidence = "tests/tree/joins/test_j_trl.py::test_trl_rollback_class_consistent"
 authorized_by = "L.TR-L.11: every recorded TR-L d2 run (readers J-SINGLE head and the J-CORE merge base) exits 0 over the tree-trl fossils, so rollback past the lift needs no drain (tests/tree/joins/d2_outcomes.toml)"
+
+[[boundary]]
+merge = "TR-5"
+class = "transparent"
+evidence = "tests/tree/joins/test_j_trl.py::test_tr5_rollback_class_consistent"
+authorized_by = "L.TR-5.4: every recorded TR-5 d2 run (readers J-SINGLE head and the J-CORE merge base) exits 0 over the tree-tr5 fossils, so rollback past the ChoiceNode lift needs no drain (tests/tree/joins/d2_outcomes.toml)"

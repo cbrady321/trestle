@@ -302,7 +302,7 @@ gets no signal at all; its answer reports the stop as unconfirmed.
 
 A workflow plugin may declare a **tree**: a root that runs several children, each child a leaf or a
 group with its own children, ordered by `needs` (a child starts only after the children it needs
-are done). The root is an `AllDeclaration` (every child must succeed); `plugins.md` has a worked
+are done). The root is an `AllDeclaration` (every child must succeed) or a `ChoiceNode` (one alternative is selected and run); `plugins.md` has a worked
 example ([Composite workflows](plugins.md#composite-workflows)). You run a tree exactly like any
 other plugin: `run(plugin="…", args={…}, wait_ms=<above zero>, completion="terminal")` admits the
 whole tree as **one run** with **one run id**, and returns one answer for all of it.
@@ -327,9 +327,14 @@ whole tree as **one run** with **one run id**, and returns one answer for all of
   could satisfy may be published as a root is undecided. What is shipped is `admit_and_stop`: such
   a root is admitted and stopped by the loop's own in-node refusal before any effect. That is the
   pre-existing in-node stop, not a decision on the question.
-- **`ChoiceNode` roots are still refused.** A tree whose root (or any node) is a `ChoiceNode` is
-  refused before any run id with `admission.plan_multi_vertex_unsupported` until its selection
-  pass lands; a refusal is not a run.
+- **`ChoiceNode` roots select one alternative.** A root (or any node) may be a `ChoiceNode`: the
+  loop observes every eligible alternative before the first effect, picks the first one that is
+  present (else the declared `fallback`), and records the choice and the plan identity before any
+  effect record. The same inputs pick the same alternative; an alternative the choice left out is
+  `not_started` in the answer and in its child view. A condition seen at selection (a drifted
+  gate, a dependent whose route the chosen alternative cannot reach) or in a node (an absent
+  instance, a missing toolchain) stops that node with one class and a code that names the
+  identifier. `admission.plan_multi_vertex_unsupported` is retired: no path produces it any more.
 
 The refusal and stop codes a tree adds (none has a `run_id` unless it is an `execution.*` code on a
 started run):

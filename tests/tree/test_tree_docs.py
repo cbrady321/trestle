@@ -112,11 +112,17 @@ def test_open_questions_disclosed() -> None:
     assert "pre-existing in-node stop, not a decision" in flat
 
 
-def test_choice_root_still_refused_is_documented() -> None:
-    """The docs keep saying a `ChoiceNode` root is refused (until the TR-5 selection pass)."""
+def test_choice_root_admitted_and_code_retired_is_documented() -> None:
+    """The docs say a `ChoiceNode` root is admitted (L.TR-5.3) and that
+    `admission.plan_multi_vertex_unsupported` is retired: still a defined code, no producer."""
     for doc in (AGENTS, PLUGINS):
         flat = " ".join(doc.read_text(encoding="utf-8").split())
-        assert "ChoiceNode" in flat and "admission.plan_multi_vertex_unsupported" in flat, doc.name
+        assert "ChoiceNode" in flat, doc.name
+        assert "admission.plan_multi_vertex_unsupported" in flat and "retired" in flat, doc.name
+        assert "still refused" not in flat and "until its selection" not in flat, doc.name
+    assert (
+        codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED == "admission.plan_multi_vertex_unsupported"
+    )
 
 
 def _example() -> str:

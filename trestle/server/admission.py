@@ -18,7 +18,6 @@ from trestle.common.fsutil import atomic_write_json, fsync_dir
 from trestle.common.ids import generate_run_id
 from trestle.common.plan import carving, compiler
 from trestle.common.plan.compiler import AdmittedPlan
-from trestle.common.plan.declared import ROOT_PATH
 from trestle.common.redact import redact_args, secret_values
 from trestle.common.types import (
     AdmitRequest,
@@ -193,13 +192,6 @@ class Admission:
         planned = plan_for_admission(snap, req, deadline_s)
         if isinstance(planned, AdmitResultRefused):
             return planned
-        # TM-B2-1 (MC-B3-03 order): a valid ChoiceNode root is still refused, after every
-        # specific refusal above and still before any run id exists (L.TR-L.1 lifted the refusal
-        # for an AllDeclaration tree; L.TR-5.3 removes this call, register entry
-        # `multi-vertex-refusal`, phase `choice-only`).
-        composite = multi_vertex_refusal(snap)
-        if composite is not None:
-            return composite
         busy = self._environment_busy(planned, deadline_s)
         if busy is not None:
             return busy
@@ -257,33 +249,6 @@ def _plan_refusal(refusal: compiler.Refusal) -> AdmitResultRefused:
         outcome=RequestOutcome(
             code=refusal.code,
             message=" ".join(parts)[: compiler.REFUSAL_TEXT_MAX],
-            retryable=False,
-            origin="admission",
-        ),
-    )
-
-
-def multi_vertex_refusal(snap: PluginSnapshot) -> AdmitResultRefused | None:
-    """TM-B2-1 (register entry `multi-vertex-refusal`, phase `choice-only`), the one home of the
-    refusal (DM-07): a declared root that is a `ChoiceNode` with alternatives is refused
-    `admission.plan_multi_vertex_unsupported`. An `AllDeclaration` tree of any size is admitted
-    (L.TR-L.1). Decided on the declaration alone, after `plan_for_admission` has compiled the
-    whole tree (a defective tree gets its own code, L.TR-1.1); `plan_for_admission` and
-    `write_admitted_run` (the harness's path, MC-B2-08) never refuse a composite. A plain plugin,
-    a leaf root and an `AllDeclaration` root are not refused."""
-    declared = load_declared_tree(snap)
-    if declared is None:
-        return None
-    root = declared.nodes[ROOT_PATH]
-    if root["compose"] != "choice" or not root["choice"]["alternatives"]:
-        return None
-    return AdmitResultRefused(
-        tag="refused",
-        outcome=RequestOutcome(
-            code=codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED,
-            message=(
-                f"a workflow root with more than one vertex is not supported yet: {snap.plugin}"
-            ),
             retryable=False,
             origin="admission",
         ),

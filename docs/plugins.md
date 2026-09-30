@@ -363,8 +363,9 @@ def release(ctx: Context, env: str = "dev") -> dict[str, str]:
 ```
 <!-- /tree-example -->
 
-A `ChoiceNode` root is refused at admission (`admission.plan_multi_vertex_unsupported`) until its
-selection pass lands; an `AllDeclaration` root is admitted. The agent-facing behaviour (one
+An `AllDeclaration` root and a `ChoiceNode` root are both admitted (the loop selects one alternative
+of a `ChoiceNode` from what it observes before the first effect). The wire code
+`admission.plan_multi_vertex_unsupported` stays defined but is retired: nothing produces it. The agent-facing behaviour (one
 answer, child views, cancel addressed to the root) is in [`agents.md`](agents.md#composite-workflows-trees).
 
 ## Workflow packs

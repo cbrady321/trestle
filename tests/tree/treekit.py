@@ -24,6 +24,7 @@ from trestle.workflow import ports
 from trestle.workflow.declarations import (
     AllDeclaration,
     ChildBinding,
+    ChoiceNode,
     CompletionSource,
     Compose,
     EffectFacetClass,
@@ -273,7 +274,7 @@ class TreeRig:
 
 def tree_rig(
     tmp_path: Path,
-    root: AllDeclaration | kit.Unit,
+    root: AllDeclaration | ChoiceNode | kit.Unit,
     units: Mapping[str, object],
     marker: PathMarker | None = None,
     *,
@@ -286,7 +287,7 @@ def tree_rig(
     """Admit (compile, carve) `root` over `units` and build the loop's rig around it: the same
     plan is what admission would write and what the loop walks."""
     marker = marker if marker is not None else PathMarker()
-    root_name = root.unit if isinstance(root, AllDeclaration) else root.decl.unit
+    root_name = root.unit if isinstance(root, AllDeclaration | ChoiceNode) else root.decl.unit
     entry = WorkflowEntry(
         root=root_name,
         units={root_name: root, **units},
@@ -421,14 +422,14 @@ def rig_of_entry(
     for name, unit in entry.units.items():
         if name == entry.root:
             continue
-        if isinstance(unit, (AllDeclaration,)) or keep_units:
+        if isinstance(unit, AllDeclaration | ChoiceNode) or keep_units:
             units[name] = unit
         elif behaviour is not None and name in behaviour:
             units[name] = behaviour[name]
         else:
             declared = unit.declare()  # type: ignore[attr-defined]
             units[name] = leaf_unit(name, declaration=declared)
-    if not isinstance(root, AllDeclaration):  # a one-vertex plan: the leaf is the root
+    if not isinstance(root, AllDeclaration | ChoiceNode):  # a one-vertex plan: the leaf is the root
         root = (
             behaviour[entry.root]
             if behaviour and entry.root in behaviour
