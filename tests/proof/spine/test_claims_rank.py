@@ -335,6 +335,9 @@ def test_durable_is_never_released_vacuous_without_a_durable_ticket(advanced: Ra
     assert durable_never_released(advanced.ledger, advanced.lane).vacuous
 
 
+@pytest.mark.proves(
+    "WR-OWN-2", "WR-OWN-2:A-found-unreachable-from-release-set", "A", "single", "PROC", "CI"
+)
 def test_no_found_handle_in_any_release_set(skipped: Ran) -> None:
     """A found instance satisfies the postcondition and is left exactly as it was: no claim, no
     release, and the port still reports it there after the run."""
