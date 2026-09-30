@@ -230,3 +230,73 @@ def test_p7_local_branch_ahead_of_pr_head_refused(rig):
     exit_code, _msg = _merge(rig)
     assert exit_code == fence_mod.FenceMergeExit.LANDED
     assert local_head != rig["head"]
+
+
+# --- the landing trailer kind (L.P0-0d.30) -----------------------------------
+
+
+def _land_id_twice(rig, merge_id: str) -> tuple[str, str]:
+    """Land `merge_id` on a first branch, then again on a second branch cut from the new
+    master; the two landing commits' subjects."""
+    first_cfg = fence_mod.FenceConfig(
+        leave=[],
+        record_exempt=[],
+        phases={},
+        lanes=rig["cfg"].lanes,
+        gates=[fence_mod.Gate(branch="wr/x/m1", merge=merge_id)],
+    )
+    code, msg = _merge(rig, cfg=first_cfg)
+    assert code == fence_mod.FenceMergeExit.LANDED, msg
+    lane = rig["lane"]
+    _sh(lane, "fetch", "-q", "origin")
+    _sh(lane, "checkout", "-q", "-b", "wr/x/m2", "origin/master")
+    (lane / "a" / "second.txt").write_text("y")
+    _sh(lane, "add", "a/second.txt")
+    _sh(lane, "commit", "-q", "-m", "second landing's change")
+    _sh(lane, "push", "-q", "origin", "HEAD:refs/heads/wr/x/m2")
+    head = _sh(lane, "rev-parse", "HEAD")
+    second_cfg = fence_mod.FenceConfig(
+        leave=[],
+        record_exempt=[],
+        phases={},
+        lanes=rig["cfg"].lanes,
+        gates=[fence_mod.Gate(branch="wr/x/m2", merge=merge_id)],
+    )
+    code, msg = _merge(rig, cfg=second_cfg, branch="wr/x/m2", expect_sha=head, pr_head_sha=head)
+    assert code == fence_mod.FenceMergeExit.LANDED, msg
+    subjects = _sh(rig["origin"], "log", "--first-parent", "--format=%s", "-2", "master")
+    newest, oldest = subjects.splitlines()
+    return oldest, newest
+
+
+def test_a_checkpoint_id_lands_again_as_wr_merge_and_newest_follows(rig, monkeypatch):
+    """CM-5's failure exit: a NEW carrier of the same checkpoint id is a second
+    `WR-Merge`, never a `WR-Fix`, so `trailers.newest` (what CI `ckpt` acts on) finds it."""
+    from tests.proof import trailers as trailers_mod
+
+    monkeypatch.setattr(fence_mod, "ckpt_succeeded", lambda *a, **kw: False)
+    first, second = _land_id_twice(rig, "J-CORE")
+    assert (first, second) == ("WR-Merge: J-CORE", "WR-Merge: J-CORE")
+    _sh(rig["runner"], "fetch", "-q", "origin")
+    ref = "origin/master"
+    old = trailers_mod.landing("J-CORE", ref=ref, cwd=rig["runner"])
+    new = trailers_mod.newest("J-CORE", ref=ref, cwd=rig["runner"])
+    assert old and new and old != new
+    assert new == _sh(rig["runner"], "rev-parse", ref)
+    history = fence_mod.check_history(f"{ref}~2..{ref}", rig["runner"])
+    assert history.ok, history.message
+
+
+def test_a_product_id_still_lands_again_as_wr_fix(rig):
+    first, second = _land_id_twice(rig, "M1")
+    assert (first, second) == ("WR-Merge: M1", "WR-Fix: M1")
+
+
+def test_landing_trailer_kind_rule(rig):
+    runner = rig["runner"]
+    assert fence_mod.landing_trailer_kind("J0", "origin/master", runner) == "WR-Merge"
+    assert fence_mod.landing_trailer_kind("M1", "origin/master", runner) == "WR-Merge"
+    _sh(runner, "commit", "-q", "--allow-empty", "-m", "WR-Merge: J-SINGLE")
+    _sh(runner, "commit", "-q", "--allow-empty", "-m", "WR-Merge: M1")
+    assert fence_mod.landing_trailer_kind("J-SINGLE", "HEAD", runner) == "WR-Merge"
+    assert fence_mod.landing_trailer_kind("M1", "HEAD", runner) == "WR-Fix"
