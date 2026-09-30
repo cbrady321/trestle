@@ -12,8 +12,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import STUBS, load_stub
 from tests.proof import tolerances
+
+from grant.conftest import STUBS, load_stub
 
 
 @pytest.fixture

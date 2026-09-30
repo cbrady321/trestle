@@ -13,11 +13,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import load_stub
 from tests.proof.suites.ports import families
 from trestle.workflow.declarations import EffectFacetClass
 from trestle.workflow.values import ConfirmationStatus, FoundRef
 
+from grant.conftest import load_stub
 from trestle_packs.grant import DEMO_CREDENTIAL_KIND, GRANT_ISSUER_UNREACHABLE, DemoGrant
 from trestle_packs.grant import demo as demo_module
 

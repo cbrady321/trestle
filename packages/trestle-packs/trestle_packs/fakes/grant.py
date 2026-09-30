@@ -3,14 +3,18 @@
 Stdlib only, like its siblings (a fake needs no `trestle` install): the values it returns carry the
 field names of the B3 types they stand for (`GrantObservation`, `ConsumerCurrency`,
 `Confirmation`), and a release descriptor is its wire mapping. `FakeGrant` implements `GrantReads`
-and `GrantRefresh` over an in-memory world: one demo identity, the ordered generations its issuer
-has issued, an expiry, and consumers each holding one generation. No secret exists in it: a
-consumer holds a generation NAME and the only credential-shaped string, `secret_values()`, is what
-the never-capture proofs search for (it is never returned by any member).
+and `GrantRefresh` (and, from L.RB-9.2, `GrantDelivery`) over an in-memory world: one demo identity,
+the ordered generations its issuer has issued, an expiry, and consumers each holding one
+generation. No secret exists in it: a consumer holds a generation NAME and the only
+credential-shaped string, `secret_values()`, is what the never-capture proofs search for (it is
+never returned by any member).
 
 World controls the conformance suite uses (never members of the port): `plant_consumer`, `advance`
 (the issuer moves to a new generation behind the port's back), `set_interactive`, `set_reachable`,
-`current_generation`, `expires_at`, `secret_values`.
+`current_generation`, `expires_at`, `secret_values`, and for delivery `channel_generation` (what
+the consumer's mounted file holds), `incarnation` (changes only when the consumer is recreated or
+restarted, which `deliver` never does), `recreate` and `environment` (a consumer's environment: it
+never holds a credential).
 """
 
 from __future__ import annotations
@@ -58,6 +62,7 @@ class FakeGrant:
         self._interactive = False
         self._reachable = True
         self._consumers: dict[str, str] = {}
+        self._incarnations: dict[str, int] = {}
         self._nonce = "fake-nonce-0000"
         self.refreshes = 0
         self.advance()
@@ -88,6 +93,21 @@ class FakeGrant:
         """A consumer named `selector` holding `generation` (default: the current one; a name the
         issuer never issued is allowed)."""
         self._consumers[selector] = generation or self.current_generation()
+        self._incarnations.setdefault(selector, 1)
+
+    def channel_generation(self, selector: str) -> str | None:
+        """What the consumer's mounted credentials file holds (None: no such consumer)."""
+        return self._consumers.get(selector)
+
+    def incarnation(self, selector: str) -> int:
+        return self._incarnations[selector]
+
+    def recreate(self, selector: str) -> None:
+        """The consumer is recreated (a fresh instance): how the world tells it from a refresh."""
+        self._incarnations[selector] += 1
+
+    def environment(self, selector: str) -> dict[str, str]:
+        return {"PATH": "/usr/bin"}  # a consumer's environment: never a credential
 
     def secret_values(self) -> tuple[str, ...]:
         return (self._nonce, *(f"demo-token:{g}:{self._nonce}" for g in self._issued))
@@ -128,7 +148,9 @@ class FakeGrant:
 
     # ------------------------------------------------------------------ GrantRefresh
 
-    def release_descriptor(self, call: Any) -> dict[str, Any]:
+    def release_descriptor(self, call: Any) -> Any:
+        if call.member == "deliver":  # an owned member's descriptor is the handle's own (B3-C3)
+            return call.arguments["consumer"].release
         if call.member != "refresh":
             raise ValueError(f"the demo grant port has no effect {call.member!r} (B3-C11)")
         return durable("host")  # a SafeStartFacet member is always Durable (B3-C3)
@@ -149,3 +171,18 @@ class FakeGrant:
         self.advance()
         self.refreshes += 1
         return Confirmation(ConfirmationStatus.APPLIED, None, self.identity)
+
+    # ------------------------------------------------------------------ GrantDelivery
+
+    def deliver(self, consumer: Any, ticket: Any) -> Confirmation:
+        """Refresh the consumer's channel in place: same instance, the current generation."""
+        if not hasattr(consumer, "release") or not hasattr(consumer, "lineage"):
+            raise ValueError("deliver takes the owned handle of the consumer, nothing else")
+        if _value(ticket.facet) != "owned":
+            raise ValueError("deliver is an OWNED effect: its ticket must say so (B3-C11)")
+        if consumer.selector not in self._consumers:
+            return Confirmation(ConfirmationStatus.NOT_APPLIED, None, None)  # no such channel
+        if not self._reachable:
+            return Confirmation(ConfirmationStatus.NOT_APPLIED, GRANT_ISSUER_UNREACHABLE, None)
+        self._consumers[consumer.selector] = self.current_generation()
+        return Confirmation(ConfirmationStatus.APPLIED, None, consumer.selector)

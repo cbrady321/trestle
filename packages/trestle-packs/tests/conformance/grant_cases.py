@@ -1,7 +1,9 @@
-"""The Demo Credential Serving family's read and refresh cases (L.RB-9.1; B3-C8, B3-C9, B3-C11,
-B3-C17, B3-C19, B3-E1, B3-E4, WR-EVID-12, MC-B-06).
+"""The Demo Credential Serving family's cases: reads and refresh (L.RB-9.1; B3-C8, B3-C9, B3-C11,
+B3-C17, B3-C19, B3-E1, B3-E4, WR-EVID-12, MC-B-06) and delivery (L.RB-9.2; B3-C11, B3-C3,
+WR-ENV-13).
 
-Registered through the suite core's `register_family` (L.SV-5.15) as family `grant` and run,
+Registered through the suite core's `register_family` (L.SV-5.15) as families `grant` (reads and
+refresh) and `grant_delivery` (delivery through a mounted refreshable file) and run,
 UNMODIFIED, by `run_family` against every implementation: the stdlib `FakeGrant` and the demo
 adapter over the stub issuer (WR-PROOF-4). A case reaches the implementation only through the
 port's members and the implementation factory's `Implementation.extras`, its fixture contract:
@@ -18,6 +20,19 @@ port's members and the implementation factory's `Implementation.extras`, its fix
 - the implementation's `reach.issuer_generation` and `reach.consumer_ephemeral`, which the read
   watcher compares around every read (B3-C17 (3)).
 
+`grant_delivery` runs `GrantDelivery` (`built.impl`) and asks its fixture contract for:
+
+- `reads`: a `GrantReads` over the same world (the consumer-side authenticated call);
+- `own_consumer(name, generation=None) -> OwnedHandle`: an owned consumer whose credential channel
+  (a mounted refreshable file) holds `generation` (default: the current one); its release is
+  whatever the implementation's consumer has; `unprovisioned_consumer(name) -> OwnedHandle`: an
+  owned handle whose channel was never made;
+- `channel_generation(handle) -> str | None`: the generation the consumer reads from its channel;
+- `consumer_incarnation(handle)`: changes only if the consumer is recreated or restarted (a
+  container's id and start time; a process's pid), and `consumer_environment(handle)`: what the
+  consumer was created with;
+- `advance()`, `current_generation()`, `set_reachable(bool)`, `secret_values()` as above.
+
 Generations are opaque names whose string order is NOT the order the issuer issued them in, so
 only the issuer's own ordering can say "older" (B3-C9); the stale case makes a later generation
 sort below the first. No case branches on which implementation it runs
@@ -28,6 +43,7 @@ from __future__ import annotations
 
 import dataclasses
 import inspect
+import re
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
@@ -51,6 +67,8 @@ from trestle.workflow.values import (
 )
 
 FAMILY = "grant"
+DELIVERY_FAMILY = "grant_delivery"
+CREDENTIAL_NAME = re.compile(r"(?i)token|secret|credential|passw|api_?key|auth")
 GRANT_ISSUER_UNREACHABLE = "adapter.grant_issuer_unreachable"
 CREDENTIAL_INTERACTIVE = "execution.credential_interactive"
 CREDENTIAL_STALE = "execution.credential_stale"
@@ -387,3 +405,172 @@ CASES = (
 )
 
 core.register_family(FAMILY, CASES)
+
+
+# ---------------------------------------------------------------- delivery (B3-C11, WR-ENV-13)
+
+
+def deliver_ticket(attempt: int = 1) -> Any:
+    return ticket("deliver", EffectFacetClass.OWNED, Lifetime.RUN, attempt)
+
+
+def _seen_by(built: core.Implementation, handle: Any) -> Any:
+    return built.extras["reads"].observe_in_consumer(selector_ref(handle.selector))
+
+
+def delivery_refreshes_the_channel_in_place_without_recreate_or_restart(
+    built: core.Implementation,
+) -> None:
+    x = built.extras
+    handle = x["own_consumer"]("c-one")
+    first = x["current_generation"]()
+    assert x["channel_generation"](handle) == first
+    incarnation = x["consumer_incarnation"](handle)
+    environment = dict(x["consumer_environment"](handle))
+    latest = x["advance"]()
+    assert x["channel_generation"](handle) == first  # the host rotated; the channel did not follow
+    stale = _seen_by(built, handle)
+    assert stale.generation_seen == first and stale.code == CREDENTIAL_STALE
+    confirmation = built.impl.deliver(handle, deliver_ticket())
+    assert status(confirmation) is ConfirmationStatus.APPLIED
+    assert confirmation.code is None and confirmation.identity == handle.selector
+    assert x["channel_generation"](handle) == latest == x["current_generation"]()
+    fresh = _seen_by(built, handle)
+    assert (fresh.authenticated, fresh.generation_seen, fresh.code) == (True, latest, None)
+    assert x["consumer_incarnation"](handle) == incarnation  # the same container or process
+    assert dict(x["consumer_environment"](handle)) == environment  # no recreate, no new variable
+
+
+def the_channel_is_a_file_and_no_credential_variable_exists_at_creation(
+    built: core.Implementation,
+) -> None:
+    x = built.extras
+    handle = x["own_consumer"]("c-one")
+    assert x["channel_generation"](handle) is not None  # the refreshable file is there at creation
+    secrets = x["secret_values"]()
+    for key, value in x["consumer_environment"](handle).items():
+        assert not CREDENTIAL_NAME.search(key), f"credential-shaped variable {key!r} (WR-ENV-13)"
+        assert all(s not in value for s in secrets)
+
+
+def delivery_carries_the_handles_recorded_descriptor_unchanged(built: core.Implementation) -> None:
+    handle = built.extras["own_consumer"]("c-one")
+    call = effect_call("deliver", {"consumer": handle}, Lifetime.RUN)
+    first = ports.as_descriptor(built.impl.release_descriptor(call))
+    assert first == ports.as_descriptor(handle.release)  # an owned member's release, unchanged
+    assert ports.as_descriptor(built.impl.release_descriptor(call)) == first
+    generation = built.extras["channel_generation"](handle)
+    assert built.extras["channel_generation"](handle) == generation  # deriving changes nothing
+
+
+def delivery_against_an_unreachable_issuer_is_not_applied_and_changes_nothing(
+    built: core.Implementation,
+) -> None:
+    x = built.extras
+    handle = x["own_consumer"]("c-one")
+    first = x["current_generation"]()
+    x["advance"]()
+    x["set_reachable"](False)
+    confirmation = built.impl.deliver(handle, deliver_ticket())
+    assert status(confirmation) is ConfirmationStatus.NOT_APPLIED  # provably nothing landed
+    assert confirmation.code == GRANT_ISSUER_UNREACHABLE
+    assert x["channel_generation"](handle) == first
+    x["set_reachable"](True)
+    assert status(built.impl.deliver(handle, deliver_ticket())) is ConfirmationStatus.APPLIED
+    assert x["channel_generation"](handle) == x["current_generation"]()
+
+
+def delivery_is_repeatable_and_reaches_only_its_consumer(built: core.Implementation) -> None:
+    x = built.extras
+    one, two = x["own_consumer"]("c-one"), x["own_consumer"]("c-two")
+    older = x["current_generation"]()
+    latest = x["advance"]()
+    for attempt in (1, 2):  # a superseding attempt converges on the same channel content
+        done = built.impl.deliver(one, deliver_ticket(attempt))
+        assert status(done) is ConfirmationStatus.APPLIED
+        assert x["channel_generation"](one) == latest
+    assert x["channel_generation"](two) == older  # the other consumer's channel is untouched
+    assert _seen_by(built, two).code == CREDENTIAL_STALE
+
+
+def delivery_takes_only_an_owned_handle_under_its_own_ticket(built: core.Implementation) -> None:
+    x = built.extras
+    assert list(inspect.signature(built.impl.deliver).parameters) == ["consumer", "ticket"]
+    handle = x["own_consumer"]("c-one")
+    first = x["channel_generation"](handle)
+    x["advance"]()
+    found = FoundRef("consumer", handle.selector, datetime.now(UTC))
+    for consumer, made in (
+        (found, deliver_ticket()),
+        (selector_ref(handle.selector), deliver_ticket()),
+        (handle, ticket("deliver", EffectFacetClass.CREATE)),
+    ):
+        try:
+            built.impl.deliver(consumer, made)
+        except ValueError:
+            continue  # a contract violation by the caller, raised before any machine call (B3-E1)
+        raise AssertionError("a delivery accepted what an owned member does not")
+    assert x["channel_generation"](handle) == first
+
+
+def delivery_to_a_consumer_without_a_channel_is_not_applied_and_makes_none(
+    built: core.Implementation,
+) -> None:
+    x = built.extras
+    ghost = x["unprovisioned_consumer"]("ghost")
+    confirmation = built.impl.deliver(ghost, deliver_ticket())
+    assert status(confirmation) is ConfirmationStatus.NOT_APPLIED
+    assert (confirmation.code, confirmation.identity) == (None, None)
+    assert x["channel_generation"](ghost) is None  # nothing was created in its place
+
+
+def a_delivery_confirmation_holds_no_secret(built: core.Implementation) -> None:
+    x = built.extras
+    handle = x["own_consumer"]("c-one")
+    x["advance"]()
+    results = [built.impl.deliver(handle, deliver_ticket())]
+    x["set_reachable"](False)
+    results.append(built.impl.deliver(handle, deliver_ticket()))
+    x["set_reachable"](True)
+    results.append(built.impl.deliver(x["unprovisioned_consumer"]("ghost"), deliver_ticket()))
+    secrets = x["secret_values"]()
+    for value in results:
+        for leaf in _leaves(value):
+            assert leaf is None or isinstance(leaf, (str, bool, datetime))
+            assert all(s not in str(leaf) for s in secrets)
+        assert all(s not in repr(value) for s in secrets)
+
+
+DELIVERY_CASES = (
+    core.Case(
+        "delivery_refreshes_the_channel_in_place_without_recreate_or_restart",
+        delivery_refreshes_the_channel_in_place_without_recreate_or_restart,
+    ),
+    core.Case(
+        "the_channel_is_a_file_and_no_credential_variable_exists_at_creation",
+        the_channel_is_a_file_and_no_credential_variable_exists_at_creation,
+    ),
+    core.Case(
+        "delivery_carries_the_handles_recorded_descriptor_unchanged",
+        delivery_carries_the_handles_recorded_descriptor_unchanged,
+    ),
+    core.Case(
+        "delivery_against_an_unreachable_issuer_is_not_applied_and_changes_nothing",
+        delivery_against_an_unreachable_issuer_is_not_applied_and_changes_nothing,
+    ),
+    core.Case(
+        "delivery_is_repeatable_and_reaches_only_its_consumer",
+        delivery_is_repeatable_and_reaches_only_its_consumer,
+    ),
+    core.Case(
+        "delivery_takes_only_an_owned_handle_under_its_own_ticket",
+        delivery_takes_only_an_owned_handle_under_its_own_ticket,
+    ),
+    core.Case(
+        "delivery_to_a_consumer_without_a_channel_is_not_applied_and_makes_none",
+        delivery_to_a_consumer_without_a_channel_is_not_applied_and_makes_none,
+    ),
+    core.Case("a_delivery_confirmation_holds_no_secret", a_delivery_confirmation_holds_no_secret),
+)
+
+core.register_family(DELIVERY_FAMILY, DELIVERY_CASES)

@@ -20,7 +20,8 @@ State file (all keys optional)::
      "networks": [{"id": "n1", "name": "bridge", "labels": {}}]}
 
 The container verbs the adapters use (L.NW-2.5/2.6) are simulated over the same state: `run -d
-[--pull never] --name N [--tmpfs P]... [--publish 127.0.0.1::P]... [-e K=V]... IMAGE [CMD...]`
+[--pull never] --name N [--tmpfs P]... [--mount SPEC]... [--publish 127.0.0.1::P]...
+[-e K=V]... IMAGE [CMD...]`
 creates a running container (exit 125 when the image is not in `images` or the name is taken:
 `--pull` is refused, so nothing is ever pulled), `stop`/`start`/`restart NAME`, `port NAME`
 (`<private>/tcp -> 0.0.0.0:<host>`, exit 1 unless running), `exec NAME CMD...` (a container's
@@ -310,6 +311,7 @@ def _cmd_run(args: list[str], state: dict, started: bool = True) -> int:
             "--env",
             "--network",
             "--label",
+            "--mount",
         ):
             value = args[i + 1] if i + 1 < len(args) else ""
             if a == "--name":
