@@ -81,7 +81,7 @@ def test_good_catalog_loads_and_answers_lookups(tmp_path: Path) -> None:
 def test_reference_catalog_ships_and_loads() -> None:
     catalog = load_reference()
     assert REFERENCE_PATH.name == "reference.json"
-    assert [str(s.id) for s in catalog.services] == ["postgres"]
+    assert [str(s.id) for s in catalog.services] == ["postgres", "http_support"]
 
 
 @pytest.mark.proves("WR-ENV-1", "WR-ENV-1:catalog-refuses-duplicate-ids", "B", "B", "LOGIC", "CI")

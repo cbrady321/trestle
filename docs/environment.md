@@ -49,6 +49,16 @@ release_executables = ["<the resolved absolute docker path>"]
 (a relative docker path is refused, not resolved) and returns the plugin directories and the
 allowlist; build the server's `OperatorLimits(release_executables=...)` from the latter.
 
+### What the operator can rely on
+
+Every container the plugin creates is named for the run (`trwr-<run id>-<node path>`), created from a
+pinned image without a pull, keeps its data on tmpfs (a Docker volume is never created) and is
+stopped and removed with the run. A service is treated as ready only when its declared check
+passes, never after a sleep or when its port is open: the supporting service
+(`backend.http_support`) when `GET /health` answers `200` with exactly `ok`, and the backend
+(`backend.postgres`, which starts only after the supporting service is ready) when an authenticated
+`SELECT 1` succeeds over TCP.
+
 ### Publishing the plugin
 
 Point the server at `packages/trestle-env/trestle_env/plugins` (the `[plugins] paths` entry above, or

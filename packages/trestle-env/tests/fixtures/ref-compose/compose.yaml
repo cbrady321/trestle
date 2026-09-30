@@ -9,9 +9,23 @@
 name: reference
 
 services:
+  # the supporting service: ready when GET /health answers 200 "ok" (the reference tree's declared
+  # HTTP readiness contract); the backend needs it
+  http_support:
+    image: ${TRESTLE_IMAGE_HTTP_SUPPORT}
+    pull_policy: never
+    command:
+      - sh
+      - -c
+      - echo -n ok > /usr/share/nginx/html/health && exec nginx -g "daemon off;"
+    labels:
+      trestle.proof.fixture: ref-compose
+
   postgres:
     image: ${TRESTLE_IMAGE_POSTGRES}
     pull_policy: never
+    depends_on:
+      - http_support
     environment:
       POSTGRES_USER: trestle
       POSTGRES_DB: trestle

@@ -1,11 +1,14 @@
-"""The reference environment tree, declared as data (MC-B-04 v0; L.RB-0.2; WR-ENV-10, WR-UNIT-8).
+"""The reference environment tree, declared as data (MC-B-04; L.RB-0.2, L.RB-2.1; WR-ENV-10).
 
 `ENTRY` is the `WorkflowEntry` the `reference_env` plugin (plugins/reference_env.py) binds: a root
-all-of declaration `reference_env` over one child, `backend.postgres`, a leaf whose one realization
-is a Docker service and whose readiness is an authenticated `SELECT 1` read through
-`ResourceReads.check`. Composites are data and the loop belongs to the workflow package
-(hld-wr-environment KDD 4): nothing here selects, orders or retries; the units only observe and
-issue the effects they declare.
+all-of declaration `reference_env` over two leaves whose realization is a Docker service. Each is
+ready only when its own declared check passes, read through `ResourceReads.check`:
+`backend.http_support` when its declared endpoint answers its declared response, and
+`backend.postgres`, which needs it, when an authenticated `SELECT 1` succeeds. Composites are data
+and the loop belongs to the workflow package (hld-wr-environment KDD 4): nothing here selects,
+orders or retries; the units only observe and issue the effects they declare, and the `needs`
+edge is the loop's gate (WR-VERIFY-2): a dependent starts only after its dependency's readiness
+pass, never after a sleep or an open port.
 
 * The environment key is the request's `env` argument, the Compose project name; the root declares
   it as `env_key_field` and the host compares it only as opaque bytes (KDD 1).
@@ -58,6 +61,9 @@ ROOT_UNIT: Final = "reference_env"
 POSTGRES_UNIT: Final = "backend.postgres"
 POSTGRES_SERVICE: Final = "postgres"  # the catalog identifier and the logical system
 POSTGRES_ROLE: Final = "postgres"  # the MC-B-10 image role the composition root resolves
+HTTP_SUPPORT_UNIT: Final = "backend.http_support"
+HTTP_SUPPORT_SERVICE: Final = "http_support"
+HTTP_SUPPORT_ROLE: Final = "http_support"
 SERVICES_SET: Final = "services"  # the declared identifier sets the request arguments name
 TESTS_SET: Final = "tests"
 OVERRIDES_SET: Final = "overrides"
@@ -75,16 +81,17 @@ POSTGRES_FIXTURE_PASSWORD: Final = "trestle-fixture-password"
 # Declared timings, in seconds. The wait is the readiness stage's own budget (hld-wr-environment
 # Provisioning & System Test: a stage that never passes ends at its declared wait); the leaf budget
 # holds the wait plus the release timeout (B2-C5); every level leaves the reserve the carve
-# demands, and the plugin's deadline holds the root budget plus the release slice. The release
+# demands, the root budget holds the longest `needs` chain of leaf budgets (two leaves, one after
+# the other), and the plugin's deadline holds the root budget plus the release slice. The release
 # timeout bounds each descriptor command (observe, stop, remove) and is small on purpose: admission
 # refuses a root whose worst-case finalization, `grace + kill + 5 * release_timeout` per release
 # rank (B2-C2 (5)), exceeds the operator's finalization margin (35 s by default), so every rank of
 # create-run effects a tree declares costs `5 * RELEASE_TIMEOUT_S` of that margin.
-DEADLINE_S: Final = 180
-ROOT_BUDGET_S: Final = 150
-LEAF_BUDGET_S: Final = 120
+DEADLINE_S: Final = 120
+ROOT_BUDGET_S: Final = 100
+LEAF_BUDGET_S: Final = 40
 READY_POLL_S: Final = 1
-READY_WAIT_S: Final = 60
+READY_WAIT_S: Final = 30
 RELEASE_TIMEOUT_S: Final = 2
 CONCURRENCY: Final = 2
 
@@ -119,27 +126,68 @@ READINESS: Final[Mapping[str, ExecReadiness]] = {POSTGRES_READY: POSTGRES_READIN
 """Every exec readiness check the tree declares, by check id."""
 
 
-class DockerServiceUnit:
-    """A leaf whose one realization is a Docker service: created by this run, ready when its
-    declared readiness check passes, released (stopped and removed, never a volume) with the run.
+@dataclass(frozen=True)
+class HttpReadiness:
+    """A readiness contract over HTTP: a GET of `path` on the service's host-reachable endpoint
+    answers `status` with exactly `body`. The service is ready when, and only when, the declared
+    response comes back; a refused connection, another status or another body is not ready yet.
 
-    One instance serves one logical service; it holds no state (the record is the loop's)."""
+    Data only: the composition root binds it to a read facet that makes the request (the unit
+    itself starts nothing and opens no socket)."""
 
-    def __init__(self, unit: str, service: str, readiness: str) -> None:
+    check: str
+    path: str
+    status: int
+    body: str
+
+
+HTTP_SUPPORT_READY: Final = "http_support_ready"
+
+HTTP_SUPPORT_READINESS: Final = HttpReadiness(HTTP_SUPPORT_READY, "/health", 200, "ok")
+"""The declared endpoint and response that make the supporting service ready."""
+
+HTTP_READINESS: Final[Mapping[str, HttpReadiness]] = {HTTP_SUPPORT_READY: HTTP_SUPPORT_READINESS}
+"""Every HTTP readiness contract the tree declares, by check id."""
+
+
+RESOURCE_KINDS: Final[Mapping[RealizationKind, str]] = {
+    RealizationKind.DOCKER_SERVICE: "docker_container",
+    RealizationKind.AGENT_LAUNCHED_PROJECT: "local_process",
+}
+"""The resource kind a leaf declares for the realization its spec names (V-14 `resource_kind`)."""
+
+
+class ServiceUnit:
+    """A leaf whose one resource is created by this run, ready when its declared readiness check
+    passes, and released (stopped and removed, never a volume) with the run.
+
+    One instance serves one logical service; it holds no state (the record is the loop's). The
+    resource is a Docker service by default; a proof of the readiness contract on a local process
+    gives the same unit an agent-launched spec, so the contract is the unit's and the realization
+    is the port's."""
+
+    def __init__(
+        self, unit: str, service: str, readiness: str, spec: ResourceSpec | None = None
+    ) -> None:
         self._unit = unit
         self._readiness = readiness
         # the entry is the catalog identifier the port maps to the container definition
-        self._spec = ResourceSpec(service, RealizationKind.DOCKER_SERVICE, service, None)
+        self._spec = (
+            spec
+            if spec is not None
+            else ResourceSpec(service, RealizationKind.DOCKER_SERVICE, service, None)
+        )
 
     def declare(self) -> LeafDeclaration:
+        kind = RESOURCE_KINDS[self._spec.realization]
         return LeafDeclaration(
             unit=self._unit,
             flags=LoopFlags(Compose.LEAF, CompletionSource.OBSERVED, Repeat.SAFE),
             preconditions=(),
             postcondition=self._readiness,
             wait=WaitPolicy(timedelta(seconds=READY_POLL_S), 1.0, timedelta(seconds=READY_WAIT_S)),
-            resource_kind="docker_container",
-            may_touch=frozenset({"docker_container"}),
+            resource_kind=kind,
+            may_touch=frozenset({kind}),
             effects=(
                 EffectDeclaration(
                     UP,
@@ -216,7 +264,11 @@ ENTRY = WorkflowEntry(
         ROOT_UNIT: AllDeclaration(
             unit=ROOT_UNIT,
             flags=LoopFlags(Compose.ALL, CompletionSource.OBSERVED, Repeat.SAFE),
-            children=(ChildBinding(unit=POSTGRES_UNIT, params={}, needs=()),),
+            children=(
+                # the supporting service first: the backend starts only after its readiness pass
+                ChildBinding(unit=HTTP_SUPPORT_UNIT, params={}, needs=()),
+                ChildBinding(unit=POSTGRES_UNIT, params={}, needs=(HTTP_SUPPORT_UNIT,)),
+            ),
             concurrency=CONCURRENCY,
             budget=timedelta(seconds=ROOT_BUDGET_S),
             # what a request may name: admission refuses any other identifier before a run id
@@ -229,8 +281,9 @@ ENTRY = WorkflowEntry(
             ),
             env_key_field=ENV_ARG,
         ),
-        POSTGRES_UNIT: DockerServiceUnit(POSTGRES_UNIT, POSTGRES_SERVICE, POSTGRES_READY),
+        HTTP_SUPPORT_UNIT: ServiceUnit(HTTP_SUPPORT_UNIT, HTTP_SUPPORT_SERVICE, HTTP_SUPPORT_READY),
+        POSTGRES_UNIT: ServiceUnit(POSTGRES_UNIT, POSTGRES_SERVICE, POSTGRES_READY),
     },
     deadline=timedelta(seconds=DEADLINE_S),
 )
-"""The reference tree at v0: `reference_env` -> `backend.postgres`."""
+"""The reference tree at v2: `reference_env` -> `backend.http_support` -> `backend.postgres`."""

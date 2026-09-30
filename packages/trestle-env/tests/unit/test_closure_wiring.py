@@ -36,9 +36,9 @@ def test_the_closure_of_the_selection_is_derived_before_any_effect() -> None:
 
 
 def test_no_selection_means_every_catalog_service() -> None:
-    resolver = FixedResolver(Closure(frozenset({"postgres"}), frozenset(), "fp-1"))
-    derive_closure({ports.ComposeResolver: resolver})
     everything = frozenset(str(s.id) for s in tree.CATALOG.services)
+    resolver = FixedResolver(Closure(everything, frozenset(), "fp-1"))
+    derive_closure({ports.ComposeResolver: resolver})
     assert resolver.asked == [("reference", everything)]
 
 

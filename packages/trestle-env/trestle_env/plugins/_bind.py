@@ -35,6 +35,7 @@ from trestle_packs.process.command import CommandPort
 
 from trestle_env import tree
 from trestle_env.closure import ClosurePlan, Refused, closure
+from trestle_env.plugins._http import HttpReadinessReads
 
 DOCKER_PATH_ENV: Final = "TRESTLE_DOCKER_PATH"
 ENDPOINT_ENV: Final = "TRESTLE_DOCKER_ENDPOINT"
@@ -43,6 +44,8 @@ COMPOSE_ENV: Final = "TRESTLE_ENV_COMPOSE_FILE"
 PORTS_ENV: Final = "TRESTLE_ENV_PORTS"
 REFERENCE_COMPOSE_PROJECT: Final = "reference"  # the catalog project the Compose file defines
 
+HTTP_SUPPORT_PORT: Final = 80
+HTTP_DOCROOT: Final = "/usr/share/nginx/html"
 POSTGRES_PORT: Final = 5432
 POSTGRES_DATA: Final = "/var/lib/postgresql/data"  # tmpfs: no volume is ever created
 
@@ -69,9 +72,24 @@ def image_for(role: str, environ: Mapping[str, str]) -> str:
     return image
 
 
+def http_support_command() -> tuple[str, ...]:
+    """What the supporting container runs: write the declared response at the declared path, then
+    serve it. (Derived from the tree's contract, so the two cannot drift apart.)"""
+    contract = tree.HTTP_SUPPORT_READINESS
+    serve = (
+        f'echo -n {contract.body} > {HTTP_DOCROOT}{contract.path} && exec nginx -g "daemon off;"'
+    )
+    return ("sh", "-c", serve)
+
+
 def container_definitions(environ: Mapping[str, str]) -> dict[str, ContainerDefinition]:
     """What each catalog entry runs as: the definitions the container adapter creates from."""
     return {
+        tree.HTTP_SUPPORT_SERVICE: ContainerDefinition(
+            image=image_for(tree.HTTP_SUPPORT_ROLE, environ),
+            command=http_support_command(),
+            ports=(HTTP_SUPPORT_PORT,),
+        ),
         tree.POSTGRES_SERVICE: ContainerDefinition(
             image=image_for(tree.POSTGRES_ROLE, environ),
             environment={
@@ -81,7 +99,7 @@ def container_definitions(environ: Mapping[str, str]) -> dict[str, ContainerDefi
             },
             data_paths=(POSTGRES_DATA,),
             ports=(POSTGRES_PORT,),
-        )
+        ),
     }
 
 
@@ -124,6 +142,8 @@ def reference_ports(
         compose_projects={REFERENCE_COMPOSE_PROJECT: compose} if compose else None,
     )
     mapping = bound.as_map()
+    # the HTTP readiness contracts the tree declares are answered by a decorator over the reads
+    mapping[ports.ResourceReads] = HttpReadinessReads(bound.containers, tree.HTTP_READINESS)
     if not compose:
         del mapping[ports.ComposeResolver]  # no definition to derive a closure from: none bound
     mapping[ports.ExecutionPort] = runner

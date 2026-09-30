@@ -59,5 +59,10 @@ def test_the_published_declaration_is_the_reference_tree(published) -> None:  # 
     assert declared is not None
     assert declared.root == tree.ROOT_UNIT
     assert declared.nodes[""]["env_key_field"] == schema.ENV_ARG
-    assert [c["name"] for c in declared.nodes[""]["children"]] == [tree.POSTGRES_UNIT]
+    assert [c["name"] for c in declared.nodes[""]["children"]] == [
+        tree.HTTP_SUPPORT_UNIT,
+        tree.POSTGRES_UNIT,
+    ]
+    postgres = next(c for c in declared.nodes[""]["children"] if c["name"] == tree.POSTGRES_UNIT)
+    assert postgres["binding"]["needs"] == [tree.HTTP_SUPPORT_UNIT]  # the backend waits on it
     assert declared.nodes[tree.POSTGRES_UNIT]["postcondition"] == tree.POSTGRES_READY
