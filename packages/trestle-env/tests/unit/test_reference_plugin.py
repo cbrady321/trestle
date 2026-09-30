@@ -63,6 +63,6 @@ def test_the_published_declaration_is_the_reference_tree(published) -> None:  # 
         tree.HTTP_SUPPORT_UNIT,
         tree.POSTGRES_UNIT,
     ]
-    postgres = next(c for c in declared.nodes[""]["children"] if c["name"] == tree.POSTGRES_UNIT)
-    assert postgres["binding"]["needs"] == [tree.HTTP_SUPPORT_UNIT]  # the backend waits on it
+    # the backends are independent siblings: only a test node (the operator's catalog) needs them
+    assert all(c["binding"]["needs"] == [] for c in declared.nodes[""]["children"])
     assert declared.nodes[tree.POSTGRES_UNIT]["postcondition"] == tree.POSTGRES_READY

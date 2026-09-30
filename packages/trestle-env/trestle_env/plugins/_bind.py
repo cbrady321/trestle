@@ -36,12 +36,14 @@ import os
 import shutil
 import sys
 from collections.abc import Callable, Iterable, Mapping
+from pathlib import Path
 from types import ModuleType
 from typing import Any, Final
 
 from trestle.workflow import ports
 from trestle_packs.container import ContainerDefinition, ExecCheck, bind
 from trestle_packs.process.command import CommandPort
+from trestle_packs.testrun import PytestJunitRunner
 from trestle_packs.toolchain import MiseToolchainResolver
 from trestle_packs.toolchain.tasks import ProjectTasks, TaskDeclaration, TaskRunner
 
@@ -143,6 +145,7 @@ def reference_ports(
     execution: ports.ExecutionPort | None = None,
     readiness_environment: Mapping[str, str] | None = None,
     use_seam: bool = True,
+    artifacts: Path | None = None,
 ) -> Mapping[type, object]:
     """The port map for `run_tree(..., ports=...)`: the container ports, the compose resolver and
     the execution port (`execution` defaults to `CommandPort`). `use_seam` False binds this
@@ -167,7 +170,7 @@ def reference_ports(
         compose_projects={REFERENCE_COMPOSE_PROJECT: compose} if compose else None,
     )
     mapping = bound.as_map()
-    resolver, tasks = toolchain_ports(env, runner)
+    resolver, tasks = toolchain_ports(env, runner, artifacts=artifacts)
     if resolver is not None:
         mapping[ports.ToolchainResolver] = resolver
     # the HTTP readiness contracts the tree declares are answered by a decorator over the reads
@@ -186,7 +189,9 @@ def project_tasks(
         str(p.id): ProjectTasks(
             directory=os.path.join(projects_dir, str(p.id)),
             tasks={
-                str(t.id): TaskDeclaration(str(t.id), tuple(str(a) for a in t.argv))
+                str(t.id): TaskDeclaration(
+                    str(t.id), tuple(str(a) for a in t.argv), t.reports_tests
+                )
                 for t in p.tasks
             },
             environment={},
@@ -202,11 +207,14 @@ def toolchain_ports(
     *,
     mise: str | None = None,
     project_environment: Mapping[str, Mapping[str, str]] | None = None,
+    artifacts: Path | None = None,
 ) -> tuple[MiseToolchainResolver | None, TaskRunner | None]:
     """The toolchain resolver and the task runner, or `(None, None)` when none is configured.
     `mise` and `project_environment` (a catalog project -> the allowlisted environment that makes
     the toolchain manager answer for it) default to the operator's environment; a proof harness
-    names them to bind the mise-shaped stub."""
+    names them to bind the mise-shaped stub. A task the catalog marks as a test selector runs
+    through the pytest JUnit runner: its counts and failing ids come from the report it writes
+    under `artifacts` (kept as run artifacts), never from console text."""
     path = mise if mise is not None else env.get(MISE_PATH_ENV)
     projects_dir = env.get(PROJECTS_DIR_ENV)
     if not path or not projects_dir:
@@ -215,9 +223,12 @@ def toolchain_ports(
     resolver = MiseToolchainResolver(
         path, execution, environment, envelope=env.get(ENVELOPE_ENV) or None
     )
+    running: ports.ExecutionPort = (
+        execution if artifacts is None else PytestJunitRunner(execution, artifacts)
+    )
     runner = TaskRunner(
         resolver,
-        execution,
+        running,
         project_tasks(projects_dir, distribution_store=env.get(DISTRIBUTIONS_ENV) or None),
     )
     return resolver, runner

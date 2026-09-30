@@ -29,16 +29,11 @@ from tests.proof import tolerances
 from tests.tree import treekit as tk
 from trestle.workflow import ports
 from trestle.workflow.declarations import (
-    CompletionSource,
-    Compose,
-    LeafDeclaration,
-    LoopFlags,
     RealizationKind,
-    Repeat,
-    WaitPolicy,
 )
-from trestle.workflow.values import CheckResult, Observation, StopCause
+from trestle.workflow.values import StopCause
 from trestle_packs.process.local import LocalProcessPort
+from twin.twin_engine import TEST_NODE, Probe, entry_with_test
 
 from trestle_env import schema, tree
 from trestle_env.plugins._http import HttpReadinessReads
@@ -74,50 +69,6 @@ class AwaitListening:
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._inner, name)
-
-
-class NeverStarted:
-    """The dependent: it must never be observed, since its supporting service never passes."""
-
-    def __init__(self) -> None:
-        self.observed = 0
-
-    def declare(self) -> LeafDeclaration:
-        return LeafDeclaration(
-            unit=tree.POSTGRES_UNIT,
-            flags=LoopFlags(Compose.LEAF, CompletionSource.OBSERVED, Repeat.SAFE),
-            preconditions=(),
-            postcondition="dependent_ready",
-            wait=WaitPolicy(timedelta(seconds=tree.READY_POLL_S), 1.0, timedelta(seconds=1)),
-            resource_kind="marker",
-            may_touch=frozenset({"marker"}),
-            effects=(),
-            retryable=frozenset(),
-            remedies=(),
-            budget=timedelta(seconds=tree.LEAF_BUDGET_S),
-            max_attempts=1,
-        )
-
-    def observe(self, params: Any, reads: Any, ctx: Any) -> Observation:
-        self.observed += 1
-        return Observation(
-            present=True,
-            selector_present=True,
-            identity_proven=True,
-            configuration_compatible=True,
-            postcondition=CheckResult(True, None, ""),
-            preconditions=(),
-            currency=(),
-            found=(),
-            code=None,
-            payload=None,
-        )
-
-    def advance(self, params: Any, state: Any, effects: Any, ctx: Any) -> Any:
-        raise AssertionError("the dependent is never advanced")
-
-    def release(self, params: Any, handle: Any, effects: Any, ctx: Any) -> Any:
-        raise AssertionError("the dependent created nothing")
 
 
 class Flagged:
@@ -168,18 +119,20 @@ def test_cancel_during_readiness_wait_prompt(tmp_path: Path) -> None:
         tree.HTTP_SUPPORT_SERVICE, RealizationKind.AGENT_LAUNCHED_PROJECT, "http-app", command
     )
     local = LocalProcessPort()
-    dependent = NeverStarted()
+    dependent = Probe(TEST_NODE)  # the catalog test's node: it must never be observed
+    entry = entry_with_test()
     rig = tk.tree_rig(
         tmp_path,
-        tree.ENTRY.units[tree.ROOT_UNIT],  # type: ignore[arg-type]
+        entry.units[tree.ROOT_UNIT],  # type: ignore[arg-type]
         {
+            tree.POSTGRES_UNIT: Probe(tree.POSTGRES_UNIT),
+            TEST_NODE: dependent,
             tree.HTTP_SUPPORT_UNIT: tree.ServiceUnit(
                 tree.HTTP_SUPPORT_UNIT,
                 tree.HTTP_SUPPORT_SERVICE,
                 tree.HTTP_SUPPORT_READY,
                 spec=spec,
             ),
-            tree.POSTGRES_UNIT: dependent,
         },
         port_impl={
             ports.ResourceReads: HttpReadinessReads(local, tree.HTTP_READINESS, alive="ready"),
@@ -207,7 +160,7 @@ def test_cancel_during_readiness_wait_prompt(tmp_path: Path) -> None:
     support = ends[tree.HTTP_SUPPORT_UNIT]
     assert (support["condition"], support["cut"]) == ("converging", "stopped")
     assert dependent.observed == 0, "the dependent never started"
-    assert ends[tree.POSTGRES_UNIT]["cut"] == "not_started"
+    assert ends[TEST_NODE]["cut"] == "not_started"
     assert ends[""]["cut"] == "stopped"  # the root: cancelled, not failed or timed out
 
     # past the stop-row offset: no check of the supporting node (no observation event, no

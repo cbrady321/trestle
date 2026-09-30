@@ -48,7 +48,7 @@ def reference_env(
     for name, chosen in (("services", services), ("tests", tests), ("overrides", overrides)):
         if chosen is not None:
             intent[name] = sorted(chosen)
-    bound = reference_ports()
+    bound = reference_ports(artifacts=ctx.outputs / "tests")
     bind_evidence(bound, _Evidence(ctx))
     derive_closure(bound, services, overrides or ())  # refused before any effect (WR-ENV-1)
     run_tree(ctx, ENTRY, intent, ports=bound)

@@ -147,7 +147,11 @@ def test_identifiers_are_closed_types(tmp_path: Path) -> None:
             if not f.init:
                 continue
             for leaf in closed_leaf_types(hints[f.name]):
-                assert leaf in CLOSED_TYPES or leaf in dataclasses_, (cls.__name__, f.name, leaf)
+                assert leaf in CLOSED_TYPES or leaf in dataclasses_ or leaf is bool, (
+                    cls.__name__,
+                    f.name,
+                    leaf,
+                )
                 assert leaf is not str, (cls.__name__, f.name)
 
     # A value of one identifier type is not another's, and an invalid value is refused by name.

@@ -355,6 +355,7 @@ CATALOG: Final[Catalog] = configured_catalog(os.environ)
 TASK_PREFIX: Final = "test"  # a catalog test's node is `test.<test id>` (stages.py: the test stage)
 TASK: Final = "task"  # the declared effect: one run of the allowlisted task
 NOTHING: Final = ""  # the `BoundCommand.task` of "no test was requested": a run of nothing
+FAILING_EVIDENCE: Final = "test.failing"  # the evidence event that names a failed run's test ids
 
 
 def task_unit_name(test_id: str) -> str:
@@ -379,6 +380,7 @@ class TaskUnit:
         self._project = str(project.id)
         self._task = str(task.id)
         self._argv = tuple(str(a) for a in task.argv)
+        self._reports = task.reports_tests
 
     def declare(self) -> LeafDeclaration:
         return LeafDeclaration(
@@ -431,20 +433,22 @@ class TaskUnit:
                 argv=(resolved.executable, *rest),
                 environment={},
                 resolved=resolved,
-                reports_tests=False,
+                reports_tests=self._reports,
             )
-        effects.event(ExecutionPort).run(command, TASK, ctx.cancellation, ctx.clock.release_point)
+        _, result = effects.event(ExecutionPort).run(
+            command, TASK, ctx.cancellation, ctx.clock.release_point
+        )
+        if result is not None and not result.recorded.passed and result.failing:
+            # the failing test ids ride the run's evidence (the answer's `detail` handle reaches
+            # it, B4-C5); the node's class and code stay the recorded result's
+            ctx.evidence.event(
+                FAILING_EVIDENCE,
+                {"test": self._test, "failing": list(result.failing), "code": result.code},
+            )
         return Acted()
 
     def release(self, params: Any, handle: CreatedHandle, effects: Any, ctx: ActContext) -> Step:
         raise AssertionError("a task creates nothing to release")
-
-
-def _task_unit(test: TestSpec) -> TaskUnit:
-    project = CATALOG.project(str(test.project))
-    task = CATALOG.task(str(test.project), str(test.task))
-    assert project is not None and task is not None  # the catalog checked the reference at load
-    return TaskUnit(test, project, task)
 
 
 def _nothing() -> BoundCommand:
@@ -460,44 +464,63 @@ def identifier_sets(catalog: Catalog) -> dict[str, frozenset[str]]:
     }
 
 
-ENTRY = WorkflowEntry(
-    root=ROOT_UNIT,
-    units={
-        ROOT_UNIT: AllDeclaration(
-            unit=ROOT_UNIT,
-            flags=LoopFlags(Compose.ALL, CompletionSource.OBSERVED, Repeat.SAFE),
-            children=(
-                # the supporting service first: the backend starts only after its readiness pass
-                ChildBinding(unit=HTTP_SUPPORT_UNIT, params={}, needs=()),
-                ChildBinding(unit=POSTGRES_UNIT, params={}, needs=(HTTP_SUPPORT_UNIT,)),
-                # the toolchain leg: one node per test the operator's catalog lists (none in the
-                # reference catalog), running the test's project task when the request names it
-                *(
-                    ChildBinding(
-                        unit=task_unit_name(str(t.id)), params={"tests": TESTS_ARG}, needs=()
-                    )
-                    for t in CATALOG.tests
+def build_entry(catalog: Catalog) -> WorkflowEntry:
+    """The reference tree over `catalog`: the two backends (independent of each other), and one
+    `test.<id>` node per catalog test that needs EVERY backend's readiness pass (WR-VERIFY-2: a
+    test never starts before readiness). The tree is the catalog's data made declarations."""
+    tests = catalog.tests
+
+    def task_unit(test: TestSpec) -> TaskUnit:
+        project = catalog.project(str(test.project))
+        task = catalog.task(str(test.project), str(test.task))
+        assert project is not None and task is not None  # the catalog checked its references
+        return TaskUnit(test, project, task)
+
+    backends = (HTTP_SUPPORT_UNIT, POSTGRES_UNIT)
+    return WorkflowEntry(
+        root=ROOT_UNIT,
+        units={
+            ROOT_UNIT: AllDeclaration(
+                unit=ROOT_UNIT,
+                flags=LoopFlags(Compose.ALL, CompletionSource.OBSERVED, Repeat.SAFE),
+                children=(
+                    ChildBinding(unit=HTTP_SUPPORT_UNIT, params={}, needs=()),
+                    ChildBinding(unit=POSTGRES_UNIT, params={}, needs=()),
+                    # the test leg: one node per catalog test, after every readiness pass, running
+                    # the test's project task when the request names the test
+                    *(
+                        ChildBinding(
+                            unit=task_unit_name(str(t.id)),
+                            params={"tests": TESTS_ARG},
+                            needs=backends,
+                        )
+                        for t in tests
+                    ),
                 ),
+                concurrency=CONCURRENCY,
+                budget=timedelta(seconds=ROOT_BUDGET_S),
+                # what a request may name: admission refuses any other identifier before a run id
+                # (B2-C2 (1)) with UNKNOWN_IDENTIFIER, naming it and where valid ones are listed
+                identifier_sets=identifier_sets(catalog),
+                arg_bindings=(
+                    ArgBinding(SERVICES_ARG, SERVICES_SET, False),
+                    ArgBinding(TESTS_ARG, TESTS_SET, False),
+                    ArgBinding(OVERRIDES_ARG, OVERRIDES_SET, False),
+                ),
+                env_key_field=ENV_ARG,
             ),
-            concurrency=CONCURRENCY,
-            budget=timedelta(seconds=ROOT_BUDGET_S),
-            # what a request may name: admission refuses any other identifier before a run id
-            # (B2-C2 (1)) with UNKNOWN_IDENTIFIER, naming it and where the valid ones are listed
-            identifier_sets=identifier_sets(CATALOG),
-            arg_bindings=(
-                ArgBinding(SERVICES_ARG, SERVICES_SET, False),
-                ArgBinding(TESTS_ARG, TESTS_SET, False),
-                ArgBinding(OVERRIDES_ARG, OVERRIDES_SET, False),
+            HTTP_SUPPORT_UNIT: ServiceUnit(
+                HTTP_SUPPORT_UNIT, HTTP_SUPPORT_SERVICE, HTTP_SUPPORT_READY
             ),
-            env_key_field=ENV_ARG,
-        ),
-        HTTP_SUPPORT_UNIT: ServiceUnit(HTTP_SUPPORT_UNIT, HTTP_SUPPORT_SERVICE, HTTP_SUPPORT_READY),
-        POSTGRES_UNIT: ServiceUnit(
-            POSTGRES_UNIT, POSTGRES_SERVICE, POSTGRES_READY, reuse=POSTGRES_REUSE
-        ),
-        **{task_unit_name(str(t.id)): _task_unit(t) for t in CATALOG.tests},
-    },
-    deadline=timedelta(seconds=DEADLINE_S),
-)
-"""The reference tree: `reference_env` over `backend.http_support` -> `backend.postgres` and one
-`test.<test id>` per catalog test (the toolchain leg)."""
+            POSTGRES_UNIT: ServiceUnit(
+                POSTGRES_UNIT, POSTGRES_SERVICE, POSTGRES_READY, reuse=POSTGRES_REUSE
+            ),
+            **{task_unit_name(str(t.id)): task_unit(t) for t in tests},
+        },
+        deadline=timedelta(seconds=DEADLINE_S),
+    )
+
+
+ENTRY = build_entry(CATALOG)
+"""The reference tree over the operator's catalog: `reference_env` over `backend.http_support` and
+`backend.postgres`, and one `test.<test id>` per catalog test, after both."""
