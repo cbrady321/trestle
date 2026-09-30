@@ -311,6 +311,7 @@ INPUTS: dict[str, OneVertexInput] = {
     "slow_converge_leaf": _fixture_input("slow_converge_leaf.py"),
     "lagging_leaf": _fixture_input("lagging_leaf.py"),
     "remedy_leaf": _fixture_input("remedy_leaf.py"),
+    "second_domain_free": _fixture_input("second_domain_free.py"),  # L.SL-11.1 (recorded-safe)
 }
 
 

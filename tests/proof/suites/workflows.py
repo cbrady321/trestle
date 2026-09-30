@@ -1,5 +1,5 @@
-"""MC-35: the Slice A workflow registry (L.SV-5.14; grows at L.SL-11.1, joined by the tree
-workflows at L.TR-6.6).
+"""MC-35: the Slice A workflow registry (L.SV-5.14; `second_domain_free` added by L.SL-11.1, joined
+by the tree workflows at L.TR-6.6).
 
 `SLICE_A_WORKFLOWS` maps a workflow's plugin name to what the guarantee suites and the checkpoint
 audits need to run it without knowing it:
@@ -24,6 +24,13 @@ ROOT = Path(__file__).resolve().parents[3]
 SLICE_A_WORKFLOWS: dict[str, dict[str, Any]] = {
     "spine_leaf": {
         "fixture_path": "tests/fixtures/workflows/spine_leaf.py",
+        "env_arg": "env",
+        "declared_codes": (),
+        "oq31_eligible_both": True,
+    },
+    # L.SL-11.1: a RECORDED leaf over the fake command port; no Docker, toolchain adapter or AWS
+    "second_domain_free": {
+        "fixture_path": "tests/fixtures/workflows/second_domain_free.py",
         "env_arg": "env",
         "declared_codes": (),
         "oq31_eligible_both": True,
