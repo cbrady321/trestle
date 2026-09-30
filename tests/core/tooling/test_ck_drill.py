@@ -363,6 +363,33 @@ def test_switch_isolation_fails_when_a_changed_call_site_ignores_the_switch(
     assert ck_drill.drill(repo2, DECLINE, lane_globs=LANE_GLOBS).problems == []
 
 
+def test_switch_isolation_checks_product_call_sites_not_test_files(tmp_path: Path) -> None:
+    """L.P0-0d.29: a CK-changed test file a later merge edits is left in place, and its changed
+    calls need not read the switch (REG judges its nodes); an un-gated product call site in the
+    same history is still flagged."""
+    ungated = CK_CORE.replace("    if SWITCH:\n        stop(x)\n", "    stop(x)\n")
+    repo, _ = _plant(tmp_path, core_after_ck=ungated)
+    _git(repo, "checkout", "-q", "wr/x/ck-9")
+    _write(repo, "tests/core/test_ck9.py", "def test_ck9():\n    assert len([1]) == 1\n")
+    _commit(repo, "L.CK-9.2: the CK leaf's test calls something")
+    _git(repo, "checkout", "-q", "master")
+    _land(repo)
+    _git(repo, "checkout", "-q", "-b", "wr/x/marker")
+    test_file = repo / "tests/core/test_ck9.py"
+    test_file.write_text("import pytest\n\n\n@pytest.mark.slow\n" + test_file.read_text())
+    _commit(repo, "L.MARK.1: a later merge adds a marker to the CK's test file")
+    _git(repo, "checkout", "-q", "master")
+    _merge_branch(repo, "wr/x/marker", "WR-Merge: MARK")
+
+    report = ck_drill.drill(repo, DECLINE, lane_globs=LANE_GLOBS)
+    assert "tests/core/test_ck9.py" in report.patch.left
+    isolation = [p for p in report.problems if "does not read SWITCH" in p]
+    assert isolation and all(p.startswith("pkg/core.py:") for p in isolation), isolation
+    assert ck_drill.is_test_path("tests/core/test_ck9.py")
+    assert ck_drill.is_test_path("packages/trestle-packs/tests/test_x.py")
+    assert not ck_drill.is_test_path("trestle/plugin/_codec.py")
+
+
 def test_patch_touching_a_file_outside_the_derived_set_fails(tmp_path: Path) -> None:
     repo, _ = _plant(tmp_path)
     _land(repo)
