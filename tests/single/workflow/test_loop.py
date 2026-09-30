@@ -519,7 +519,10 @@ def test_failed_detail_goes_to_evidence_never_the_lane(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- composite
 
 
-def test_composite_vertex_raises_before_effect() -> None:
+def test_childless_composite_root_ends_normally_without_effect() -> None:
+    """The composite raise (TM-B2-6) is gone with the in-library walk (L.TR-3.2): a composite
+    root with nothing to walk writes its plan and its own `NodeEnd` (ended normally: no condition,
+    no cut) and issues nothing."""
     root = AllDeclaration(
         unit="root",
         flags=LoopFlags(Compose.ALL, CompletionSource.OBSERVED, Repeat.SAFE),
@@ -532,15 +535,17 @@ def test_composite_vertex_raises_before_effect() -> None:
     )
     entry = WorkflowEntry(root="root", units={"root": root}, deadline=timedelta(seconds=60))
     services = kit.MemoryServices(kit.admit(entry))
-    with pytest.raises(loop.TreeBandError, match="walk_children: tree band"):
-        loop.Loop(services, entry, {}).run()
-    assert [name for name, _ in services.lane.calls] == ["record_plan"], "no effect, no NodeEnd"
+    loop.Loop(services, entry, {}).run()
+    assert [name for name, _ in services.lane.calls] == ["record_plan", "record_end"]
+    end = services.lane.calls[1][1]
+    assert (end.condition, end.code, end.cut) == (None, None, None)
 
 
-def test_walk_children_probe_string_is_in_loop_py() -> None:
-    """TM-B2-6's probe: `grep -q 'walk_children: tree band' trestle/workflow/loop.py`."""
+def test_walk_children_probe_string_is_gone_from_loop_py() -> None:
+    """TM-B2-6's probe, `grep -q 'walk_children: tree band' trestle/workflow/loop.py`, reports
+    absent once the in-library `AllDeclaration` walk landed (L.TR-3.2, DM-42)."""
     source = (Path(loop.__file__)).read_text(encoding="utf-8")
-    assert "walk_children: tree band" in source
+    assert "walk_children: tree band" not in source
 
 
 # --------------------------------------------------------------------------- held steps

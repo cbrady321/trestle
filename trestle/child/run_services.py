@@ -115,6 +115,8 @@ class ContextEvidenceSink:
     def __init__(self, emit: Callable[..., None], event_max: int) -> None:
         self._emit = emit
         self._max = event_max
+        # a tree walks its leaves on threads (L.TR-3.2): the run's event path counts and appends
+        self._lock = threading.Lock()
 
     def event(self, kind: str, fields: Mapping[str, JsonValue]) -> None:
         try:
@@ -124,7 +126,8 @@ class ContextEvidenceSink:
             size = _event_bytes(kind, payload)
             if size > self._max:
                 payload = self._truncated(kind, payload, size)
-            self._emit(kind, **payload)
+            with self._lock:
+                self._emit(kind, **payload)
         except Exception:  # noqa: BLE001 (B2-C13: it never raises into the loop or a port)
             return
 

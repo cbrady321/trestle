@@ -437,6 +437,12 @@ def _resolved_params(params: Mapping[str, Any], request: Mapping[str, Any]) -> d
     return out
 
 
+def resolve_params(params: Mapping[str, Any], request: Mapping[str, Any]) -> dict[str, Any]:
+    """`_resolved_params`, public: what a child leaf's `params` are once its binding's argument
+    references are replaced by the request's values (the loop hands a child these, L.TR-3.2)."""
+    return _resolved_params(params, request)
+
+
 def compile(  # noqa: A001  (MC-23 names the entry point `compile`)
     declared: DeclaredTree,
     request: Mapping[str, Any],

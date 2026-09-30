@@ -11,18 +11,32 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from tests.single.record import support as sup
 from tests.single.workflow import joinkit as jk
+from tests.single.workflow import loopkit as kit
+from tests.tree import treekit as tk
 from trestle.child.attempt_lane import AttemptLane, AttemptTicket, TicketRefusal
 from trestle.child.run_services import node_record_view
 from trestle.common import lane_format as lf
 from trestle.common.plan import bounds
+from trestle.workflow.declarations import EffectFacetClass, Lifetime, Repeat
 from trestle.workflow.join import join
+from trestle.workflow.ports import InRunGroup
 from trestle.workflow.units import NodeRecordView
-from trestle.workflow.values import Condition, NodeTerms, Observation, Provenance, Verdict
+from trestle.workflow.values import (
+    Condition,
+    ConfirmationStatus,
+    NodePath,
+    NodeTerms,
+    Observation,
+    Provenance,
+    RecordedResult,
+    Verdict,
+)
 
 R1, R2 = "run-root-r1", "run-root-r2"
 CHILD = ("child",)
@@ -216,3 +230,95 @@ def test_once_attempt_not_reissued_under_same_root(roots: tuple[AttemptLane, Att
     assert _issue(r2, R2, effect="submit", repeat=lf.Repeat.ONCE) is (
         TicketRefusal.ONCE_ALREADY_ISSUED
     )
+
+
+# ---- the same cases under MC-26 `run_tree`, with a real walk (L.TR-3.2, A2c6-1) --------------
+
+
+def _child_rig(tmp_path: Path, root: str, port: tk.EventPort, unit: Any) -> tk.TreeRig:
+    tree = tk.group("app", (tk.bind("child"),))
+    return tk.tree_rig(
+        tmp_path / root,
+        tree,
+        {"child": unit},
+        port_impl={kit.RunPort: port},
+        run_id=root,
+    )
+
+
+def _child_rows(rig: tk.TreeRig) -> list[dict[str, Any]]:
+    return [row for row in rig.rows() if row.get("path") == "child"]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param("other_root_ignored", marks=[proves_other, proves_scoped]),
+        pytest.param("own_root_counted", marks=[proves_own, proves_verify]),
+        pytest.param("once_not_reissued", marks=[proves_once, proves_scoped]),
+    ],
+)
+def test_root_scope_under_run_tree(case: str, tmp_path: Path) -> None:
+    passed = (ConfirmationStatus.APPLIED, RecordedResult(True, None, None), None)
+    retry = (ConfirmationStatus.NOT_APPLIED, None, "unit.retry")
+
+    if case == "other_root_ignored":
+        # one environment (one port), two roots: R2's satisfying record never satisfies R1's child
+        port = tk.EventPort(passed)
+        second = _child_rig(tmp_path, R2, port, tk.recorded_unit("child"))
+        second.run()
+        assert port.calls == ["child"]
+        assert second.ends()["child"]["condition"] == "satisfied"
+
+        first = _child_rig(tmp_path, R1, port, tk.recorded_unit("child"))
+        first.run()
+        assert port.calls == ["child", "child"], "R1's child ran its own attempt"
+        rows = _child_rows(first)
+        assert [row["class"] for row in rows][:1] == ["issue"], "nothing of R2's was joined"
+        assert first.ends()["child"]["condition"] == "satisfied"  # by its own record
+        assert not any(row["class"] == "issue" for row in _child_rows(second)[2:])
+    elif case == "own_root_counted":
+        # own record counts (one attempt suffices); an attempt the port did not apply is retried
+        # and the record that follows it, the root's own, satisfies
+        counted = tk.EventPort(passed)
+        one = _child_rig(tmp_path, R1, counted, tk.recorded_unit("child"))
+        one.run()
+        assert counted.calls == ["child"]
+        assert one.ends()["child"]["condition"] == "satisfied"
+
+        later = tk.EventPort(retry, passed)
+        flaky = _child_rig(
+            tmp_path,
+            R2,
+            later,
+            tk.recorded_unit("child", retryable=frozenset({"unit.retry"})),
+        )
+        flaky.run()
+        assert later.calls == ["child", "child"]
+        assert [r["attempt"] for r in _child_rows(flaky) if r["class"] == "issue"] == [1, 2]
+        assert flaky.ends()["child"]["condition"] == "satisfied"
+        # and nothing the other root recorded moved this one
+        assert [r["class"] for r in _child_rows(one)].count("issue") == 1
+    else:
+        # an issued ONCE attempt is never re-issued under the same root, whatever the join says
+        port = tk.EventPort(passed)
+        first = _child_rig(tmp_path, R1, port, tk.recorded_unit("child", repeat=Repeat.ONCE))
+        first.run()
+        assert port.calls == ["child"]
+        assert first.ends()["child"]["condition"] == "satisfied"
+        lane = first.rig.services.attempts()
+        again = lane.issue(
+            first.rig.services.lineage(NodePath(("child",))),
+            kit.RUN_EFFECT,
+            EffectFacetClass.EVENT,
+            Repeat.ONCE,
+            Lifetime.RUN,
+            InRunGroup(),
+            3,
+            None,
+        )
+        assert getattr(again, "value", None) == "once_already_issued"
+        # R2's own child has an issuable first attempt against the same environment
+        other = _child_rig(tmp_path, R2, port, tk.recorded_unit("child", repeat=Repeat.ONCE))
+        other.run()
+        assert port.calls == ["child", "child"]
