@@ -1,9 +1,11 @@
-"""Plan vocabulary: the plan refusal codes (V-11; L.SV-3.1).
+"""Plan vocabulary: the plan refusal codes (V-11; L.SV-3.1), B4's node vocabulary and the
+single-level code set (L.SV-4.1).
 
 Every code is the snake of its V-11 name behind the origin that raises it (V-11: names are
-provisional, meanings bind; RIPPLE-MAP N4). This module starts with the plan refusal codes
-`compile` (MC-23) returns; L.SV-4.1 adds B4's node vocabulary and the single-level code set.
-Pure: stdlib only, so the host, the child and `trestle.workflow` read one spelling.
+provisional, the set is closed, meanings bind; RIPPLE-MAP N4). `V11` maps each V-11 name A-1 uses
+to its one spelling. The B4 enums are transcribed in B4's declaration order and invent nothing;
+`OutcomeClass` stays MC-17's, in `trestle.common.outcome`. Pure: stdlib only, so the host, the
+child and `trestle.workflow` read one spelling. `codes.py` re-exports the wire codes (L.SV-4.2).
 
 `BUDGET_DOES_NOT_FIT` keeps core's spelling (`trestle.common.codes.BUDGET_DOES_NOT_FIT`, L.CL-C1.5):
 V-11 gives the code one spelling for admission and for the in-run dispatch re-check, so no second
@@ -11,6 +13,9 @@ constant may carry another value.
 """
 
 from __future__ import annotations
+
+from collections.abc import Mapping
+from enum import IntEnum, StrEnum
 
 BOUND_EXCEEDED = "admission.bound_exceeded"
 UNKNOWN_IDENTIFIER = "admission.unknown_identifier"
@@ -33,3 +38,153 @@ PLAN_REFUSAL_CODES: frozenset[str] = frozenset(
         ROUTE_UNSUPPORTED,
     }
 )
+
+# ---- node codes (V-11.3 and the loop, join and facets; L.SV-4.1)
+
+DECLARATION_STALE = "execution.declaration_stale"
+TICKET_REFUSED = "execution.ticket_refused"
+UNIT_RAISED = "execution.unit_raised"
+LANE_UNAVAILABLE = "execution.lane_unavailable"
+STOP_SEEN = "execution.stop_seen"
+EFFECT_UNCONFIRMED = "execution.effect_unconfirmed"
+PLAN_PRECONDITION_UNCOVERED = "execution.plan_precondition_uncovered"
+PRECONDITION_UNSATISFIED = "execution.precondition_unsatisfied"
+POSTCONDITION_TIMEOUT = "execution.postcondition_timeout"
+REMEDY_EXHAUSTED = "execution.remedy_exhausted"
+REMEDY_NO_PROGRESS = "execution.remedy_no_progress"
+FOUND_UNHEALTHY = "execution.found_unhealthy"
+FOUND_INCOMPATIBLE = "execution.found_incompatible"
+CARVE_EXCEEDED = "execution.carve_exceeded"
+CURRENCY_UNCONFIRMED = "execution.currency_unconfirmed"
+VERTEX_UNENDED = "execution.vertex_unended"
+
+# V-11's remaining execution-error codes keep core's spellings (MC-CORE-04).
+WORKER_EXIT = "execution.worker_exit"
+RESULT_UNENCODABLE = "execution.result_unencodable"
+EXECUTION_RESTART = "execution.interrupted"
+EXECUTION_CANCELLED = "execution.cancelled"
+EXECUTION_DEADLINE = "execution.deadline_exceeded"
+
+# ---- publication grounds B1 leaves unnamed (B1-E1/E2/E3; "codes provisional")
+
+PLAN_CONTRACT_MISSING = "publication.plan_contract_missing"
+SAFE_START_VERB_INVALID = "publication.safe_start_verb_invalid"
+FACET_LIFETIME_MISMATCH = "publication.facet_lifetime_mismatch"
+RELEASE_TIMEOUT_MISSING = "publication.release_timeout_missing"
+MAX_ATTEMPTS_INVALID = "publication.max_attempts_invalid"
+RELEASE_EFFECT_ONCE = "publication.release_effect_once"
+FLAGS_CONTRADICT_TYPE = "publication.flags_contradict_type"
+RECORDED_WITH_REMEDIES = "publication.recorded_with_remedies"
+OWNED_REMEDY_ON_FOUND = "publication.owned_remedy_on_found"
+BUDGET_EXCEEDS_LEAF = "publication.budget_exceeds_leaf"
+
+SINGLE_LEVEL_CODES: frozenset[str] = frozenset(
+    {
+        DECLARATION_STALE,
+        TICKET_REFUSED,
+        UNIT_RAISED,
+        LANE_UNAVAILABLE,
+        STOP_SEEN,
+        EFFECT_UNCONFIRMED,
+        PLAN_PRECONDITION_UNCOVERED,
+        PRECONDITION_UNSATISFIED,
+        POSTCONDITION_TIMEOUT,
+        REMEDY_EXHAUSTED,
+        REMEDY_NO_PROGRESS,
+        FOUND_UNHEALTHY,
+        FOUND_INCOMPATIBLE,
+        CARVE_EXCEEDED,
+        CURRENCY_UNCONFIRMED,
+        VERTEX_UNENDED,
+        PLAN_CONTRACT_MISSING,
+        SAFE_START_VERB_INVALID,
+        FACET_LIFETIME_MISMATCH,
+        RELEASE_TIMEOUT_MISSING,
+        MAX_ATTEMPTS_INVALID,
+        RELEASE_EFFECT_ONCE,
+        FLAGS_CONTRADICT_TYPE,
+        RECORDED_WITH_REMEDIES,
+        OWNED_REMEDY_ON_FOUND,
+        BUDGET_EXCEEDS_LEAF,
+    }
+)
+
+# Each V-11 name A-1 uses -> its one plan spelling. The in-run dispatch re-check reuses
+# admission.budget_does_not_fit (V-11: one spelling; no execution.*_at_dispatch code exists).
+V11: Mapping[str, str] = {
+    "UNKNOWN_IDENTIFIER": UNKNOWN_IDENTIFIER,
+    "DECLARATION_CONFLICT": DECLARATION_CONFLICT,
+    "DEPENDENCY_CYCLE": DEPENDENCY_CYCLE,
+    "UNIT_UNRESOLVED": UNIT_UNRESOLVED,
+    "PLAN_CONTRACT_MISSING": PLAN_CONTRACT_MISSING,
+    "PLAN_PRECONDITION_UNCOVERED": PLAN_PRECONDITION_UNCOVERED,
+    "BOUND_EXCEEDED": BOUND_EXCEEDED,
+    "BUDGET_DOES_NOT_FIT": BUDGET_DOES_NOT_FIT,
+    "LEASE_SET_UNDECIDABLE": LEASE_SET_UNDECIDABLE,
+    "ROUTE_UNSUPPORTED": ROUTE_UNSUPPORTED,
+    "DECLARATION_STALE": DECLARATION_STALE,
+    "EFFECT_UNCONFIRMED": EFFECT_UNCONFIRMED,
+    "TICKET_REFUSED": TICKET_REFUSED,
+    "EXECUTION_CANCELLED": EXECUTION_CANCELLED,
+    "EXECUTION_DEADLINE": EXECUTION_DEADLINE,
+    "FOUND_UNHEALTHY": FOUND_UNHEALTHY,
+    "FOUND_INCOMPATIBLE": FOUND_INCOMPATIBLE,
+    "UNIT_RAISED": UNIT_RAISED,
+    "POSTCONDITION_TIMEOUT": POSTCONDITION_TIMEOUT,
+    "PRECONDITION_UNSATISFIED": PRECONDITION_UNSATISFIED,
+    "LANE_UNAVAILABLE": LANE_UNAVAILABLE,
+    "STOP_SEEN": STOP_SEEN,
+    "REMEDY_EXHAUSTED": REMEDY_EXHAUSTED,
+    "REMEDY_NO_PROGRESS": REMEDY_NO_PROGRESS,
+    "CARVE_EXCEEDED": CARVE_EXCEEDED,
+    "CURRENCY_UNCONFIRMED": CURRENCY_UNCONFIRMED,
+    "WORKER_EXIT": WORKER_EXIT,
+    "EXECUTION_RESTART": EXECUTION_RESTART,
+    "VERTEX_UNENDED": VERTEX_UNENDED,
+    "RESULT_UNENCODABLE": RESULT_UNENCODABLE,
+}
+
+
+# ---- B4's node vocabulary (interface-terminal-answer.md), in B4's declaration order
+
+
+class NodeClass(StrEnum):
+    """Class rank = declaration order, 0 highest (B4-T1)."""
+
+    EXECUTION_ERROR = "execution_error"
+    UNENCODABLE_RESULT = "unencodable_result"
+    FAILED = "failed"
+    TIMED_OUT = "timed_out"
+    EXHAUSTED = "exhausted"
+    BLOCKED = "blocked"
+    REPAIRED = "repaired"
+    PASSED = "passed"
+
+
+class Origin(IntEnum):
+    """Origin rank (B4-T1)."""
+
+    WHOLE_ROOT_TRIGGER = 0  # code UNIT_RAISED: the only whole-root trigger under fail-fast
+    NODE_REACHED = 1
+
+
+class Listing(StrEnum):
+    CANDIDATE = "candidate"  # reached its own condition (B4-C4)
+    ROLLED_UP = "rolled_up"  # a composite that ended normally; class rolled up by the same key
+    STOPPED = "stopped"
+    NOT_STARTED = "not_started"
+    UNENDED = "unended"  # entries but no NodeEnd; with neither entries nor a NodeEnd: NOT_STARTED
+
+
+class ResourceDisposition(StrEnum):
+    """WR-OWN-1, for a node whose class is PASSED or REPAIRED."""
+
+    REUSED = "reused"
+    STARTED = "started"
+    REPAIRED = "repaired"
+
+
+class RootStop(StrEnum):
+    CANCEL = "cancel"
+    RELEASE_POINT = "release_point"
+    RESTART = "restart"

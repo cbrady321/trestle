@@ -209,6 +209,7 @@ is listed in [`agents.md`](agents.md) (Run states).
 - Past that bound the call answers `projection.terminal_wait_exceeded` (`origin: projection`, not retryable); the run continues and `await_runs` joins it.
 - The wait runs off the server's event loop, so `cancel`, `query` and `fetch` on other runs (or the same one) are answered while a `terminal` call is held.
 - A finished run's `RunView` carries `outcome` (`class`, `code`, `identity`, `recovered`): one class from `passed | cancelled | timed_out | execution_error | failed | blocked`; a plain plugin reaches the first four.
+- A finished run's `RunView` (and so the `run` and `await_runs` terminal responses) also carries `answer`, the one terminal answer, beside `state` and `outcome`; a run that has not ended has none. Its decisive keys are always present (`null`, never omitted): `outcome`, `root_stop`, `recovered`, `primary` (the node that decided, with its `code`, `human_action` and `resend`), `incomplete`, `error`, `cleanup` (`clean`, counts per disposition, `group_confirmed_gone`, `helpers_disclosed`, `lease_ended_unconfirmed`), `test_counts` and `detail`, then `listed_count` and `unconfirmed_count` (the full lengths) and the `listed` and `unconfirmed` entries that fit the run's summary budget. What does not fit is behind `detail`, a handle (`<run_id>/answer`) that `fetch` resolves to the full answer. The answer is recomputed from the run's durable record, never stored as a second authority.
 
 ### Evidence finalization (R-QB-28)
 

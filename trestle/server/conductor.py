@@ -19,7 +19,7 @@ from trestle.common.limits import capture_limits
 from trestle.common.plan.compiler import AdmittedPlan
 from trestle.common.pyenv import build_child_env, python_argv
 from trestle.common.types import WorkOrder
-from trestle.server import fold, sweep
+from trestle.server import answer, fold, sweep
 from trestle.server.config import load_config
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, work_dir
 from trestle.server.procident import Attribution, GroupStop, Identity, ProcessSource, stop_group
@@ -113,6 +113,7 @@ class Conductor:
             result_state="absent",
             event_count=0,
         )
+        self._finalize_answer(run_dir, ledger, classification)
         ledger.append(classification, run_id=order.run_id)
         return classification
 
@@ -333,9 +334,19 @@ class Conductor:
             result_state=result_state,
             event_count=count_events(evidence_dir(run_dir)),
         )
+        # B4 Ordering: U2 projects the answer from the durable inputs before the terminal row
+        self._finalize_answer(run_dir, ledger, classification)
         ledger.append(classification, run_id=order.run_id)
 
         return classification
+
+    def _finalize_answer(self, run_dir: Path, ledger: RunLedger, terminal_kind: str) -> None:
+        """Persist the answer handed over at finalization (`evidence/answer.json`, what `detail`
+        resolves to): the run view recomputes it from the same durable inputs (B4-C1)."""
+        answer.write_finalized(
+            run_dir,
+            answer.answer_for_run(run_dir, ledger.records, terminal_kind, self._read_spec(run_dir)),
+        )
 
     async def drive_async(self, order: WorkOrder) -> str:
         """Async entry — runs sync drive on a worker thread (wrapper stays sync)."""
