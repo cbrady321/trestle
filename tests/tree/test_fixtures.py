@@ -274,6 +274,7 @@ COMPILE_REQUESTS: dict[str, dict[str, Any]] = {
     "failure_dependents": {"env": "dev"},
     "exception_branch": {"env": "dev"},
     "readiness_sibling": {"env": "dev"},
+    "depth2_conditions": {"env": "dev"},
     "creator_pk": {"env": "dev"},
 }
 
