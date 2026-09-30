@@ -9,7 +9,7 @@ from pathlib import Path
 from trestle.common import codes
 from trestle.common.fsutil import atomic_write, atomic_write_json, fsync_dir
 from trestle.common.ids import generate_service_epoch
-from trestle.server import procident
+from trestle.server import fold, procident
 from trestle.server.ledger import (
     TERMINAL_KINDS,
     RunLedger,
@@ -129,6 +129,10 @@ def append_recovery_suffix(
     # B2-C11: the run's processes are dealt with before anything is finalized
     _record_group_stop(ledger, run_id, source=source, signaller=signaller)
     sweep_tmp_partial(run_dir)
+    # B2-C11: the lane is folded before anything is finalized and before `interrupted`; a run
+    # with no lane (or one already folded before the restart) writes no row. The recovery error
+    # below stays the class's own (a restart is the supervisor's cause, like a cancel).
+    fold.fold_into_ledger(run_dir, ledger, None)
     # MC-15: a run finalized here has an explanation; the one it already wrote (before the restart)
     # stands, and none is made up for a run that ends by any other means
     if ledger.terminal_state() is None and not ledger.has_kind("error_record"):
