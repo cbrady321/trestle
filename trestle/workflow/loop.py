@@ -25,6 +25,13 @@ each change one method:
   which the loop keeps in process for the life of the root (V-4.5, A1c3-1). Held steps are never
   written to the lane, so the fold and the sweep never see them.
 
+The loop reports every step as structured fields through `RunServices.evidence` (V-13
+`EvidenceSink`, B2-C13; L.SL-10.1, WR-EVID-3): `plan.identity` once, then `step.observed`,
+`step.postcondition` (the checks and the join's verdict), `step.action`, `step.repair` (a remedy's
+ticket) and, in the release pass, `step.cleanup`. They are the runtime's alone: the evidence a unit
+gets in its context refuses those kinds. The sink truncates and marks an event over EVENT_MAX and
+never raises, so no fact can fail a node.
+
 The loop owns the attempt measure (B1-E5): every ADVANCE either issues a ticket, which the lane
 bounds by `max_attempts`, or records a step, or ends the node `UNIT_RAISED`. A call that leaves the
 record unchanged is a defect that would spin on the same join, so it ends the node `UNIT_RAISED`
@@ -73,9 +80,11 @@ from trestle.workflow.units import (
     NoAction,
     NodeRecordView,
     StepView,
+    TicketView,
 )
 from trestle.workflow.values import (
     CancelSignal,
+    CheckResult,
     ClockReading,
     Condition,
     CreatedHandle,
@@ -103,6 +112,18 @@ _EVIDENCE_FAILED = "loop_failed_detail"
 _EVIDENCE_UNCOVERED = "loop_precondition_uncovered"
 
 _ESCAPED: object = object()  # `advance` ended in an `EffectRefused` rather than returning
+
+# WR-EVID-3 step facts: event kinds only the loop writes (`trestle.child.context.STEP_FACT_KINDS`
+# is the same set: the context refuses them from a plugin, tests pin both).
+PLAN_IDENTITY = "plan.identity"
+STEP_OBSERVED = "step.observed"
+STEP_POSTCONDITION = "step.postcondition"
+STEP_ACTION = "step.action"
+STEP_REPAIR = "step.repair"
+STEP_CLEANUP = "step.cleanup"
+STEP_FACT_KINDS = frozenset(
+    {PLAN_IDENTITY, STEP_OBSERVED, STEP_POSTCONDITION, STEP_ACTION, STEP_REPAIR, STEP_CLEANUP}
+)
 
 # The B1-E7 selection observations the root made before its plan identity: none at one leaf.
 _NO_OBSERVATIONS = "[]"
@@ -152,6 +173,20 @@ class _RootGoal:
         self._goal = Goal.RELEASE
 
 
+class _UnitEvidence:
+    """The evidence sink a unit sees: the run's, except that the step-fact kinds are the loop's
+    alone and a unit's event of one is dropped (WR-EVID-3)."""
+
+    __slots__ = ("_sink",)
+
+    def __init__(self, sink: EvidenceSink) -> None:
+        self._sink = sink
+
+    def event(self, event_kind: str, fields: Mapping[str, JsonValue]) -> None:
+        if event_kind not in STEP_FACT_KINDS:
+            self._sink.event(event_kind, fields)
+
+
 @dataclass(frozen=True, slots=True)
 class _CallContext:
     """`ObserveContext` / `ActContext` for one unit call (B1-C2, B1-C3): the lineage, the one clock
@@ -172,7 +207,48 @@ class _CallContext:
 
     @property
     def evidence(self) -> EvidenceSink:
-        return self.services.evidence()
+        return _UnitEvidence(self.services.evidence())
+
+
+def _value(item: object) -> Any:
+    """An enum's value, else the item (a JSON-ready field)."""
+    return getattr(item, "value", item)
+
+
+def _check_fields(result: CheckResult) -> dict[str, JsonValue]:
+    return {"satisfied": result.satisfied, "code": result.code, "detail": result.detail}
+
+
+def _ticket_fields(ticket: TicketView) -> dict[str, JsonValue]:
+    """A ticket as the step-action fact reports it: what was issued, how it was answered, and for
+    an event effect the recorded result (a test's pass or fail and its counts)."""
+    confirmation = ticket.confirmation
+    result = ticket.result
+    return {
+        "effect": ticket.effect,
+        "facet": _value(ticket.facet),
+        "attempt": ticket.attempt,
+        "remedy": None
+        if ticket.remedy is None
+        else {"code": ticket.remedy.code, "attempt": ticket.remedy.attempt},
+        "status": None if confirmation is None else _value(confirmation.status),
+        "code": None if confirmation is None else confirmation.code,
+        "identity": None if confirmation is None else confirmation.identity,
+        "result": None
+        if result is None
+        else {
+            "passed": result.passed,
+            "code": result.code,
+            "counts": None
+            if result.counts is None
+            else {
+                "passed": result.counts.passed,
+                "failed": result.counts.failed,
+                "errors": result.counts.errors,
+                "skipped": result.counts.skipped,
+            },
+        },
+    }
 
 
 def _observation_problem(observation: object, declaration: LeafDeclaration) -> str | None:
@@ -374,6 +450,25 @@ class LeafWalk:
             self._loop.host_scope,
             self._loop.services.clock(),
         )
+        self._postcondition_fact(self.verdict)
+
+    def _postcondition_fact(self, verdict: Verdict) -> None:
+        """`step.postcondition`: the checks the join read (the last observation's postcondition and
+        preconditions) and the verdict it gave, one per join."""
+        obs = self._observation
+        self._fact(
+            STEP_POSTCONDITION,
+            {
+                "postcondition": None if obs is None else _check_fields(obs.postcondition),
+                "preconditions": []
+                if obs is None
+                else [{"name": name, **_check_fields(r)} for name, r in obs.preconditions],
+                "condition": _value(verdict.condition),
+                "code": verdict.code,
+                "provenance": _value(verdict.provenance),
+                "attempts": verdict.attempts.attempts,
+            },
+        )
 
     # ------------------------------------------------------------------ observe and poll
 
@@ -419,6 +514,29 @@ class LeafWalk:
             self._unit_raised(problem, handle)
             return None
         assert isinstance(observation, Observation)
+        if handle is None:  # a release-pass observation is the cleanup's, reported there
+            self._fact(
+                STEP_OBSERVED,
+                {
+                    "present": observation.present,
+                    "selector_present": observation.selector_present,
+                    "identity_proven": observation.identity_proven,
+                    "configuration_compatible": observation.configuration_compatible,
+                    "code": observation.code,
+                    "found": [
+                        {"resource_kind": f.resource_kind, "selector": f.selector}
+                        for f in observation.found
+                    ],
+                    "currency": [
+                        {
+                            "subject": _value(c.subject),
+                            "observed_generation": c.observed_generation,
+                            "older": c.older,
+                        }
+                        for c in observation.currency
+                    ],
+                },
+            )
         return observation
 
     def _next_interval(self) -> timedelta:
@@ -450,6 +568,28 @@ class LeafWalk:
 
     # ------------------------------------------------------------------ advance
 
+    def _cooled_down(self, grant: RemedyGrant) -> bool:
+        """The declared remedy's cooldown (V-14): no two tickets of one remedy closer than
+        `cooldown`. Waits, through `CancelSignal.wait` and never past the slice's end, until the
+        latest remedy ticket for this code is `cooldown` old. False when a stop arrived or the
+        slice ended before then (the remedy is not issued)."""
+        decl = next((d for d in self._terms.remedies if d.code == grant.code), None)
+        previous = next(
+            (
+                t
+                for t in reversed(self._loop.lane.node_record(self.path).tickets)
+                if t.remedy is not None and t.remedy.code == grant.code
+            ),
+            None,
+        )
+        if decl is None or previous is None:
+            return True
+        ready = min(previous.issued_at + decl.cooldown, self._terms.slice_end)
+        left = ready - self._loop.now()
+        if left > timedelta(0):
+            self._loop.services.cancellation().wait(left)
+        return not self._stopped() and not self._slice_ended()
+
     def _mark(self) -> tuple[int, int, int]:
         durable = self._loop.lane.node_record(self.path)
         return len(durable.tickets), len(durable.steps), len(self._held)
@@ -460,6 +600,8 @@ class LeafWalk:
         recorded by the facet and is never UNIT_RAISED (B1-E4); any other raise is (B1-E6)."""
         verdict = self.verdict
         assert verdict is not None
+        if verdict.remedy is not None and not self._cooled_down(verdict.remedy):
+            return  # a stop or the slice's end came first: the walk reads it at its next step
         before = self._loop.lane.node_record(self.path)
         marked = self._mark()
         self._refusal_seen = False
@@ -473,16 +615,52 @@ class LeafWalk:
             pass  # the facet recorded the outcome before raising (B1-E4)
         except Exception as exc:  # noqa: BLE001 (plugin code: any raise is the unit's, B1-E6)
             self._unit_raised(f"advance raised {type(exc).__name__}: {exc}")
+            self._action_fact(before, verdict, "raised")
             return
         if self._loop.goal is not Goal.CONVERGE:
+            self._action_fact(before, verdict, returned)
             return  # a facet flipped the goal: the node is in the RELEASE walk (B1-E4)
         if returned is not _ESCAPED:
             issued = self._loop.lane.node_record(self.path).tickets[len(before.tickets) :]
             self._receive(returned, issued, verdict.remedy)
+        self._action_fact(before, verdict, returned)
         if self._loop.goal is Goal.CONVERGE and self._mark() == marked:
             # the loop-owned attempt measure: an ADVANCE that leaves the record as it was would
             # repeat the same join forever, so it ends the node instead
             self._unit_raised("an advance that recorded nothing and changed nothing")
+
+    def _action_fact(self, before: NodeRecordView, verdict: Verdict, returned: object) -> None:
+        """`step.action` for one ADVANCE: what it issued and how each ticket was answered, what the
+        unit returned, and the remedy it ran under; then one `step.repair` for each of its tickets
+        that carries a remedy (a repair, V-4 `TicketEntry.remedy`)."""
+        issued = self._loop.lane.node_record(self.path).tickets[len(before.tickets) :]
+        grant = verdict.remedy
+        if returned is _ESCAPED:
+            outcome = "refused"  # an EffectRefused the facet recorded (B1-E4)
+        elif isinstance(returned, str):
+            outcome = returned
+        else:
+            outcome = type(returned).__name__
+        step_code = getattr(returned, "code", getattr(returned, "reason", None))
+        self._fact(
+            STEP_ACTION,
+            {
+                "returned": outcome,
+                "code": step_code if isinstance(step_code, str) else None,
+                "remedy": None
+                if grant is None
+                else {"code": grant.code, "effect": grant.effect, "attempt": grant.attempt},
+                "tickets": [_ticket_fields(t) for t in issued],
+            },
+        )
+        for ticket in issued:
+            if ticket.remedy is not None:
+                self._fact(STEP_REPAIR, _ticket_fields(ticket))
+
+    def _fact(self, kind: str, fields: dict[str, JsonValue]) -> None:
+        """A step fact (WR-EVID-3): structured fields through the run's evidence sink, which
+        truncates and marks an over-size event and never raises."""
+        self._loop.services.evidence().event(kind, {"path": _path_text(self.path), **fields})
 
     def _receive(
         self,
@@ -533,13 +711,23 @@ class LeafWalk:
         (V-4.4), in reverse issue order. The release set is read from the record, never from an
         observation (V-2.2)."""
         for handle in reversed(self.record().release_set()):
-            self._release_call(handle)
-            self._await_absence(handle)
+            issued = self._release_call(handle)
+            released = self._await_absence(handle)
+            self._fact(
+                STEP_CLEANUP,
+                {
+                    "effect": handle.effect,
+                    "selector": handle.selector,
+                    "released": released,
+                    "tickets": [_ticket_fields(t) for t in issued],
+                },
+            )
 
-    def _release_call(self, handle: CreatedHandle) -> None:
+    def _release_call(self, handle: CreatedHandle) -> tuple[TicketView, ...]:
         """Call `release` once for `handle` (B1-C4). Whatever it returns, or a facet records, is
         the handle's cleanup outcome (`StepEntry.handle` set), never the node's condition; a raise
-        is UNIT_RAISED as a cleanup outcome too (B1-E6)."""
+        is UNIT_RAISED as a cleanup outcome too (B1-E6). The tickets the call issued are returned
+        for the cleanup fact."""
         before = self._loop.lane.node_record(self.path)
         self._refusal_seen = False
         context = _CallContext(self._lineage, self._loop.services)
@@ -547,19 +735,21 @@ class LeafWalk:
         try:
             returned = self._unit.release(self._params, handle, facets, context)
         except EffectRefused:
-            return  # the facet recorded the outcome before raising (B1-E4)
+            return self._loop.lane.node_record(self.path).tickets[len(before.tickets) :]
         except Exception as exc:  # noqa: BLE001 (plugin code: any raise is the unit's, B1-E6)
             self._unit_raised(f"release raised {type(exc).__name__}: {exc}", handle)
-            return
+            return self._loop.lane.node_record(self.path).tickets[len(before.tickets) :]
         issued = self._loop.lane.node_record(self.path).tickets[len(before.tickets) :]
         self._receive(returned, issued, None, handle)
+        return issued
 
-    def _await_absence(self, handle: CreatedHandle) -> None:
+    def _await_absence(self, handle: CreatedHandle) -> bool:
         """POLL under RELEASE: wait the policy's interval on a plain clock, ignoring
         cancellation (a cancel that already arrived would end every wait at once), then observe,
         bounded by the effect's `release_timeout` and the root deadline. Only an observed absence
         (V-3.8) writes `record_released`; otherwise the handle stays unrecorded and is the host
-        sweep's (B2-C9), never reported released by the loop (WR-OWN-6)."""
+        sweep's (B2-C9), never reported released by the loop (WR-OWN-6). True when it was recorded
+        released."""
         loop = self._loop
         declared = declared_effect(self._decl, handle.effect)
         timeout = declared.release_timeout if declared is not None else None
@@ -569,7 +759,8 @@ class LeafWalk:
             observation = self._observe(handle)
             if observation is not None and _observed_absent(observation):
                 loop.lane.record_released(handle, None)
-                return
+                return True
+        return False
 
     # ------------------------------------------------------------------ steps and evidence
 
@@ -685,13 +876,22 @@ class Loop:
     def _record_plan(self, plan: svc.PlanAccepted) -> None:
         """The one plan entry, before the first `issue` and the first `record_end`, on every path
         including a stop (B1-C11, B1-I8); it reserves each vertex's `NodeEnd` slot (B2-C7)."""
-        self.lane.record_plan(
-            svc.PlanIdentity(
-                declaration_digest=plan.declaration_digest or "",
-                args_hash=_sha256(canonical_json(dict(self.intent))),
-                selection=(),
-                observations_digest=_sha256(_NO_OBSERVATIONS),
-            )
+        identity = svc.PlanIdentity(
+            declaration_digest=plan.declaration_digest or "",
+            args_hash=_sha256(canonical_json(dict(self.intent))),
+            selection=(),
+            observations_digest=_sha256(_NO_OBSERVATIONS),
+        )
+        self.lane.record_plan(identity)
+        self.services.evidence().event(  # WR-EVID-3: the plan's identity, once, as fields
+            PLAN_IDENTITY,
+            {
+                "plan_digest": plan.plan_digest,
+                "declaration_digest": identity.declaration_digest,
+                "args_hash": identity.args_hash,
+                "selection": [],
+                "observations_digest": identity.observations_digest,
+            },
         )
 
     def _end_root_stop(self, stop: Stop) -> None:

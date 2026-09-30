@@ -93,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
                     run_dir=run_dir,
                     plan=plan,
                     deadline=deadline,
-                    event=ctx.event,
+                    event=ctx.runtime_event,
                     event_max=limits.max_single_event_bytes,
                 )
             )

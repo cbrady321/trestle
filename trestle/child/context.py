@@ -21,20 +21,38 @@ if TYPE_CHECKING:
 # projection reads) and the lane entry classes (V-4 / V-4.8), so a plugin cannot forge a lane
 # or record-shaped event. Wire spelling of the lane classes is the record format's own
 # (`lane_format`, L.SV-1.1); the names here are the entry classes, spelled as B2-C7 lists them.
-RESERVED_EVENT_KINDS: frozenset[str] = frozenset(
+# The step-fact kinds the converge loop emits (L.SL-10.1, WR-EVID-3): structured fields through
+# the run's evidence sink, so a run is reconstructable from `run_events` alone. Only the runtime
+# writes them (`RuntimeContext.runtime_event`); a plugin's `Context.event` refuses them like the
+# lane classes. `trestle.workflow.loop.STEP_FACT_KINDS` is the same set (tests pin both).
+STEP_FACT_KINDS: frozenset[str] = frozenset(
     {
-        "log",
-        "progress",
-        "artifact_available",
-        "error",
-        "plan",
-        "issue",
-        "confirmation",
-        "result",
-        "released",
-        "step",
-        "node_end",
+        "plan.identity",
+        "step.observed",
+        "step.action",
+        "step.repair",
+        "step.postcondition",
+        "step.cleanup",
     }
+)
+
+RESERVED_EVENT_KINDS: frozenset[str] = (
+    frozenset(
+        {
+            "log",
+            "progress",
+            "artifact_available",
+            "error",
+            "plan",
+            "issue",
+            "confirmation",
+            "result",
+            "released",
+            "step",
+            "node_end",
+        }
+    )
+    | STEP_FACT_KINDS
 )
 
 
@@ -115,6 +133,17 @@ class RuntimeContext:
         if not isinstance(kind, str) or not kind:
             raise ValueError("event kind must be a non-empty string")
         if kind in RESERVED_EVENT_KINDS:
+            raise ValueError(f"event kind {kind!r} is reserved")
+        self._emit(kind, dict(fields))
+
+    def runtime_event(self, kind: str, **fields: object) -> None:
+        """The runtime's own event path (not part of the plugin `Context` surface): what the run's
+        evidence sink calls. It is `event` for every kind a plugin may write, and also accepts the
+        reserved step-fact kinds (`STEP_FACT_KINDS`, L.SL-10.1), which only the runtime writes; any
+        other reserved kind stays refused. Every limit and the scrubber apply through `_emit`."""
+        if not isinstance(kind, str) or not kind:
+            raise ValueError("event kind must be a non-empty string")
+        if kind in RESERVED_EVENT_KINDS and kind not in STEP_FACT_KINDS:
             raise ValueError(f"event kind {kind!r} is reserved")
         self._emit(kind, dict(fields))
 

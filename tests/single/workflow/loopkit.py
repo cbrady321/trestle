@@ -333,7 +333,8 @@ class Unit:
 class Marker:
     """An in-memory marker behind `ResourceReads`, `ResourceCreate` and `ResourceOwned`: each
     `create` makes one instance (keyed by its effect id), ready after `ready_after` observations;
-    an instance is gone `absent_after` observations after its `stop` (never, if `stop_holds`)."""
+    an instance is gone `absent_after` observations after its `stop` (never, if `stop_holds`);
+    `restart` answers `restart_status` (a remedy's repair, L.SL-6.1) and changes nothing."""
 
     def __init__(
         self,
@@ -345,8 +346,13 @@ class Marker:
         create_code: str | None = None,
         vanish_after_create: bool = False,
         descriptor: ports.ReleaseDescriptor | None = None,
+        restart_status: ConfirmationStatus = ConfirmationStatus.APPLIED,
+        restart_code: str | None = None,
     ) -> None:
         self.vanish_after_create = vanish_after_create
+        self.restart_status = restart_status
+        self.restart_code = restart_code
+        self.restarts = 0
         self.descriptor = descriptor or ports.InRunGroup()
         self.ready_after = ready_after
         self.absent_after = absent_after
@@ -423,7 +429,9 @@ class Marker:
         return Confirmation(ConfirmationStatus.APPLIED, None, None)
 
     def restart(self, target: OwnedHandle, ticket: AttemptTicket) -> Confirmation:
-        raise NotImplementedError
+        self.calls.append("restart")
+        self.restarts += 1
+        return Confirmation(self.restart_status, self.restart_code, None)
 
     def recreate(self, target: OwnedHandle, ticket: AttemptTicket) -> Confirmation:
         raise NotImplementedError
