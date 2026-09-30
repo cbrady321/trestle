@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Any
 
 from trestle.workflow import ports
+from trestle_packs.fakes.command import Confirmation, ConfirmationStatus
 from trestle_packs.fakes.compose import FakeComposeResolver
 from trestle_packs.fakes.container import FakeContainerEngine, _Container, _host_port
 from trestle_packs.fakes.provision import FakeProvision
@@ -52,13 +53,26 @@ REAL_WRONG_PASSWORD_SEAM = f"{__name__}:real_wrong_password_ports"
 WRONG_PASSWORD = "planted-wrong-password"
 FAKE_DOCKER = "/fake/bin/docker"
 FAKE_ENDPOINT = "unix:///fake/desktop-linux.sock"
+# L.RB-12.3/12.5: the executable the fake's `ArgvRelease` descriptors name (a release wrapper over
+# `twin/state_docker.py`, so the host sweep can release against this same state), and a planted
+# release failure (`remove`: the fake's own stop leaves the container, stopped, and answers
+# UNKNOWN, as the real adapter does when `rm` fails)
+DOCKER_ENV = "TRESTLE_ENV_FAKE_DOCKER"
+FAIL_ENV = "TRESTLE_ENV_FAKE_FAIL"
 
 
 class FakeReferenceEngine(FakeContainerEngine):
     """The fake engine with the tree's declared exec checks and a durable state file."""
 
-    def __init__(self, state_path: Path | None, checks: Mapping[str, Mapping[str, str]]) -> None:
-        super().__init__(executable=FAKE_DOCKER, endpoint=FAKE_ENDPOINT)
+    def __init__(
+        self,
+        state_path: Path | None,
+        checks: Mapping[str, Mapping[str, str]],
+        executable: str = FAKE_DOCKER,
+        fail: str | None = None,
+    ) -> None:
+        super().__init__(executable=executable, endpoint=FAKE_ENDPOINT)
+        self._fail = fail
         self._state_path = state_path
         self._checks = {name: dict(env) for name, env in checks.items()}
         self.calls: list[dict[str, Any]] = []
@@ -167,6 +181,12 @@ class FakeReferenceEngine(FakeContainerEngine):
         return answer
 
     def stop(self, target: Any, ticket: Any) -> Any:
+        if self._fail == "remove" and target.selector in self._containers:
+            with self._lock:
+                self._containers[target.selector].state = "exited"  # stopped, never removed
+            answer = Confirmation(ConfirmationStatus.UNKNOWN, None, target.selector)
+            self._log("stop", target.selector, status=_status(answer))
+            return answer
         answer = super().stop(target, ticket)
         self.environment.pop(target.selector, None)
         self._log("stop", target.selector, status=_status(answer))
@@ -233,7 +253,12 @@ def _ports(
     reachable: bool = True,
 ) -> Mapping[type, object]:
     state = environ.get(STATE_ENV)
-    engine = FakeReferenceEngine(Path(state) if state else None, _checks(readiness_environment))
+    engine = FakeReferenceEngine(
+        Path(state) if state else None,
+        _checks(readiness_environment),
+        executable=environ.get(DOCKER_ENV) or FAKE_DOCKER,
+        fail=environ.get(FAIL_ENV) or None,
+    )
     engine.reachable = reachable
     mapping: dict[type, object] = {
         ports.ResourceReads: engine,

@@ -52,7 +52,9 @@ def variants_host(
                 os.environ[name] = value
 
 
-def run_terminal(host: mcp_host.McpHost, env: str, mode: str) -> dict[str, Any]:
+def run_terminal(
+    host: mcp_host.McpHost, env: str, mode: str, *, note: bool = True
+) -> dict[str, Any]:
     """THE one call for a variant; MC-12 counts it once."""
     sent = host.request_count()
     answer = host.call(
@@ -66,7 +68,8 @@ def run_terminal(host: mcp_host.McpHost, env: str, mode: str) -> dict[str, Any]:
     )
     assert host.request_count() == sent + 1, "one request, counted once by the MCP host"
     assert isinstance(answer, dict), answer
-    harness.note_passed(answer)
+    if note:  # a planted release failure is not a passed run the WR-OWN-3 falsifier checks
+        harness.note_passed(answer)
     return answer
 
 
@@ -164,3 +167,34 @@ def applied_past_stop(run_dir_: Path) -> list[str]:
         and row.offset >= length
         and row.entry["effect"] not in RELEASE_EFFECTS
     ]
+
+
+# ---- a server killed mid-run (L.RB-12.3) ---------------------------------------------------
+
+
+def identities_recorded(host: mcp_host.McpHost, run_id: str, at_least: int = 2) -> bool:
+    """The run's process identities are durable, so recovery can end its group by identity."""
+    found = sorted((host.home / "runs").glob(f"*/{run_id}"))
+    if not found:
+        return False
+    rows = records.ledger_rows(found[0]).rows
+    return len([r for r in rows if r.get("kind") == "process_identity"]) >= at_least
+
+
+def kill_and_recover(host: mcp_host.McpHost, run_id: str) -> dict[str, Any]:
+    """SIGKILL the server with the run live, restart it on the same home (recovery runs on
+    start), and await the recovered run's terminal view."""
+    host.kill_server()
+    host.restart()
+    joined = host.call(
+        "await_runs", {"run_ids": [run_id], "mode": "all", "timeout_ms": STOP_WAIT_MS}
+    )
+    views = joined["result"] if isinstance(joined, dict) and "result" in joined else joined
+    (view,) = views
+    assert isinstance(view, dict), view
+    return view
+
+
+def group_stop(run_dir_: Path) -> dict[str, Any]:
+    (row,) = [r for r in records.ledger_rows(run_dir_).rows if r.get("kind") == "group_stop"]
+    return row
