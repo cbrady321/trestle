@@ -1,0 +1,7 @@
+{"class":"plan","seq":1,"lane_format":1,"declaration_digest":"6da314410776ccadf7daf9a30be20862800cc7cab33ab64f78648c795db013f2","args_hash":"3da29e1d6a85d50486f5253771aa792367dae07e272b81210118647774c00a25","selection":{},"observations_digest":"4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}
+{"class":"issue","seq":2,"path":"waiter","effect":"up","attempt":1,"facet":"create","repeat":"safe","lifetime":"run","release":{"form":"in_run_group","helpers_disclosed":false},"remedy":null,"issued_at":"2026-09-30T12:55:34.203775Z"}
+{"class":"issue","seq":3,"path":"branch/w1","effect":"up","attempt":1,"facet":"create","repeat":"safe","lifetime":"run","release":{"form":"in_run_group","helpers_disclosed":false},"remedy":null,"issued_at":"2026-09-30T12:55:34.209065Z"}
+{"class":"confirmation","seq":4,"path":"waiter","effect":"up","attempt":1,"status":"applied","code":null,"identity":"fake-f7fb88770570ede5"}
+{"class":"confirmation","seq":5,"path":"branch/w1","effect":"up","attempt":1,"status":"applied","code":null,"identity":"fake-a94fe2705342a766"}
+{"class":"issue","seq":6,"path":"branch/w2","effect":"up","attempt":1,"facet":"create","repeat":"safe","lifetime":"run","release":{"form":"in_run_group","helpers_disclosed":false},"remedy":null,"issued_at":"2026-09-30T12:55:34.214755Z"}
+{"class":"confirmation","seq":7,"path":"branch/w2","effect":"up","attempt":1,"status":"applied","code":null,"identity":"fake-5b425c76e562492e"}
