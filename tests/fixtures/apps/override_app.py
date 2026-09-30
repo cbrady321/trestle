@@ -7,7 +7,8 @@ and `GET /` answers 200 with `{"app": "override", "pid": <pid>}` (a restart is v
 pid); anything else is 404. `APP_EVENT_LOG` (environment, optional) is a file it appends `start`
 to once it listens and `stop` to when it is told to end (SIGTERM or SIGINT), so a test can read the
 order of a restart's stop and start from the app itself. Imports only the standard library; logs
-nothing to the console.
+nothing to the console. Extra command-line arguments are ignored (a test names its instance in
+them, so its command line is its own).
 """
 
 from __future__ import annotations

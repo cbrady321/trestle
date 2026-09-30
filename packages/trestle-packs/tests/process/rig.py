@@ -23,7 +23,7 @@ from trestle.workflow.declarations import RealizationKind
 
 from trestle_packs.fakes.local_process import FakeLocalProcess
 from trestle_packs.process import identity
-from trestle_packs.process.local import LocalProcessPort, found_selector
+from trestle_packs.process.local import LocalProcessPort, found_selector, same_command_line
 
 ROOT = Path(__file__).resolve().parents[4]
 APP = ROOT / "tests" / "fixtures" / "apps" / "override_app.py"
@@ -36,9 +36,14 @@ def free_port() -> int:
         return int(probe.getsockname()[1])
 
 
-def spec_for(executable: str, app: str, environment: dict[str, str]) -> ports.ResourceSpec:
+def spec_for(
+    executable: str, app: str, environment: dict[str, str], *instance: str
+) -> ports.ResourceSpec:
+    """`instance` are extra arguments the app ignores and that make the command line unique to
+    one case: a found process is any process running the same command line, so concurrent
+    cases (xdist, `host-proc`) must not share one."""
     resolved = ports.Resolved(executable, "3.12", "pin", "adoption")
-    command = ports.BoundCommand("app", (executable, app), environment, resolved, False)
+    command = ports.BoundCommand("app", (executable, app, *instance), environment, resolved, False)
     return ports.ResourceSpec(
         "suite-app", RealizationKind.AGENT_LAUNCHED_PROJECT, "suite-entry", command
     )
@@ -90,7 +95,7 @@ def real_restart(
         os.symlink(sys.executable, interpreter)
         log = directory / "events.log"
         env = {"PORT": str(free_port()), "APP_EVENT_LOG": str(log)}
-        spec = spec_for(str(interpreter), str(APP), env)
+        spec = spec_for(str(interpreter), str(APP), env, f"--instance={directory}")
         assert spec.command is not None
         argv = spec.command.argv
         port = port_class()
@@ -107,13 +112,15 @@ def real_restart(
                 stderr=subprocess.DEVNULL,
             )
             planted.append(helper)
+            # found only once it has exec'd: until then `ps` shows the forking parent's arguments
             deadline = time.monotonic() + START_WAIT_S
-            start = identity.start_time(helper.pid)
-            while start is None and time.monotonic() < deadline:
-                time.sleep(tolerances.POLL_FINE_S)
+            while time.monotonic() < deadline:
+                rows = dict(identity.listing() or [])
                 start = identity.start_time(helper.pid)
-            assert start is not None
-            return found_selector(helper.pid, start)
+                if start is not None and same_command_line(rows.get(helper.pid, ""), argv):
+                    return found_selector(helper.pid, start)
+                time.sleep(tolerances.POLL_FINE_S)
+            raise AssertionError("the planted process never showed its command line")
 
         def token_of(selector: str) -> str | None:
             instance = port._instances.get(selector)
