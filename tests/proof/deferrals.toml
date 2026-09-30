@@ -75,3 +75,36 @@ from_step   = "core"
 closes_at   = "RB-12"
 citation    = "root DM-19; WR-PROOF-6 inventory diff"
 declared_by = "L.CL-D1.3"
+
+# L.P0-0d.27 (J-CORE failure exit; a deviation from "written once", recorded in
+# CKPT-CARRIER-FIX-RETURN.md): four P0 target labels declared `step = "core"` whose strict-xfail
+# targets are un-xfailed only in slice B, by the remover of their TM-P0-2 entry. J-CORE (c) needs
+# every core label PROVEN or deferred with a citation; each stays P0's declared claim.
+
+[[deferral]]
+label       = "WR-ENV-1:legacy-explicit-waves-refuse-unknown-duplicate"
+from_step   = "core"
+closes_at   = "NW-1"
+citation    = "temporary.d/p0.toml TM-P0-2:G-E1 removed_by L.NW-1.3; plans/b-slice-b.md NW-1 (legacy labels)"
+declared_by = "L.P0-0d.27"
+
+[[deferral]]
+label       = "WR-VERIFY-4:legacy-run_pytest-errors"
+from_step   = "core"
+closes_at   = "NW-1"
+citation    = "temporary.d/p0.toml TM-P0-2:G-E3 removed_by L.NW-1.5; plans/b-slice-b.md NW-1 (legacy labels)"
+declared_by = "L.P0-0d.27"
+
+[[deferral]]
+label       = "WR-ENV-11:pipeline-one-teardown@fake"
+from_step   = "core"
+closes_at   = "NW-1"
+citation    = "temporary.d/p0.toml TM-P0-2:G-E3 removed_by L.NW-1.5; plans/b-slice-b.md NW-1 (legacy labels)"
+declared_by = "L.P0-0d.27"
+
+[[deferral]]
+label       = "WR-PROOF-2:pack-docker-live"
+from_step   = "core"
+closes_at   = "NW-2"
+citation    = "temporary.d/p0.toml TM-P0-2:G-E2 removed_by L.NW-2.8 (on a PASSED host-docker record); plans/b-slice-b.md NW-2"
+declared_by = "L.P0-0d.27"
