@@ -268,6 +268,8 @@ def test_scale_only_reduces_by_sibling_count() -> None:
 # `lease_pair` and `slice_coop`, whose roots name the environment argument (a root that names one
 # needs a value; `slice_coop` names it because it reaches a port, WR-OWN-8).
 COMPILE_REQUESTS: dict[str, dict[str, Any]] = {
+    "lease_direct_child": {"env": "dev"},
+    "lease_root_child": {"env": "dev"},
     "lease_pair": {"env": "dev", "env_b": "dev"},
     "barrier_run": {"env": "dev"},
     "upstream_covered": {"env": "dev"},
