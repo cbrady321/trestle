@@ -93,6 +93,17 @@ def child_error(run_dir: Path) -> dict[str, Any]:
     return loaded
 
 
+@pytest.mark.proves(
+    "WR-EVID-1",
+    "WR-EVID-1:distinct-codes-import-bind-unencodable",
+    "core",
+    "core",
+    "PROC",
+    "CI",
+)
+@pytest.mark.proves(
+    "WR-EVID-2", "WR-EVID-2:execution-code-in-vocabulary", "core", "core", "PROC", "CI"
+)
 def test_child_failure_phases_get_distinct_codes(tmp_path: Path) -> None:
     expected = {
         "import_error": ("load", codes.EXECUTION_IMPORT_FAILED),
@@ -131,6 +142,9 @@ def test_child_success_and_no_result_write_no_error(tmp_path: Path) -> None:
     assert (run_dir / "evidence" / "result.json").exists()
 
 
+@pytest.mark.proves(
+    "WR-EVID-2", "WR-EVID-2:execution-code-in-vocabulary", "core", "core", "PROC", "CI"
+)
 def test_execution_code_vocabulary_is_the_nine_named() -> None:
     names = {
         "import_failed",
@@ -215,6 +229,7 @@ def _fields(row: dict[str, Any]) -> dict[str, Any]:
     return {key: row[key] for key in ("code", "phase", "message")}
 
 
+@pytest.mark.proves("WR-EVID-1", "WR-EVID-1:error-survives-restart", "core", "core", "PROC", "CI")
 def test_error_record_is_ledger_authority_and_survives_restart(short_stop: None) -> None:
     kernel = support.spine_kernel()
     run_dir = _drive(kernel, "raiser", {})

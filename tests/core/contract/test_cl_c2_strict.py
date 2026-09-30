@@ -80,6 +80,7 @@ def _evidence(run_dir: Path) -> Path:
     "PROC",
     "CI",
 )
+@pytest.mark.proves("WR-EVID-5", "A9.3", "core", "core", "PROC", "CI")
 @pytest.mark.proves(
     "WR-EVID-5",
     "WR-EVID-5:no-tmp-remains",
