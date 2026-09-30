@@ -11,9 +11,12 @@ loop (the tree rig) over the real container adapter on the operator's docker, `D
 loopback. The loop feeds no host-scope readings of its own (lane-close's caveat), so every run sets
 `walked.host_scope` to a live `DemoHostScope` over the same issuer (`consumers.LiveScope`).
 
-Not built: `test_rotation_refreshed_in_place_no_recreate[local_app]`. `ChannelDelivery` addresses
-only run-scoped container selectors (`trwr-...`) and a local process's is `proc-<hex>`, so nothing
-can refresh a local app in place (as L.RB-9.5 found for its local-process case).
+`test_rotation_refreshed_in_place_no_recreate[local_app]` (L.RB-9.4.fix1, DEVIATION): the product
+`ChannelDelivery` addresses only run-scoped container selectors (`trwr-...`) and a local process's
+is `proc-<hex>`, so nothing in the product can refresh a local app in place. The case runs the real
+`LocalProcessPort` (the app is a real process), the real stub issuer and the shipped `LocalAppProbe`
+(the demo client `stub_cloud`) with a test-defined delivery binding, `twin/local_consumer.py`'s
+`LocalAppDelivery`; no Docker is used by that case.
 Twins: `twin/test_credential_currency_twin.py` (same node names).
 """
 
@@ -46,12 +49,15 @@ from trestle_packs.grant import (
     ChannelDelivery,
     ContainerExecProbe,
     DemoGrant,
+    LocalAppProbe,
     channel_mount,
     provision_channel,
     write_channel,
 )
+from trestle_packs.grant.delivery import CHANNEL_FILE
 from trestle_packs.process.command import CommandPort
-from twin import consumers
+from trestle_packs.process.local import LocalProcessPort
+from twin import consumers, local_app, local_consumer
 
 pytestmark = pytest.mark.docker_host
 
@@ -247,11 +253,20 @@ def test_invalid_demo_credential_not_ready(tmp_path: Path, issuer: Any) -> None:
     assert case.delivery.delivered == []  # an invalid credential is not a stale one
 
 
-@pytest.mark.stub_proven("WR-ENV-13:refresh-in-place-container")
-@pytest.mark.parametrize("consumer", ["container"])
+CONTAINER = pytest.param(
+    "container", marks=pytest.mark.stub_proven("WR-ENV-13:refresh-in-place-container")
+)
+LOCAL_APP = pytest.param(
+    "local_app", marks=pytest.mark.stub_proven("WR-ENV-13:refresh-in-place-local-app")
+)
+
+
+@pytest.mark.parametrize("consumer", [CONTAINER, LOCAL_APP])
 def test_rotation_refreshed_in_place_no_recreate(
     tmp_path: Path, issuer: Any, consumer: str
 ) -> None:
+    if consumer == "local_app":
+        return _rotation_local_app(tmp_path, issuer)
     before = issuer.state.current()
     case = Case(tmp_path, issuer, issuer.state.token(), rotate=issuer.state.advance)
     end = case.run()
@@ -269,3 +284,46 @@ def test_rotation_refreshed_in_place_no_recreate(
     assert seen and len({ident for ident, _, _ in seen}) == 1  # never recreated
     assert {started for _, started, _ in seen} == {seen[0][1]}  # never restarted
     assert {restarts for _, _, restarts in seen} == {0}
+
+
+def _rotation_local_app(tmp_path: Path, issuer: Any) -> None:
+    """The consumer is a real local process holding a credentials file; the run's own delivery
+    refreshes that file in place (`twin/local_consumer.py`: the product cannot reach a process)."""
+    run_id = f"r_cred_{uuid.uuid4().hex[:10]}"
+    selector = local_consumer.selector_for(run_id)
+    channels = tmp_path / "channels"
+    delivery = local_consumer.LocalAppDelivery(issuer.url, channels)
+    directory = delivery.channel(selector)
+    directory.mkdir(parents=True)
+    write_channel(directory, issuer.state.token())
+    execution = RecordingExecution()
+    probe = LocalAppProbe(
+        sys.executable,
+        str(REPO / "tests" / "fixtures" / "stubs" / "stub_cloud.py"),
+        issuer.url,
+        lambda sel: delivery.channel(sel) / CHANNEL_FILE if sel.startswith("proc-") else None,
+        ArgvRunner(execution),
+    )
+    grant = DemoGrant(issuer.url, probe=probe)
+    log = tmp_path / "app-events.log"
+    command = local_consumer.app_command(local_app.free_port(), log)
+    watched = local_consumer.Watched(LocalProcessPort(), selector, rotate=issuer.state.advance)
+    before = issuer.state.current()
+    rig = tk.tree_rig(
+        tmp_path,
+        tk.group("consumers", (tk.bind(UNIT),)),
+        {UNIT: local_consumer.LocalConsumerUnit(command)},
+        deadline_s=600,
+        run_id=run_id,
+        port_impl=local_consumer.port_map(watched, grant, delivery),
+    )
+    rig.run(consumers.LiveScope(grant, lambda: kit.NOW))
+    assert rig.ends()[UNIT]["condition"] == "satisfied", rig.ends()[UNIT]
+    assert issuer.state.current() != before  # the host rotated while the run waited
+    assert len(local_consumer.stale_remedy_rows(rig.rows())) == 1
+    assert delivery.delivered == [selector]  # refreshed into the same channel
+    assert issuer.state.current() in (directory / CHANNEL_FILE).read_text(encoding="utf-8")
+    assert execution.argvs and ("GET", "/whoami") in issuer.state.requests  # asked, authenticated
+    assert watched.repairs == []  # no restart, no recreate
+    assert len(set(watched.seen)) == 1 and len(watched.seen) >= 2  # the very same process
+    assert log.read_text().splitlines().count("listening") == 1  # started once

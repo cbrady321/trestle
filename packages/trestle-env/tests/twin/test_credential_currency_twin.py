@@ -15,8 +15,9 @@ from trestle.workflow import codes, ports
 from trestle.workflow.values import CheckResult, Lineage, NodePath
 from trestle_packs.fakes.container import FakeContainerEngine, selector_name
 from trestle_packs.fakes.grant import FakeGrant
+from trestle_packs.process.local import LocalProcessPort
 
-from twin import consumers
+from twin import consumers, local_app, local_consumer
 
 UNIT = "consumer.current"
 SELECTOR = selector_name(Lineage("r_tree_0001", NodePath((UNIT,))))
@@ -107,9 +108,18 @@ def test_invalid_demo_credential_not_ready(tmp_path: Path) -> None:
     assert str(tk.answer_of(rig).outcome) != "passed"
 
 
-@pytest.mark.stub_proven("WR-ENV-13:refresh-in-place-container@stub-twin")
-@pytest.mark.parametrize("consumer", ["container"])
+CONTAINER = pytest.param(
+    "container", marks=pytest.mark.stub_proven("WR-ENV-13:refresh-in-place-container@stub-twin")
+)
+LOCAL_APP = pytest.param(
+    "local_app", marks=pytest.mark.stub_proven("WR-ENV-13:refresh-in-place-local-app@stub-twin")
+)
+
+
+@pytest.mark.parametrize("consumer", [CONTAINER, LOCAL_APP])
 def test_rotation_refreshed_in_place_no_recreate(tmp_path: Path, consumer: str) -> None:
+    if consumer == "local_app":
+        return _rotation_local_app(tmp_path)
     grant = Asked()
     grant.plant_consumer(SELECTOR)
     before = grant.current_generation()
@@ -127,3 +137,34 @@ def test_rotation_refreshed_in_place_no_recreate(tmp_path: Path, consumer: str) 
     assert grant.channel_generation(SELECTOR) == grant.current_generation()
     assert [e for e in engine.effects if e[0] in ("restart", "recreate")] == []
     assert grant.incarnation(SELECTOR) == 1  # the same consumer instance
+
+
+def _rotation_local_app(tmp_path: Path) -> None:
+    """The consumer is a real local process (the stdlib app), the issuer and its delivery fakes:
+    the product's `ChannelDelivery` cannot reach a local process (`twin/local_consumer.py`)."""
+    run_id = "r_tree_0001"
+    selector = local_consumer.selector_for(run_id)
+    grant = Asked()
+    grant.plant_consumer(selector)  # the app's credentials file holds the current generation
+    before = grant.current_generation()
+    log = tmp_path / "app-events.log"
+    command = local_consumer.app_command(local_app.free_port(), log)
+    watched = local_consumer.Watched(LocalProcessPort(), selector, rotate=grant.advance)
+    rig = tk.tree_rig(
+        tmp_path,
+        tk.group("consumers", (tk.bind(UNIT),)),
+        {UNIT: local_consumer.LocalConsumerUnit(command)},
+        deadline_s=600,
+        run_id=run_id,
+        port_impl=local_consumer.port_map(watched, grant, grant),
+    )
+    rig.run(consumers.LiveScope(grant, lambda: kit.NOW))
+    assert rig.ends()[UNIT]["condition"] == "satisfied"
+    assert grant.current_generation() != before  # the host rotated while the run waited
+    assert len(local_consumer.stale_remedy_rows(rig.rows())) == 1
+    assert grant.delivered == [selector]
+    assert grant.channel_generation(selector) == grant.current_generation()
+    assert watched.repairs == []  # no restart, no recreate
+    assert len(set(watched.seen)) == 1 and len(watched.seen) >= 2  # the very same process
+    assert log.read_text().splitlines()[:1] == ["listening"]  # started once, before any stop
+    assert log.read_text().splitlines().count("listening") == 1
