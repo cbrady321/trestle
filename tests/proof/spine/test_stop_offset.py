@@ -133,6 +133,19 @@ def _observations(run_dir: Path) -> int:
     return len(events.read_text(encoding="utf-8").splitlines()) if events.exists() else 0
 
 
+def _action_confirmed(run_dir: Path) -> bool:
+    """The fixture's non-release action has its APPLIED confirmation in the lane. Cancelling only
+    after this puts the cancel mid-poll, never between a ticket's stop check (B1-C6 step 3a) and
+    its confirmation (step 5); the observation count alone is reached before the action starts."""
+    releases = release_effects(run_dir)
+    return any(
+        row.cls == "confirmation"
+        and row.entry["status"] == "applied"
+        and row.entry["effect"] not in releases
+        for row in records.lane_rows(run_dir).rows
+    )
+
+
 class SignalSpy:
     """Every os.kill / os.killpg made in this process, with the calling thread's name."""
 
@@ -174,7 +187,10 @@ def run_cancelled() -> Stopped:
         conductor.start()
         with support.reaping(admitted.run_id):
             assert support.wait_until(
-                lambda: _observations(admitted.run_dir) >= 3, tolerances.JOIN_WAIT_S
+                lambda: (
+                    _action_confirmed(admitted.run_dir) and _observations(admitted.run_dir) >= 3
+                ),
+                tolerances.JOIN_WAIT_S,
             ), "the wait never polled"
             spy.calls.clear()
             admitted.kernel.control.cancel(admitted.run_id)  # the request path
@@ -293,6 +309,24 @@ def _late_apply(run: Stopped, *, seq: int, attempt: int = 2) -> list[dict[str, A
     return [late_issue, {**confirmation, "seq": seq + 1, "attempt": attempt}]
 
 
+def _late_release(
+    run: Stopped, releases: frozenset[str], *, seq: int, attempt: int = 2
+) -> list[dict[str, Any]]:
+    """The entries of the loop issuing and applying a release again after the offset."""
+    (issue,) = [
+        r.entry for r in run.lane.rows if r.cls == "issue" and r.entry["effect"] in releases
+    ]
+    (confirmation,) = [
+        r.entry
+        for r in run.lane.rows
+        if r.cls == "confirmation" and r.entry["effect"] == issue["effect"]
+    ]
+    return [
+        {**issue, "seq": seq, "attempt": attempt},
+        {**confirmation, "seq": seq + 1, "attempt": attempt},
+    ]
+
+
 def test_planted_applied_past_offset_is_caught(cancelled: Stopped, tmp_path: Path) -> None:
     (stop,) = cancelled.stops
     releases = release_effects(cancelled.run_dir)
@@ -329,13 +363,27 @@ def test_stop_seen_and_releases_past_the_offset_are_not_counted(
     seen[1] = {**seen[1], "status": "not_applied", "code": "execution.stop_seen", "identity": None}
     lane = _copy_lane(cancelled, tmp_path, seen)
     assert offset_verdict(lane, [stop], releases).ok  # a STOP_SEEN is not an action start
-    # ... and the real record's own release confirmation (applied, past the offset) is not counted
-    assert any(
+    # ... and an applied release past the offset is not counted. It is planted: the real record's
+    # own release lies past the offset only when U2 read the length before the loop released, and
+    # both react to the same flag with no order between them (B2-C15, B1-C6)
+    assert releases
+    released = _copy_lane(cancelled, tmp_path, _late_release(cancelled, releases, seq=last + 1))
+    planted = [r for r in released.rows if r.entry["seq"] == last + 2]
+    assert [r.cls for r in planted] == ["confirmation"]
+    assert planted[0].entry["status"] == "applied"
+    assert planted[0].offset >= stop["lane_committed_length"]
+    assert offset_verdict(released, [stop], releases).ok
+    # the release exemption is what passes it: counted as an action, the same entry is caught
+    counted = offset_verdict(released, [stop], frozenset())
+    assert not counted.ok and "APPLIED" in counted.violations[-1], counted
+    # ... and the real record's own release, when it does lie past the offset, is not counted
+    if any(
         r.cls == "confirmation"
         and r.entry["effect"] in releases
         and r.offset >= stop["lane_committed_length"]
         for r in cancelled.lane.rows
-    )
+    ):
+        assert offset_verdict(cancelled.lane, [stop], releases).ok
 
 
 def test_a_length_that_could_not_be_read_is_unproven_never_passed(

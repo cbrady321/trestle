@@ -53,14 +53,20 @@ def _pid(port: LocalProcessPort, selector: str) -> int:
 
 def test_launch_runs_in_the_run_group_and_session(port: LocalProcessPort, tmp_path: Path) -> None:
     seen = tmp_path / "ids.txt"
+    staged = tmp_path / "ids.txt.tmp"
+    # the child writes the whole record to a staging file and renames it into place, so
+    # `seen` never exists half-written (open() creates it empty before the write lands)
     program = (
         "import os, signal, sys; "
-        f"open({str(seen)!r}, 'w').write(f'{{os.getpgid(0)}} {{os.getsid(0)}}'); signal.pause()"
+        f"f = open({str(staged)!r}, 'w'); f.write(f'{{os.getpgid(0)}} {{os.getsid(0)}}'); "
+        f"f.close(); os.replace({str(staged)!r}, {str(seen)!r}); signal.pause()"
     )
     selector = _create(port, _spec(program))
-    while not seen.exists():  # the child writes once it is up
+    fields: list[str] = []
+    while len(fields) != 2:  # the child writes once it is up; wait for both ids
         assert port._instances[selector].proc.poll() is None  # noqa: SLF001
-    pgid, sid = (int(v) for v in seen.read_text().split())
+        fields = seen.read_text().split() if seen.exists() else []
+    pgid, sid = (int(v) for v in fields)
     assert (pgid, sid) == (os.getpgid(0), os.getsid(0))  # never detached (B3-C4, V-2.3)
 
 

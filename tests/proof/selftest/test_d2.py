@@ -117,3 +117,57 @@ def test_manifest_s0_projection_state_is_the_expectation(tmp_path: Path) -> None
     assert differ.cmd_d2(Namespace(reader="HEAD", fossils=str(fossils_root))) == 0
     (band_dir / "MANIFEST.toml").write_text(manifest("failed"))
     assert differ.cmd_d2(Namespace(reader="HEAD", fossils=str(fossils_root))) == 1
+
+
+def _git(repo: Path, *args: str) -> None:
+    import subprocess
+
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+
+
+def test_band_awaits_its_checkpoint_until_the_tagged_carrier(tmp_path: Path) -> None:
+    """L.SL-11.fix4: `single/` awaits J-SINGLE until the newest `WR-Merge: J-SINGLE`
+    carrier holds `wr-ckpt/single`; `s0/` has no checkpoint of its own."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "start")
+    assert differ.band_awaits_checkpoint("single", cwd=repo) is True  # no carrier
+    assert differ.band_awaits_checkpoint("s0", cwd=repo) is False
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "ckpt\n\nWR-Merge: J-SINGLE")
+    assert differ.band_awaits_checkpoint("single", cwd=repo) is True  # carrier, no tag
+    _git(repo, "tag", "wr-ckpt/single")
+    assert differ.band_awaits_checkpoint("single", cwd=repo) is False  # succeeded
+
+
+def test_absent_band_state_skipped_only_while_its_checkpoint_awaits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A real-producer state whose directory is absent is skipped while its band's
+    checkpoint has not succeeded, and fails (projects nothing) once it has."""
+    fossils_root = tmp_path / "fossils"
+    band_dir = fossils_root / "single"
+    band_dir.mkdir(parents=True)
+    (band_dir / "MANIFEST.toml").write_text(
+        '[[state]]\nid = "single-succeeded"\nproducer = "tests.proof.fossils:produce_succeeded"\n'
+        "absent = false\n"
+    )
+    asked: list[str] = []
+
+    def awaits(value: bool):  # type: ignore[no-untyped-def]
+        def check(band: str, cwd: Path = differ.ROOT) -> bool:
+            asked.append(band)
+            return value
+
+        return check
+
+    monkeypatch.setattr(differ, "band_awaits_checkpoint", awaits(True))
+    assert differ.cmd_d2(Namespace(reader="HEAD", fossils=str(fossils_root))) == 0
+    monkeypatch.setattr(differ, "band_awaits_checkpoint", awaits(False))
+    assert differ.cmd_d2(Namespace(reader="HEAD", fossils=str(fossils_root))) == 1
+    assert asked == ["single", "single"]
