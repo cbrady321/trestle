@@ -210,21 +210,21 @@ VALID_TREES = {"all": "shared_diamond", "choice": "choice_fake"}
 
 
 @pytest.mark.proves("A5.3", "A5.3", "A", "tree", "MCP", "CI")
-def test_valid_choice_tree_still_temp_refused(tree_kernel: Kernel, mcp: mcp_host.McpHost) -> None:
-    """A valid `ChoiceNode` tree compiles and is refused only by the temporary rule, through both
-    entry points (L.TR-5.3 lifts it)."""
+def test_valid_choice_tree_not_refused(tree_kernel: Kernel, mcp: mcp_host.McpHost) -> None:
+    """A valid `ChoiceNode` tree is no longer refused by either entry point (L.TR-5.3 removed the
+    temporary rule, the last one): each mints a run id and reaches a terminal state, and neither
+    answer carries the retired code."""
     text = source(VALID_TREES["choice"])
     published = hostpath.publish_tree_via_host(tree_kernel, text)
     assert isinstance(published, PublishView), published
-    refused = hostpath.run_tree_via_host(tree_kernel, published.name)
-    assert isinstance(refused, RequestOutcome), refused
-    assert refused.code == codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED
-    _no_runs(tree_kernel.home)
+    view = hostpath.run_tree_via_host(tree_kernel, published.name)
+    assert isinstance(view, RunView), view
+    assert view.state in ("succeeded", "failed", "cancelled", "timed_out"), view.state
     on_wire = hostpath.mcp_publish_tree(mcp, text)
     assert "code" not in on_wire, on_wire
     answer = hostpath.mcp_run_tree(mcp, str(on_wire["name"]))
-    assert answer.get("code") == codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED, answer
-    _no_runs(mcp.home)
+    assert answer.get("code") != codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED, answer
+    assert "code" not in answer and str(answer.get("run_id", "")).startswith("r_"), answer
 
 
 def test_valid_all_tree_not_refused(tree_kernel: Kernel, mcp: mcp_host.McpHost) -> None:
@@ -244,9 +244,8 @@ def test_valid_all_tree_not_refused(tree_kernel: Kernel, mcp: mcp_host.McpHost) 
 
 def test_a25_and_a53_not_served() -> None:
     """The register holds neither A2.5 nor A5.3 (DM-12): a claim of a label composing either is
-    not blocked by any present entry. (`meta register` as a whole stays non-zero until the lift
-    set clears, L.TR-L.1: it reports the labels composing A1.5, A2.6, A4.2, A5.4, A6.3, A6.4, A8.4
-    and A8.5.)"""
+    not blocked by any present entry (from L.TR-5.3 no entry serves any clause: `meta register`
+    exits 0)."""
     from tests.proof import meta
 
     labels = [lb for lb in meta._load_all_labels() if lb.get("composes") in ("A2.5", "A5.3")]
