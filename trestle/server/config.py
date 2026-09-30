@@ -58,7 +58,8 @@ class OperatorLimits:
     timing field defaults to `trestle/common/clock.py`'s one definition of it (MC-09, SA-05), read
     when the config is built, so no timing literal lives here. `release_executables` is the
     absolute paths the sweep may run for an `ArgvRelease` (V-10.1): empty by default, since its
-    owner and default are still open (design section 10 F-11(b), TM-B2-2)."""
+    owner and default are still open (design section 10 F-11(b), TM-B2-2); an operator lists them
+    in `config.toml` `[operator] release_executables` (decision 2026-09-30, L.RB-0.3.fix)."""
 
     deadline_ceiling: float = field(default_factory=lambda: clock.deadline_ceiling)
     release_slice: float = field(default_factory=lambda: clock.release_slice)
@@ -145,6 +146,10 @@ def load_config(home: Path) -> TrestleConfig:
                 queue_depth=int(raw.get("queue_depth", cfg.queue_depth)),
             )
         cfg = replace(cfg, profile=_load_profile(raw.get("profile")))
+        executables = _load_release_executables(raw.get("operator"))
+        if executables:
+            limits = replace(cfg.operator_limits, release_executables=executables)
+            cfg = replace(cfg, operator_limits=limits)
     if cfg.service_log is None:
         cfg = replace(cfg, service_log=home / "service.log")
     return cfg.with_env_overrides()
@@ -164,6 +169,24 @@ def _load_profile(raw: object) -> ProfileConfig:
     if not isinstance(allowlist, list) or not all(isinstance(item, str) for item in allowlist):
         raise ValueError("config.toml [profile] allowlist must be a list of plugin names")
     return ProfileConfig(mode=mode, allowlist=tuple(allowlist))
+
+
+def _load_release_executables(raw: object) -> frozenset[str]:
+    """`[operator] release_executables = [absolute paths]`: the executables the host sweep may run
+    for an `ArgvRelease` (V-10.1, B2-C9). Unset (no table, no key) leaves the library default,
+    EMPTY (F-11(b), TM-B2-2); a malformed list or a relative path stops the load, never widens
+    it."""
+    if raw is None:
+        return frozenset()
+    if not isinstance(raw, dict):
+        raise ValueError("config.toml [operator] must be a table")
+    listed = raw.get("release_executables", [])
+    if not isinstance(listed, list) or not all(isinstance(item, str) for item in listed):
+        raise ValueError("config.toml [operator] release_executables must be a list of paths")
+    for item in listed:
+        if not os.path.isabs(item):
+            raise ValueError(f"config.toml [operator] release_executables: {item!r} not absolute")
+    return frozenset(listed)
 
 
 def _env_int(name: str, default: int) -> int:
