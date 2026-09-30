@@ -9,10 +9,12 @@ at publication)."""
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
+from tests.proof import ancestry
 from tests.tree import planting
 from trestle.common import codes
 from trestle.common.types import PublishView, RequestOutcome
@@ -45,15 +47,28 @@ def run_dirs(kernel: Kernel) -> list[Path]:
     return sorted(p for p in runs.glob("*/*") if p.is_dir()) if runs.exists() else []
 
 
+def descendants() -> set[int]:
+    """The pids of every live descendant of this process, but for the `ps` the snapshot runs."""
+    procs = [p for p in ancestry.snapshot() if os.path.basename(p.argv.split(" ", 1)[0]) != "ps"]
+    found: set[int] = set()
+    frontier = {os.getpid()}
+    while frontier:
+        frontier = {p.pid for p in procs if p.ppid in frontier} - found
+        found |= frontier
+    return found
+
+
 def refused(kernel: Kernel, plugin: str, args: dict[str, object] | None = None) -> RequestOutcome:
     """The outcome of `run`, which must be a refusal that minted nothing: no run dir, no
-    idempotency record (MC-13's process half is L.TR-1.7's matrix)."""
+    idempotency record, no process (MC-13)."""
+    before = descendants()
     outcome = kernel.control.run(plugin=plugin, args=args or {}, idempotency_key=KEY)
     assert isinstance(outcome, RequestOutcome), outcome
     assert outcome.origin == "admission" and outcome.retryable is False
     assert "run_id" not in outcome.to_dict()
     assert run_dirs(kernel) == []
     assert IdempotencyStore.open(kernel.home).lookup(KEY) is None
+    assert descendants() == before
     return outcome
 
 
