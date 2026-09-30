@@ -1,5 +1,5 @@
-# tests/tree/joins/d2_outcomes.toml -- MC-B3-05 (L.TR-L.11): the D2 outcome record of the tree-lift fossils
-# `tests/fixtures/fossils/tree-trl`. One `[[run]]` per `python -m tests.proof.differ d2 --reader <ref> --fossils
+# tests/tree/joins/d2_outcomes.toml -- MC-B3-05 (L.TR-L.11, L.TR-5.4): the D2 outcome record of the tree-lift
+# fossils `tests/fixtures/fossils/tree-trl` and `tree-tr5`. One `[[run]]` per `python -m tests.proof.differ d2 --reader <ref> --fossils
 # <root>` run (J-TRL T5, which never blocks): merge "TR-L" | "TR-5", the reader ref as passed to d2, its resolved
 # sha, the fossil directory, d2's exit code and the unexcused diverging state paths d2 named (`UNEXPECTED: state
 # '<band>/<state>'` lines). The permanent T6 (`test_j_trl.py::test_trl_rollback_class_consistent`) reads this file
@@ -8,12 +8,13 @@
 # Two facts about how these runs were made (recorded in A2-TRL11-RETURN.md):
 #  * `differ d2 --fossils DIR` treats DIR as the root of BANDS (`DIR/<band>/MANIFEST.toml`), so the plan's literal
 #    `--fossils tests/fixtures/fossils/tree-trl` finds no state and exits 0 vacuously. Each run below points d2 at
-#    a scratch root holding one symlink `tree-trl -> tests/fixtures/fossils/tree-trl`.
+#    a scratch root holding one symlink `tree-trl -> tests/fixtures/fossils/tree-trl` (the TR-5 runs, likewise,
+#    `tree-tr5 -> tests/fixtures/fossils/tree-tr5`).
 #  * The tag `wr-ckpt/single` does not exist in this repository (it is created by CI's `ckpt` job on master; the
 #    commit it will name is `WR-Merge: J-SINGLE`, 45efafc, which is `origin/master` here), so the reader `wr-ckpt/single`
 #    failed to resolve (`git worktree add` refused it). The two runs below use `origin/master` (that commit) and
 #    the merge base with it as their readers. The orchestrator re-runs `--reader wr-ckpt/single` at H and refreshes
-#    this file from the same three states; E-TR-1 in d2_exceptions.toml is keyed to that reader name, as the plan says.
+#    this file from the same states; E-TR-1 in d2_exceptions.toml is keyed to that reader name, as the plan says.
 
 [[run]]
 merge = "TR-L"
@@ -28,5 +29,21 @@ merge = "TR-L"
 reader = "9b7cd8a4b57d4150b0b2d00e3e664374189e21b1"
 reader_sha = "9b7cd8a4b57d4150b0b2d00e3e664374189e21b1"
 fossils = "tests/fixtures/fossils/tree-trl"
+exit = 0
+diverged = []
+
+[[run]]
+merge = "TR-5"
+reader = "origin/master"
+reader_sha = "45efafccdbe7ff45f9cab5d8ecb2104a7f3694ea"
+fossils = "tests/fixtures/fossils/tree-tr5"
+exit = 0
+diverged = []
+
+[[run]]
+merge = "TR-5"
+reader = "9b7cd8a4b57d4150b0b2d00e3e664374189e21b1"
+reader_sha = "9b7cd8a4b57d4150b0b2d00e3e664374189e21b1"
+fossils = "tests/fixtures/fossils/tree-tr5"
 exit = 0
 diverged = []
