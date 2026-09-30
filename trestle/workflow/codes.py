@@ -25,6 +25,8 @@ REMEDY_EXHAUSTED: Final = "execution.remedy_exhausted"
 REMEDY_NO_PROGRESS: Final = "execution.remedy_no_progress"
 TICKET_REFUSED: Final = "execution.ticket_refused"
 LANE_UNAVAILABLE: Final = "execution.lane_unavailable"
+UNIT_RAISED: Final = "execution.unit_raised"
+STOP_SEEN: Final = "execution.stop_seen"
 
 # V-11.2: the human-actionable NOT_APPLIED set (read by J-5a).
 HUMAN_ACTIONABLE: Final = frozenset({CREDENTIAL_INTERACTIVE, TOOLCHAIN_MISSING})
