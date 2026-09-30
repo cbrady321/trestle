@@ -273,7 +273,7 @@ class TreeRig:
 
 def tree_rig(
     tmp_path: Path,
-    root: AllDeclaration,
+    root: AllDeclaration | kit.Unit,
     units: Mapping[str, object],
     marker: PathMarker | None = None,
     *,
@@ -286,9 +286,10 @@ def tree_rig(
     """Admit (compile, carve) `root` over `units` and build the loop's rig around it: the same
     plan is what admission would write and what the loop walks."""
     marker = marker if marker is not None else PathMarker()
+    root_name = root.unit if isinstance(root, AllDeclaration) else root.decl.unit
     entry = WorkflowEntry(
-        root=root.unit,
-        units={root.unit: root, **units},
+        root=root_name,
+        units={root_name: root, **units},
         deadline=timedelta(seconds=deadline_s),
     )
     admitted = admit_plan(entry, deadline_s, request or {})
@@ -323,7 +324,7 @@ def tree_rig(
     rig = kit.Rig(
         run_dir=run_dir,
         entry=entry,
-        unit=next(iter(units.values())),
+        unit=next(iter(units.values()), root),
         plan=admitted,
         services=services,
         clock=clock,
@@ -416,7 +417,6 @@ def rig_of_entry(
     """`tree_rig` over a fixture's declared tree: each leaf unit becomes a scripted `leaf_unit`
     over the fixture's own declaration (`behaviour` overrides by name), each composite is kept."""
     root = entry.units[entry.root]
-    assert isinstance(root, AllDeclaration)
     units: dict[str, object] = {}
     for name, unit in entry.units.items():
         if name == entry.root:
@@ -428,6 +428,15 @@ def rig_of_entry(
         else:
             declared = unit.declare()  # type: ignore[attr-defined]
             units[name] = leaf_unit(name, declaration=declared)
+    if not isinstance(root, AllDeclaration):  # a one-vertex plan: the leaf is the root
+        root = (
+            behaviour[entry.root]
+            if behaviour and entry.root in behaviour
+            else leaf_unit(
+                entry.root,
+                declaration=root.declare(),  # type: ignore[attr-defined]
+            )
+        )
     return tree_rig(
         tmp_path,
         root,
