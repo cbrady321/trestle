@@ -82,7 +82,13 @@ def test_every_b_code_is_v11_or_declared_by_the_reference_workflow(sa: str) -> N
     assert set(codes.values()) >= vocab.ADAPTER_CODES  # the adapter half is all there
     for name, value in codes.items():
         assert VALUE.match(value), (name, value)
-        assert value.split(".", 1)[1] == name.lower(), (name, value)  # NAME is the snake's upper
+        origin, snake = value.split(".", 1)
+        # NAME is the upper of the snake, origin-qualified for the environment half (MC-B-12,
+        # L.RB-0.6: `environment.repository_missing` is `ENVIRONMENT_REPOSITORY_MISSING`)
+        assert name.lower() == (f"{origin}_{snake}" if origin == "environment" else snake), (
+            name,
+            value,
+        )
         assert name in V11_NAMES | REFERENCE_WORKFLOW_CODES, f"{name} is outside V-11 (B3-E1)"
 
 
