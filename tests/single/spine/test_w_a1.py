@@ -42,7 +42,7 @@ STOP_EFFECT = "stop"
 # the fixture's declared deadline (plugin decorator and entry) and a shorter one for the variant
 # that lets the deadline end the wait: the root budget plus the release slice must fit it
 DECLARED_DEADLINE_S = 120
-SHORT_DEADLINE_S = 24
+SHORT_DEADLINE_S = 20
 # a call that waits for its terminal answer waits out the deadline and the finalization margin
 HOST_TIMEOUT_S = float(SHORT_DEADLINE_S) + clock.finalization_margin + tolerances.JOIN_WAIT_S
 
@@ -231,7 +231,7 @@ def test_cancel_mid_poll(tmp_path: Path) -> None:
 def test_deadline_mid_poll(tmp_path: Path) -> None:
     with _host(tmp_path, deadline_s=SHORT_DEADLINE_S) as host:
         started = time.monotonic()
-        answer = _terminal(host, "hang", wait_s=SHORT_DEADLINE_S + clock.finalization_margin)
+        answer = _terminal(host, "stall", wait_s=SHORT_DEADLINE_S + clock.finalization_margin)
         elapsed = time.monotonic() - started
         run_id = answer["run_id"]
         run_dir = _run_dir(host, run_id)

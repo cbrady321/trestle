@@ -63,7 +63,7 @@ def leaf_declaration(unit: str = "svc", *, env_key_field: str | None = None) -> 
                 cooldown=timedelta(seconds=1),
             ),
         ),
-        budget=timedelta(seconds=90),
+        budget=timedelta(seconds=120),
         max_attempts=3,
         env_key_field=env_key_field,
     )
