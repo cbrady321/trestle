@@ -11,9 +11,9 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from twin_engine import REFUSED, SupportEngine, end_row, first_row, rig_over
 
 from trestle_env import tree
+from twin.twin_engine import REFUSED, SupportEngine, end_row, first_row, rig_over
 
 
 @pytest.mark.stub_proven("WR-VERIFY-2:b-host-ordering@stub-twin")

@@ -13,9 +13,9 @@ import pytest
 from tests.single.workflow import loopkit as kit
 from tests.tree import treekit as tk
 from trestle.common.plan import vocabulary
-from twin_engine import REFUSED, SupportEngine, rig_over
 
 from trestle_env import stages, tree
+from twin.twin_engine import REFUSED, SupportEngine, rig_over
 
 
 @pytest.mark.stub_proven("WR-ENV-9:stage-k-named-found-untouched@stub-twin")
