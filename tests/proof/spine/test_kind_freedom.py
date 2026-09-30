@@ -1,7 +1,8 @@
 """L.SV-5.17: the loop's library modules branch on no resource kind (V-6.1, V-6.2, B1-I1).
 
-An AST scan, not a live import. The modules present at this leaf are `decide.py` and `join.py`;
-L.SV-5.13 adds `loop.py` and `facets.py` to `SCOPE` (and fails when any of the four is missing).
+An AST scan, not a live import. `SCOPE` is the four library modules the loop is made of:
+`decide.py`, `join.py`, `loop.py` and `facets.py` (L.SV-5.13); the scan fails when any of the four
+is missing, so a rename or a move cannot silently shrink it.
 A branch on a resource kind is a comparison, a membership test or a `match` whose operands are a
 resource-kind carrier: a bare name or attribute of the kind fields (`kind`, `resource_kind`,
 `realization`, `vantage`, `lifetime`, `facet`, `may_touch`, `reachable_from`), or a value of one of
@@ -24,8 +25,14 @@ pytestmark = pytest.mark.spine
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "trestle" / "workflow"
 
-# The library modules scanned. Present here: decide, join. L.SV-5.13 adds loop and facets.
-SCOPE = ("decide.py", "join.py")
+# The library modules scanned (L.SV-5.13 widened the two of L.SV-5.17 to all four).
+SCOPE = ("decide.py", "join.py", "loop.py", "facets.py")
+
+# The one place a facet class is compared: B1-C6 step (1) checks the facet class the unit asked for
+# (`create`, `owned`, `safe_start`, `event`) against the class the node declared for that effect.
+# It is a check of the unit's own request, not a branch on a resource kind, and it is exempted by
+# module and function name only: any other comparison in facets.py is still scanned.
+EXEMPT_FUNCTIONS = {"facets.py": frozenset({"_is_requested_class"})}
 
 KIND_CARRIERS = frozenset(
     {
@@ -66,10 +73,25 @@ def _mentions_kind(node: ast.AST) -> str | None:
     return None
 
 
+def _exempt_nodes(tree: ast.AST, name: str) -> set[int]:
+    """Ids of every node inside a function `EXEMPT_FUNCTIONS` names for module `name`."""
+    exempt = EXEMPT_FUNCTIONS.get(name, frozenset())
+    return {
+        id(inner)
+        for func in ast.walk(tree)
+        if isinstance(func, ast.FunctionDef | ast.AsyncFunctionDef) and func.name in exempt
+        for inner in ast.walk(func)
+    }
+
+
 def scan_source(source: str, name: str) -> list[str]:
     """Every branch in `source` that tests a resource kind (comparison, `in`, `match`)."""
     problems: list[str] = []
-    for node in ast.walk(ast.parse(source)):
+    tree = ast.parse(source)
+    skipped = _exempt_nodes(tree, name)
+    for node in ast.walk(tree):
+        if id(node) in skipped:
+            continue
         tested: list[ast.AST] = []
         if isinstance(node, ast.Compare):
             tested.append(node)
@@ -84,7 +106,8 @@ def scan_source(source: str, name: str) -> list[str]:
 
 
 def test_no_kind_branch_outside_decide() -> None:
-    """decide reads only LoopFlags; the join and (later) the loop and facets read no kind."""
+    """decide reads only LoopFlags; the join, the loop and the facets read no kind."""
+    assert set(SCOPE) == {"decide.py", "join.py", "loop.py", "facets.py"}, SCOPE
     for module in SCOPE:
         assert (PACKAGE / module).is_file(), f"{module} is missing from the scanned scope"
     problems: list[str] = []
@@ -94,17 +117,25 @@ def test_no_kind_branch_outside_decide() -> None:
 
 
 def test_planted_kind_branch_is_caught() -> None:
-    """A planted `if kind ==` in join.py is caught; the real source and benign code are not."""
-    real = (PACKAGE / "join.py").read_text()
-    planted = real + (
+    """A planted `if kind ==` in any scanned module is caught; the real source and benign code are
+    not; the exemption covers its one named function and nothing else in facets.py."""
+    planted_tail = (
         "\n\ndef _planted(kind: str) -> bool:\n"
         '    if kind == "docker_service":\n'
         "        return True\n"
         "    return False\n"
     )
-    assert scan_source(real, "join.py") == []
-    hits = scan_source(planted, "join.py")
-    assert len(hits) == 1 and "branch on" in hits[0]
+    for module in SCOPE:
+        real = (PACKAGE / module).read_text()
+        assert scan_source(real, module) == [], module
+        hits = scan_source(real + planted_tail, module)
+        assert len(hits) == 1 and "branch on" in hits[0], (module, hits)
+    # the exempt function is exempt; the same comparison anywhere else in facets.py is not
+    facets = (PACKAGE / "facets.py").read_text()
+    moved = facets.replace("def _is_requested_class", "def _is_requested_klass")
+    assert any("attribute .facet" in hit for hit in scan_source(moved, "facets.py"))
+    assert scan_source("def _is_requested_class(d):\n    return d.facet is 1\n", "facets.py") == []
+    assert scan_source("def _is_requested_class(d):\n    return d.facet is 1\n", "loop.py")
     for snippet in (
         "if unit.resource_kind == 'x': pass",
         "if lifetime is Lifetime.RUN: pass",
