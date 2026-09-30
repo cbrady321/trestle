@@ -10,9 +10,9 @@ and never mutates its argument. An element counts as *missing* when the value th
 absent or unusable (`None`, the wrong type, an empty name, a non-positive duration): the frozen
 declaration types do not validate, so a plugin can bind any of these.
 
-L.SL-2.1 adds the in-node stage budgets (`_budget_refusals`); L.SL-6.2 later adds the remedy
-ownership boundary; each appends to the returned tuple in a fixed order, so the first refusal
-is deterministic.
+L.SL-2.1 adds the in-node stage budgets (`_budget_refusals`) and L.SL-6.2 the remedy ownership
+boundary (`_remedy_refusals`, B1-E3); each appends to the returned tuple in a fixed order, so the
+first refusal is deterministic.
 """
 
 from __future__ import annotations
@@ -34,6 +34,7 @@ from trestle.workflow.declarations import (
     LeafDeclaration,
     Lifetime,
     LoopFlags,
+    RemedyDeclaration,
     Repeat,
     WaitPolicy,
 )
@@ -245,6 +246,42 @@ def _budget_refusals(decl: LeafDeclaration) -> list[RegistrationRefusal]:
     ]
 
 
+def _remedy_refusals(decl: LeafDeclaration) -> list[RegistrationRefusal]:
+    """B1-E3 (WR-REMEDY-4, WR-OWN-10): an `OWNED` remedy is authorized only against `state.owned`,
+    the handles this node's own CREATE tickets yielded. A leaf that declares no CREATE effect owns
+    nothing (its resource is found, and a found resource is never adopted: V-4.2), so an OWNED
+    remedy on it can never be issued: it is refused here, at publication, as
+    `publication.owned_remedy_on_found`. A remedy that changes a found resource must be a
+    `SAFE_START` effect, whose verb `_effect_refusals` already holds to start/refresh/install."""
+    effects = (
+        tuple(e for e in decl.effects if isinstance(e, EffectDeclaration))
+        if isinstance(decl.effects, (tuple, list))
+        else ()
+    )
+    if any(e.facet == EffectFacetClass.CREATE for e in effects):
+        return []
+    by_id = {e.effect: e for e in effects}
+    remedies = decl.remedies if isinstance(decl.remedies, (tuple, list)) else ()
+    out: list[RegistrationRefusal] = []
+    for remedy in remedies:
+        if not isinstance(remedy, RemedyDeclaration):
+            continue
+        target = by_id.get(remedy.effect)
+        if target is None or target.facet != EffectFacetClass.OWNED:
+            continue  # undeclared: a runtime UNDECLARED_EFFECT; other facets: not an owned change
+        where = f"remedies[{remedy.code}]"
+        out.append(
+            RegistrationRefusal(
+                vocab.OWNED_REMEDY_ON_FOUND,
+                f"{where}.effect",
+                f"{where}.effect: {remedy.effect!r} is an owned effect on a leaf that creates "
+                "nothing; a found resource is only changed by a safe_start (start, refresh, "
+                "install)",
+            )
+        )
+    return out
+
+
 def _leaf_refusals(decl: LeafDeclaration) -> list[RegistrationRefusal]:
     out = _six_elements(decl)
     out += _effect_refusals(decl)
@@ -269,12 +306,14 @@ def _leaf_refusals(decl: LeafDeclaration) -> list[RegistrationRefusal]:
             )
         )
     out += _budget_refusals(decl)
+    out += _remedy_refusals(decl)
     return out
 
 
 def check_declaration(decl: Declaration) -> tuple[RegistrationRefusal, ...]:
     """Every registration refusal for `decl`, in a fixed order (flags, the six elements, effects,
-    attempts, recorded-with-remedies, stage budgets). Empty means it may be registered."""
+    attempts, recorded-with-remedies, stage budgets, remedy ownership). Empty means it may be
+    registered."""
     if not isinstance(decl, (LeafDeclaration, AllDeclaration, ChoiceNode)):
         return ()  # not a declaration: extraction refuses it as such
     out = _flag_refusals(decl)

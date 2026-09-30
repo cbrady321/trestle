@@ -8,8 +8,8 @@ module state. The record is read only through `units.NodeRecordView` (MC-B2-02),
 definition of V-4's entry shape.
 
 Groups 1, 3 and the `RECORDED` rows of group 4 plus J-24 are L.SV-5.4's; the `OBSERVED` rows of
-group 4, J-25/J-25a (group 5) and J-15 (group 6) are L.SV-5.5's; group 5a (J-3, J-3a) is a hook
-returning nothing until L.SL-6.1 fills it with the remedy path.
+group 4, J-25/J-25a (group 5) and J-15 (group 6) are L.SV-5.5's; group 5a (J-3, J-3a, the remedy
+path) is L.SL-6.1's.
 """
 
 from __future__ import annotations
@@ -469,10 +469,91 @@ def _group5(ctx: _Ctx, resolved: Verdict) -> Verdict:
     )
 
 
+def _latest_remedy_ticket(ctx: _Ctx) -> TicketView | None:
+    return next((t for t in reversed(ctx.record.tickets) if t.remedy is not None), None)
+
+
+def _ticket_wait_elapsed(ctx: _Ctx, ticket: TicketView) -> bool:
+    """V-3.1 "wait elapsed" for `ticket`: the instant is a recorded `NoAction` step's `at` when one
+    was recorded after the ticket, else the ticket's `issued_at`."""
+    anchor = ticket.issued_at
+    for s in ctx.record.steps:
+        if s.kind is StepKind.NO_ACTION and s.handle is None and s.at >= anchor:
+            anchor = s.at
+    return ctx.wait_elapsed(anchor)
+
+
+def _remedy_spent(ctx: _Ctx, latest: TicketView) -> bool:
+    """J-3's "attempts, total time or cooldown exhausted" for the remedy of `latest` (V-14
+    RemedyDeclaration): its `attempts` are all ticketed, or `total` has run from its first remedy
+    ticket, or another ticket could no longer start inside `total` once `cooldown` had passed
+    since the latest one (a remedy has no other bound: the cooldown is the gap between two of its
+    tickets, which the loop keeps, L.SL-6.1)."""
+    assert latest.remedy is not None
+    code = latest.remedy.code
+    decl = next((d for d in ctx.terms.remedies if d.code == code), None)
+    if decl is None:
+        return False
+    first = next(t for t in ctx.record.tickets if t.remedy is not None and t.remedy.code == code)
+    return (
+        ctx.remedy_used(code) >= decl.attempts
+        or ctx.clock.now >= first.issued_at + decl.total
+        or latest.issued_at + decl.cooldown > first.issued_at + decl.total
+    )
+
+
+def _carries(ctx: _Ctx, resolved: Verdict, code: str) -> bool:
+    """V-3.1's diagnostic fingerprint: the verdict groups 3-5 produced still carries the remedy's
+    trigger `code`: as its own code, as the code of the remedy it grants, or as the code J-20 /
+    J-23 read off the present observation that leaves the postcondition false."""
+    if resolved.code == code or (resolved.remedy is not None and resolved.remedy.code == code):
+        return True
+    obs = ctx.observation
+    return obs is not None and obs.code == code and not obs.postcondition.satisfied
+
+
 def _group5a(ctx: _Ctx, resolved: Verdict) -> Verdict | None:
-    """J-3, J-3a against the verdict groups 3-5 produced (V-3.6 5a). L.SL-6.1 fills this with the
-    remedy path; until then no remedy is ever exhausted or without progress, so it matches
-    nothing and J-15 is evaluated."""
+    """J-3, then J-3a, against the verdict groups 3-5 produced (V-3.6 5a); either one gives its
+    condition and J-15 is not evaluated. Neither matches a SATISFIED verdict: a repair that
+    succeeds on its last attempt joins SATISFIED and is answered repaired (B4-C3).
+
+    J-3 (`REMEDY_EXHAUSTED`): the latest remedy ticket's remedy is spent (`_remedy_spent`), counted
+    only once that ticket's wait has elapsed or it resolved NOT_APPLIED, so a repair still
+    converging (J-19) is never cut short; a verdict that grants a remedy for a different declared
+    code still has one issuable and is not exhausted. J-3a (`REMEDY_NO_PROGRESS`): the latest ticket
+    is a confirmed remedy ticket whose wait has elapsed and the trigger code persists."""
+    if resolved.condition is Condition.SATISFIED:
+        return None
+    latest = _latest_remedy_ticket(ctx)
+    if latest is None or latest.remedy is None:
+        return None
+    conf = latest.confirmation
+    settled = (
+        conf is not None and conf.status is ConfirmationStatus.NOT_APPLIED
+    ) or _ticket_wait_elapsed(ctx, latest)
+    other = resolved.remedy is not None and resolved.remedy.code != latest.remedy.code
+    if settled and not other and _remedy_spent(ctx, latest):  # J-3
+        return _verdict(
+            ctx,
+            resolved.provenance,
+            Condition.BLOCKED,
+            codes.REMEDY_EXHAUSTED,
+            currency=resolved.currency,
+        )
+    if (  # J-3a
+        latest is ctx.latest
+        and conf is not None
+        and conf.status is ConfirmationStatus.APPLIED
+        and _ticket_wait_elapsed(ctx, latest)
+        and _carries(ctx, resolved, latest.remedy.code)
+    ):
+        return _verdict(
+            ctx,
+            resolved.provenance,
+            Condition.BLOCKED,
+            codes.REMEDY_NO_PROGRESS,
+            currency=resolved.currency,
+        )
     return None
 
 

@@ -450,6 +450,28 @@ class LeafWalk:
 
     # ------------------------------------------------------------------ advance
 
+    def _cooled_down(self, grant: RemedyGrant) -> bool:
+        """The declared remedy's cooldown (V-14): no two tickets of one remedy closer than
+        `cooldown`. Waits, through `CancelSignal.wait` and never past the slice's end, until the
+        latest remedy ticket for this code is `cooldown` old. False when a stop arrived or the
+        slice ended before then (the remedy is not issued)."""
+        decl = next((d for d in self._terms.remedies if d.code == grant.code), None)
+        previous = next(
+            (
+                t
+                for t in reversed(self._loop.lane.node_record(self.path).tickets)
+                if t.remedy is not None and t.remedy.code == grant.code
+            ),
+            None,
+        )
+        if decl is None or previous is None:
+            return True
+        ready = min(previous.issued_at + decl.cooldown, self._terms.slice_end)
+        left = ready - self._loop.now()
+        if left > timedelta(0):
+            self._loop.services.cancellation().wait(left)
+        return not self._stopped() and not self._slice_ended()
+
     def _mark(self) -> tuple[int, int, int]:
         durable = self._loop.lane.node_record(self.path)
         return len(durable.tickets), len(durable.steps), len(self._held)
@@ -460,6 +482,8 @@ class LeafWalk:
         recorded by the facet and is never UNIT_RAISED (B1-E4); any other raise is (B1-E6)."""
         verdict = self.verdict
         assert verdict is not None
+        if verdict.remedy is not None and not self._cooled_down(verdict.remedy):
+            return  # a stop or the slice's end came first: the walk reads it at its next step
         before = self._loop.lane.node_record(self.path)
         marked = self._mark()
         self._refusal_seen = False
