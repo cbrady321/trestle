@@ -1,10 +1,11 @@
 """Demo credential grant adapters for the workflow loop's Demo Credential Serving family
-(L.RB-9.1, L.RB-9.2; B3-C8, B3-C9, B3-C11, D-9: AWS is DEMO ONLY, never real).
+(L.RB-9.1, L.RB-9.2, L.RB-9.3; B3-C8, B3-C9, B3-C11, D-9: AWS is DEMO ONLY, never real).
 
 `demo` holds `DemoGrant` (`GrantReads` + `GrantRefresh`) over the stub issuer on loopback,
 `delivery` the credential channel (`GrantDelivery`: a mounted refreshable file) and
 `consumer_probe` the authenticated call made from inside a consumer (a container by `docker exec`,
-a local app). The
+a local app) and `host_scope` `DemoHostScope` (`HostScopeReads`: the credential's current
+generation, which the join compares a consumer's currency fact with). The
 adapters import only the standard library and `trestle.workflow` (BFD-47, C.5 step 4); the legacy
 subpackages are untouched. `fakes/grant.py` is the stdlib-only fake the same suite runs against.
 """
@@ -29,6 +30,7 @@ from trestle_packs.grant.demo import (
     IssuerClient,
     ProbeReading,
 )
+from trestle_packs.grant.host_scope import HOST_SCOPE_UNREADABLE, DemoHostScope
 
 __all__ = [
     "CHANNEL_FILE",
@@ -37,11 +39,13 @@ __all__ = [
     "CREDENTIAL_STALE",
     "DEMO_CREDENTIAL_KIND",
     "GRANT_ISSUER_UNREACHABLE",
+    "HOST_SCOPE_UNREADABLE",
     "ArgvRunner",
     "ChannelDelivery",
     "ConsumerProbe",
     "ContainerExecProbe",
     "DemoGrant",
+    "DemoHostScope",
     "IssuerClient",
     "LocalAppProbe",
     "ProbeReading",

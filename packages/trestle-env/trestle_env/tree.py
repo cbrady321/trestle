@@ -44,17 +44,22 @@ from trestle.workflow import (
     Compose,
     EffectDeclaration,
     EffectFacetClass,
+    HostScopeRef,
     LeafDeclaration,
     Lifetime,
     LoopFlags,
     RealizationKind,
+    RemedyDeclaration,
     Repeat,
     WaitPolicy,
     WorkflowEntry,
 )
+from trestle.workflow.codes import CREDENTIAL_LIFETIME_INSUFFICIENT
 from trestle.workflow.ports import (
     BoundCommand,
     ExecutionPort,
+    GrantReads,
+    GrantRefresh,
     Resolved,
     ResourceCreate,
     ResourceOwned,
@@ -72,7 +77,14 @@ from trestle.workflow.units import (
     ReadFacets,
     Step,
 )
-from trestle.workflow.values import CheckResult, CreatedHandle, Observation, Resend, Verdict
+from trestle.workflow.values import (
+    CheckResult,
+    CreatedHandle,
+    CurrencyFact,
+    Observation,
+    Resend,
+    Verdict,
+)
 
 from trestle_env.catalog import Catalog, load_reference
 from trestle_env.catalog.model import Project, TaskEntry, TestSpec
@@ -462,6 +474,115 @@ class ProvisionUnit:
 
     def release(self, params: Any, handle: CreatedHandle, effects: Any, ctx: ActContext) -> Step:
         raise AssertionError("a durable record is never released by a run")
+
+
+CREDENTIAL_UNIT: Final = "credential.demo"
+CREDENTIAL_KIND: Final = "demo_credential"
+CREDENTIAL_CURRENT: Final = "credential_current"  # the postcondition: a usable credential
+REFRESH: Final = "refresh"
+# The one grant condition a credential leaf cannot go past on its own (V-3.8: the issuer could not
+# be read). It is the grant adapter's code, spelled as its module spells it; a test pins them.
+GRANT_ISSUER_UNREACHABLE: Final = "adapter.grant_issuer_unreachable"
+ISSUER_BLOCK: Final = (
+    "Start the demo credential issuer, or name the endpoint it answers on, so {stage} can be "
+    "read; then re-send."
+)
+
+
+class CredentialUnit:
+    """The demo-credential precondition every dependent of the environment waits for (L.RB-9.3;
+    WR-ENV-8, WR-ENV-14, B3-C8, B3-C11; D-9: the demo issuer only, never a real identity).
+
+    The unit states the domain's policy and issues one effect: a SAFE_START `refresh` of the host
+    grant through `GrantRefresh`. Everything else is the join's:
+
+    * An identity that needs interactive sign-in is not usable: the node is unsatisfied, the
+      refresh comes back `NOT_APPLIED(CREDENTIAL_INTERACTIVE)` carrying the identity's name, and
+      the join ends the node `BLOCKED` with V-11.1's human action and re-send
+      `SUCCEEDS_AFTER_ACTION` (J-5a), so no dependent starts (they `need` this node).
+    * A usable credential reports its expiry as a currency fact. The join compares it with the
+      ROOT deadline plus the finalization margin, never a slice (J-25, WR-ENV-14): a shorter
+      lifetime gets the declared remedy, one `refresh`, first; one still short after it ends
+      `CREDENTIAL_LIFETIME_INSUFFICIENT` (J-25a, class EXHAUSTED, answered `BLOCKED`).
+
+    Only identity, expiry and generation are ever read or recorded (WR-EVID-12): the grant port has
+    no way to return a secret."""
+
+    def declare(self) -> LeafDeclaration:
+        return LeafDeclaration(
+            unit=CREDENTIAL_UNIT,
+            flags=LoopFlags(Compose.LEAF, CompletionSource.OBSERVED, Repeat.SAFE),
+            preconditions=(),
+            postcondition=CREDENTIAL_CURRENT,
+            wait=WaitPolicy(timedelta(seconds=READY_POLL_S), 1.0, timedelta(seconds=STAGE_WAIT_S)),
+            resource_kind=CREDENTIAL_KIND,
+            may_touch=frozenset({CREDENTIAL_KIND}),
+            effects=(
+                EffectDeclaration(
+                    REFRESH,
+                    EffectFacetClass.SAFE_START,
+                    "",
+                    Lifetime.DURABLE,
+                    frozenset({HostScopeRef.DEMO_CREDENTIAL}),
+                    None,
+                ),
+            ),
+            retryable=frozenset(),
+            remedies=(
+                RemedyDeclaration(
+                    CREDENTIAL_LIFETIME_INSUFFICIENT,
+                    REFRESH,
+                    1,
+                    timedelta(seconds=STAGE_WAIT_S),
+                    timedelta(0),
+                ),
+            ),
+            budget=timedelta(seconds=STAGE_BUDGET_S),
+            max_attempts=1,
+        )
+
+    def observe(self, params: Any, reads: ReadFacets, ctx: ObserveContext) -> Observation:
+        grant = reads.read(GrantReads).observe_host()
+        if grant.code is not None:  # the issuer cannot be read: nothing else in it means anything
+            return Observation(
+                False,
+                False,
+                False,
+                True,
+                CheckResult(False, grant.code, ""),
+                (),
+                (),
+                (),
+                grant.code,
+                None,
+            )
+        usable = not grant.interactive_required
+        fact = CurrencyFact(HostScopeRef.DEMO_CREDENTIAL, grant.generation, grant.expires_at)
+        return Observation(
+            present=usable,
+            selector_present=False,
+            identity_proven=True,
+            configuration_compatible=True,
+            postcondition=CheckResult(usable, None, ""),
+            preconditions=(),
+            currency=(fact,) if usable else (),
+            found=(),
+            code=None,
+            payload=None,
+        )
+
+    def advance(self, params: Any, state: Verdict, effects: EffectFacets, ctx: ActContext) -> Step:
+        grant = effects.read(GrantReads).observe_host()
+        if grant.code == GRANT_ISSUER_UNREACHABLE:
+            stage = f"{CREDENTIAL_UNIT} (demo credential)"
+            return Blocked(
+                grant.code, ISSUER_BLOCK.format(stage=stage), Resend.SUCCEEDS_AFTER_ACTION
+            )
+        effects.safe_start(GrantRefresh).refresh(grant.found, REFRESH)
+        return Acted()
+
+    def release(self, params: Any, handle: CreatedHandle, effects: Any, ctx: ActContext) -> Step:
+        raise AssertionError("a refresh of the host grant creates nothing to release")
 
 
 class TaskUnit:
