@@ -1,0 +1,1 @@
+{"additionalProperties":false,"properties":{"env":{"type":"string"},"mode":{"type":"string"}},"type":"object"}

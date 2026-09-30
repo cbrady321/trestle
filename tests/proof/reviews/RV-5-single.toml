@@ -1,0 +1,27 @@
+# RV-5 at J-SINGLE (CM-5 role 1, L.J-SINGLE.1): stage-critic transcription review paired with
+# `python -m tests.proof.transcribe --check all`. Reviewer: stage critic, read-only.
+# Scope (plans/a1-single-level.md L.J-SINGLE.1): matrix map + row owners vs requirements L493-505
+# and decomposition s7, plus the ROW_TIER map of tests/single/docs/test_single_fragments.py vs the
+# requirements rows' tier column (A1c2-7, I22).
+# Round history:
+# - Round 1, pass, at 15e22cf (WR-Merge: SL-11; this record; verdict _tmp/delivery/RV-5-single-verdict.md).
+#   The previous RV-5 (RV-5-core.toml) reviewed dfd44c2; matrix_map, row_owners, k_doc_map,
+#   open_questions, labels.d/core, deferrals and transcribe.py are byte-identical dfd44c2..15e22cf.
+# Departure recorded (declared, not a transcription defect): fence.d/single.toml uses CM-2's bundle
+# form (17 product gates on wr/single-bundle/single, a ninth lane single-bundle); the transcribed
+# lanes, merges and requires_merge equal the plan (file header L2-6; A1-DOCS-RETURN.md).
+# Observations, no action: four single labels declare venue BOTH where the row cell says CI or
+# CI / HOST (stricter venue, equal to the plan's label table); divergence.toml +36 ADD-code-*
+# entries each authorized_by an a1 leaf; TM-P0-3's probe is real and reports absent (L.SV-1.4);
+# carried from the core rounds: divergence K-8/K-18 docs, K-8 container half, K-5/K-9 due_checkpoint.
+id = "RV-5"
+mode = "stage-critic review"
+outcome = "pass"
+sha = "15e22cf6e0232e9f1b5311868c2fc7fabf1be943"
+transcribe_log = "J-SINGLE round 1 at 15e22cf (reviewer, scratch git-archive extraction): transcribe --check all --requirements requirements-workflow-runtime.md --decomposition decomposition-workflow-runtime.md: exit 0, empty output; TRESTLE_REQUIREMENTS/TRESTLE_DECOMPOSITION pytest tests/proof/drift -k SA-06: 3 passed; -k 'SA-02 or SA-07 or SA-08 or SA-15': 19 passed; meta check-map: exit 0; meta audit-rows: exit 0 (129 rows, 47 unregistered, none single); differ d4: 38 runs, 0 diffs; meta register, open-questions, kdoc: exit 0; pytest test_single_fragments.py + selftest/test_fence.py: 17 passed. Reviewer: matrix_map, row_owners, k_doc_map, open_questions, labels.d/core, deferrals, transcribe.py byte-identical dfd44c2..15e22cf; 18 step-single clause parts = plan Coverage (b); labels.d/single.toml 53 labels = the plan's label table (id, order, slice, composes, tier, venue, posture, oq/reason, declared_by: 0 diffs); ROW_TIER 29 rows = requirements tier column (WR-CANCEL-4, WR-OWN-2, WR-OWN-6, WR-PROOF-4 collapsed to their Slice A component, I22); temporary.d/single.toml 5 entries = plan literal; fence.d/single.toml 7 lane blocks + j-single verbatim, 18 gate merges and requires_merge = plan, bundle-form branch topology a declared deviation (file header; A1-DOCS-RETURN.md); d2_exceptions E-SV3-1 = plan; 129 rows = decomposition s7 (owner_node, disposition, contributing, join_cids equal on all 129); K-11 = requirements L542, landing SV-0 = merge table row 1, three docs carry the one-call guidance. Verdict: _tmp/delivery/RV-5-single-verdict.md. Re-run by the checkpoint executor in the j-single worktree at 15e22cf with the single fossils generated: transcribe exit 0; drift -k 'SA-06 or SA-08' with the requirements env: 7 passed; differ d4: 43 runs, 0 diffs (s0, core, single); differ d2 --reader wr-ckpt/core: 0 divergences over all 43 states (single/inflight-plan-bearing projects interrupted as declared, so E-SV3-1 excuses nothing), also rc 0 over a scratch root holding only the single band; meta check-map, audit-rows, register, kdoc, open-questions, differ d1 --strict: exit 0."
+
+[criteria]
+verbatim_fragments = "pass"
+row_set = "pass"
+owner = "pass"
+k_docs = "pass"
