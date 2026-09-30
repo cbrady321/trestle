@@ -1,9 +1,6 @@
-"""G-C2 (D-k): the summary budget is read from the current snapshot, not
-the run's own spec.
-
-Pin: republishing a plugin with a new budget changes the projection of an
-already-admitted run. Target: the budget follows the run's spec
-(`evidence/spec.json` `summary_budget`), whatever is published later.
+"""G-C2 (D-k), flipped by L.CL-B1.1: the summary budget used to be read from the current
+snapshot, so republishing a plugin with a new budget changed the projection of an already-admitted
+run. It is now the run's own (`evidence/spec.json` `summary_budget`), whatever is published later.
 """
 
 from __future__ import annotations
@@ -39,17 +36,7 @@ def project_across_republish() -> tuple[RunView, RunView]:
     return admitted, after
 
 
-@pytest.mark.pin(GAP)
-def test_pin_budget_follows_current_snapshot() -> None:
-    admitted, after = project_across_republish()
-    assert admitted.state == "succeeded"
-    assert admitted.truncated is True  # tight budget at admission
-    assert after.truncated is False  # the later roomy budget re-projected it
-
-
-@pytest.mark.target(GAP)
 @pytest.mark.proves("WR-TERM-5", "WR-TERM-5:budget-from-own-spec", "core", "core", "PROC", "CI")
-@pytest.mark.xfail(strict=True, reason="defect:G-C2")
 def test_target_budget_follows_spec() -> None:
     admitted, after = project_across_republish()
     target_check(

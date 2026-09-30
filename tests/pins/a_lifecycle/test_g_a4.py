@@ -1,11 +1,10 @@
-"""G-A4 (BFD-06): a status request waits behind a slow publication probe
-inside `run`.
+"""G-A4 (BFD-06), flipped by L.CL-A1.1: a status request no longer waits behind a slow
+publication probe inside `run`.
 
-A dropped-in plugin with a module-level sleep is validated on the event
-loop inside the `run` tool (`maybe_refresh`, then the synchronous admit),
-so a concurrent status request is not answered until the probe is over.
-Order only (WR-PROOF-9): the probe delay is a proof-court patience value,
-the assertion is which finished first.
+A dropped-in plugin with a module-level sleep is validated on the admission thread (MC-30: the
+registry refresh, then the admit), not on the event loop, so a concurrent status request is
+answered while the probe is still running. Order only (WR-PROOF-9): the probe delay is a
+proof-court patience value, the assertion is which finished first.
 """
 
 from __future__ import annotations
@@ -18,7 +17,6 @@ import pytest
 
 from tests.pins.a_lifecycle import helpers
 from tests.proof import mcp_host, tolerances
-from tests.proof.markers import target_check
 
 PROBE_DELAY_S = tolerances.SETTLE_LONG_S * 2
 
@@ -54,23 +52,13 @@ def _status_during_probe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tup
     return answered, min(ends)
 
 
-@pytest.mark.pin("G-A4")
-def test_pin_query_answered_after_probe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    answered, first_end = _status_during_probe(tmp_path, monkeypatch)
-    assert answered >= first_end
-
-
-@pytest.mark.target("G-A4")
 @pytest.mark.proves(
     "WR-TERM-7", "WR-TERM-7:status-during-slow-admission", "core", "core", "MCP+PROC", "CI"
 )
-@pytest.mark.xfail(strict=True, reason="defect:G-A4")
 def test_target_query_answered_before_probe_ends(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     answered, first_end = _status_during_probe(tmp_path, monkeypatch)
-    target_check(
-        answered < first_end,
-        "G-A4",
-        f"status request answered {answered - first_end:.2f}s after the probe ended",
+    assert answered < first_end, (
+        f"status request answered {answered - first_end:.2f}s after the probe ended"
     )

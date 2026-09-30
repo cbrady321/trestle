@@ -351,13 +351,18 @@ PRODUCERS: dict[str, Callable[[Path], None]] = {
 }
 
 
+# Ledger kinds core adds to a run (MC-14, MC-32). They are additive to the S0 projection `DECLARED`
+# speaks in: a head-produced run holds them, an S0 fossil never does.
+CORE_KINDS = frozenset({"process_identity", "group_stop"})
+
+
 def declared_projection(run_dir: Path) -> dict[str, Any]:
     """The projection `DECLARED` speaks in, read back through the
-    independent records seam."""
+    independent records seam (the S0 kinds only: core's additive kinds are not part of it)."""
     rows = records.ledger_rows(run_dir)
     node = records.node_record(run_dir)
     return {
-        "kinds": node.kinds,
+        "kinds": [kind for kind in node.kinds if kind not in CORE_KINDS],
         "terminal": node.terminal,
         "torn": rows.torn,
         "meta": (run_dir / "evidence" / "meta.json").exists(),

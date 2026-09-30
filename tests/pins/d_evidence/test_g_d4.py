@@ -1,5 +1,6 @@
-"""G-D4 (BFD-32): every dropped event appends one limit-marker line, so the
-marker volume grows with the number of drops."""
+"""G-D4 (BFD-32), flipped by L.CL-B1.3: every dropped event used to append one limit-marker line,
+so the marker volume grew with the number of drops. The child now keeps one line per (stream,
+limit) and folds later drops into it."""
 
 from __future__ import annotations
 
@@ -8,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.proof.markers import TargetUnmet, target_check
+from tests.proof.markers import target_check
 from trestle.child.context import RuntimeContext
 from trestle.common.limits import CaptureLimits
 
@@ -36,16 +37,7 @@ def _marker_lines_after_drops(root: Path, drops: int) -> int:
     return len(ctx.limits_markers())
 
 
-@pytest.mark.pin("G-D4")
-def test_pin_marker_lines_track_drops(tmp_path: Path) -> None:
-    few = _marker_lines_after_drops(tmp_path / "few", FEW_DROPS)
-    many = _marker_lines_after_drops(tmp_path / "many", MANY_DROPS)
-    assert many > few
-
-
-@pytest.mark.target("G-D4")
 @pytest.mark.proves("WR-EVID-4", "WR-EVID-4:markers-bounded", "core", "core", "must", "CI")
-@pytest.mark.xfail(strict=True, raises=TargetUnmet, reason="defect:G-D4")
 def test_target_marker_lines_equal_for_200_and_2000_drops(tmp_path: Path) -> None:
     few = _marker_lines_after_drops(tmp_path / "few", FEW_DROPS)
     many = _marker_lines_after_drops(tmp_path / "many", MANY_DROPS)

@@ -2,23 +2,20 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
-import sys
 from pathlib import Path
+
+from trestle.common.pyenv import build_child_env, python_argv
 
 
 def spawn_child(run_dir: Path) -> subprocess.Popen[str]:
-    cmd = [sys.executable, "-m", "trestle.child.main", "--run-dir", str(run_dir)]
-    env = os.environ.copy()
-    root = str(Path(__file__).resolve().parents[2])
-    existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = root if not existing else f"{root}{os.pathsep}{existing}"
+    """Start the run's child in the wrapper's own process group, so the group the supervisor
+    records covers the tree (design DD-1(b), B2-C10)."""
     return subprocess.Popen(
-        cmd,
+        python_argv("-m", "trestle.child.main", "--run-dir", str(run_dir)),
+        stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        env=env,
-        start_new_session=True,
+        env=build_child_env(),
     )

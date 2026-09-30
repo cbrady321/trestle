@@ -32,7 +32,7 @@ VIEW_ROW_FIELDS: dict[str, frozenset[str]] = {
     "recent_runs": frozenset({"run_id", "plugin", "state", "started_at"}),
     "recent_failures": frozenset({"run_id", "plugin", "state", "failed_at"}),
     "run_provenance": frozenset(
-        {"run_id", "snapshot_id", "spec_hash", "args_hash", "source_sha256"}
+        {"run_id", "snapshot_id", "spec_hash", "args_hash", "source_sha256", "packages"}
     ),
     "run_artifacts": frozenset({"run_id", "artifact_id", "name", "retention_class", "state"}),
     "artifact_refs": frozenset({"artifact_id", "producer_run_id", "referrer_run_id"}),

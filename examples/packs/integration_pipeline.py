@@ -56,8 +56,7 @@ def integration_pipeline(
     """Run docker stack → optional alembic migrate → pytest."""
     cwd = Path(workdir) if workdir else Path.cwd()
     stages: dict[str, Any] = {}
-    raw = stack_spec if isinstance(stack_spec, dict) else asdict(stack_spec)
-    stack = StackSpec.from_dict(raw)
+    stack = StackSpec.from_dict(asdict(stack_spec))
     runner = StackRunner(ctx)
 
     try:

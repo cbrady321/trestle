@@ -36,11 +36,14 @@ def _golden(facet: str) -> object:
 
 
 def _assert_matches_golden(facet: str) -> None:
+    """d1's own comparison (`differ.facet_diff`) under the facet's facets.toml policy: a "named"
+    facet grows only where a divergence entry names the addition (keys/items/grows selectors, or
+    `codes` for refusal_codes); a "free" one may add keys, never lose or change one."""
     current = normalize.normalize(getattr(facets, facet)())
-    missing, unexpected = normalize.structural_diff(
-        normalize.normalize(_golden(facet)), current, policy="named"
+    result = differ.facet_diff(
+        facet, normalize.normalize(_golden(facet)), current, policy=ADDITIVE[facet]
     )
-    assert (missing, unexpected) == ([], [])
+    assert (result.missing, result.unexpected) == ([], [])
 
 
 @pytest.mark.compat

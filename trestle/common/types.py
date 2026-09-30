@@ -31,6 +31,9 @@ class AdmitRequest:
     args: dict[str, Any]
     version: str | None = None
     idempotency_key: str | None = None
+    # The MCP session the call arrived on (None outside an MCP session); written on the `created`
+    # row so the restricted profile can scope `cancel` to the session that started a run.
+    caller_session: str | None = None
 
 
 @dataclass
@@ -44,6 +47,10 @@ class AdmitResultAdmitted:
     tag: Literal["admitted"]
     run_id: Handle
     existing: bool = False
+    # The real values of the run's declared secret arguments, by declared name (MC-CORE-13). Held
+    # in memory from admission to the run's start and never written: not in `spec.json`, the
+    # ledger or the idempotency store; hidden from repr and comparison.
+    secrets: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
 
 AdmitResult = AdmitResultRefused | AdmitResultAdmitted
@@ -54,6 +61,9 @@ class WorkOrder:
     run_id: Handle
     snapshot_id: str
     spec_hash: str
+    # In-memory only (see `AdmitResultAdmitted.secrets`): delivered to the wrapper and child
+    # through the environment, never persisted; hidden from repr and comparison.
+    secrets: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
 
 @dataclass
@@ -72,6 +82,7 @@ class RunSpec:
     timeout_s: int
     resolved_artifacts: dict[str, str] = field(default_factory=dict)
     deadline: str | None = None
+    provenance: dict[str, Any] = field(default_factory=lambda: {"packages": {}})
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -88,6 +99,7 @@ class RunSpec:
             "summary_budget": self.summary_budget,
             "timeout_s": self.timeout_s,
             "resolved_artifacts": self.resolved_artifacts,
+            "provenance": self.provenance,
         }
         if self.deadline is not None:
             out["deadline"] = self.deadline
@@ -110,7 +122,19 @@ class RunSpec:
             timeout_s=int(data["timeout_s"]),
             resolved_artifacts=dict(data.get("resolved_artifacts", {})),
             deadline=data.get("deadline"),
+            provenance=_provenance(data.get("provenance")),
         )
+
+
+def _provenance(raw: object) -> dict[str, Any]:
+    """`spec.json`'s `provenance`: the declared packages and the digests recorded for them at
+    publication (MC-18). A spec that predates it records none."""
+    packages = raw.get("packages") if isinstance(raw, dict) else None
+    return {
+        "packages": {str(k): str(v) for k, v in packages.items()}
+        if isinstance(packages, dict)
+        else {}
+    }
 
 
 @dataclass
@@ -124,6 +148,78 @@ class PluginSnapshot:
     manifest_sha256: str
     summary_budget: int
     timeout_s: int
+
+
+@dataclass(frozen=True)
+class DeclaredMetadata:
+    """What a plugin declares statically in its decorator call form, plus its entry name.
+
+    Carried in `manifest.json` as `declared` and `entry` (MC-18) and read only through
+    `trestle.server.snapshots.load_declared`. An undeclared plugin carries the defaults; the
+    300 s default deadline is applied by admission, so `deadline_s` stays `None` here.
+    """
+
+    entry: str | None = None
+    deadline_s: float | None = None
+    summary_fields: tuple[str, ...] = ()
+    packages: tuple[str, ...] = ()
+    env_arg: str | None = None
+    secrets: frozenset[str] = frozenset()
+    # Recorded at publication, not declared in source: each declared package's digest as the
+    # publication validator resolved it. Empty for a plugin that declares no packages.
+    package_digests: dict[str, str] = field(default_factory=dict)
+
+    def declared_dict(self) -> dict[str, Any]:
+        """The manifest's `declared` object: canonical, JSON-safe, sorted where unordered."""
+        return {
+            "deadline_s": self.deadline_s,
+            "summary_fields": list(self.summary_fields),
+            "packages": list(self.packages),
+            "env_arg": self.env_arg,
+            "secrets": sorted(self.secrets),
+            "package_digests": {k: self.package_digests[k] for k in sorted(self.package_digests)},
+        }
+
+    @classmethod
+    def from_manifest(cls, manifest: dict[str, Any]) -> DeclaredMetadata:
+        """Read `declared` and `entry` from a manifest dict; a manifest that predates them
+        (no `declared` key) yields the defaults."""
+        entry = manifest.get("entry")
+        raw = manifest.get("declared")
+        declared: dict[str, Any] = raw if isinstance(raw, dict) else {}
+        deadline = declared.get("deadline_s")
+        env_arg = declared.get("env_arg")
+        return cls(
+            entry=str(entry) if isinstance(entry, str) else None,
+            deadline_s=deadline
+            if isinstance(deadline, (int, float)) and not isinstance(deadline, bool)
+            else None,
+            summary_fields=tuple(str(x) for x in declared.get("summary_fields", ())),
+            packages=tuple(str(x) for x in declared.get("packages", ())),
+            env_arg=str(env_arg) if isinstance(env_arg, str) else None,
+            secrets=frozenset(str(x) for x in declared.get("secrets", ())),
+            package_digests={
+                str(k): str(v)
+                for k, v in (
+                    declared["package_digests"]
+                    if isinstance(declared.get("package_digests"), dict)
+                    else {}
+                ).items()
+            },
+        )
+
+
+@dataclass
+class CleanupView:
+    """The cleanup disposition of a finished run's process-group target (B2-C9, B4-C7): for a
+    spawned run `released` only when the supervisor confirmed every process attributable to the run
+    gone, else `unknown`; never `nothing_created` (the run spawned a process), never clean by
+    default. A run finalized while queued never spawned one and reads `nothing_created` (B2-C12)."""
+
+    processes: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"processes": self.processes}
 
 
 @dataclass
@@ -141,6 +237,8 @@ class RunView:
     error: dict[str, Any] | None = None
     next: Handle | None = None
     limits_exceeded: list[dict[str, Any]] | None = None
+    cleanup: CleanupView | None = None
+    outcome: dict[str, Any] | None = None  # MC-17: {class, code, identity, recovered}, beside state
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -165,6 +263,10 @@ class RunView:
             out["next"] = self.next
         if self.limits_exceeded is not None:
             out["limits_exceeded"] = self.limits_exceeded
+        if self.cleanup is not None:
+            out["cleanup"] = self.cleanup.to_dict()
+        if self.outcome is not None:
+            out["outcome"] = self.outcome
         return out
 
 

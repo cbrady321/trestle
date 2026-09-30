@@ -18,9 +18,13 @@
     "packs_skipped": 1,
     "ruff_check": "clean",
     "ruff_format": "clean",
-    "mypy_errors": 1,
-    "mypy_error_sites": ["trestle/server/init_cmd.py:25"],
+    "mypy_errors": 0,
+    "mypy_error_sites": [],
     "explanations": [
+      {
+        "field": "mypy_errors",
+        "reason": "K-14 (L.CK-14.1): trestle_packs ships a py.typed marker, so the one EV-01 error at trestle/server/init_cmd.py:25 is gone and the CI typecheck job gates mypy at zero. EV-01 (and ev01.mypy_error_sites, which only the retired ratchet read) stays the S0 record."
+      },
       {
         "field": "packs_passed, packs_skipped",
         "reason": "Host-only: packages/trestle-packs/tests/test_docker_integration.py::test_stack_runner_live_compose skips unless the Docker image alpine:3.20 is cached locally. EV-01 was measured without it (13 passed, 1 skipped). The image was pulled on 2026-09-29 for slice B, so on this host the test runs (14 passed, 0 skipped). CI runners have no cached image and still measure 13/1."

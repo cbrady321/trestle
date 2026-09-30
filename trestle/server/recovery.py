@@ -6,8 +6,10 @@ import json
 import shutil
 from pathlib import Path
 
+from trestle.common import codes
 from trestle.common.fsutil import atomic_write, atomic_write_json, fsync_dir
 from trestle.common.ids import generate_service_epoch
+from trestle.server import procident
 from trestle.server.ledger import (
     TERMINAL_KINDS,
     RunLedger,
@@ -16,6 +18,7 @@ from trestle.server.ledger import (
     run_dir_for,
     work_dir,
 )
+from trestle.server.procident import ProcessSource, Signaller
 
 _MID_EXECUTION_KINDS = frozenset(
     {
@@ -27,16 +30,20 @@ _MID_EXECUTION_KINDS = frozenset(
 )
 
 
-def recover_on_startup(home: Path) -> str:
+def recover_on_startup(
+    home: Path, *, source: ProcessSource | None = None, signaller: Signaller | None = None
+) -> str:
     """Sweep run dirs, then mint a new service epoch."""
     home.mkdir(parents=True, exist_ok=True)
-    recover_all_runs(home)
+    recover_all_runs(home, source=source, signaller=signaller)
     epoch = generate_service_epoch()
     atomic_write(home / "service_epoch", epoch.encode("utf-8"))
     return epoch
 
 
-def recover_all_runs(home: Path) -> None:
+def recover_all_runs(
+    home: Path, *, source: ProcessSource | None = None, signaller: Signaller | None = None
+) -> None:
     runs_root = home / "runs"
     if not runs_root.exists():
         return
@@ -45,10 +52,12 @@ def recover_all_runs(home: Path) -> None:
             continue
         for run_dir in sorted(month_dir.iterdir()):
             if run_dir.is_dir():
-                recover_run_dir(run_dir)
+                recover_run_dir(run_dir, source=source, signaller=signaller)
 
 
-def recover_run_dir(run_dir: Path) -> None:
+def recover_run_dir(
+    run_dir: Path, *, source: ProcessSource | None = None, signaller: Signaller | None = None
+) -> None:
     path = ledger_path(run_dir)
     if not path.exists():
         sweep_run_dir(run_dir)
@@ -73,18 +82,18 @@ def recover_run_dir(run_dir: Path) -> None:
         if terminal is not None:
             rematerialize_meta(run_dir, ledger)
         else:
-            append_recovery_suffix(run_dir, ledger)
+            append_recovery_suffix(run_dir, ledger, source=source, signaller=signaller)
         return
 
     if last_kind == "execution_ended":
-        append_recovery_suffix(run_dir, ledger)
+        append_recovery_suffix(run_dir, ledger, source=source, signaller=signaller)
         return
 
     if last_kind in {"created", "admitted", "started"} or last_kind in _MID_EXECUTION_KINDS:
-        append_recovery_suffix(run_dir, ledger)
+        append_recovery_suffix(run_dir, ledger, source=source, signaller=signaller)
         return
 
-    append_recovery_suffix(run_dir, ledger)
+    append_recovery_suffix(run_dir, ledger, source=source, signaller=signaller)
 
 
 def sweep_run_dir(run_dir: Path) -> None:
@@ -109,9 +118,27 @@ def sweep_tmp_partial(run_dir: Path) -> None:
         path.unlink(missing_ok=True)
 
 
-def append_recovery_suffix(run_dir: Path, ledger: RunLedger) -> None:
-    sweep_tmp_partial(run_dir)
+def append_recovery_suffix(
+    run_dir: Path,
+    ledger: RunLedger,
+    *,
+    source: ProcessSource | None = None,
+    signaller: Signaller | None = None,
+) -> None:
     run_id = str(ledger.records[0].get("run_id", run_dir.name))
+    # B2-C11: the run's processes are dealt with before anything is finalized
+    _record_group_stop(ledger, run_id, source=source, signaller=signaller)
+    sweep_tmp_partial(run_dir)
+    # MC-15: a run finalized here has an explanation; the one it already wrote (before the restart)
+    # stands, and none is made up for a run that ends by any other means
+    if ledger.terminal_state() is None and not ledger.has_kind("error_record"):
+        ledger.append(
+            "error_record",
+            run_id=run_id,
+            code=codes.EXECUTION_INTERRUPTED,
+            phase="recovery",
+            message="the service restarted while the run was in flight",
+        )
     result_state = _result_state(run_dir)
     completeness = "complete" if result_state == "complete" else "partial"
 
@@ -128,6 +155,31 @@ def append_recovery_suffix(run_dir: Path, ledger: RunLedger) -> None:
 
     fsync_dir(evidence_dir(run_dir))
     rematerialize_meta(run_dir, ledger)
+
+
+def _record_group_stop(
+    ledger: RunLedger,
+    run_id: str,
+    *,
+    source: ProcessSource | None,
+    signaller: Signaller | None,
+) -> None:
+    """One `group_stop` for a run that was started and has none: take B2-C11's branch from the
+    run's identity rows. A run that never started spawned nothing and has no process-group
+    target. A run that already has its row (the conductor died after it) is not stopped twice."""
+    if not ledger.has_kind("started") or ledger.has_kind("group_stop"):
+        return
+    decision = procident.recovery_decision(ledger.records, source)
+    if decision.branch == "iii":
+
+        def record(ident: procident.Identity) -> None:
+            ledger.append("process_identity", run_id=run_id, **ident.fields())
+
+        stop = procident.stop_recovered(decision, record=record, source=source, signaller=signaller)
+        confirmed = stop.confirmed_gone
+    else:
+        confirmed = bool(decision.confirmed_gone)
+    ledger.append("group_stop", run_id=run_id, confirmed_gone=confirmed, method=decision.method)
 
 
 def rematerialize_meta(run_dir: Path, ledger: RunLedger) -> None:
@@ -151,7 +203,7 @@ def rematerialize_meta(run_dir: Path, ledger: RunLedger) -> None:
     artifact_count = sum(
         1 for record in ledger.records if record.get("kind") == "artifact_available"
     )
-    meta = {
+    meta: dict[str, object] = {
         "run_id": run_id,
         "classification": terminal,
         "duration_ms": duration_ms,
@@ -160,6 +212,9 @@ def rematerialize_meta(run_dir: Path, ledger: RunLedger) -> None:
         "limits_exceeded": limits_exceeded,
         "recovered": True,
     }
+    error = ledger.last_kind("error_record")
+    if error is not None:  # a copy of the ledger row's fields, the row being the authority
+        meta["error"] = {key: error.get(key) for key in ("code", "phase", "message")}
     atomic_write_json(evidence / "meta.json", meta)
     fsync_dir(evidence)
 

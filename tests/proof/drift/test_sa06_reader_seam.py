@@ -20,6 +20,9 @@ def test_seam_reads_harness_run(sa: str) -> None:
     assert not rows.torn
     assert not rows.merged
     kinds = [row.get("kind") for row in rows.rows]
+    # core ledger kinds (process identity, MC-14) are additive: the seam sees the S0 kinds around
+    # them unchanged, and tests/proof/drift/core/test_sa06_core_kinds.py holds their own claims
+    kinds = [kind for kind in kinds if kind not in {"process_identity", "group_stop"}]
     assert kinds == [
         "created",
         "admitted",
@@ -30,5 +33,5 @@ def test_seam_reads_harness_run(sa: str) -> None:
     ]
 
     node = records.node_record(run_dir)
-    assert node.kinds == kinds
+    assert [k for k in node.kinds if k not in {"process_identity", "group_stop"}] == kinds
     assert node.terminal == "succeeded"

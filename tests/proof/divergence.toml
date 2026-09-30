@@ -668,3 +668,303 @@ docs = []
 due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
 direction = "additive"
 authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+# Permitted additive refusal/projection codes (L.P0-0d.13). facet = "refusal_codes",
+# direction = "additive", `codes` = wire-value fnmatch patterns. The S0 codes
+# golden stays strict: a code is admitted only when named here; an S0 code
+# removed or renamed is `missing` and always fails. Add ONE entry per code a
+# core leaf introduces, citing its row/leaf. Seeded only with what MC-06
+# (plan-workflow-runtime.md:979) names verbatim.
+
+[[entry]]
+id = "ADD-code-projection-outside-window"
+facet = "refusal_codes"
+row_or_k = "MC-06"
+codes = ["projection.outside_window"]
+docs = []
+due_checkpoint = "post-P0 (landing leaf L.CL-PX2.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06: projection.{terminal_wait_exceeded, outside_window, not_owner, cancel_not_root}); BFD-38"
+
+# Named additive shape diffs of the other d1 facets (L.P0-0d.20). An entry with
+# direction = "additive" and facet = <facet id> excuses only what its selectors
+# name (tests/proof/differ.py SELECTOR_FIELDS):
+#   keys  = ["$.frames.*.cleanup"]                              a dict key added
+#   items = [{ path = "$.sequences.*", value = "group_stop" }]  a list item inserted
+#           (the S0 list must stay an ordered subsequence; every extra item named)
+#   grows = [{ path = "$.tools_bytes", max = 8192 }]            an int grows, <= max
+# `*` matches one path segment. A selector that matches nothing on the head is
+# stale and fails d1. An additive entry without selectors excuses nothing.
+
+# L.CS-3.1: the nine MC-CORE-04 execution codes (MC-06 names execution.*; core.md MC-CORE-04, DM-16).
+
+[[entry]]
+id = "ADD-code-execution-import-failed"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.import_failed"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-bind-failed"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.bind_failed"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-plugin-raised"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.plugin_raised"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-result-unencodable"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.result_unencodable"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-provenance-mismatch"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.provenance_mismatch"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-cancelled"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.cancelled"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-deadline-exceeded"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.deadline_exceeded"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-worker-exit"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.worker_exit"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-interrupted"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.interrupted"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+# L.CS-4.1: the terminal wait's one bounded-failure code (MC-06 names projection.terminal_wait_exceeded).
+
+[[entry]]
+id = "ADD-code-projection-terminal-wait-exceeded"
+facet = "refusal_codes"
+row_or_k = "MC-16"
+codes = ["projection.terminal_wait_exceeded"]
+docs = []
+due_checkpoint = "CS-4 (leaf L.CS-4.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06: projection.{terminal_wait_exceeded, outside_window, not_owner, cancel_not_root}); plans/core.md MC-16 (L.CS-4.1)"
+
+# L.CL-C1.5: a declared deadline above the ceiling is refused at admission (B2-C2 (4), V-11 closed).
+
+[[entry]]
+id = "ADD-code-admission-budget-does-not-fit"
+facet = "refusal_codes"
+row_or_k = "B2-C2"
+codes = ["admission.budget_does_not_fit"]
+docs = []
+due_checkpoint = "CL-C1 (leaf L.CL-C1.5)"
+direction = "additive"
+authorized_by = "interfaces/interface-host-run-services.md B2-C2 (4); plans/core.md L.CL-C1.5 (DM-16, V-11 closed)"
+
+# L.CL-A2.1: the restricted profile's allowlist refusal (MC-CORE-07, WR-AUTH-2).
+
+[[entry]]
+id = "ADD-code-admission-not-allowlisted"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-07"
+codes = ["admission.not_allowlisted"]
+docs = []
+due_checkpoint = "CL-A2 (leaf L.CL-A2.1)"
+direction = "additive"
+authorized_by = "plans/core.md MC-CORE-07 (L.CL-A2.1: a non-allowlisted plugin is refused admission.not_allowlisted before the run id)"
+
+# L.CL-A2.2: the restricted profile's session-scoped cancel refusal (MC-06 names projection.not_owner).
+
+[[entry]]
+id = "ADD-code-projection-not-owner"
+facet = "refusal_codes"
+row_or_k = "MC-06"
+codes = ["projection.not_owner"]
+docs = []
+due_checkpoint = "CL-A2 (leaf L.CL-A2.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06: projection.{terminal_wait_exceeded, outside_window, not_owner, cancel_not_root}); plans/core.md L.CL-A2.2"
+
+# The core bundle's named additive diffs of the S0 goldens (keys/items/grows selectors, see the
+# L.P0-0d.20 schema comment above): one entry per change, attributed to its leaf.
+
+# L.CS-2.1 (MC-14): process_identity rows between `started` and `execution_ended`.
+# ledger_kinds: $.sequences.<state>[3..] (two process_identity rows inserted after `started`).
+
+[[entry]]
+id = "ADD-ledger-kind-process-identity"
+facet = "ledger_kinds"
+row_or_k = "MC-14"
+docs = []
+due_checkpoint = "CS-2 (leaf L.CS-2.1)"
+direction = "additive"
+items = [{ path = "$.sequences.*", value = "process_identity" }]
+authorized_by = "plans/core.md MC-14 (L.CS-2.1: the leader's process identity after spawn, every attributed descendant)"
+
+# L.CS-2.6 (MC-32): a group_stop row on every terminal path, and after recovery.
+# ledger_kinds: $.sequences.<state>[n] (group_stop before execution_ended / error_record).
+# fossil_projection: $.<state>.reader.after_recovery.kinds (group_stop on execution_ended,
+# finalized_no_terminal, started, straddle, torn_tail).
+
+[[entry]]
+id = "ADD-ledger-kind-group-stop"
+facet = "ledger_kinds"
+row_or_k = "MC-32"
+docs = []
+due_checkpoint = "CS-2 (leaf L.CS-2.6)"
+direction = "additive"
+items = [{ path = "$.sequences.*", value = "group_stop" }]
+authorized_by = "plans/core.md MC-32 (L.CS-2.6: GroupStop row on every terminal path)"
+
+[[entry]]
+id = "ADD-fossil-recovery-group-stop"
+facet = "fossil_projection"
+row_or_k = "MC-32"
+docs = []
+due_checkpoint = "CS-2 (leaves L.CS-2.4, L.CS-2.6)"
+direction = "additive"
+items = [{ path = "$.*.reader.after_recovery.kinds", value = "group_stop" }]
+authorized_by = "plans/core.md MC-32 (L.CS-2.6) and L.CS-2.4 (recovery takes B2-C11's branch and writes the stop row)"
+
+# L.CS-2.6 (MC-32): RunView.cleanup, the stop report's projection.
+# runview_shape: $.fields[13], $.frames.{succeeded,truncated_array,truncated_object}.cleanup.
+
+[[entry]]
+id = "ADD-runview-cleanup"
+facet = "runview_shape"
+row_or_k = "MC-32"
+docs = ["docs/agents.md"]
+due_checkpoint = "CS-2 (leaf L.CS-2.6)"
+direction = "additive"
+keys = ["$.frames.*.cleanup"]
+items = [{ path = "$.fields", value = ["cleanup", "CleanupView | None"] }]
+authorized_by = "plans/core.md MC-32 (L.CS-2.6: the cleanup projection on RunView)"
+
+# L.CS-3.2 (MC-15): the error_record ledger row is the sole failure authority.
+# ledger_kinds: $.sequences.<failing state>[n] (error_record before execution_ended).
+# fossil_projection: $.<state>.reader.after_recovery.kinds (error_record on admitted, created,
+# execution_ended, finalized_no_terminal, started, straddle, torn_tail).
+
+[[entry]]
+id = "ADD-ledger-kind-error-record"
+facet = "ledger_kinds"
+row_or_k = "MC-15"
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.2)"
+direction = "additive"
+items = [{ path = "$.sequences.*", value = "error_record" }]
+authorized_by = "plans/core.md MC-15 (L.CS-3.2: error_record ledger row is the sole authority; meta derived)"
+
+[[entry]]
+id = "ADD-fossil-recovery-error-record"
+facet = "fossil_projection"
+row_or_k = "MC-15"
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.2)"
+direction = "additive"
+items = [{ path = "$.*.reader.after_recovery.kinds", value = "error_record" }]
+authorized_by = "plans/core.md MC-15 (L.CS-3.2: recovery finalizes with an error_record row)"
+
+# L.CS-4.1 (MC-16): run(completion), an additive parameter of the `run` tool.
+# tools_list: $.tools[0].inputSchema.properties.completion; $.tools_bytes grows (4089 -> 4140),
+# bounded by WR-COMPAT-1's budget (test_goldens.py TOOLS_LIST_BUDGET_BYTES = 8192).
+
+[[entry]]
+id = "ADD-tools-list-run-completion"
+facet = "tools_list"
+row_or_k = "MC-16"
+docs = ["docs/agents.md", "docs/agent-console-mcp.md"]
+due_checkpoint = "CS-4 (leaf L.CS-4.1)"
+direction = "additive"
+keys = ["$.tools[0].inputSchema.properties.completion"]
+authorized_by = "plans/core.md MC-16 (L.CS-4.1: completion=\"terminal\"); WR-COMPAT-1:ten-tools-within-budget"
+
+[[entry]]
+id = "ADD-tools-list-bytes-growth"
+facet = "tools_list"
+row_or_k = "WR-COMPAT-1"
+docs = []
+due_checkpoint = "CS-4 (leaf L.CS-4.1)"
+direction = "additive"
+grows = [{ path = "$.tools_bytes", max = 8192 }]
+authorized_by = "plans/core.md L.CS-4.1 (an additive tool parameter grows tools/list); WR-COMPAT-1:ten-tools-within-budget"
+
+# L.CS-4.3 (MC-17): RunView.outcome, the six-class outcome.
+# runview_shape: $.fields[14], $.frames.{succeeded,truncated_array,truncated_object}.outcome.
+
+[[entry]]
+id = "ADD-runview-outcome"
+facet = "runview_shape"
+row_or_k = "MC-17"
+docs = ["docs/agents.md", "docs/agent-console-mcp.md"]
+due_checkpoint = "CS-4 (leaf L.CS-4.3)"
+direction = "additive"
+keys = ["$.frames.*.outcome"]
+items = [{ path = "$.fields", value = ["outcome", "dict[str, Any] | None"] }]
+authorized_by = "plans/core.md MC-17 (L.CS-4.3: outcome class for the six plain-plugin conditions); DM-03"
+
+# L.CL-C1.4 (MC-18): run_provenance records the declared packages.
+# query_row_shapes: $.views.run_provenance.declared_fields[5],
+# $.views.run_provenance.observed.{failed,succeeded}.row_shape.packages.
+
+[[entry]]
+id = "ADD-run-provenance-packages"
+facet = "query_row_shapes"
+row_or_k = "MC-18"
+docs = []
+due_checkpoint = "CL-C1 (leaf L.CL-C1.4)"
+direction = "additive"
+keys = ["$.views.run_provenance.observed.*.row_shape.packages"]
+items = [{ path = "$.views.run_provenance.declared_fields", value = "packages" }]
+authorized_by = "plans/core.md MC-18 (L.CL-C1.4: identity digest full-shape; packages recorded); WR-PLAN-5:provenance-lists-imported-code"

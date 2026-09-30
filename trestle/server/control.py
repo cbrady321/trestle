@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from dataclasses import dataclass
+from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 from trestle.common import codes
 from trestle.common.types import (
     AdmitRequest,
+    AdmitResult,
     JoinMode,
     PublishView,
     RequestOutcome,
@@ -21,6 +23,49 @@ from trestle.server.conductor import Conductor
 from trestle.server.project import Project
 from trestle.server.scheduler import Scheduler
 
+COMPLETIONS = frozenset({"bounded", "terminal"})
+
+
+def _refuse_completion(completion: str, wait_ms: int) -> RequestOutcome | None:
+    """`run`'s one additive parameter (MC-16), checked before admission so a refusal is not a run.
+    `terminal` waits for the finalized terminal row, so a call that asks not to wait (`wait_ms` of
+    zero) contradicts it."""
+    if completion not in COMPLETIONS:
+        detail = f"invalid completion: {completion!r} (expected bounded or terminal)"
+    elif completion == "terminal" and wait_ms <= 0:
+        detail = "completion=terminal waits for the terminal row and needs wait_ms above zero"
+    else:
+        return None
+    return RequestOutcome(
+        code=codes.INVALID_ARGS, message=detail, retryable=False, origin="admission"
+    )
+
+
+class AdmissionLane:
+    """MC-30: the one admission thread. The registry refresh (validation of dropped-in plugins, a
+    subprocess import) and `Admission.admit` both run here, one job at a time, so nothing blocks the
+    event loop and admission stays serialized (the BFD-29 condition: an idempotency key is checked
+    once, never twice at once)."""
+
+    THREAD_NAME = "trestle-admission"
+
+    def __init__(self, admission: Admission) -> None:
+        self._admission = admission
+        self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix=self.THREAD_NAME)
+
+    def submit_admit(self, request: AdmitRequest) -> Future[AdmitResult]:
+        return self._pool.submit(self._refresh_then_admit, request)
+
+    def submit_refresh(self) -> Future[None]:
+        return self._pool.submit(self._admission.registry.maybe_refresh)
+
+    def _refresh_then_admit(self, request: AdmitRequest) -> AdmitResult:
+        self._admission.registry.maybe_refresh()
+        return self._admission.admit(request)
+
+    def close(self) -> None:
+        self._pool.shutdown(wait=False, cancel_futures=True)
+
 
 @dataclass
 class ControlSurface:
@@ -28,14 +73,28 @@ class ControlSurface:
     project: Project
     conductor: Conductor
     scheduler: Scheduler
+    lane: AdmissionLane = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        self.lane = AdmissionLane(self.admission)
+        self.scheduler.on_dispatch = self._start
+        self.scheduler.on_expire = self.conductor.finalize_unspawned
+
+    def submit_admit(self, request: AdmitRequest) -> Future[AdmitResult]:
+        """MC-30: refresh the registry, then admit, on the admission thread."""
+        return self.lane.submit_admit(request)
+
+    def submit_refresh(self) -> Future[None]:
+        """The registry refresh alone (the `tools/list` hook), on the admission thread."""
+        return self.lane.submit_refresh()
 
     def _drive_background(self, order: WorkOrder) -> None:
-        thread = threading.Thread(
-            target=self.conductor.drive,
-            args=(order,),
-            daemon=True,
-        )
-        thread.start()
+        """Hand an admitted run to the dispatcher: it starts now if a slot is free, else it waits
+        in the FIFO with its admitted deadline still running (MC-30, B2-C5)."""
+        self.scheduler.enqueue(order, self.conductor.admitted_deadline(order))
+
+    def _start(self, order: WorkOrder) -> None:
+        threading.Thread(target=self.conductor.drive, args=(order,), daemon=True).start()
 
     def run(
         self,
@@ -44,16 +103,21 @@ class ControlSurface:
         version: str | None = None,
         wait_ms: int = 2000,
         idempotency_key: str | None = None,
+        completion: str = "bounded",
+        caller_session: str | None = None,
     ) -> RequestOutcome | RunView:
-        self.admission.registry.maybe_refresh()
-        result = self.admission.admit(
+        refused = _refuse_completion(completion, wait_ms)
+        if refused is not None:
+            return refused
+        result = self.submit_admit(
             AdmitRequest(
                 plugin=plugin,
                 args=args or {},
                 version=version,
                 idempotency_key=idempotency_key,
+                caller_session=caller_session,
             )
-        )
+        ).result()
         if result.tag == "refused":
             return result.outcome
 
@@ -63,6 +127,8 @@ class ControlSurface:
                 if isinstance(view, RequestOutcome):
                     return view
                 return view
+            if completion == "terminal":
+                return self.project.await_terminal(result.run_id)
             return self.project.await_one(result.run_id, wait_ms)
 
         from trestle.server.ledger import RunLedger, ledger_path, run_dir_for
@@ -76,6 +142,7 @@ class ControlSurface:
             run_id=result.run_id,
             snapshot_id=snap.snapshot_id if snap else "",
             spec_hash=spec_hash,
+            secrets=result.secrets,
         )
         self._drive_background(order)
 
@@ -84,6 +151,8 @@ class ControlSurface:
             if isinstance(view, RequestOutcome):
                 return view
             return view
+        if completion == "terminal":
+            return self.project.await_terminal(result.run_id)
         return self.project.await_one(result.run_id, wait_ms)
 
     async def run_async(
@@ -93,14 +162,23 @@ class ControlSurface:
         version: str | None = None,
         wait_ms: int = 2000,
         idempotency_key: str | None = None,
+        completion: str = "bounded",
+        caller_session: str | None = None,
     ) -> RequestOutcome | RunView:
-        self.admission.registry.maybe_refresh()
-        result = self.admission.admit(
-            AdmitRequest(
-                plugin=plugin,
-                args=args or {},
-                version=version,
-                idempotency_key=idempotency_key,
+        refused = _refuse_completion(completion, wait_ms)
+        if refused is not None:
+            return refused
+        # The registry refresh and the admit both run on the admission thread (MC-30), so a slow
+        # plugin probe or admit never stops the loop answering other calls (G-A4).
+        result = await asyncio.wrap_future(
+            self.submit_admit(
+                AdmitRequest(
+                    plugin=plugin,
+                    args=args or {},
+                    version=version,
+                    idempotency_key=idempotency_key,
+                    caller_session=caller_session,
+                )
             )
         )
         if result.tag == "refused":
@@ -108,32 +186,35 @@ class ControlSurface:
 
         if result.existing:
             if wait_ms == 0:
-                view = self.project.status(result.run_id)
-                if isinstance(view, RequestOutcome):
-                    return view
-                return view
+                return await asyncio.to_thread(self.project.status, result.run_id)
+            if completion == "terminal":
+                return await self.project.await_terminal_async(result.run_id)
             return await self.project.await_one_async(result.run_id, wait_ms)
 
-        from trestle.server.ledger import RunLedger, ledger_path, run_dir_for
-
-        run_dir = run_dir_for(self.admission.home, result.run_id)
-        ledger = RunLedger.open(ledger_path(run_dir))
-        created = ledger.last_kind("created")
-        spec_hash = str(created.get("spec_hash", "")) if created else ""
-        snap = self.admission.registry.get(plugin)
-        order = WorkOrder(
-            run_id=result.run_id,
-            snapshot_id=snap.snapshot_id if snap else "",
-            spec_hash=spec_hash,
-        )
-        asyncio.create_task(self.conductor.drive_async(order))
+        order = await asyncio.to_thread(self._work_order, result.run_id, plugin, result.secrets)
+        await asyncio.to_thread(self._drive_background, order)
 
         if wait_ms == 0:
-            view = self.project.status(result.run_id)
-            if isinstance(view, RequestOutcome):
-                return view
-            return view
+            return await asyncio.to_thread(self.project.status, result.run_id)
+        if completion == "terminal":
+            return await self.project.await_terminal_async(result.run_id)
         return await self.project.await_one_async(result.run_id, wait_ms)
+
+    def _work_order(
+        self, run_id: str, plugin: str, secrets: dict[str, Any] | None = None
+    ) -> WorkOrder:
+        from trestle.server.ledger import RunLedger, ledger_path, run_dir_for
+
+        run_dir = run_dir_for(self.admission.home, run_id)
+        created = RunLedger.open(ledger_path(run_dir)).last_kind("created")
+        spec_hash = str(created.get("spec_hash", "")) if created else ""
+        snap = self.admission.registry.get(plugin)
+        return WorkOrder(
+            run_id=run_id,
+            snapshot_id=snap.snapshot_id if snap else "",
+            spec_hash=spec_hash,
+            secrets=secrets or {},
+        )
 
     def await_runs(
         self,
@@ -165,8 +246,8 @@ class ControlSurface:
             )
         return await self.project.await_many_async(run_ids, cast(JoinMode, mode), timeout_ms)
 
-    def cancel(self, run_id: str) -> RequestOutcome:
-        return self.project.cancel(run_id)
+    def cancel(self, run_id: str, caller_session: str | None = None) -> RequestOutcome:
+        return self.project.cancel(run_id, caller_session=caller_session)
 
     def query(
         self,

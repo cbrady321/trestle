@@ -2,62 +2,34 @@
 
 from __future__ import annotations
 
-import os
-import signal
 import subprocess
 import threading
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from trestle.common import clock
 from trestle.common.fsutil import atomic_write
 from trestle.server.ledger import work_dir
+from trestle.server.procident import Attribution, stop_group
 
-CANCEL_GRACE_S = float(os.environ.get("TRESTLE_CANCEL_GRACE_S", "10"))
-CANCEL_KILL_S = float(os.environ.get("TRESTLE_CANCEL_KILL_S", "5"))
+# The S0 names of the two stop bounds, read through from their one definition in clock.py (SA-05):
+# tests/proof/tolerances.py falls back to them only while clock.py does not define the bound.
+CANCEL_GRACE_S = clock.grace
+CANCEL_KILL_S = clock.kill
 
 
 def cancel_flag_path(run_dir: Path) -> Path:
     return work_dir(run_dir) / "cancel.flag"
 
 
-def terminate_process_group(proc: subprocess.Popen[str], *, grace_s: float, kill_s: float) -> None:
-    if proc.poll() is not None:
-        return
-    try:
-        pgid = os.getpgid(proc.pid)
-    except OSError:
-        proc.terminate()
-        proc.wait(timeout=kill_s)
-        return
-
-    if grace_s > 0:
-        time.sleep(grace_s)
-    if proc.poll() is None:
-        try:
-            os.killpg(pgid, signal.SIGTERM)
-        except OSError:
-            proc.terminate()
-
-    deadline = time.monotonic() + kill_s
-    while proc.poll() is None and time.monotonic() < deadline:
-        time.sleep(0.05)
-    if proc.poll() is None:
-        try:
-            os.killpg(pgid, signal.SIGKILL)
-        except OSError:
-            proc.kill()
-        proc.wait()
-
-
 @dataclass
 class RunRegistry:
-    _active: dict[str, subprocess.Popen[str]] = field(default_factory=dict)
+    _active: dict[str, tuple[subprocess.Popen[str], Attribution]] = field(default_factory=dict)
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
-    def register(self, run_id: str, proc: subprocess.Popen[str]) -> None:
+    def register(self, run_id: str, proc: subprocess.Popen[str], attribution: Attribution) -> None:
         with self._lock:
-            self._active[run_id] = proc
+            self._active[run_id] = (proc, attribution)
 
     def unregister(self, run_id: str) -> None:
         with self._lock:
@@ -65,12 +37,12 @@ class RunRegistry:
 
     def is_active(self, run_id: str) -> bool:
         with self._lock:
-            proc = self._active.get(run_id)
-            return proc is not None and proc.poll() is None
+            entry = self._active.get(run_id)
+            return entry is not None and entry[0].poll() is None
 
     def request_cancel(self, run_id: str, run_dir: Path) -> None:
         atomic_write(cancel_flag_path(run_dir), b"1")
         with self._lock:
-            proc = self._active.get(run_id)
-        if proc is not None and proc.poll() is None:
-            terminate_process_group(proc, grace_s=CANCEL_GRACE_S, kill_s=CANCEL_KILL_S)
+            entry = self._active.get(run_id)
+        if entry is not None and entry[0].poll() is None:
+            stop_group(entry[1])

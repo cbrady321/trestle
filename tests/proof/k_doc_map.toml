@@ -85,8 +85,8 @@ must_appear_by = "CS-2"
 [[k]]
 id = "K-8"
 rows = ["WR-OWN-3"]
-docs = ["docs/packs.md"]
-docs_source = "requirements-workflow-runtime.md:539"
+docs = ["docs/agents.md"]
+docs_source = "requirements-workflow-runtime.md:539; plans/core.md L.CK-8.1 (its existing_targets and verifier put the K-8 block in docs/agents.md)"
 confirm = "yes"
 recorded_default = "'no' (processes) waits until B2-C10 amended or maintainer answers F-PLAN-6; never unattended"
 landing_merge = "CK-8"

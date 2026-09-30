@@ -86,6 +86,19 @@ def runview_shape() -> dict[str, Any]:
     }
 
 
+# Spec keys added since S0 (MC-18: `provenance`), listed after the S0 keys so the golden stays a
+# prefix of the current list and an additive key shows as an addition rather than shifting
+# every S0 key's position.
+_LATER_SPEC_KEYS = frozenset({"provenance"})
+
+
+def _spec_key_list(spec: dict[str, Any]) -> list[str]:
+    keys = sorted(spec)
+    return [k for k in keys if k not in _LATER_SPEC_KEYS] + [
+        k for k in keys if k in _LATER_SPEC_KEYS
+    ]
+
+
 def spec_keys() -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="trestle-c-spec-") as tmp:
         home = Path(tmp) / "home"
@@ -94,7 +107,7 @@ def spec_keys() -> dict[str, Any]:
         spec = json.loads((run_dir / "evidence" / "spec.json").read_text(encoding="utf-8"))
     return {
         "runspec_fields": _fields(RunSpec),
-        "spec_json_keys": sorted(spec),
+        "spec_json_keys": _spec_key_list(spec),
         "spec_json_types": _type_names(spec),
     }
 

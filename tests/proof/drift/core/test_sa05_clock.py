@@ -53,8 +53,30 @@ def test_every_clock_bound_is_read_through_tolerances(sa: str) -> None:
 
     # the tolerances module resolves the bound from clock.py with no edit (DM-60)
     assert tolerances.append_cost_ratio() == float(clock.APPEND_COST_RATIO)
-    known = set(tolerances._S0_FALLBACKS)  # noqa: SLF001
-    assert set(_published()) <= known, sorted(set(_published()) - known)
+    # every published bound is readable through tolerances under its own name, with no edit there:
+    # `_resolve` reads clock.py first, so a bound tolerances has no accessor for (the supervisor's
+    # `poll_interval`, CB-9) is still read from the one definition
+    for name in _published():
+        assert tolerances._resolve(name) == float(getattr(clock, name)), name  # noqa: SLF001
+    # the stop bound is grace + kill + the (not yet published) release slice, as B2-C10 defines it
+    assert clock.stop_bound == clock.grace + clock.kill
+    assert tolerances.stop_bound() == clock.stop_bound
+
+
+@pytest.mark.parametrize("sa", ["SA-05"])
+def test_margin_covers_stop_bound(sa: str) -> None:
+    """B2-C2 (5) in its plan-less form (L.CS-4.1): a root with no release target has release slice
+    0, so `grace + kill <= finalization_margin`, and the default leaves room for the finalization
+    writes after the stop (strictly more than the stop bound). SV-3 extends the check to the
+    release targets. A deadline stop of a plugin that ignores SIGTERM therefore still answers inside
+    `spec.deadline + finalization_margin`."""
+    from trestle.common import clock
+
+    release_slice = 0.0  # a plan-less root has no release target (the slice is published by SV-3)
+    assert clock.stop_bound == release_slice + clock.grace + clock.kill
+    assert clock.grace + clock.kill <= clock.finalization_margin
+    assert clock.finalization_margin > clock.stop_bound  # room for the finalization writes
+    assert tolerances.finalization_margin() == clock.finalization_margin
 
 
 @pytest.mark.parametrize("sa", ["SA-05"])

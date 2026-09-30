@@ -45,7 +45,11 @@ testpaths = ["tests", "packages/trestle-packs/tests"]
 filterwarnings = [
     "ignore:Using `httpx` with `starlette.testclient`:starlette.exceptions.StarletteDeprecationWarning",
 ]
-addopts = "--strict-markers"
+addopts = "--strict-markers -m \"not long\""
+markers = [
+    "spine: the unattended one-call acceptance of the core corrections (MC-29; CI job `spine`, gate ci-spine)",
+    "long: a test that outlives the default 300 s deadline (MC-05; deselected from the default session, CI job `long-gate`, gate ci-long)",
+]
 
 [tool.mypy]
 python_version = "3.12"

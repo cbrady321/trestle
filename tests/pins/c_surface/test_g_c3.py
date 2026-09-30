@@ -1,8 +1,7 @@
-"""G-C3 (BFD-26): the same idempotency key after a source edit is refused
-`IDEMPOTENCY_KEY_CONFLICT`.
-
-Pin: any code change turns a join into a conflict. Target (K-1 recorded
-default): the retry after the edit joins the same run.
+"""G-C3 (BFD-26), flipped by L.CK-1.1: the same idempotency key after a source edit joins the
+run it named instead of being refused `IDEMPOTENCY_KEY_CONFLICT` (K-1 recorded default,
+`admission.JOIN_ACROSS_REPUBLISH`). The S0 pin is deleted; it lives on as the OQ-1 = conflict
+variant (TM-C4a, L.CK-1.2), which runs and passes once K-1 is declined.
 """
 
 from __future__ import annotations
@@ -13,8 +12,6 @@ from pathlib import Path
 import pytest
 
 from tests.proof import harness, tolerances
-from tests.proof.markers import target_check
-from trestle.common import codes
 from trestle.common.types import RequestOutcome, RunView
 
 GAP = "G-C3"
@@ -50,21 +47,10 @@ def retry_after_edit(tmp_path: Path) -> tuple[RunView, RunView | RequestOutcome]
     return first, retry
 
 
-@pytest.mark.pin(GAP)
-def test_pinretry_after_edit_conflicts(tmp_path: Path) -> None:
-    _first, retry = retry_after_edit(tmp_path)
-    assert isinstance(retry, RequestOutcome)
-    assert retry.code == codes.IDEMPOTENCY_KEY_CONFLICT
-
-
-@pytest.mark.target(GAP)
 @pytest.mark.proves("WR-IDEM-1", "A3.1", "A", "core", "PROC", "CI")
 @pytest.mark.proves("WR-IDEM-1", "WR-IDEM-1:join-after-republish", "core", "core", "PROC", "CI")
-@pytest.mark.xfail(strict=True, reason="defect:G-C3")
 def test_targetretry_after_edit_joins_same_run(tmp_path: Path) -> None:
     first, retry = retry_after_edit(tmp_path)
-    target_check(
-        isinstance(retry, RunView) and retry.run_id == first.run_id,
-        GAP,
-        f"retry after a source edit was not joined to the first run: {retry!r}",
+    assert isinstance(retry, RunView) and retry.run_id == first.run_id, (
+        f"retry after a source edit was not joined to the first run: {retry!r}"
     )

@@ -31,7 +31,7 @@ list_plugins → describe_plugin? → run → fetch(result) | query(last_error)
 
 Need a view name? Read MCP resource `trestle://views` first (not plugin schemas).
 
-Long jobs: short `wait_ms` for `run_id`, then `await_runs(timeout_ms=…)`.
+Long jobs: short `wait_ms` for `run_id`, then `await_runs(timeout_ms=…)`. Or pass `completion="terminal"` (with `wait_ms` above zero) so one `run` call returns only a finished run, bounded by the run's deadline plus a margin.
 
 ## Bootstrap (if catalog empty)
 
@@ -52,7 +52,12 @@ def my_tool(ctx: Context, arg: str) -> dict:
     return {"result": arg}
 ```
 
-PluginSurface only — no Kernel, FastMCP, or ledger imports.
+PluginSurface only — no Kernel, FastMCP, or ledger imports. Call form for metadata:
+`@trestle(deadline=..., packages=[...])` (literals only; `async def` entries are refused). A declared
+`deadline` above 300 s is honoured and shown by `describe_plugin` (`deadline_s`, `deadline_source`);
+above the ceiling it is refused with `admission.budget_does_not_fit`. Declared `packages` are
+recorded, not snapshotted: editing one after admission stops the run with
+`execution.provenance_mismatch`.
 
 ## When stuck
 

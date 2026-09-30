@@ -10,7 +10,7 @@ id = "TM-P0-1"
 mechanism = "mypy count ratchet <= 1"
 introduced_by = "L.P0-0a.6"
 serves = []
-probe = "python -c \"import json,pathlib,sys; d=json.loads(pathlib.Path('tests/proof/baseline.json').read_text()); sys.exit(0 if d['ev01'].get('mypy_error_sites') else 1)\""
+probe = "grep -q \"mypy-ratchet --max 1\" .github/workflows/ci.yml"
 removal_condition = "init_cmd.py:25 fixed; mypy zero-gated"
 removed_by = "L.CK-14.1"
 permanent = false

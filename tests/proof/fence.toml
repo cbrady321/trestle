@@ -39,6 +39,7 @@ core = [
   "wr/ck-14/",
   "wr/cl-d/",
   "wr/core-ckpt/",
+  "wr/core-bundle/",
 ]
 single = [
   "wr/sv-docs/",
@@ -49,7 +50,8 @@ single = [
   "wr/sl-r/",
   "wr/sl-h/",
   "wr/j-single/",
+  "wr/single-bundle/",
 ]
-tree = ["wr/tree/", "wr/tree-ckpt/"]
-slice-b = ["wr/b-legacy/", "wr/b-adapters/", "wr/b-env/", "wr/b-ckpt/"]
+tree = ["wr/tree/", "wr/tree-ckpt/", "wr/tree-bundle/"]
+slice-b = ["wr/b-legacy/", "wr/b-adapters/", "wr/b-env/", "wr/b-ckpt/", "wr/slice-b-bundle/"]
 cz = ["wr/j-root/"]

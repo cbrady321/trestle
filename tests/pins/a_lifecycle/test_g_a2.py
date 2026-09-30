@@ -1,9 +1,7 @@
-"""G-A2 (BFD-03): enforcement uses a spawn-relative timer, not the
-admitted deadline.
+"""G-A2 (BFD-03), flipped by L.CS-2.3: the admitted deadline is the one enforced.
 
-`Admission.admit` fixes `spec.deadline`; `Conductor.drive` ignores it and
-grants the full `timeout_s` again from spawn, so a run driven after its
-admitted deadline still succeeds.
+`Admission.admit` fixes `spec.deadline` and `Conductor.drive` measures the run's monotonic
+deadline from it, not from spawn, so a run driven after its admitted deadline ends timed out.
 """
 
 from __future__ import annotations
@@ -29,18 +27,9 @@ def _admit_hold_then_drive() -> tuple[str, str | None]:
     return classification, helpers.terminal_of(run_dir)
 
 
-@pytest.mark.pin("G-A2")
-def test_pin_run_driven_after_admitted_deadline_succeeds() -> None:
-    classification, terminal = _admit_hold_then_drive()
-    assert classification == "succeeded"
-    assert terminal == "succeeded"
-
-
-@pytest.mark.target("G-A2")
 @pytest.mark.proves(
     "WR-DEADLINE-2", "WR-DEADLINE-2:ends-in-deadline-window", "core", "core", "PROC", "CI"
 )
-@pytest.mark.xfail(strict=True, reason="defect:G-A2")
 def test_target_run_driven_after_admitted_deadline_times_out() -> None:
     classification, terminal = _admit_hold_then_drive()
     target_check(

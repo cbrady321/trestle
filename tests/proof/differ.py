@@ -14,10 +14,12 @@ import fnmatch
 import importlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import tomllib
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from tests.proof import normalize as normalize_mod
@@ -60,6 +62,248 @@ def load_divergence() -> list[dict[str, object]]:
     return list(tomllib.loads(DIVERGENCE_PATH.read_text()).get("entry", []))
 
 
+CODES_FACET = "refusal_codes"
+
+
+def permitted_additive_codes() -> list[str]:
+    """Wire-value patterns (fnmatch) of refusal/projection codes the ledger
+    names as deliberate additive divergences: every entry with facet
+    `refusal_codes`, direction `additive`, and a `codes` list. One entry per
+    code (or per plan-named family such as `execution.*`), citing its row."""
+    patterns: list[str] = []
+    for entry in load_divergence():
+        if entry.get("facet") == CODES_FACET and entry.get("direction") == "additive":
+            patterns.extend(str(c) for c in entry.get("codes", []))
+    return patterns
+
+
+def drop_named_additive_codes(unexpected: list[str], current: object) -> list[str]:
+    """Remove from a refusal_codes `unexpected` list the `$.codes.<NAME>`
+    paths whose wire value is named by `permitted_additive_codes()`. Nothing
+    else is excused; `missing` (a removed or renamed S0 code) is never
+    filtered."""
+    codes = current.get("codes", {}) if isinstance(current, dict) else {}
+    patterns = permitted_additive_codes()
+    kept = []
+    for path in unexpected:
+        name = path.removeprefix("$.codes.") if path.startswith("$.codes.") else None
+        value = codes.get(name) if name is not None else None
+        if isinstance(value, str) and any(fnmatch.fnmatch(value, p) for p in patterns):
+            continue
+        kept.append(path)
+    return kept
+
+
+# Named additive divergences of a facet's shape (L.P0-0d.20). An entry with
+# `facet = <a d1 facet>` and `direction = "additive"` may carry selectors, each
+# naming exactly one kind of growth of the S0 golden:
+#   keys  = ["$.frames.*.cleanup"]                              a dict key added
+#   items = [{ path = "$.sequences.*", value = "group_stop" }]  a list item
+#           inserted: the golden list must then be an ordered subsequence of
+#           the current list, and every extra item must equal a named `value`
+#   grows = [{ path = "$.tools_bytes", max = 8192 }]            an int that
+#           may grow, never shrink, up to `max`
+# A `path` uses the diff's own `$.a.b[0]` spelling; `*` matches one key
+# segment (no `.` or `[`), everything else is literal. Nothing else is ever
+# excused: a removed or renamed key, a changed value or type, a reordered
+# list, an unnamed insertion (even on a "free" facet's aligned list) all fail.
+# A selector that excuses nothing on the current head is stale and fails d1.
+# An additive entry without selectors (the MC-06 seed placeholders) excuses
+# nothing.
+SELECTOR_FIELDS = ("keys", "items", "grows")
+
+
+@dataclass(frozen=True)
+class Selector:
+    entry_id: str
+    facet: str
+    kind: str  # "key" | "item" | "grow"
+    path: str
+    value: str = ""  # canonical JSON of an item's value
+    max: int = 0
+
+    def describe(self) -> str:
+        if self.kind == "item":
+            return f"item {self.path} value={self.value}"
+        if self.kind == "grow":
+            return f"grow {self.path} max={self.max}"
+        return f"key {self.path}"
+
+
+@dataclass
+class FacetDiff:
+    missing: list[str] = field(default_factory=list)
+    unexpected: list[str] = field(default_factory=list)
+    used: set[Selector] = field(default_factory=set)
+
+
+def _canon(value: object) -> str:
+    """Type-exact equality key: `1`, `1.0` and `true` stay distinct."""
+    return json.dumps(value, sort_keys=True, ensure_ascii=False)
+
+
+def _path_matches(pattern: str, path: str) -> bool:
+    regex = "[^.\\[]+".join(re.escape(part) for part in pattern.split("*"))
+    return re.fullmatch(regex, path) is not None
+
+
+def entry_selectors(entry: dict[str, object]) -> list[Selector]:
+    """The selectors one divergence entry carries, validated. Raises
+    ValueError on a malformed selector, or on selectors in an entry that is
+    not `direction = "additive"` or that is a `refusal_codes` entry."""
+    if not any(k in entry for k in SELECTOR_FIELDS):
+        return []
+    eid, facet = str(entry.get("id")), str(entry.get("facet"))
+    if entry.get("direction") != "additive":
+        raise ValueError(f'{eid}: selectors need direction = "additive"')
+    if facet == CODES_FACET:
+        raise ValueError(f"{eid}: a refusal_codes entry names `codes`, not selectors")
+    keys, items, grows = (entry.get(k, []) for k in SELECTOR_FIELDS)
+    if not (isinstance(keys, list) and isinstance(items, list) and isinstance(grows, list)):
+        raise ValueError(f"{eid}: keys/items/grows must be arrays")
+    out: list[Selector] = []
+    for key in keys:
+        if not (isinstance(key, str) and key.startswith("$.")):
+            raise ValueError(f"{eid}: bad keys selector {key!r}")
+        out.append(Selector(eid, facet, "key", key))
+    for item in items:
+        if not (isinstance(item, dict) and set(item) == {"path", "value"}):
+            raise ValueError(f"{eid}: an items selector is exactly {{path, value}}: {item!r}")
+        value = _canon(normalize_mod.normalize(item["value"]))
+        out.append(Selector(eid, facet, "item", str(item["path"]), value=value))
+    for grow in grows:
+        if not (isinstance(grow, dict) and set(grow) == {"path", "max"}):
+            raise ValueError(f"{eid}: a grows selector is exactly {{path, max}}: {grow!r}")
+        if type(grow["max"]) is not int:
+            raise ValueError(f"{eid}: a grows selector's max is an int: {grow!r}")
+        out.append(Selector(eid, facet, "grow", str(grow["path"]), max=grow["max"]))
+    return out
+
+
+def facet_selectors(fid: str, entries: list[dict[str, object]]) -> list[Selector]:
+    return [s for e in entries if e.get("facet") == fid for s in entry_selectors(e)]
+
+
+def named_diff(
+    golden: object, current: object, *, policy: str, selectors: list[Selector]
+) -> FacetDiff:
+    """`normalize.structural_diff` with a facet's named additive selectors
+    applied (both values already `normalize()`d). `unexpected` honours
+    `policy` ("free" drops unnamed new keys and trailing positional items),
+    except that an unnamed item in a list aligned by an `items` selector
+    fails on both policies."""
+    out = FacetDiff()
+    strict: list[str] = []
+    _named(golden, current, "$", selectors, out, strict)
+    if policy == "free":
+        out.unexpected = []
+    out.unexpected += strict
+    return out
+
+
+def _named(
+    golden: object,
+    current: object,
+    path: str,
+    sels: list[Selector],
+    out: FacetDiff,
+    strict: list[str],
+) -> None:
+    if isinstance(golden, dict) and isinstance(current, dict):
+        for key in golden:
+            if key not in current:
+                out.missing.append(f"{path}.{key}")
+            else:
+                _named(golden[key], current[key], f"{path}.{key}", sels, out, strict)
+        for key in current:
+            if key in golden:
+                continue
+            child = f"{path}.{key}"
+            hit = next((s for s in sels if s.kind == "key" and _path_matches(s.path, child)), None)
+            if hit is not None:
+                out.used.add(hit)
+            else:
+                out.unexpected.append(child)
+        return
+    if isinstance(golden, list) and isinstance(current, list):
+        item_sels = [s for s in sels if s.kind == "item" and _path_matches(s.path, path)]
+        if not item_sels:
+            for i, item in enumerate(golden):
+                if i >= len(current):
+                    out.missing.append(f"{path}[{i}]")
+                else:
+                    _named(item, current[i], f"{path}[{i}]", sels, out, strict)
+            out.unexpected += [f"{path}[{i}]" for i in range(len(golden), len(current))]
+            return
+        # The golden list must be an ordered subsequence of the current one.
+        # Greedy earliest matching is optimal: a current item equal to the
+        # next golden item is never better left as an extra, because any
+        # later equal item it would be traded for carries the same name.
+        j = 0
+        for item in current:
+            canon = _canon(item)
+            if j < len(golden) and canon == _canon(golden[j]):
+                j += 1
+                continue
+            hit = next((s for s in item_sels if s.value == canon), None)
+            if hit is not None:
+                out.used.add(hit)
+            else:
+                strict.append(f"{path}[+{canon}]")
+        out.missing += [f"{path}[{k}]" for k in range(j, len(golden))]
+        return
+    if type(golden) is type(current) and golden == current:
+        return
+    grow = next((s for s in sels if s.kind == "grow" and _path_matches(s.path, path)), None)
+    if (
+        grow is not None
+        and type(golden) is int
+        and type(current) is int
+        and golden < current <= grow.max
+    ):
+        out.used.add(grow)
+        return
+    out.missing.append(path)
+
+
+def facet_diff(
+    fid: str,
+    golden: object,
+    current: object,
+    *,
+    policy: str,
+    entries: list[dict[str, object]] | None = None,
+) -> FacetDiff:
+    """The one d1 comparison of a facet (the C-surface golden tests use it
+    too): the facet's named additive selectors, plus the named additive
+    codes for `refusal_codes`."""
+    entries = load_divergence() if entries is None else entries
+    result = named_diff(golden, current, policy=policy, selectors=facet_selectors(fid, entries))
+    if fid == CODES_FACET:
+        result.unexpected = drop_named_additive_codes(result.unexpected, current)
+    return result
+
+
+def stale_selectors(
+    fids: set[str], used: set[Selector], entries: list[dict[str, object]]
+) -> list[Selector]:
+    """Selectors of the diffed facets that excused nothing: the entry names
+    an addition the current head does not have."""
+    return [
+        s for e in entries if e.get("facet") in fids for s in entry_selectors(e) if s not in used
+    ]
+
+
+def _bad_entries(entries: list[dict[str, object]]) -> list[str]:
+    bad = []
+    for entry in entries:
+        try:
+            entry_selectors(entry)
+        except ValueError as exc:
+            bad.append(str(exc))
+    return bad
+
+
 def _resolve_extractor(spec: str):
     module_name, func_name = spec.split(":")
     module = importlib.import_module(module_name)
@@ -84,6 +328,14 @@ def cmd_d1(args: argparse.Namespace) -> int:
 
     ok = True
     diffed_facets: set[str] = set()
+    used: set[Selector] = set()
+    entries = load_divergence()
+    bad = _bad_entries(entries)
+    for problem in bad:
+        eid, _, reason = problem.partition(": ")
+        print(f"d1: BAD DIVERGENCE ENTRY: divergence entry {eid} ({reason})")
+    if bad:
+        return 1
     for facet in facets:
         fid = facet["id"]
         extractor = facet.get("extractor", "pending")
@@ -102,14 +354,25 @@ def cmd_d1(args: argparse.Namespace) -> int:
             ok = False
             continue
         golden = normalize_mod.normalize(json.loads(golden_path.read_text()))
-        missing, unexpected = normalize_mod.structural_diff(
-            golden, current, policy=str(facet.get("additive", "named"))
+        result = facet_diff(
+            str(fid), golden, current, policy=str(facet.get("additive", "named")), entries=entries
         )
-        if missing or unexpected:
-            print(f"d1: UNEXPECTED DIFF: facet {fid!r}: missing={missing} unexpected={unexpected}")
+        used |= result.used
+        if result.missing or result.unexpected:
+            print(
+                f"d1: UNEXPECTED DIFF: facet {fid!r}: "
+                f"missing={result.missing} unexpected={result.unexpected}"
+            )
             ok = False
 
-    for entry in load_divergence():
+    for sel in stale_selectors(diffed_facets, used, entries):
+        print(
+            f"d1: STALE DIVERGENCE: divergence entry {sel.entry_id} (facet {sel.facet!r}): "
+            f"{sel.describe()} names no addition on this head"
+        )
+        ok = False
+
+    for entry in entries:
         if entry.get("facet") not in {f["id"] for f in facets}:
             continue
         if _due(entry) and entry.get("facet") not in diffed_facets:

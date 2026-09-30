@@ -84,6 +84,7 @@ def test_tools_list_stays_within_byte_budget(
         version: str | None = None,
         wait_ms: int = 2000,
         idempotency_key: str | None = None,
+        completion: str = "bounded",
     ) -> dict[str, object]:
         return {"stub": True}
 

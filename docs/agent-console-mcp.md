@@ -111,7 +111,7 @@ Typical successful path:
 | 1 | `list_plugins` | Discover plugin `name` values |
 | 2 | `describe_plugin` | Optional — `input_schema` / `return_schema` when args or result shape are unknown (`plugin_id` = plugin name) |
 | 2b | `publish_plugin` | Optional — create or update a plugin from Python `source` at runtime |
-| 3 | `run` | `plugin`, `args`, `wait_ms` — see §3 for blocking behavior |
+| 3 | `run` | `plugin`, `args`, `wait_ms`, optional `completion` — see §3 for blocking behavior |
 | 4a | `fetch` | Success — read return value from `{run_id}/result` |
 | 4b | `query` | Failure — `view: last_error`, `params: {run_id}` |
 
@@ -194,6 +194,22 @@ Filesystem drop-in (copy to `plugins/`) still works and uses the same hot-reload
 
 Long jobs: use a short `wait_ms` to get `run_id` quickly, then `await_runs` with a longer `timeout_ms` — or set a large `wait_ms` if the host allows a long stdio `tools/call`.
 
+### Run states
+
+A run is `queued`, `running`, or one terminal state: `succeeded`, `failed`,
+`cancelled`, `timed_out`, `worker_exit` or `interrupted`. `crashed` is a
+**reserved** ledger kind that no code path writes. The producer of each state
+is listed in [`agents.md`](agents.md) (Run states).
+
+### `run` honors `completion` (MC-16)
+
+`completion` is the one optional `run` parameter that changes what the call waits for: `"bounded"` (default) is the behavior above; `"terminal"` answers only from the finalized terminal row, never a `running` frame.
+
+- The bound is the run's admitted deadline plus `clock.finalization_margin` (which covers the stop's grace and kill), not `wait_ms`; `wait_ms` above zero is accepted and ignored, `wait_ms<=0` is refused `admission.invalid_args`, and so is an unknown `completion` value. Nothing is admitted on a refusal.
+- Past that bound the call answers `projection.terminal_wait_exceeded` (`origin: projection`, not retryable); the run continues and `await_runs` joins it.
+- The wait runs off the server's event loop, so `cancel`, `query` and `fetch` on other runs (or the same one) are answered while a `terminal` call is held.
+- A finished run's `RunView` carries `outcome` (`class`, `code`, `identity`, `recovered`): one class from `passed | cancelled | timed_out | execution_error | failed | blocked`; a plain plugin reaches the first four.
+
 ### Evidence finalization (R-QB-28)
 
 While a run is still executing, evidence-stream views (`run_tail`, `run_events`, `last_error`, etc.) return:
@@ -232,7 +248,7 @@ Ask one question; pick one path. Prefer the **smallest** answer.
 | Question | Tool | View / target / window |
 |----------|------|------------------------|
 | What did the plugin return? | `fetch` | `{run_id}/result` + `jsonpath` or `range` |
-| Why did it fail? | `query` | `last_error` + `{run_id}` |
+| Why did it fail? | `query` | `last_error` + `{run_id}` (or `RunView.error`; K-10) |
 | What printed to wrapper stdout? | `query` | `run_tail` + `{run_id}` (post-finalize only) |
 | Structured run metadata? | `query` | `run` + `{run_id}` |
 | Event timeline? | `query` | `run_events` + `{run_id}` |
@@ -264,7 +280,7 @@ When to pick each view vs `fetch`: MCP resource **`trestle://views`**. That cata
 | View | Params | Rows |
 |------|--------|------|
 | `run` | `run_id` | Status, plugin, state, timing |
-| `last_error` | `run_id` | Last error event (empty if none) |
+| `last_error` | `run_id` | The run's recorded explanation (`execution.*` code, phase, message), else the last error event; empty for a run that succeeded (K-10) |
 | `run_tail` | `run_id` | Wrapper stdout lines, oldest first |
 | `run_events` | `run_id` | Structured events |
 | `recent_runs` | — | Recent runs (paginated) |

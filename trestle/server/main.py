@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import signal
 from dataclasses import dataclass
@@ -13,7 +14,7 @@ from trestle.common.types import PublishView, RequestOutcome, RunView
 from trestle.query.catalog import VIEW_CATALOG_URI, view_catalog
 from trestle.server.admission import Admission
 from trestle.server.conductor import Conductor
-from trestle.server.config import load_config
+from trestle.server.config import ProfileConfig, load_config
 from trestle.server.control import ControlSurface
 from trestle.server.mcp_schema import FetchWindowArg, QueryViewArg
 from trestle.server.plugin_paths import resolve_plugin_dirs
@@ -33,6 +34,7 @@ class Kernel:
     home: Path
     control: ControlSurface
     registry: Registry
+    profile: ProfileConfig = ProfileConfig()
 
 
 def create_kernel(
@@ -47,10 +49,9 @@ def create_kernel(
         service_epoch = (trestle_home / "service_epoch").read_text(encoding="utf-8").strip()
     else:
         service_epoch = recover_on_startup(trestle_home)
-        config = load_config(trestle_home)
         from trestle.server.idempotency import rebuild_from_ledgers
 
-        rebuild_from_ledgers(trestle_home, ttl_s=config.idempotency_ttl_s)
+        rebuild_from_ledgers(trestle_home, ttl_s=load_config(trestle_home).idempotency_ttl_s)
 
     if plugin_dirs is not None:
         dirs = plugin_dirs
@@ -58,13 +59,15 @@ def create_kernel(
         dirs = resolve_plugin_dirs(trestle_home, cli_dirs=cli_plugin_dirs)
     registry = Registry(home=trestle_home, plugin_dirs=dirs)
     registry.refresh()
-    scheduler = Scheduler()
+    config = load_config(trestle_home)
+    scheduler = Scheduler(max_running=config.max_running_runs, queue_depth=config.queue_depth)
     run_registry = RunRegistry()
     admission = Admission(
         home=trestle_home,
         registry=registry,
         scheduler=scheduler,
         service_epoch=service_epoch,
+        profile=config.profile,
     )
     conductor = Conductor(
         home=trestle_home,
@@ -75,6 +78,7 @@ def create_kernel(
         home=trestle_home,
         registry=registry,
         run_registry=run_registry,
+        session_scoped_cancel=config.profile.restricted,
     )
     control = ControlSurface(
         admission=admission,
@@ -82,7 +86,7 @@ def create_kernel(
         conductor=conductor,
         scheduler=scheduler,
     )
-    return Kernel(home=trestle_home, control=control, registry=registry)
+    return Kernel(home=trestle_home, control=control, registry=registry, profile=config.profile)
 
 
 def _wire_result(value: RequestOutcome | RunView | PublishView | dict[str, Any]) -> dict[str, Any]:
@@ -95,6 +99,16 @@ def _wire_result(value: RequestOutcome | RunView | PublishView | dict[str, Any])
     return value
 
 
+def _caller_session() -> str | None:
+    """The MCP session id of the tool call being served, or None outside an MCP session."""
+    from fastmcp.server.dependencies import get_context
+
+    try:
+        return get_context().session_id
+    except RuntimeError:
+        return None
+
+
 def attach_registry_version_mirror(mcp: Any, kernel: Kernel) -> None:
     """Mirror CatalogView.registry_version on MCP tools/list (R-REG-6)."""
     import mcp.types as mt
@@ -104,7 +118,8 @@ def attach_registry_version_mirror(mcp: Any, kernel: Kernel) -> None:
     async def list_tools_with_registry_version(
         request: mt.ListToolsRequest,
     ) -> mt.ListToolsResult:
-        kernel.registry.maybe_refresh()
+        # the refresh validates dropped-in plugins: it runs on the admission thread, not the loop
+        await asyncio.wrap_future(kernel.control.submit_refresh())
         result = await original(request)
         return mt.ListToolsResult(
             tools=result.tools,
@@ -135,9 +150,9 @@ def run_server(
         version: str | None = None,
         wait_ms: int = 2000,
         idempotency_key: str | None = None,
+        completion: str = "bounded",
     ) -> dict[str, Any]:
         """Start a plugin run and optionally wait for a status frame."""
-        kernel.registry.maybe_refresh()
         return _wire_result(
             await kernel.control.run_async(
                 plugin=plugin,
@@ -145,6 +160,8 @@ def run_server(
                 version=version,
                 wait_ms=wait_ms,
                 idempotency_key=idempotency_key,
+                completion=completion,
+                caller_session=_caller_session(),
             )
         )
 
@@ -160,27 +177,30 @@ def run_server(
             return result.to_dict()
         return [view.to_dict() for view in result]
 
+    # cancel, query and fetch read the ledger and evidence files: they run on a worker thread so a
+    # held call (or a slow read) never stops the loop answering the others (L.CS-4.2).
     @mcp.tool
-    def cancel(run_id: str) -> dict[str, Any]:
+    async def cancel(run_id: str) -> dict[str, Any]:
         """Request cancellation of a run."""
-        return kernel.control.cancel(run_id).to_dict()
+        outcome = await asyncio.to_thread(kernel.control.cancel, run_id, _caller_session())
+        return outcome.to_dict()
 
     @mcp.tool
-    def query(
+    async def query(
         view: QueryViewArg,
         params: dict[str, Any] | None = None,
         cursor: str | None = None,
     ) -> dict[str, Any]:
         """Query a named view. When to pick each view: trestle://views."""
-        result = kernel.control.query(view, params, cursor)
+        result = await asyncio.to_thread(kernel.control.query, view, params, cursor)
         if isinstance(result, RequestOutcome):
             return result.to_dict()
         return result
 
     @mcp.tool
-    def fetch(target: str, window: FetchWindowArg) -> dict[str, Any]:
+    async def fetch(target: str, window: FetchWindowArg) -> dict[str, Any]:
         """Fetch bytes for a handle within a window. When to pick: trestle://views."""
-        result = kernel.control.fetch(target, window)
+        result = await asyncio.to_thread(kernel.control.fetch, target, window)
         if isinstance(result, RequestOutcome):
             return result.to_dict()
         return result
@@ -208,13 +228,16 @@ def run_server(
             return result.to_dict()
         return result
 
-    @mcp.tool
     def publish_plugin(
         source: str,
         name: str | None = None,
     ) -> dict[str, Any]:
         """Publish or update a plugin from Python source at runtime."""
         return _wire_result(kernel.control.publish_plugin(source, name=name))
+
+    # The restricted profile does not register the tool at all: it is neither listed nor callable.
+    if not kernel.profile.restricted:
+        mcp.tool(publish_plugin)
 
     @mcp.resource(
         VIEW_CATALOG_URI,
