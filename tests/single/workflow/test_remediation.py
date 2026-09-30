@@ -180,7 +180,7 @@ def test_remedy_bounded_attempts_total_cooldown(tmp_path: Path) -> None:
         tmp_path / "cooldown",
         attempts=2,
         cooldown_s=5.0,
-        total_s=60.0,
+        total_s=30.0,  # wait 1 + remedies 30 + release 2 fits the leaf's budget (L.SL-2.1)
         max_attempts=6,
         restart=ConfirmationStatus.NOT_APPLIED,
         retryable=busy,
