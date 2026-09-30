@@ -10,158 +10,32 @@ and no `wr-ckpt/slice-b` tag they skip (UNPROVEN, never a pass); at a J-SLICE-B 
 
 from __future__ import annotations
 
-import json
-import os
 import re
-import subprocess
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from tests.proof.b import record_facts as rf
+from tests.proof.b.planted_history import (
+    CLEAN,
+    DIRTY_ENGINE,
+    DIRTY_UNATTRIBUTED,
+    FOSSIL,
+    REVIEW,
+    Repo,
+    ancestry_only,
+    record,
+    shas,
+)
+from tests.proof.b.planted_history import history as _history
 from tests.proof.host import record as record_mod
 
 ROOT = Path(__file__).resolve().parents[3]
-ENV = {
-    **os.environ,
-    "GIT_AUTHOR_NAME": "t",
-    "GIT_AUTHOR_EMAIL": "t@t",
-    "GIT_COMMITTER_NAME": "t",
-    "GIT_COMMITTER_EMAIL": "t@t",
-    "GIT_CONFIG_GLOBAL": os.devnull,
-    "GIT_CONFIG_SYSTEM": os.devnull,
-}
-FOSSIL = "tests/fixtures/fossils/slice-b/s1/data.txt"
-REVIEW = "tests/proof/reviews/RV-1-slice-b.toml"
-
-
-class Repo:
-    """A throwaway repository shaped like the checkpoint history (all commits made by `git`)."""
-
-    def __init__(self, path: Path, salt: str = "") -> None:
-        self.path = path
-        self.salt = salt
-        path.mkdir(parents=True)
-        self.git("init", "-q", "-b", "master")
-        self.commit({"src.txt": "0"}, "base")
-
-    def git(self, *args: str) -> str:
-        proc = subprocess.run(
-            ["git", *args], cwd=self.path, capture_output=True, text=True, env=ENV, check=False
-        )
-        assert proc.returncode == 0, proc.stderr
-        return proc.stdout.strip()
-
-    def commit(self, files: dict[str, str], message: str, allow_empty: bool = False) -> str:
-        for name, text in files.items():
-            (self.path / name).parent.mkdir(parents=True, exist_ok=True)
-            (self.path / name).write_text(text)
-        self.git("add", "-A")
-        subject, _, body = message.partition("\n")
-        args = ["commit", "-q", "-m", f"{subject}{self.salt}" + (f"\n{body}" if body else "")]
-        self.git(*args, *(["--allow-empty"] if allow_empty else []))
-        return self.git("rev-parse", "HEAD")
-
-    def product(self, text: str) -> str:
-        return self.commit({"src.txt": text}, f"product {text}")
-
-    def role1(self, tag: str, reviewed: str) -> str:
-        """A role-1 commit (CM-5): a fossil and a re-recorded review carrying the reviewed sha."""
-        return self.commit({FOSSIL: tag, REVIEW: f'sha = "{reviewed}"\n'}, f"role 1 {tag}")
-
-    def records(
-        self, sha: str, *, proc: dict[str, Any] | None, docker: dict[str, Any] | None
-    ) -> str:
-        """A records-only commit for `sha` (a record for a gate is omitted when its arg is None)."""
-        files = {}
-        if proc is not None:
-            files[f"tests/proof/host/host-proc/{sha}.json"] = json.dumps(
-                record("host-proc", sha, **proc)
-            )
-        if docker is not None:
-            files[f"tests/proof/host/host-docker/{sha}.json"] = json.dumps(
-                record("host-docker", sha, **docker)
-            )
-        return self.commit(files, f"records {sha[:7]}")
-
-    def carrier(self) -> str:
-        sha = self.commit({}, "carrier\n\nWR-Merge: J-SLICE-B", allow_empty=True)
-        self.git("tag", "wr-ckpt/slice-b", sha)
-        return sha
-
-
-def record(gate: str, sha: str, **fields: Any) -> dict[str, Any]:
-    base: dict[str, Any] = {
-        "schema": 1,
-        "gate": gate,
-        "sha": sha,
-        "mode": "run",
-        "python": "3.12.8",
-        "platform": "test",
-        "results": [],
-        "status": "PASSED",
-    }
-    if gate == "host-docker":
-        base["diff"] = {"unattributed": [], "engine_state_changed": False}
-    return {**base, **fields}
-
-
-CLEAN: dict[str, Any] = {}
-DIRTY_UNATTRIBUTED: dict[str, Any] = {
-    "diff": {"unattributed": ["c1"], "engine_state_changed": False}
-}
-DIRTY_ENGINE: dict[str, Any] = {"diff": {"unattributed": [], "engine_state_changed": True}}
-
-
-def shas(pair: rf.Pair | None) -> tuple[str, str | None] | None:
-    if pair is None:
-        return None
-    return pair.host_proc["sha"], None if pair.host_docker is None else pair.host_docker["sha"]
-
-
-# ---------------------------------------------------------------------------
-# the resolver over planted histories
-# ---------------------------------------------------------------------------
-
-
-def _history(tmp_path: Path, salt: str, *, older: dict[str, Any], newer: dict[str, Any]):
-    """Base, a per-merge record, a first attempt (role 1 at R1, role-2 records at P1), a re-run
-    (role 1 at R2 fixing the fossil and re-recording the review, records at P2), the carrier
-    (tagged), then a product change with its own per-merge record."""
-    repo = Repo(tmp_path / f"repo{salt}", salt)
-    x = repo.product("1")
-    per_merge = repo.records(x, proc=CLEAN, docker=CLEAN)
-    r1 = repo.role1("first attempt", x)
-    p1 = repo.records(r1, proc=CLEAN, docker=older)
-    r2 = repo.role1("re-run fixes the fossil", r1)
-    p2 = repo.records(r2, proc=CLEAN, docker=newer)
-    k = repo.carrier()
-    later = repo.product("2")
-    per_merge2 = repo.records(later, proc=CLEAN, docker=CLEAN)
-    return repo, {
-        "x": x,
-        "per_merge": per_merge,
-        "r1": r1,
-        "p1": p1,
-        "r2": r2,
-        "p2": p2,
-        "k": k,
-        "later": later,
-        "per_merge2": per_merge2,
-    }
 
 
 def _resolve(repo: Repo, head: str) -> rf.Pair | None:
     return rf.resolve(head, repo.path)
-
-
-def _ancestry_only(record_: dict[str, Any], anchor: str, cwd: Path) -> tuple[bool, str | None]:
-    """A lenient CM-6 (the sha is an ancestor of the anchor; a later product change is ignored): it
-    makes both role-2 pairs admissible, which the real rule never does for a re-run."""
-    from tests.proof import fence as fence_mod
-
-    return fence_mod.is_ancestor(cwd, str(record_["sha"]), anchor), None
 
 
 def test_record_facts_planted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -196,7 +70,7 @@ def test_record_facts_planted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
     # 2. both role-2 pairs admissible (lenient CM-6): the newer by ancestry wins, whatever order the
     #    files sort in, at the head and through the tag anchor
-    monkeypatch.setattr(record_mod, "is_admissible", _ancestry_only)
+    monkeypatch.setattr(record_mod, "is_admissible", ancestry_only)
     seen: set[bool] = set()
     for i in range(40):
         repo, h = _history(tmp_path, f"-lenient-{i}", older=CLEAN, newer=DIRTY_ENGINE)

@@ -16,6 +16,8 @@ import pytest
 
 from tests.proof import ckpt as ckpt_mod
 from tests.proof import meta as meta_mod
+from tests.proof import transcribe as transcribe_mod
+from tests.proof.b import planted_history as ph
 from tests.proof.b import stub_labels as sl
 from tests.proof.ckpt import slice_b
 from tests.proof.host import record as record_mod
@@ -66,8 +68,9 @@ def green_world() -> slice_b.World:
             n += 1
             labels.append(_label(f"WR-ENV-9:gated-{n}", posture="gated_on", oq=oq))
     labels.append(_label("WR-ENV-9:na-one", posture="na", reason="not applicable here"))
+    cells = {str(c["id"]): str(c["cell"]) for c in transcribe_mod.load_matrix_map()}
     clauses = [
-        {"id": c, "step": "B", "stub_label_required": c == "B4.6"}
+        {"id": c, "step": "B", "cell": cells[c], "stub_label_required": c == "B4.6"}
         for c in clause_ids
     ]  # fmt: skip
     nodes = []
@@ -144,15 +147,15 @@ def test_green_world_passes_every_condition(world):
     assert failing() == {}
 
 
-def test_conditions_are_the_25_clauses_the_labels_and_b_to_h():
+def test_conditions_are_the_25_clauses_the_labels_and_b_to_i():
     ids = [c.id for c in slice_b.CONDITIONS]
     assert [i for i in ids if i.startswith("J-SLICE-B-a:B")] == [
         f"J-SLICE-B-a:{c}" for c in slice_b.B_CLAUSE_IDS
     ]
     assert len(slice_b.B_CLAUSE_IDS) == 25
-    assert ids[-8:] == [
+    assert ids[-9:] == [
         "J-SLICE-B-a:labels",
-        *(f"J-SLICE-B-{x}" for x in "bcdefgh"),
+        *(f"J-SLICE-B-{x}" for x in "bcdefghi"),
     ]
     assert len(ids) == len(set(ids))
 
@@ -180,7 +183,8 @@ def test_conditions_fail_on_planted_defects(world):
     w.admissible = lambda record: (False, "not an ancestor")
     world["w"] = w
     got = failing()
-    assert set(got) == {"J-SLICE-B-b"} and "not admissible" in got["J-SLICE-B-b"]
+    # column B (i) reads only admissible records: a DOCKER-tier clause on an inadmissible one fails
+    assert set(got) == {"J-SLICE-B-b", "J-SLICE-B-i"} and "not admissible" in got["J-SLICE-B-b"]
 
     # (c) a record with a non-empty diff, one that changed the engine, one that omits a node
     w = green_world()
@@ -380,3 +384,303 @@ def test_ledger_snapshot_is_not_mutated_by_planted_worlds():
     before = copy.deepcopy(w.report)
     slice_b.render_status(w, "B2.1")
     assert w.report == before
+
+
+# ---------------------------------------------------------------------------
+# L.RB-12.4: every condition, (c) through the record resolver, (i) column B, the part-marker check
+# ---------------------------------------------------------------------------
+
+LEGACY_NODE = slice_b.LEGACY_LIVE_NODE
+ALL_CONDITION_IDS = [
+    *(f"J-SLICE-B-a:{c}" for c in slice_b.B_CLAUSE_IDS),
+    "J-SLICE-B-a:labels",
+    *(f"J-SLICE-B-{x}" for x in "bcdefghi"),
+]
+
+
+def _plant_clause_without_marker(clause_id):
+    def plant(w):
+        w.nodes = [n for n in w.nodes if clause_id not in n["labels"]]
+
+    return plant
+
+
+def _plant_labels(w):
+    w.report[CI_LABEL]["status"] = "UNPROVEN"
+
+
+def _plant_b(w):
+    w.admissible = lambda record: (False, "not an ancestor")
+
+
+def _plant_c(w):
+    w.host_docker["diff"]["unattributed"] = ["c1"]
+
+
+def _plant_d(w):
+    w.nodes = [n for n in w.nodes if n["nodeid"] != TWIN_NODE]
+
+
+def _plant_e(w):
+    _label_of(w, DOCKER_LABEL + SUFFIX)["posture"] = "claim"
+
+
+def _plant_f(w):
+    w.report[slice_b.DEFERRAL_LABELS[2]]["status"] = "UNPROVEN"
+
+
+def _plant_g(w):
+    w.d8 = (1, "d8: diverged")
+
+
+def _plant_h(w):
+    w.labels = [lb for lb in w.labels if lb.get("oq") != "OQ-26"]
+
+
+def _plant_i(w):
+    w.report["B2.1"]["status"] = "UNPROVEN"
+
+
+PLANTED = {
+    "J-SLICE-B-a:labels": _plant_labels,
+    "J-SLICE-B-b": _plant_b,
+    "J-SLICE-B-c": _plant_c,
+    "J-SLICE-B-d": _plant_d,
+    "J-SLICE-B-e": _plant_e,
+    "J-SLICE-B-f": _plant_f,
+    "J-SLICE-B-g": _plant_g,
+    "J-SLICE-B-h": _plant_h,
+    "J-SLICE-B-i": _plant_i,
+    **{f"J-SLICE-B-a:{c}": _plant_clause_without_marker(c) for c in slice_b.B_CLAUSE_IDS},
+}
+
+
+def test_all_conditions_registered(world):
+    """(a)-(i) are all present and each fails on its own planted defect (the green world passes)."""
+    assert [c.id for c in slice_b.CONDITIONS] == ALL_CONDITION_IDS
+    assert set(PLANTED) == set(ALL_CONDITION_IDS)
+    assert failing() == {}
+    for condition_id in ALL_CONDITION_IDS:
+        w = green_world()
+        PLANTED[condition_id](w)
+        world["w"] = w
+        assert condition_id in failing(), f"{condition_id} passed on its planted defect"
+
+
+# ---- (c) over planted histories ------------------------------------------------------------------
+
+
+def _results(*, host=True, legacy=True, extra=()):
+    rows = []
+    if host:
+        rows.append({"nodeid": HOST_NODE, "outcome": "PASSED", "labels": ["B1.1", DOCKER_LABEL]})
+    if legacy:
+        rows.append({"nodeid": LEGACY_NODE, "outcome": "PASSED", "labels": []})
+    return [*rows, *extra]
+
+
+def _pair_fields(results=None, **diff):
+    """The fields of a planted host-docker record: a result list, and the given diff keys."""
+    fields = {"results": _results() if results is None else results}
+    if diff:
+        fields["diff"] = {"unattributed": [], "engine_state_changed": False, **diff}
+    return fields
+
+
+def _live(repo, commit):
+    """A `LiveWorld` over a planted repository, with the static inputs of the green world."""
+    green = green_world()
+    world = slice_b.LiveWorld(commit, repo.path)
+    world.labels = green.labels
+    world.nodes = green.nodes
+    return world
+
+
+@pytest.fixture
+def lenient_cm6(monkeypatch):
+    """Both role-2 pairs admissible (the sha is an ancestor of the anchor): CM-6 itself makes a
+    re-run's older pair inadmissible, and the resolver must still return the newer by ancestry."""
+    monkeypatch.setattr(record_mod, "is_admissible", ph.ancestry_only)
+
+
+def _verdict_c(repo, commit):
+    return slice_b.verdict_c(_live(repo, commit))
+
+
+def test_condition_c_selects_newest_admissible_pair(tmp_path, lenient_cm6, monkeypatch):
+    clean = _pair_fields()
+    dirty = _pair_fields(unattributed=["c1"])
+    failed_node = _pair_fields(
+        _results(extra=[{"nodeid": "t::gated", "outcome": "FAILED", "labels": []}])
+    )
+    unregistered_skip = _pair_fields(
+        _results(extra=[{"nodeid": "t::skipped", "outcome": "SKIPPED", "labels": ["NOT-A-LABEL"]}])
+    )
+    # the newer pair (the failure-exit re-run) decides: clean over an older dirty one passes
+    repo, h = ph.history(tmp_path, "-newer-clean", older=dirty, newer=clean)
+    assert _verdict_c(repo, h["p2"])[0]
+    assert _verdict_c(repo, h["k"])[0]  # at the re-run's carrier (B5-2)
+    # a first attempt's clean pair never excuses a dirty newer one, whatever the defect is
+    for name, newer in {
+        "unattributed": dirty,
+        "failed": failed_node,
+        "skipped": unregistered_skip,
+        "engine": _pair_fields(engine_state_changed=True),
+    }.items():
+        repo, h = ph.history(tmp_path, f"-newer-{name}", older=clean, newer=newer)
+        for anchor in (h["p2"], h["k"]):
+            ok, reason = _verdict_c(repo, anchor)
+            assert not ok, name
+        assert {
+            "unattributed": "unattributed",
+            "failed": "pass set",
+            "skipped": "pass set",
+            "engine": "engine_state_changed",
+        }[name] in reason
+
+    # a re-run PR that fixes a fossil in its role-1 commit judges the re-run's pair at its carrier
+    repo, h = ph.history(tmp_path, "-rerun", older=clean, newer=clean)
+    assert slice_b.LiveWorld(h["k"], repo.path).host_proc["sha"] == h["r2"]
+
+    # a triage record admissible at the anchor is never read: a dirty record at a later product
+    # commit is not a role-1 run record, so the tag anchor's clean pair is judged instead
+    monkeypatch.undo()
+    repo, h = ph.history(tmp_path, "-triage", older=clean, newer=clean)
+    triage = repo.product("3")
+    repo.records(triage, proc={}, docker=dirty)
+    ok, reason = _verdict_c(repo, "HEAD")
+    assert ok, reason
+
+
+def test_condition_c_judges_through_p0_pass_set_not_a_copy(tmp_path, monkeypatch):
+    repo, h = ph.history(tmp_path, "-p0", older=_pair_fields(), newer=_pair_fields())
+    assert _verdict_c(repo, h["p2"])[0]
+    monkeypatch.setattr(
+        record_mod, "pass_set_violations", lambda record, labels=None: ["planted violation"]
+    )
+    ok, reason = _verdict_c(repo, h["p2"])
+    assert not ok and "planted violation" in reason
+
+
+def test_condition_c_decided_at_pr_head_under_preview(tmp_path, monkeypatch, capsys):
+    """B6-3: on the PR head H, `--preview` and `--dry` decide (c): a pair whose host-docker record
+    omits the legacy live node (resp. a docker_host node) fails at anchor H, never pending; a
+    complete clean pair passes at H and at the planted landing merge commit alike."""
+    incomplete = {
+        "legacy node": _pair_fields(_results(legacy=False)),
+        "docker_host node": _pair_fields(_results(host=False)),
+    }
+
+    def run(repo, head, *, dry):
+        monkeypatch.setattr(meta_mod, "ROOT", repo.path)
+        monkeypatch.setattr(slice_b, "make_world", lambda commit: _live(repo, commit))
+        args = type("A", (), {"name": "slice-b", "dry": dry, "preview": not dry, "commit": head})()
+        rc = meta_mod.cmd_ckpt(args)
+        return rc, capsys.readouterr().out
+
+    for name, docker in incomplete.items():
+        repo, h = ph.history(tmp_path, f"-h-{name[:3]}", older=docker, newer=docker)
+        rc, out = run(repo, h["p2"], dry=False)
+        assert rc == 1 and "J-SLICE-B-c" in out and "results omit" in out, (name, out)
+        assert f"anchor {h['p2'][:12]}" in out
+        _rc, out = run(repo, h["p2"], dry=True)
+        assert "pending:J-SLICE-B-c" in out
+
+    repo, h = ph.history(tmp_path, "-h-clean", older=_pair_fields(), newer=_pair_fields())
+    merge = ph.land(repo, h["p2"], h["x"])
+    for commit in (h["p2"], merge):
+        ok, reason = _verdict_c(repo, commit)
+        assert ok, (commit, reason)
+    _rc, out = run(repo, h["p2"], dry=True)
+    assert "pending:J-SLICE-B-c" not in out
+    assert slice_b.LiveWorld(merge, repo.path).host_proc["sha"] == h["r2"]
+
+
+# ---- (i) column B --------------------------------------------------------------------------------
+
+
+@pytest.mark.proves("WR-PROOF-1", "WR-PROOF-1:column-B", "B", "B", "LOGIC", "CI")
+def test_column_b_condition_fails_on_planted_defect(world):
+    """Over a planted ledger and planted records, (i) fails for a B cell with one UNPROVEN clause,
+    for a DOCKER-tier B clause evidenced only at CI, and for a clause whose host record is
+    inadmissible (CM-6); it passes when every cell is green or STUB-PROVEN with its label."""
+    assert slice_b.verdict_i(world["w"])[0]
+    assert len(slice_b.column_b_cells(world["w"].clauses)) == 9  # B1..B9
+
+    # a cell with one UNPROVEN clause
+    w = green_world()
+    w.report["B2.1"]["status"] = "UNPROVEN"
+    ok, reason = slice_b.verdict_i(w)
+    assert not ok and "B2.1" in reason
+
+    # a DOCKER-tier clause evidenced only at CI: no host-docker record, or one that omits its node
+    w = green_world()
+    w.host_docker = None
+    ok, reason = slice_b.verdict_i(w)
+    assert not ok and "B1.1" in reason and "DOCKER-tier" in reason
+    w = green_world()
+    w.host_docker["results"] = [w.host_docker["results"][1]]
+    ok, reason = slice_b.verdict_i(w)
+    assert not ok and "B1.1" in reason and "DOCKER-tier" in reason
+
+    # a clause whose host record is inadmissible (CM-6)
+    w = green_world()
+    w.admissible = lambda record: (False, "a product path changed since its sha")
+    ok, reason = slice_b.verdict_i(w)
+    assert not ok and "B1.1" in reason and "no admissible host-docker record" in reason
+
+    # a B4.6 that lost its STUB label is not STUB-PROVEN
+    w = green_world()
+    next(n for n in w.nodes if "B4.6" in n["labels"])["labels"].remove(STUB_LABEL)
+    ok, reason = slice_b.verdict_i(w)
+    assert not ok and "B4.6" in reason
+
+    # a cell with no clause has no n/a reason in the map: not green
+    w = green_world()
+    w.clauses = [
+        *[c for c in w.clauses if not c["cell"].startswith("one_terminal_answer")],
+        {"id": "A1.1", "cell": "one_terminal_answer:A"},
+    ]
+    ok, reason = slice_b.verdict_i(w)
+    assert not ok and "one_terminal_answer:B" in reason and "no Slice B clause" in reason
+
+    # an empty map
+    assert not slice_b.verdict_i(slice_b.World())[0]
+
+    # green: every cell PROVEN or STUB-PROVEN with its label (B4.6), including through the world
+    # the module builds: the condition reads only admissible records
+    w = green_world()
+    ok, reason = slice_b.verdict_i(w)
+    assert ok, reason
+    assert slice_b.render_status(w, "B4.6") == slice_b.STUB_PROVEN
+
+
+# ---- the part-marker preflight of (a) ---------------------------------------------------------
+
+
+def test_a_part_no_marker_names_is_listed_before_any_carrier(world):
+    """J-SINGLE-R2 rule 2: a B clause part that no collected non-twin node names in a `proves()`
+    marker is reported by (a) itself, whatever the ledger says, so `--dry` finds it before a carrier
+    is spent."""
+    w = world["w"]
+    assert failing() == {}
+    w.nodes = [n for n in w.nodes if "B4.3" not in n["labels"]]
+    got = failing()
+    assert "J-SLICE-B-a:B4.3" in got and "names it in a proves() marker" in got["J-SLICE-B-a:B4.3"]
+    assert "J-SLICE-B-i" in got  # column B reads the same evidence
+    # a row label that only composes the part is not the part id
+    w.nodes.append({"nodeid": "t::composes", "labels": [CI_LABEL], "docker_host": False})
+    assert "J-SLICE-B-a:B4.3" in failing()
+    # a twin never counts as naming a part (CSC-8, `twin_audit`)
+    twin = {
+        "nodeid": "packages/trestle-env/tests/twin/test_b43_twin.py::t",
+        "labels": ["B4.3", STUB_LABEL + SUFFIX],
+        "docker_host": False,
+    }
+    w.nodes.append(twin)
+    assert "J-SLICE-B-a:B4.3" in failing()
+    assert slice_b.part_registrants(w, "B4.3") == []
+    # a non-twin node naming it restores the part
+    w.nodes.append({"nodeid": "t::b43", "labels": ["B4.3", CI_LABEL], "docker_host": False})
+    assert "J-SLICE-B-a:B4.3" not in failing()
+    assert [n["nodeid"] for n in slice_b.part_registrants(w, "B4.3")] == ["t::b43"]

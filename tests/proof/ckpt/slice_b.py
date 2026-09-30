@@ -9,25 +9,37 @@ condition. The module is finished in product merges (here and in L.RB-12.4) beca
 lane's globs cover fossils and reviews only (CM-5), and a later edit would make its records
 inadmissible (CM-6).
 
-The conditions are plans/b-slice-b.md `### J-SLICE-B` / MJ.J-SLICE-B step 5, (a)-(h) here and (i),
-the column-B condition, added by L.RB-12.4:
+The conditions are plans/b-slice-b.md `### J-SLICE-B` / MJ.J-SLICE-B step 5, (a)-(i); L.RB-12.4
+completes the module (the role-2 pair through L.RB-12.7's resolver, the part-marker check of (a),
+and the column-B condition (i)):
 
   (a) every one of the 25 Slice B clauses (one condition per clause id, so `--dry` lists each) and
       every label declared for step B (one condition) is PROVEN@HOST, PROVEN@CI, STUB-PROVEN or
       registered as declared (`gated_on`, `na(reason)`); a DOCKER-tier clause or label counts only
-      through an admissible host-docker record (CSC-9)
+      through an admissible host-docker record (CSC-9). Band preflight (J-SINGLE-R2 rule 2): a
+      clause is judged only when a collected, non-twin node names the part id itself in a
+      `proves()` marker (a row label that composes it does not count), so a missing marker is
+      listed by `--dry` before any carrier is spent
   (b) every record used is admissible for the anchor (CM-6)
-  (c) the role-2 pair (host-proc + its same-sha host-docker) is the one `record.select` and
-      `record.paired_docker` return at the anchor; `record.pass_set_violations` is empty for both;
-      the host-docker record has `diff.unattributed == []`, `engine_state_changed == false`, status
-      PASSED, and its results include every docker_host node and the legacy live-compose node.
-      L.RB-12.4 routes the pair through L.RB-12.7's `record_facts.py`.
+  (c) the role-2 pair (host-proc + its same-sha host-docker) is the one L.RB-12.7's
+      `record_facts.py` resolves through `record.select` and `record.paired_docker` at the anchor A
+      (the trigger commit when the ckpt job evaluates it; the PR head H under `--preview` and
+      `--dry`, which select the same pair: the merge commit's tree is H's and adds no record, B6-3),
+      so a re-run's pair supersedes an older attempt's and a triage or per-merge record is never
+      read;
+      `record.pass_set_violations` is empty for both; the host-docker record has
+      `diff.unattributed == []`, `engine_state_changed == false`, status PASSED, and its results
+      include every docker_host node and the legacy live-compose node
   (d) every docker_host node has its twin (MC-B-03) and no twin registers a matrix clause
   (e) every label ending `stub_labels.toml`'s `twin_suffix` is declared `stub_proven`; every other
       `stub_proven` label has its MC-B-05 row; B4.5 and B9.1 carry no STUB label (DM-29)
   (f) every deferral whose `closes_at` lies in B4 has its label PROVEN at the candidate (CM-8)
   (g) `differ d8` shows no divergence
   (h) the gated registrations are present: OPEN-MISE-HOST, OQ-25, OQ-26 x2, F-12, F-B3-2, F-13(d)
+  (i) column B of WR-PROOF-1, evaluated here over the MC-02 ledger and the admissible host records
+      (the column enforce form is on CSC-5's withdrawn list): every Slice B cell B1-B9 is green,
+      each of its clauses PROVEN@HOST or PROVEN@CI or STUB-PROVEN with its label, and a
+      DOCKER-tier clause counts only through an admissible host-docker record
 
 Every condition is a pure function of a `World` (plain data). `LiveWorld` fills the same attributes
 lazily from the checkout; the self-test builds synthetic `World`s.
@@ -41,10 +53,11 @@ import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from tests.proof import ckpt as ckpt_mod
 from tests.proof import fence as fence_mod
+from tests.proof.b import record_facts as record_facts_mod
 from tests.proof.b import stub_labels as stub_labels_mod
 from tests.proof.b import twin_audit as twin_audit_mod
 
@@ -111,6 +124,7 @@ class World:
     nodes: list[dict[str, Any]] = field(default_factory=list)  # collected: nodeid, labels, markers
     host_proc: dict[str, Any] | None = None  # the role-2 host-proc record at the anchor
     host_docker: dict[str, Any] | None = None  # its same-sha host-docker record
+    anchor: str | None = None  # the commit those records were resolved at (H, or the tag commit)
     admissible: Callable[[dict[str, Any]], tuple[bool, str | None]] = (
         lambda record: (True, None)  # noqa: E731
     )
@@ -201,11 +215,33 @@ def label_status(w: World, label: dict[str, Any]) -> tuple[str | None, str | Non
     return None, result
 
 
+def is_twin_node(node: dict[str, Any], suffix: str) -> bool:
+    """A CI twin (MC-B-03): under a `twin/` directory or registering a `<label><twin_suffix>`. A
+    twin never carries a matrix part (CSC-8, `twin_audit`), so it never counts as naming one."""
+    return "/twin/" in str(node["nodeid"]) or any(
+        str(label).endswith(suffix) for label in node["labels"]
+    )
+
+
+def part_registrants(w: World, clause_id: str) -> list[dict[str, Any]]:
+    """The collected non-twin nodes whose `proves()` markers name the part id itself. The audit
+    plugin resolves a matrix id used as a marker label into the node's labels; a row label that only
+    `composes` the part is not the part id (J-SINGLE-R2: a part no marker names has no ledger key at
+    all, and is found only after the carrier is spent)."""
+    suffix = w.stub.twin_suffix
+    return [n for n in w.nodes if clause_id in n["labels"] and not is_twin_node(n, suffix)]
+
+
 def clause_status(w: World, clause_id: str) -> tuple[str | None, str | None]:
     """(status, problem) of one clause: its ledger key, through the tier and venue of the labels
     on the nodes that register it (a stub label makes it STUB-PROVEN)."""
     by_id = label_index(w)
-    registrants = [n for n in w.nodes if clause_id in n["labels"]]
+    registrants = part_registrants(w, clause_id)
+    if not registrants:
+        return None, (
+            f"{clause_id}: no collected non-twin node names it in a proves() marker "
+            "(a row label that composes it does not count)"
+        )
     node_labels = [by_id[lb] for n in registrants for lb in n["labels"] if lb in by_id]
     stub_labels = [lb for lb in node_labels if lb.get("posture") == "stub_proven"]
     clause = next((c for c in w.clauses if str(c["id"]) == clause_id), {})
@@ -287,14 +323,19 @@ def docker_host_nodeids(w: World) -> list[str]:
 def verdict_c(w: World) -> tuple[bool, str]:
     from tests.proof.host import record as record_mod
 
+    where = f" (anchor {str(w.anchor)[:12]})" if getattr(w, "anchor", None) else ""
     problems = []
     if w.host_proc is None:
         problems.append(
-            "no admissible host-proc record at the anchor: a record is stale once any non-record "
-            "path changed after its sha (CM-6)"
+            "no role-2 host-proc record resolves at the anchor: the record `select` returns there "
+            "is not a J-SLICE-B run record (a triage, catch-up or per-merge record is never read), "
+            "is stale once any non-record path changed after its sha (CM-6), or there is none and "
+            f"no wr-ckpt/slice-b tag{where}"
         )
     if w.host_docker is None:
-        problems.append("no host-docker record at the host-proc record's sha (one role-2 run)")
+        problems.append(
+            f"no host-docker run record at the host-proc record's sha (one role-2 run){where}"
+        )
     labels = label_index(w)
     for gate, record in _used(w):
         for violation in record_mod.pass_set_violations(record, labels):
@@ -313,7 +354,7 @@ def verdict_c(w: World) -> tuple[bool, str]:
         recorded = {r.get("nodeid") for r in docker.get("results", [])}
         for nodeid in [*docker_host_nodeids(w), LEGACY_LIVE_NODE]:
             if nodeid not in recorded:
-                problems.append(f"host-docker results omit {nodeid}")
+                problems.append(f"host-docker results omit {nodeid}{where}")
     return _fail(problems)
 
 
@@ -388,6 +429,64 @@ def verdict_h(w: World) -> tuple[bool, str]:
 
 
 # ---------------------------------------------------------------------------
+# (i) column B of WR-PROOF-1
+# ---------------------------------------------------------------------------
+
+
+class _Overlay:
+    """A world with some attributes replaced (a `World` and a `LiveWorld` alike)."""
+
+    def __init__(self, base: Any, **override: Any) -> None:
+        self._base = base
+        self._override = override
+
+    def __getattr__(self, name: str) -> Any:
+        if name in self._override:
+            return self._override[name]
+        return getattr(self._base, name)
+
+
+def column_b_cells(clauses: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """Cell (`one_terminal_answer:B`) -> the ids of its Slice B clauses, in matrix-map order: every
+    cell of column B of the guarantee x slice matrix, whether or not it holds a clause."""
+    cells: dict[str, list[str]] = {}
+    for clause in clauses:
+        cell = str(clause.get("cell", ""))
+        if cell.endswith(":A"):
+            cells.setdefault(cell[:-2] + ":B", [])
+        elif cell.endswith(":B"):
+            cells.setdefault(cell, []).append(str(clause["id"]))
+    return cells
+
+
+def verdict_i(w: Any) -> tuple[bool, str]:
+    """Column B (WR-PROOF-1): every cell B1-B9 is green. A clause counts as `clause_status` reads
+    it (PROVEN@HOST, PROVEN@CI, or STUB-PROVEN through its label), over the admissible host records
+    only: a record that CM-6 makes inadmissible for the anchor is no evidence, so a DOCKER-tier
+    clause resting on it reads as CI-only. A cell with no clause is not green: the matrix map
+    carries no `n/a` reason for a Slice B cell."""
+
+    def usable(record: dict[str, Any] | None) -> dict[str, Any] | None:
+        return record if record is not None and w.admissible(record)[0] else None
+
+    view = cast(
+        World, _Overlay(w, host_proc=usable(w.host_proc), host_docker=usable(w.host_docker))
+    )
+    cells = column_b_cells(w.clauses)
+    if not cells:
+        return False, "the matrix map has no clause of cells B1..B9"
+    problems = []
+    for cell, ids in cells.items():
+        if not ids:
+            problems.append(f"{cell}: no Slice B clause, and the matrix map gives no n/a reason")
+        for clause_id in ids:
+            _status, problem = clause_status(view, clause_id)
+            if problem:
+                problems.append(f"{cell}: {problem}")
+    return _fail(problems)
+
+
+# ---------------------------------------------------------------------------
 # the live world
 # ---------------------------------------------------------------------------
 
@@ -403,10 +502,14 @@ def _run(argv: list[str]) -> subprocess.CompletedProcess[str]:
 
 
 class LiveWorld:
-    """The same attributes as `World`, each read from the checkout the first time it is used."""
+    """The same attributes as `World`, each read from the checkout the first time it is used.
 
-    def __init__(self, commit: str) -> None:
+    The role-2 pair is the one `record_facts.resolve` returns at `commit` (L.RB-12.7): the trigger
+    commit when the ckpt job evaluates, the PR head under `--preview` and `--dry`."""
+
+    def __init__(self, commit: str, root: Path | None = None) -> None:
         self.commit = commit
+        self.root = root or ROOT
 
     def __getattr__(self, name: str) -> Any:
         loader = getattr(type(self), f"_load_{name}", None)
@@ -442,21 +545,25 @@ class LiveWorld:
     def _load_nodes(self) -> list[dict[str, Any]]:
         return twin_audit_mod.collect_nodes()
 
-    def _load_host_proc(self) -> dict[str, Any] | None:
-        from tests.proof.host import record as record_mod
+    def _load_pair(self) -> record_facts_mod.Pair | None:
+        return record_facts_mod.resolve(self.commit, self.root)
 
-        return record_mod.select("host-proc", self.commit, cwd=ROOT)
+    def _load_anchor(self) -> str:
+        pair = self.pair
+        return self.commit if pair is None else pair.anchor
+
+    def _load_host_proc(self) -> dict[str, Any] | None:
+        pair = self.pair
+        return None if pair is None else pair.host_proc
 
     def _load_host_docker(self) -> dict[str, Any] | None:
-        from tests.proof.host import record as record_mod
-
-        proc = self.host_proc
-        return None if proc is None else record_mod.paired_docker(proc, cwd=ROOT)
+        pair = self.pair
+        return None if pair is None else pair.host_docker
 
     def _load_admissible(self) -> Callable[[dict[str, Any]], tuple[bool, str | None]]:
         from tests.proof.host import record as record_mod
 
-        return lambda record: record_mod.is_admissible(record, self.commit, ROOT)
+        return lambda record: record_mod.is_admissible(record, self.anchor, self.root)
 
     def _load_stub(self) -> stub_labels_mod.StubLabels:
         return stub_labels_mod.load()
@@ -517,6 +624,7 @@ CONDITIONS = [
     _condition("J-SLICE-B-f", verdict_f),
     _condition("J-SLICE-B-g", verdict_g),
     _condition("J-SLICE-B-h", verdict_h),
+    _condition("J-SLICE-B-i", verdict_i),
 ]
 
 __all__ = ["TRIGGER_MERGE", "TAG", "CONDITIONS", "World", "make_world", "LiveWorld"]
