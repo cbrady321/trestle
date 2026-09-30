@@ -157,6 +157,8 @@ def test_conditions_are_the_25_clauses_the_labels_and_b_to_h():
     assert len(ids) == len(set(ids))
 
 
+@pytest.mark.proves("WR-PROOF-3", "WR-PROOF-3:b-stub-labels-registered", "B", "B", "LOGIC", "CI")
+@pytest.mark.proves("WR-PROOF-6", "WR-PROOF-6:ckpt-requires-clean-records", "B", "B", "LOGIC", "CI")
 def test_conditions_fail_on_planted_defects(world):
     """(a)-(h), one planted defect each; every other condition stays green."""
     # (a) a DOCKER-tier label and clause with CI-only evidence
@@ -305,6 +307,7 @@ def _sh(repo: Path, *args: str) -> str:
     return proc.stdout.strip()
 
 
+@pytest.mark.proves("WR-PROOF-6", "WR-PROOF-6:ckpt-requires-clean-records", "B", "B", "LOGIC", "CI")
 def test_condition_b_uses_cm6_admissibility_over_a_real_history(tmp_path, world):
     """A record whose sha is not an ancestor of the anchor, or with a non-record path changed
     since its sha, is inadmissible (CM-6); `record.is_admissible` is the one implementation."""

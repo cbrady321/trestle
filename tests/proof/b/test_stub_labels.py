@@ -37,6 +37,7 @@ def _stub(*rows: dict) -> sl.StubLabels:
     return sl.StubLabels(twin_suffix=SUFFIX, rows=[dict(r) for r in rows])
 
 
+@pytest.mark.proves("WR-PROOF-3", "WR-PROOF-3:b-stub-labels-registered", "B", "B", "LOGIC", "CI")
 def test_committed_stub_labels_are_consistent_with_the_declared_labels():
     stub = sl.load()
     labels = list(meta_mod._load_all_labels())  # noqa: SLF001
