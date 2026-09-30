@@ -146,6 +146,11 @@ TOOLCHAIN_INTERFACE_DRIFT = "adapter.toolchain_interface_drift"
 COMPOSE_DEFINITION_INVALID = "adapter.compose_definition_invalid"
 CREDENTIAL_INTERACTIVE = "execution.credential_interactive"
 GRANT_ISSUER_UNREACHABLE = "adapter.grant_issuer_unreachable"
+# L.RB-6.3.fix1 (ADD-code-provision-store-unreadable): the one code V-11 lacked for "the
+# environment's authoritative record store did not answer" (a wrong password, a stopped
+# container, a failed psql): the provisioning probe could not observe, so nothing is claimed
+# absent (V-3.8). It is neither an unreachable engine nor an output outside the pinned shape.
+PROVISION_STORE_UNREADABLE = "adapter.provision_store_unreadable"
 
 ADAPTER_CODES: frozenset[str] = frozenset(
     {
@@ -156,6 +161,7 @@ ADAPTER_CODES: frozenset[str] = frozenset(
         COMPOSE_DEFINITION_INVALID,
         CREDENTIAL_INTERACTIVE,
         GRANT_ISSUER_UNREACHABLE,
+        PROVISION_STORE_UNREADABLE,
     }
 )
 
