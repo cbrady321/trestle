@@ -198,3 +198,14 @@ def kill_and_recover(host: mcp_host.McpHost, run_id: str) -> dict[str, Any]:
 def group_stop(run_dir_: Path) -> dict[str, Any]:
     (row,) = [r for r in records.ledger_rows(run_dir_).rows if r.get("kind") == "group_stop"]
     return row
+
+
+def cleanup_beside_primary(run_dir_: Path) -> bool:
+    """B4-C7: the cleanup disposition (`sweep_disposition` rows, one `unknown`) is durable in the
+    ledger before the terminal row, beside the primary."""
+    rows = records.ledger_rows(run_dir_).rows
+    kinds = [r.get("kind") for r in rows]
+    terminal = max(i for i, k in enumerate(kinds) if k in ("succeeded", "failed", "interrupted"))
+    swept = [i for i, r in enumerate(rows) if r.get("kind") == "sweep_disposition"]
+    unknown = [i for i in swept if rows[i].get("disposition") == "unknown"]
+    return bool(unknown) and all(i < terminal for i in swept)
