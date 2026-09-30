@@ -81,7 +81,11 @@ globs         = ["trestle/server/lease.py", "trestle/server/answer.py", "tests/s
 # their UNBUILT_MODES keys), tests/proof/divergence.toml (named ADD-code-* entries for the new wire codes),
 # tests/proof/drift/core/test_sa05_clock.py (the published release slice changes core's SA-05 assertions), and the
 # package markers of the new test trees, and core's deferral test (it asserted that no deferral label is declared
-# `claim`; the single fragment declares the two deferred core labels it claims at SL-8).
+# `claim`; the single fragment declares the two deferred core labels it claims at SL-8). At assembly the bundle lane
+# gained every other path a leaf touched outside the lane blocks: TM-P0-3's probe in temporary.d/p0.toml (SV-1.4),
+# the answer fetch handle in projection.py, core's execution-code and spec-key pins and the published
+# sweep_parallelism in test_tolerances_cli.py (SV-3.4/SV-4.2), the context-surface compat pin (SV-5.1), the packs
+# import boundary (SL-3.3), and ci.yml (the ckpt job skips helper modules under tests/proof/ckpt, SV-5.14).
 [[lane]]
 name          = "single-bundle"
 branch_prefix = "wr/single-bundle/"
@@ -123,7 +127,12 @@ globs         = ["docs/agent-console-mcp.md", "docs/agents.md", ".cursor/skills/
                  "tests/proof/drift/core/test_sa05_clock.py", "tests/single/__init__.py",
                  "tests/proof/drift/single/__init__.py", "tests/proof/probes/__init__.py",
                  "tests/proof/differ_modes/__init__.py", "tests/proof/fossil_states/__init__.py",
-                 "tests/core/docs/test_cl_d1_deferrals.py"]
+                 "tests/core/docs/test_cl_d1_deferrals.py",
+                 # what the leaves touched outside every lane block (assembly union, see the header)
+                 "tests/proof/temporary.d/p0.toml", "trestle/server/projection.py",
+                 "tests/core/spine/test_cs3_errors.py", "tests/pins/c_surface/facets.py",
+                 "tests/proof/selftest/test_tolerances_cli.py", "tests/pins/b_contract/test_compat_contract.py",
+                 "tests/proof/test_import_boundaries.py", ".github/workflows/ci.yml"]
 
 [[lane]]                     # the checkpoint lane: only the J-SINGLE gate; globs exactly CM-5's two checkpoint paths
 name          = "j-single"   # (host records tests/proof/host/host-*/*.json are exempt, CM-2)
