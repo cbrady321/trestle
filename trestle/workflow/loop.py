@@ -130,13 +130,10 @@ STEP_FACT_KINDS = frozenset(
     {PLAN_IDENTITY, STEP_OBSERVED, STEP_POSTCONDITION, STEP_ACTION, STEP_REPAIR, STEP_CLEANUP}
 )
 
-# The B1-E7 selection observations the root made before its plan identity: none at one leaf.
-_NO_OBSERVATIONS = "[]"
-
 
 class TreeBandError(NotImplementedError):
-    """A vertex the loop cannot walk yet reached it: a CHOICE vertex, whose `select` path is
-    L.TR-5.1's. Unreachable through admission, which refuses a choice tree until L.TR-5.3."""
+    """A vertex the loop cannot walk reached it: a CHOICE vertex the selection phase left with no
+    selected alternative (a defect: `Loop.run` selects every reachable CHOICE, V-7.2)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -872,14 +869,17 @@ class Loop:
         plan = self.services.admitted().accepted
         declaration, tree = self._derive()
         stop = self._proof_stop(plan, tree.digest if tree is not None else None)
-        self._record_plan(plan)
         if stop is not None:
+            self._record_plan(plan)  # the selection made so far: none (B1-E7)
             self._end_root_stop(stop)
             return
         if not isinstance(declaration, LeafDeclaration):
             assert tree is not None
-            TreeWalk(self, tree).run()
+            selected, observed = self._select(plan, tree)  # B1-O4: before the plan identity
+            self._record_plan(plan, selected, observed)
+            TreeWalk(self, tree, dict(selected)).run()
             return
+        self._record_plan(plan)
         unit = self.entry.units[self.entry.root]
         walk = LeafWalk(self, ROOT, unit, declaration, self.intent)
         walk.converge()
@@ -908,14 +908,21 @@ class Loop:
             return Stop(Condition.BLOCKED, codes.BUDGET_DOES_NOT_FIT)
         return None
 
-    def _record_plan(self, plan: svc.PlanAccepted) -> None:
+    def _record_plan(
+        self,
+        plan: svc.PlanAccepted,
+        selected: tuple[tuple[NodePath, NodePath], ...] = (),
+        observed: tuple[Mapping[str, JsonValue], ...] = (),
+    ) -> None:
         """The one plan entry, before the first `issue` and the first `record_end`, on every path
-        including a stop (B1-C11, B1-I8); it reserves each vertex's `NodeEnd` slot (B2-C7)."""
+        including a stop (B1-C11, B1-I8); it reserves each vertex's `NodeEnd` slot (B2-C7). It
+        carries the selection vector and the digest of the observations the selection used (V-7.2
+        step 5); at a root with no CHOICE both are empty."""
         identity = svc.PlanIdentity(
             declaration_digest=plan.declaration_digest or "",
             args_hash=_sha256(canonical_json(dict(self.intent))),
-            selection=(),
-            observations_digest=_sha256(_NO_OBSERVATIONS),
+            selection=selected,
+            observations_digest=_sha256(canonical_json(list(observed))),
         )
         self.lane.record_plan(identity)
         self.services.evidence().event(  # WR-EVID-3: the plan's identity, once, as fields
@@ -924,10 +931,120 @@ class Loop:
                 "plan_digest": plan.plan_digest,
                 "declaration_digest": identity.declaration_digest,
                 "args_hash": identity.args_hash,
-                "selection": [],
+                "selection": [
+                    {"choice": _path_text(choice), "selected": _path_text(alternative)}
+                    for choice, alternative in selected
+                ],
                 "observations_digest": identity.observations_digest,
             },
         )
+
+    # ------------------------------------------------------------------ B1-O4 selection
+
+    def _select(
+        self, plan: svc.PlanAccepted, tree: DeclaredTree
+    ) -> tuple[tuple[tuple[NodePath, NodePath], ...], tuple[Mapping[str, JsonValue], ...]]:
+        """The selection phase (V-7.2, B1-O4), run before the plan identity and so before the
+        first ticket anywhere in the root: for every CHOICE in the walked scope, in plan order,
+        observe each eligible alternative through read facets only (`plan.eligible` already holds
+        the `select_arg`-restricted set, in declared order), select the first whose provenance is
+        not ABSENT, else the declared `fallback` if it is eligible, else the first eligible one.
+        Selection stays within the declared space: it names a path the plan already holds. A
+        CHOICE inside an alternative the selection left out is not selected (it is outside
+        `V_run`, V-4.8). Returns the selection vector and the observations it used."""
+        chosen: dict[str, str] = {}
+        observed: list[Mapping[str, JsonValue]] = []
+        for vertex in plan.vertices:
+            if vertex.compose != "choice" or _left_out(vertex.path, chosen):
+                continue
+            eligible = plan.eligible[vertex.path]
+            node = tree.nodes[vertex.path]["choice"]
+            picked: str | None = None
+            for alternative in eligible:
+                provenance = self._observe_alternative(plan, alternative)
+                observed.append(
+                    {
+                        "choice": vertex.path,
+                        "alternative": alternative,
+                        "provenance": provenance.value,
+                    }
+                )
+                if picked is None and provenance is not Provenance.ABSENT:
+                    picked = alternative
+            if picked is None:
+                fallback = next(
+                    (a["path"] for a in node["alternatives"] if a["unit"] == node["fallback"]),
+                    None,
+                )
+                picked = fallback if fallback in eligible else eligible[0]
+            chosen[vertex.path] = picked
+        selected = tuple((plan_path(c), plan_path(a)) for c, a in chosen.items())
+        return selected, tuple(observed)
+
+    def _observe_alternative(self, plan: svc.PlanAccepted, alternative: str) -> Provenance:
+        """Observe one eligible alternative, read-only, and return the provenance the join gives
+        an observation and no record (V-3.2: FOUND when the instance is present, else ABSENT). An
+        alternative that is a composite, or whose `observe` raises or returns a malformed
+        observation, counts as absent (its own walk reports a raise if it is selected)."""
+        vertex = next(v for v in plan.vertices if v.path == alternative)
+        unit: Any = self.entry.units[vertex.unit]
+        declaration = _leaf_declaration_or_none(self.entry, vertex.unit)
+        if declaration is None:
+            return Provenance.ABSENT
+        path = plan_path(alternative)
+        lineage = self.services.lineage(path)
+        facets = FacetContext(
+            lane=self.lane,
+            lineage=lineage,
+            declaration=declaration,
+            ports=self.ports,
+            cancellation=self.services.cancellation(),
+            goal=lambda: self.goal,
+            flip_goal=self.flip_goal,
+            hold=lambda step: None,
+            now=self.now,
+        )
+        try:
+            observation = unit.observe({}, ReadBinder(facets), _CallContext(lineage, self.services))
+        except Exception as exc:  # noqa: BLE001 (plugin code: the alternative is not observable)
+            self._selection_fact(alternative, None, f"observe raised {type(exc).__name__}")
+            return Provenance.ABSENT
+        problem = _observation_problem(observation, declaration)
+        if problem is not None:
+            self._selection_fact(alternative, None, problem)
+            return Provenance.ABSENT
+        assert isinstance(observation, Observation)
+        self._selection_fact(alternative, observation, None)
+        terms = NodeTerms(
+            flags=declaration.flags,
+            retryable=declaration.retryable,
+            remedies=declaration.remedies,
+            wait=declaration.wait,
+            budget=declaration.budget,
+            max_attempts=declaration.max_attempts,
+            slice_end=self.services.slice_end(path),
+            path=path,
+            currency_margin=self.currency_margin,
+        )
+        verdict = join(terms, observation, NodeRecordView(), self.host_scope, self.services.clock())
+        return verdict.provenance
+
+    def _selection_fact(
+        self, alternative: str, observation: Observation | None, problem: str | None
+    ) -> None:
+        """`step.observed` for an alternative the selection phase observed (WR-EVID-3): the same
+        fields as a leaf's observation, marked `phase: selection`."""
+        fields: dict[str, JsonValue] = {
+            "path": alternative or "(root)",
+            "phase": "selection",
+            "present": False if observation is None else observation.present,
+            "selector_present": False if observation is None else observation.selector_present,
+            "identity_proven": False if observation is None else observation.identity_proven,
+            "code": None if observation is None else observation.code,
+        }
+        if problem is not None:
+            fields["problem"] = problem
+        self.services.evidence().event(STEP_OBSERVED, fields)
 
     def _end_root_stop(self, stop: Stop) -> None:
         human_action: str | None = None
@@ -1006,14 +1123,20 @@ class TreeWalk:
     descendant), and only then does the release pass run, in descending release rank (V-4.4).
     `decide` stays the only per-node branch: a composite is scheduling, never a command."""
 
-    def __init__(self, loop: Loop, tree: DeclaredTree) -> None:
+    def __init__(
+        self, loop: Loop, tree: DeclaredTree, selection: Mapping[NodePath, NodePath] | None = None
+    ) -> None:
         self._loop = loop
         plan = loop.services.admitted().accepted
-        self._order = [v.path for v in plan.vertices]
-        self._vertex = {v.path: v for v in plan.vertices}
+        chosen = {_path_key(c): _path_key(a) for c, a in (selection or {}).items()}
+        # V_run (V-4.8): the alternatives the selection did not name, and what lies under them,
+        # are not walked; a CHOICE with no recorded selection cannot be walked.
+        walked = [v for v in plan.vertices if not _left_out(v.path, chosen)]
+        if any(v.compose == "choice" and v.path not in chosen for v in walked):
+            raise TreeBandError("a CHOICE vertex reached the walk with no selected alternative")
+        self._order = [v.path for v in walked]
+        self._vertex = {v.path: v for v in walked}
         self._rank = plan.release_rank
-        if any(v.compose == "choice" for v in plan.vertices):
-            raise TreeBandError("select: choice vertices are L.TR-5.1's")
         self._leaves = [p for p in self._order if self._vertex[p].compose == "leaf"]
         self._under: dict[str, frozenset[str]] = {}
         for path in reversed(self._order):
@@ -1042,7 +1165,8 @@ class TreeWalk:
             else:
                 below: set[str] = set()
                 for child in vertex.children:
-                    below |= self._under_of(child)
+                    if child in self._vertex:  # a CHOICE's unselected alternatives are not walked
+                        below |= self._under_of(child)
                 self._under[path] = frozenset(below)
         return self._under[path]
 
@@ -1057,6 +1181,8 @@ class TreeWalk:
                     params[path] = compiler.resolve_params(
                         child["binding"].get("params", {}), self._loop.intent
                     )
+            for alternative in node.get("choice", {}).get("alternatives", ()):
+                params.setdefault(alternative["path"], {})  # an alternative carries no binding
         return params
 
     @staticmethod
@@ -1253,6 +1379,29 @@ def _leaf_declaration(entry: WorkflowEntry, unit: str) -> LeafDeclaration:
     declared = resolve_unit(entry, unit)
     assert isinstance(declared, LeafDeclaration)
     return declared
+
+
+def _leaf_declaration_or_none(entry: WorkflowEntry, unit: str) -> LeafDeclaration | None:
+    declared = resolve_unit(entry, unit)
+    return declared if isinstance(declared, LeafDeclaration) else None
+
+
+def _path_key(path: NodePath) -> str:
+    """A `NodePath` as the plan's canonical path text (`""` the root)."""
+    return "/".join(path.segments)
+
+
+def _left_out(path: str, chosen: Mapping[str, str]) -> bool:
+    """`path` is outside `V_run` (V-4.8): it is, or lies under, an alternative its CHOICE's
+    selection did not name. `chosen` maps each selected CHOICE's canonical path to the selected
+    alternative's; an alternative's path is its CHOICE's path plus its own segment."""
+    parts = path.split("/") if path else []
+    for depth in range(1, len(parts) + 1):
+        alternative = "/".join(parts[:depth])
+        selected = chosen.get("/".join(parts[: depth - 1]))
+        if selected is not None and selected != alternative:
+            return True
+    return False
 
 
 def run_tree(
