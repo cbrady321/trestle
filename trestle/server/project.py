@@ -13,6 +13,7 @@ from typing import Any
 
 from trestle.common import clock, codes
 from trestle.common.outcome import classify
+from trestle.common.plan.compiler import REFUSAL_TEXT_MAX
 from trestle.common.types import (
     CatalogView,
     CleanupView,
@@ -26,6 +27,7 @@ from trestle.common.types import (
 )
 from trestle.query.fs import FilesystemQueryBackend
 from trestle.server import answer as answer_mod
+from trestle.server import fold
 from trestle.server.ledger import (
     TERMINAL_KINDS,
     RunLedger,
@@ -47,21 +49,40 @@ from trestle.server.snapshots import load_declared
 DEFAULT_SUMMARY_BUDGET = 4096
 
 
+@dataclass(frozen=True)
+class _Child:
+    """A child handle resolved against its root (V-1.1)."""
+
+    root_id: Handle
+    ledger: RunLedger
+    run_dir: Path
+    spec: dict[str, object]
+    path: tuple[str, ...]
+
+
 @dataclass
 class Project:
     home: Path
     registry: Registry
     run_registry: RunRegistry
-    # The restricted profile scopes `cancel` to the MCP session that started the run (WR-AUTH-1).
+    # The restricted profile scopes `cancel`, and the read of a child view (L.TR-2.4), to the MCP
+    # session that started the run (WR-AUTH-1).
     session_scoped_cancel: bool = False
     # Status polls run on worker threads (L.CS-4.2), so two of them can overlap: a projection
     # rewrites the run's summary.json through one fixed temporary name, one writer at a time.
     _status_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
-    def status(self, run_id: Handle) -> RunView | RequestOutcome:
+    def status(self, run_id: Handle, caller_session: str | None = None) -> RunView | RequestOutcome:
+        """The run view of `run_id`: a root run, or a child handle (L.TR-2.2). Under the restricted
+        profile a child view is read only by the session that admitted its root (WR-AUTH-1,
+        L.TR-2.4); a root view is unscoped, as it has been. A call outside an MCP session
+        (`caller_session` None: the operator's CLI or console) is not scoped."""
         with self._status_lock:
             ledger = self._ledger_for(run_id)
             if ledger is None:
+                child = self._child_view(run_id, caller_session)
+                if child is not None:
+                    return child
                 return RequestOutcome(
                     code=codes.INVALID_HANDLE,
                     message=f"unknown run: {run_id}",
@@ -70,10 +91,12 @@ class Project:
                 )
             return self._run_view(ledger, run_id)
 
-    def await_one(self, run_id: Handle, wait_ms: int) -> RunView | RequestOutcome:
+    def await_one(
+        self, run_id: Handle, wait_ms: int, caller_session: str | None = None
+    ) -> RunView | RequestOutcome:
         deadline = time.monotonic() + (wait_ms / 1000.0)
         while True:
-            view = self.status(run_id)
+            view = self.status(run_id, caller_session)
             if isinstance(view, RequestOutcome):
                 return view
             if view.state not in {"queued", "running"}:
@@ -82,10 +105,12 @@ class Project:
                 return view
             time.sleep(0.05)
 
-    async def await_one_async(self, run_id: Handle, wait_ms: int) -> RunView | RequestOutcome:
+    async def await_one_async(
+        self, run_id: Handle, wait_ms: int, caller_session: str | None = None
+    ) -> RunView | RequestOutcome:
         deadline = time.monotonic() + (wait_ms / 1000.0)
         while True:
-            view = await asyncio.to_thread(self.status, run_id)
+            view = await asyncio.to_thread(self.status, run_id, caller_session)
             if isinstance(view, RequestOutcome):
                 return view
             if view.state not in {"queued", "running"}:
@@ -94,24 +119,28 @@ class Project:
                 return view
             await asyncio.sleep(0.05)
 
-    def await_terminal(self, run_id: Handle) -> RunView | RequestOutcome:
+    def await_terminal(
+        self, run_id: Handle, caller_session: str | None = None
+    ) -> RunView | RequestOutcome:
         """`completion="terminal"`: answer only from the finalized terminal row (the run view's
         state is terminal exactly when `evidence_finalized` and a terminal kind are both in the
         ledger), never a running frame. The wait is bounded by the run's admitted deadline plus
         `clock.finalization_margin`; past it the answer is `projection.terminal_wait_exceeded`."""
         limit = time.monotonic() + self._terminal_bound_s(run_id)
         while True:
-            view = self.status(run_id)
+            view = self.status(run_id, caller_session)
             if isinstance(view, RequestOutcome) or view.state not in _NON_TERMINAL_STATES:
                 return view
             if time.monotonic() >= limit:
                 return _terminal_wait_exceeded(run_id)
             time.sleep(clock.poll_interval)
 
-    async def await_terminal_async(self, run_id: Handle) -> RunView | RequestOutcome:
+    async def await_terminal_async(
+        self, run_id: Handle, caller_session: str | None = None
+    ) -> RunView | RequestOutcome:
         limit = time.monotonic() + await asyncio.to_thread(self._terminal_bound_s, run_id)
         while True:
-            view = await asyncio.to_thread(self.status, run_id)
+            view = await asyncio.to_thread(self.status, run_id, caller_session)
             if isinstance(view, RequestOutcome) or view.state not in _NON_TERMINAL_STATES:
                 return view
             if time.monotonic() >= limit:
@@ -153,10 +182,13 @@ class Project:
         run_ids: list[Handle],
         mode: JoinMode,
         timeout_ms: int,
+        caller_session: str | None = None,
     ) -> list[RunView] | RequestOutcome:
         deadline = time.monotonic() + (timeout_ms / 1000.0)
         while True:
-            views, outcome = await asyncio.to_thread(self._collect_run_views, run_ids)
+            views, outcome = await asyncio.to_thread(
+                self._collect_run_views, run_ids, caller_session
+            )
             if outcome is not None:
                 return outcome
             assert views is not None
@@ -171,10 +203,11 @@ class Project:
         run_ids: list[Handle],
         mode: JoinMode,
         timeout_ms: int,
+        caller_session: str | None = None,
     ) -> list[RunView] | RequestOutcome:
         deadline = time.monotonic() + (timeout_ms / 1000.0)
         while True:
-            views, outcome = self._collect_run_views(run_ids)
+            views, outcome = self._collect_run_views(run_ids, caller_session)
             if outcome is not None:
                 return outcome
             assert views is not None
@@ -187,10 +220,11 @@ class Project:
     def _collect_run_views(
         self,
         run_ids: list[Handle],
+        caller_session: str | None = None,
     ) -> tuple[list[RunView] | None, RequestOutcome | None]:
         views: list[RunView] = []
         for run_id in run_ids:
-            view = self.status(run_id)
+            view = self.status(run_id, caller_session)
             if isinstance(view, RequestOutcome):
                 return None, view
             views.append(view)
@@ -199,6 +233,9 @@ class Project:
     def cancel(self, run_id: Handle, caller_session: str | None = None) -> RequestOutcome:
         ledger = self._ledger_for(run_id)
         if ledger is None:
+            refused = self._cancel_child(run_id, caller_session)
+            if refused is not None:
+                return refused
             return RequestOutcome(
                 code=codes.INVALID_HANDLE,
                 message=f"unknown run: {run_id}",
@@ -242,6 +279,29 @@ class Project:
         return RequestOutcome(
             code=codes.CANCEL_ACCEPTED,
             message=f"cancel accepted for {run_id}",
+            retryable=False,
+            origin="projection",
+        )
+
+    def _cancel_child(self, handle: Handle, caller_session: str | None) -> RequestOutcome | None:
+        """A cancel addressed to a child handle (B2-C12, OQ-27 assumed default): after today's
+        checks (an unknown handle stays `projection.invalid_handle`, a foreign session
+        `projection.not_owner`, a root that cannot be cancelled `projection.invalid_handle`), the
+        refusal `projection.cancel_not_root` naming the root. Nothing is written: no cancel flag,
+        no ledger row, and the root runs on. None when `handle` is not a child handle."""
+        child = self._resolve_child(handle, caller_session)
+        if child is None or isinstance(child, RequestOutcome):
+            return child
+        if child.ledger.projected_state() not in {"queued", "running"}:
+            return RequestOutcome(
+                code=codes.INVALID_HANDLE,
+                message=f"run not cancellable: {child.root_id} ({child.ledger.projected_state()})",
+                retryable=False,
+                origin="projection",
+            )
+        return RequestOutcome(
+            code=codes.CANCEL_NOT_ROOT,
+            message=f"cancel is addressed to the root run: {child.root_id}"[:REFUSAL_TEXT_MAX],
             retryable=False,
             origin="projection",
         )
@@ -335,6 +395,73 @@ class Project:
             if ledger_path(run_dir).exists():
                 return run_dir
         return None
+
+    def _resolve_child(
+        self, handle: Handle, caller_session: str | None
+    ) -> _Child | RequestOutcome | None:
+        """`handle` as a child of an admitted root (V-1.1), or None when it is not one: a root that
+        does not exist, one whose plan has no such vertex, or a handle that does not derive from
+        (root run id, path) all read as unknown. Under the restricted profile only the session that
+        received the root resolves its children (WR-AUTH-1, L.TR-2.4), as only it may cancel it;
+        that is checked before the handle is resolved, so another session learns nothing of the
+        root's vertices."""
+        root_id = answer_mod.root_run_id_of(handle)
+        if root_id is None:
+            return None
+        ledger = self._ledger_for(root_id)
+        run_dir = self._run_dir_for(root_id)
+        if ledger is None or run_dir is None:
+            return None
+        if self.session_scoped_cancel and caller_session is not None:
+            created = ledger.last_kind("created")
+            if created is None or created.get("caller_session") != caller_session:
+                return RequestOutcome(
+                    code=codes.NOT_OWNER,
+                    message=f"run not received in this session: {root_id}",
+                    retryable=False,
+                    origin="projection",
+                )
+        spec = _read_spec(evidence_dir(run_dir)) or {}
+        try:
+            plan = fold.plan_of_spec(spec)
+        except ValueError:
+            return None
+        path = answer_mod.child_paths(root_id, plan).get(handle)
+        if path is None:
+            return None
+        return _Child(root_id, ledger, run_dir, spec, path)
+
+    def _child_view(
+        self, handle: Handle, caller_session: str | None = None
+    ) -> RunView | RequestOutcome | None:
+        """The view of a child handle (V-1.1, V-1.3; MC-B3-08), or None when `handle` is not one.
+        `state` is the root's run state, so a child is non-terminal while its root is live; once the
+        root is finalized the vertex's B4-C8 account is the materialized one (finalization and
+        recovery wrote it), or, for a run finalized before it existed, recomputed from the same
+        durable inputs."""
+        child = self._resolve_child(handle, caller_session)
+        if child is None or isinstance(child, RequestOutcome):
+            return child
+        root_id, ledger, run_dir, spec, path = (
+            child.root_id,
+            child.ledger,
+            child.run_dir,
+            child.spec,
+            child.path,
+        )
+        state = ledger.projected_state()
+        view = RunView(run_id=handle, state=state, root_run_id=root_id, path="/".join(path))
+        if state in _NON_TERMINAL_STATES:
+            return view
+        key = "/".join(path)
+        wire = (answer_mod.read_child_views(run_dir) or {}).get(key)
+        if wire is None:
+            account = answer_mod.child_accounts(run_dir, spec).get(path)
+            wire = answer_mod.node_wire(account) if account is not None else None
+        view.answer = wire
+        listing = wire.get("listing") if wire is not None else None
+        view.disposition = listing if listing in _DISPOSITIONS else None
+        return view
 
     def _run_view(self, ledger: RunLedger, run_id: Handle) -> RunView:
         state = ledger.projected_state()
@@ -563,6 +690,10 @@ def _cleanup_view(ledger: RunLedger, state: str) -> CleanupView | None:
 
 _NON_TERMINAL_STATES = frozenset({"queued", "running"})
 _FAILURE_TERMINAL_STATES = TERMINAL_KINDS - frozenset({"succeeded"})
+
+
+# B4 `Listing` values a child view reports as its `disposition` (MC-B3-08)
+_DISPOSITIONS = frozenset({"not_started", "stopped", "unended"})
 
 
 def _is_non_terminal(state: str) -> bool:

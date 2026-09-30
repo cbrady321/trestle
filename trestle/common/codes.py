@@ -18,6 +18,8 @@ ADMISSION_ENVIRONMENT_BUSY = "admission.environment_busy"
 NOT_IMPLEMENTED = "projection.not_implemented"
 INVALID_HANDLE = "projection.invalid_handle"
 NOT_OWNER = "projection.not_owner"
+# L.TR-2.5 (MC-06, V-11; OQ-27 assumed default): cancel is addressed to the root, never a child.
+CANCEL_NOT_ROOT = "projection.cancel_not_root"
 OUTSIDE_WINDOW = "projection.outside_window"
 CANCEL_ACCEPTED = "projection.cancel_accepted"
 PIN_ACCEPTED = "projection.pin_accepted"
