@@ -114,8 +114,9 @@ def test_declared_tree_digest_covers_descendants(tmp_path: Path) -> None:
     assert first_tree.digest != second_tree.digest
     assert first.snapshot_id != second.snapshot_id
     assert first.manifest_sha256 != second.manifest_sha256
-    # a descendant declaration is covered wherever it sits, not only at depth 2
-    deeper = base.replace('"web": leaf("web"),', '"web": leaf("web", pre=("db_ready",)),')
+    # a descendant declaration is covered wherever it sits, not only at depth 2 (the precondition
+    # is one `data`'s children establish, which `web` needs: publication refuses an uncovered one)
+    deeper = base.replace('"web": leaf("web"),', '"web": leaf("web", pre=("ready",)),')
     _, deeper_tree = _publish(deeper, tmp_path, home="home-3")
     assert deeper_tree.digest not in {first_tree.digest, second_tree.digest}
 
