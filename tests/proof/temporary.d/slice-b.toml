@@ -45,7 +45,7 @@ id                = "TM-B4-3"
 mechanism         = "CATALOG_V0 hard-coded one-service catalog"
 introduced_by     = "L.RB-0.2"
 serves            = ["B2.2", "WR-AUTH-3:unknown-id-zero-effects"]
-probe             = "grep -rq CATALOG_V0 packages/trestle-env"
+probe             = "grep -rq --include=*.py CATALOG_V0 packages/trestle-env"
 removal_condition = "catalog wired (MC-B-09)"
 removed_by        = "L.RB-1.1"
 permanent         = false
