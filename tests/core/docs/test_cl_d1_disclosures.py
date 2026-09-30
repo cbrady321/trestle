@@ -43,11 +43,13 @@ CONTAINMENT_VERB = re.compile(
     r"|end|ends|clean|cleans|signal|signals)\b",
     re.I,
 )
-QUALIFIER = re.compile(
-    r"\b(?:attribut\w*|recorded|except|unless|outside|not|never|cannot|only|"
-    r"double-fork\w*|snapshot\w*)\b",
-    re.I,
-)
+# A universal quantifier over processes is only acceptable when the same sentence scopes it to what
+# Trestle can see. Negations and "only" do not scope it: the F-1 sentence ("every process the run
+# started is gone, or the answer says it could not be confirmed ... only when ... never ...")
+# carried them and still promised more than the code does.
+QUALIFIER = re.compile(r"\b(?:attribut\w*|recorded)\b", re.I)
+# Sentences about reachability (a port) or about signalling nothing are not claims of containment.
+NON_CLAIM = re.compile(r"\b(?:connect|reach|port|no signal|never signals?)\b", re.I)
 
 
 def _flat(text: str) -> str:
@@ -65,12 +67,17 @@ def missing_boundaries(texts: list[str]) -> list[str]:
 
 
 def universal_claims(text: str) -> list[str]:
-    """Sentences claiming containment of every/all processes with no qualifying condition."""
+    """Sentences with a universal quantifier over processes and a containment verb, unless the
+    sentence scopes the quantifier by 'attributable' or 'recorded'."""
     found = []
     for sentence in re.split(r"(?<=[.!?])\s+|\n\s*\n", _flat_keep_breaks(text)):
-        if CLAIM.search(sentence) and CONTAINMENT_VERB.search(sentence):
-            if not QUALIFIER.search(sentence):
-                found.append(sentence.strip())
+        if (
+            CLAIM.search(sentence)
+            and CONTAINMENT_VERB.search(sentence)
+            and not NON_CLAIM.search(sentence)
+            and not QUALIFIER.search(sentence)
+        ):
+            found.append(sentence.strip())
     return found
 
 
@@ -125,6 +132,20 @@ def test_containment_boundary_disclosed_and_no_universal_claim() -> None:
     assert universal_claims("Trestle stops all processes it launched.") != []
     assert universal_claims("Trestle stops every process attributable to the run.") == []
     assert universal_claims("Any process on this machine can reach the port.") == []
+    # the RV-1 F-1 sentence: negations and `only` later in the sentence must not excuse it
+    old_f1 = (
+        "By the terminal row every process the run started is gone, or the answer says it could "
+        "not be confirmed: `cleanup.processes` is `released` only when the supervisor confirmed "
+        "the group gone, otherwise `unknown` (never a clean claim without confirmation)."
+    )
+    assert universal_claims(old_f1) != []
+    assert (
+        universal_claims(
+            "By the terminal row every process attributable to the run is gone, or the answer "
+            "says it could not be confirmed."
+        )
+        == []
+    )
 
 
 @pytest.mark.proves("WR-PROOF-10", "WR-PROOF-10:K-19", "core", "core", "INSPECT", "CI")

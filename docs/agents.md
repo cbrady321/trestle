@@ -226,7 +226,7 @@ abnormally is `worker_exit`; a run whose server died is `interrupted`.
 **One class per finished run.** A finished `RunView` carries `outcome: {class, code, identity, recovered}`. `class` is one of `passed`, `cancelled`, `timed_out`, `execution_error` (a plain plugin reaches these four; `failed` and `blocked` are reserved for workflow results). `code` is the `execution.*` code for an `execution_error` and `null` for the others; `state` keeps its meaning underneath.
 
 <!-- K-8 -->
-### A succeeded run leaves no process behind (K-8)
+### A succeeded run leaves no attributable process behind (K-8)
 
 When a run ends, Trestle stops the processes it can attribute to the run (its recorded descendants, see the containment boundaries in `docs/security.md`), and that includes a run that **succeeded**: a plugin that returns normally while a child, or a grandchild in its own session, is still running has that process stopped (SIGTERM first, SIGKILL after the grace period) before the run's evidence is finalized. Nothing the run started writes into `evidence/` or changes `result.json` after the terminal answer. The run's class and summary are unchanged (a succeeded run stays `succeeded`), and `cleanup.processes` reads `released` once the stop is confirmed, `unknown` when it could not be.
 
@@ -241,8 +241,8 @@ This is a knowing change (K-8): before it, a process a plugin forgot outlived a 
 A plugin's snapshot id (`snap_` plus 16 hex digits) no longer hashes `plugin.py` alone. It covers the
 source, the digests of the packages the plugin declares (`@trestle(packages=[...])`), the input and
 return schemas, the declared metadata (deadline, summary fields, packages, env arg, secrets and the
-summary budget) and the Trestle runtime version. Two publications with equal ids ran equal code
-and declarations; an edit to a declared package or a declared value gives a new id. Anyone who
+summary budget) and the Trestle runtime version. Two publications with equal ids share source, declared-package digests, schemas and
+declarations (not undeclared imports, non-`.py` package content or the environment); an edit to a declared package or a declared value gives a new id. Anyone who
 compared snapshot ids to detect a change in `plugin.py` bytes should compare `source_sha256`, which
 is still the hash of that file. A schema file is never rewritten under an existing id. A run keeps
 the id it was admitted under, and stops with `execution.provenance_mismatch` if a declared package
@@ -274,10 +274,13 @@ the cancel or the deadline; if both hold at the first look, cancel.
 | `poll_interval` (0.05 s) | fixed | how often the supervisor looks for a cancel |
 
 A cancel is seen within one `poll_interval`, so a stop completes within `stop_bound` plus
-`poll_interval` of the request. By the terminal row every process the run started is gone, or the
-answer says it could not be confirmed: `cleanup.processes` on the run frame is `released` only
-when the supervisor confirmed the group gone, otherwise `unknown` (never a clean claim without
-confirmation, and never `nothing_created` for a run that spawned a process). The evidence and the
+`poll_interval` of the request. By the terminal row every process attributable to the run (the recorded
+leader, its recorded group, and the descendants observed by parent id, each with an identity row)
+is gone, or the answer says it could not be confirmed: `cleanup.processes` on the run frame is
+`released` only when the supervisor confirmed those processes gone, otherwise `unknown` (never a
+clean claim without confirmation, and never `nothing_created` for a run that spawned a process). A
+descendant that double-forked out of attribution is not counted: the answer can read `released`
+while it lives (see [What stopping a run does not cover](security.md#what-stopping-a-run-does-not-cover)). The evidence and the
 result are written only after that confirmation, so nothing changes them after the terminal row on
 a stop path.
 
