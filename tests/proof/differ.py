@@ -46,7 +46,6 @@ UNBUILT_MODES = {
     "d3": "L.CS-2.4",
     "d6": "L.TR-6.1",
     "d7": "L.TR-4.7",
-    "d8": "L.SL-3.3",
 }
 
 
@@ -516,6 +515,9 @@ def build_parser() -> argparse.ArgumentParser:
     d5 = sub.add_parser("d5")
     d5.add_argument("--fossils", default=None)
 
+    d8 = sub.add_parser("d8")
+    d8.add_argument("--pair", default=None)
+
     for mode in UNBUILT_MODES:
         sub.add_parser(mode)
 
@@ -537,6 +539,10 @@ def main(argv: list[str] | None = None) -> int:
         from tests.proof.differ_modes import d5_one_key
 
         return d5_one_key.main(args)
+    if args.mode == "d8":
+        from tests.proof.differ_modes import d8_fake_real
+
+        return d8_fake_real.main(args)
     if args.mode in UNBUILT_MODES:
         print(f"differ {args.mode}: not built in P0; builder is {UNBUILT_MODES[args.mode]}")
         return 2
