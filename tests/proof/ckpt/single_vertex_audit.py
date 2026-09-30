@@ -37,11 +37,6 @@ from typing import Any
 
 import pytest
 
-# `meta ckpt <name>` is run by the CI `ckpt` job for every module in tests/proof/ckpt: this one
-# is a plugin, not a checkpoint, and names a trigger no commit carries, so that run is a no-op.
-TRIGGER_MERGE = "not-a-checkpoint"
-TAG = None
-
 AUDIT_ENV = "TRESTLE_ADMISSION_AUDIT"
 SPINE_FIXTURE = "spine_leaf"
 SPINE_PREFIX = "tests/proof/spine/"

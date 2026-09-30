@@ -31,11 +31,6 @@ from tests.proof.suites.workflows import SLICE_A_WORKFLOWS
 from trestle.common import clock, codes
 from trestle.server.idempotency import IdempotencyStore
 
-# `meta ckpt <name>` is run by the CI `ckpt` job for every module in tests/proof/ckpt: this one
-# holds test nodes, not conditions, and names a trigger no commit carries, so that run is a no-op.
-TRIGGER_MERGE = "not-a-checkpoint"
-TAG = None
-
 ROOT = Path(__file__).resolve().parents[3]
 FIXTURES = ROOT / "tests" / "fixtures" / "workflows"
 COMPOSITE_FIXTURES = ("probe_all_root", "probe_choice_root")
