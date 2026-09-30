@@ -123,3 +123,60 @@ tier = "must"
 venue = "CI"
 posture = "claim"
 declared_by = "L.P0-0d.26"
+
+# L.P0-0d.33: the clause labels p0-court.md names for L.P0-0a.3, L.P0-0a.4,
+# L.P0-0b.5 and L.P0-0b.6, which no fragment declared, so rows WR-PROOF-7,
+# WR-PROOF-9, WR-CON-1, WR-CON-2 and WR-CON-5 had no registered clause.
+# Each is registered by the P0 nodes that exercise it (their leaf verifiers).
+# `WR-PROOF-7:interpreter-per-result` is not declared: no node asserts that
+# the plugin stamps each record's interpreter.
+
+[[label]]
+id = "WR-PROOF-7:3.14-only-not-proven"
+row = "WR-PROOF-7"
+step = "core"
+slice = "core"
+tier = "LOGIC"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0d.33"
+
+[[label]]
+id = "WR-PROOF-9:tolerances-declared"
+row = "WR-PROOF-9"
+step = "core"
+slice = "core"
+tier = "LOGIC"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0d.33"
+
+[[label]]
+id = "WR-CON-1:no-credential-read"
+row = "WR-CON-1"
+step = "core"
+slice = "core"
+tier = "PROC"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0d.33"
+
+[[label]]
+id = "WR-CON-2:absent"
+row = "WR-CON-2"
+step = "core"
+slice = "core"
+tier = "PROC"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0d.33"
+
+[[label]]
+id = "WR-CON-5:no-model-client"
+row = "WR-CON-5"
+step = "core"
+slice = "core"
+tier = "INSPECT"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0d.33"
