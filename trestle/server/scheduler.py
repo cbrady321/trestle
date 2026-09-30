@@ -12,6 +12,7 @@ from typing import Literal
 
 from trestle.common import codes
 from trestle.common.types import AdmitResultRefused, Handle, RequestOutcome, WorkOrder
+from trestle.server import lease
 from trestle.server.config import MAX_RUNNING_RUNS_DEFAULT, QUEUE_DEPTH_DEFAULT
 
 
@@ -45,6 +46,10 @@ class Scheduler:
     # start a dispatched run / finalize a run whose deadline passed while it waited
     on_dispatch: Callable[[WorkOrder], None] | None = None
     on_expire: Callable[[WorkOrder], object] | None = None
+    # WR-OWN-8: the environment key each running run holds (capacity 1 per key, L.SL-8.2) and the
+    # holder index told when a run's lease ends
+    running_keys: dict[Handle, str] = field(default_factory=dict)
+    holders: lease.Holders | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def check_admit_capacity(self) -> AdmitResultRefused | None:
@@ -79,7 +84,9 @@ class Scheduler:
     def enqueue(self, order: WorkOrder, deadline: float, key: str | None = None) -> Enqueued:
         """Put an admitted run in the FIFO. `deadline` is its admitted deadline on the monotonic
         clock: time spent waiting counts against it, and a run still waiting when it passes is
-        finalized `timed_out` without ever being started."""
+        finalized `timed_out` without ever being started. `key` is the run's environment key
+        (WR-OWN-8): at most one running run holds a key, so a run whose key is held waits behind
+        it, first in first out among its key's waiters, while runs of other keys pass it."""
         entry = _Waiting(order=order, deadline=deadline, key=key)
         remaining = deadline - time.monotonic()
         with self._lock:
@@ -95,18 +102,30 @@ class Scheduler:
 
     def dispatch(self) -> None:
         """Start waiting runs, oldest first, while a slot is free (called on enqueue and on
-        complete). A run whose deadline has already passed is not started."""
+        complete). A run whose deadline has already passed is not started; a run whose environment
+        key a running run holds stays in its place and waits (per-key capacity 1)."""
         start: list[WorkOrder] = []
         expired: list[WorkOrder] = []
         with self._lock:
-            while self.waiting and len(self.running) < self.max_running:
-                entry = self.waiting.popleft()
-                if entry.timer is not None:
-                    entry.timer.cancel()
+            held = set(self.running_keys.values())
+            for entry in list(self.waiting):
+                if len(self.running) >= self.max_running:
+                    break
                 if entry.deadline <= time.monotonic():
+                    self.waiting.remove(entry)
+                    if entry.timer is not None:
+                        entry.timer.cancel()
                     expired.append(entry.order)
                     continue
+                if entry.key is not None and entry.key in held:
+                    continue
+                self.waiting.remove(entry)
+                if entry.timer is not None:
+                    entry.timer.cancel()
                 self.running.add(entry.order.run_id)
+                if entry.key is not None:
+                    self.running_keys[entry.order.run_id] = entry.key
+                    held.add(entry.key)
                 start.append(entry.order)
         for order in expired:
             self._finalize_expired(order)
@@ -154,4 +173,7 @@ class Scheduler:
             except ValueError:
                 pass
             self.running.discard(run_id)
+            self.running_keys.pop(run_id, None)
+        if self.holders is not None:
+            self.holders.release(run_id)  # the lease ends with the run (terminal row or crash)
         self.dispatch()

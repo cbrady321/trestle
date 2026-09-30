@@ -310,7 +310,11 @@ def _unconfirmed(run: _Run) -> tuple[UnconfirmedEffect, ...]:
 
 
 def _cleanup(
-    run: _Run, cleanup: CleanupDisposition, group: GroupLike, plan: AdmittedPlan | None
+    run: _Run,
+    cleanup: CleanupDisposition,
+    group: GroupLike,
+    plan: AdmittedPlan | None,
+    leased: bool | None = None,
 ) -> CleanupAnswer:
     """B4-C7: the handles the loop recorded released, and the sweep's dispositions, one per
     `SweepTarget` with `unknown` dominating; `clean` only as B2-C9 Post allows."""
@@ -337,7 +341,8 @@ def _cleanup(
         and (t.confirmation is None or t.confirmation.status != fold.ConfirmationStatus.NOT_APPLIED)
         for t in run.folded.entries
     )
-    leased = plan is not None and bool(plan.lease_set)
+    if leased is None:
+        leased = plan is not None and bool(plan.lease_set)
     return CleanupAnswer(
         clean=counts["unknown"] == 0 and not fold.cleanup_is_unknown(run.folded),
         released=counts["released"],
@@ -404,10 +409,13 @@ def project(
     *,
     summary_budget: int = bounds.SUMMARY_BUDGET_DEFAULT,
     terminal_kind: str | None = None,
+    leased: bool | None = None,
 ) -> TerminalAnswer:
     """B4-C1. `plan` is None only for a plan-less root (B2-C1). `summary_budget` is the run's own
     (the snapshot's `summary_budget`, CL-B1); it decides only whether `detail` is set for an
-    overflow, never what is in the decisive fields."""
+    overflow, never what is in the decisive fields. `leased` says the run held an environment
+    lease (`CleanupAnswer.lease_ended_unconfirmed`, B4-C7): by default the plan's `lease_set`
+    says so; a plain plugin that names an environment is answered plan-less yet holds one."""
     run = _Run(folded, plan)
     handle = detail_handle(folded.root)
     root_stop: RootStop | None = None
@@ -481,7 +489,7 @@ def project(
         primary=primary,
         listed=listed,
         unconfirmed=unconfirmed,
-        cleanup=_cleanup(run, cleanup, group, plan),
+        cleanup=_cleanup(run, cleanup, group, plan, leased),
         test_counts=_test_counts(run, primary),
         error=result_error if outcome is OutcomeClass.EXECUTION_ERROR else None,
         incomplete=incomplete if outcome is OutcomeClass.TIMED_OUT else None,
@@ -723,6 +731,7 @@ def answer_for_run(
         summary_budget=budget
         if isinstance(budget, int) and not isinstance(budget, bool)
         else bounds.SUMMARY_BUDGET_DEFAULT,
+        leased=admitted is not None and bool(admitted.lease_set),
     )
 
 

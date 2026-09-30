@@ -91,7 +91,11 @@ class ControlSurface:
     def _drive_background(self, order: WorkOrder) -> None:
         """Hand an admitted run to the dispatcher: it starts now if a slot is free, else it waits
         in the FIFO with its admitted deadline still running (MC-30, B2-C5)."""
-        self.scheduler.enqueue(order, self.conductor.admitted_deadline(order))
+        self.scheduler.enqueue(
+            order,
+            self.conductor.admitted_deadline(order),
+            key=self.admission.holders.key_of(order.run_id),
+        )
 
     def _start(self, order: WorkOrder) -> None:
         threading.Thread(target=self.conductor.drive, args=(order,), daemon=True).start()
