@@ -7,10 +7,35 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from trestle.common import redact
 from trestle.common.fsutil import append_ndjson, atomic_write
 from trestle.common.limits import CaptureLimits, capture_limits
+
+if TYPE_CHECKING:
+    from trestle.workflow.services import RunServices
+
+# Event kinds a plugin can never write through `Context.event` (SV-5.1): the four the runtime
+# itself records (`log`, `progress`, `artifact_available`, and `error`, which the last-error
+# projection reads) and the lane entry classes (V-4 / V-4.8), so a plugin cannot forge a lane
+# or record-shaped event. Wire spelling of the lane classes is the record format's own
+# (`lane_format`, L.SV-1.1); the names here are the entry classes, spelled as B2-C7 lists them.
+RESERVED_EVENT_KINDS: frozenset[str] = frozenset(
+    {
+        "log",
+        "progress",
+        "artifact_available",
+        "error",
+        "plan",
+        "issue",
+        "confirmation",
+        "result",
+        "released",
+        "step",
+        "node_end",
+    }
+)
 
 
 @dataclass
@@ -55,10 +80,23 @@ class RuntimeContext:
         # one marker line per (stream, limit) (WR-EVID-4): later drops of the same kind are
         # tallied here and folded into that line, so marker volume never grows with the drops
         self._tallies: dict[tuple[str, str], _Tally] = {}
+        self._run_services: RunServices | None = None
 
     @property
     def cancelled(self) -> bool:
         return (self._work / "cancel.flag").exists()
+
+    @property
+    def run_services(self) -> RunServices:
+        """B2-C14's `RunContext.run_services`: the run's services, present only for a workflow
+        run (the child binds them, `bind_run_services`). A plain plugin's context has none, and
+        reading it raises `AttributeError`, so `hasattr(ctx, "run_services")` tells."""
+        if self._run_services is None:
+            raise AttributeError("run_services: this is not a workflow run")
+        return self._run_services
+
+    def bind_run_services(self, services: RunServices) -> None:
+        self._run_services = services
 
     def log(self, message: str) -> None:
         self._emit("log", {"message": message})
@@ -68,6 +106,17 @@ class RuntimeContext:
         if fraction is not None:
             payload["fraction"] = fraction
         self._emit("progress", payload)
+
+    def event(self, kind: str, **fields: object) -> None:
+        """Record a plugin-authored event of `kind` with `fields`. It goes through the same
+        `_emit` as `log` and `progress`, so every event limit and the secret scrubber apply
+        unchanged. A reserved kind (`RESERVED_EVENT_KINDS`) or an empty or non-string one is
+        refused with ValueError before anything is written."""
+        if not isinstance(kind, str) or not kind:
+            raise ValueError("event kind must be a non-empty string")
+        if kind in RESERVED_EVENT_KINDS:
+            raise ValueError(f"event kind {kind!r} is reserved")
+        self._emit(kind, dict(fields))
 
     def artifact(self, name: str) -> Path:
         if ".." in name or name.startswith("/"):
