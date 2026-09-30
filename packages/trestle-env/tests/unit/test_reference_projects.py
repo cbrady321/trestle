@@ -18,6 +18,9 @@ def test_demo_py_pins_python_and_lists_an_allowlisted_task() -> None:
     assert [(str(p.tool), str(p.version)) for p in project.pin] == [("python", "3.12")]
     task = load_reference().task("demo-py", "version")
     assert task is not None and [str(a) for a in task.argv] == ["python", "--version"]
+    test_task = load_reference().task("demo-py", "pytest")
+    assert test_task is not None
+    assert [str(a) for a in test_task.argv] == ["python", "-m", "pytest", "-q", "./"]
 
 
 def test_demo_jvm_pins_a_jdk_and_runs_the_wrapper_main_class_not_the_script() -> None:

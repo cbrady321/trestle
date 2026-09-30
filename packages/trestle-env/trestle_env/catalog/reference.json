@@ -10,7 +10,8 @@
       "id": "demo-py",
       "pin": {"python": "3.12"},
       "tasks": [
-        {"id": "version", "argv": ["python", "--version"]}
+        {"id": "version", "argv": ["python", "--version"]},
+        {"id": "pytest", "argv": ["python", "-m", "pytest", "-q", "./"]}
       ]
     },
     {
