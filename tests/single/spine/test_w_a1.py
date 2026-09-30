@@ -26,15 +26,19 @@ import pytest
 
 from tests.core.spine import support
 from tests.proof import mcp_host, records, tolerances
+from tests.proof.suites.workflows import SLICE_A_WORKFLOWS, published_source
 from trestle.common import clock, codes
 
 pytestmark = pytest.mark.spine
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "workflows"
-# The spine gate's parametrization (TM-B2-3): exactly this tuple, read by the register probe
-# `python -m tests.proof.probes.single one-vertex-spine-fixture` by its literal value.
-SPINE_FIXTURES = ("spine_leaf",)
-FIXTURE = SPINE_FIXTURES[0]
+# The spine gate's parametrization (TM-B2-3, retired by L.TR-6.6): the one-vertex leaf and the two
+# MC-35 tree workflows. The register probe `python -m tests.proof.probes.single
+# one-vertex-spine-fixture` reads this tuple by its literal value and is `absent` once it is not
+# exactly `{spine_leaf}`. `spine_leaf` stays the depth-1 leaf case the W-A1 variants below drive.
+SPINE_FIXTURES = ("spine_leaf", "slice_a_tree", "three_level")
+FIXTURE = "spine_leaf"
+TREE_FIXTURES = tuple(name for name in SPINE_FIXTURES if name != FIXTURE)
 TREES = Path(__file__).resolve().parents[2] / "fixtures" / "trees"
 # the composite roots of the tree lift: an AllDeclaration tree (L.TR-L.1) and a ChoiceNode root
 # (L.TR-5.3) are admitted (the MC-B3-01 fixtures `two_branch_barrier`, `choice_fake`)
@@ -331,7 +335,7 @@ def test_composite_roots_are_admitted(tmp_path: Path) -> None:
 def test_plan_vertex_count_is_one(tmp_path: Path) -> None:
     """Plan-vertex count 1 for the admitted one-vertex fixture root `spine_leaf` (scoped to it since
     L.TR-L.1: the composite case above now admits a multi-vertex root in the same session, in its
-    own host; each tree fixture's vertex count is asserted against its label by L.TR-6.6)."""
+    own host; each tree fixture's vertex count is asserted against its label below)."""
     with _host(tmp_path) as host:
         answer = _terminal(host, "skip")
         # a multi-vertex root admitted in the same session must not change what is asserted here
@@ -347,3 +351,51 @@ def test_plan_vertex_count_is_one(tmp_path: Path) -> None:
         assert [v["path"] for v in vertices] == [""]
         assert vertices[0]["compose"] == "leaf" and vertices[0]["children"] == []
         assert spec["plan"]["edges"] == []
+
+
+def _label(name: str) -> dict[str, Any]:
+    """The fixture's MC-B3-01 `LABEL`, read from its module."""
+    import importlib.util
+
+    path = TREES / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"_w_a1_label_{name}", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    label: dict[str, Any] = module.LABEL
+    return label
+
+
+def test_spine_gate_is_the_registry_tree_workflows() -> None:
+    """The gate's parametrization is `spine_leaf` and the MC-35 tree workflows, all registered:
+    what the register probe reads as `one-vertex-spine-fixture` absent (L.TR-6.6)."""
+    assert SPINE_FIXTURES[0] == FIXTURE and set(TREE_FIXTURES) == {"slice_a_tree", "three_level"}
+    assert set(SPINE_FIXTURES) <= set(SLICE_A_WORKFLOWS)
+
+
+@pytest.mark.parametrize("name", TREE_FIXTURES)
+def test_plan_vertex_count_matches_fixture_label(tmp_path: Path, name: str) -> None:
+    """Each admitted tree root's plan-vertex count equals its fixture's `LABEL["vertices"]` (the
+    disposition of the one-vertex assertion once trees join the gate, A2c2-12), through the one
+    call: the published copy walks its tree, so the run ends `passed` with a `NodeEnd` at the root
+    and none for a path that is not a vertex."""
+    entry = SLICE_A_WORKFLOWS[name]
+    with mcp_host.McpHost(home=tmp_path / "host-home", timeout_s=HOST_TIMEOUT_S) as host:
+        (host.home / "plugins" / f"{name}.py").write_text(published_source(entry), encoding="utf-8")
+        answer = host.call(
+            "run",
+            {
+                "plugin": name,
+                "wait_ms": tolerances.HARNESS_WAIT_MS,
+                "completion": "terminal",
+            },
+        )
+        assert isinstance(answer, dict) and "code" not in answer, answer
+        assert answer["state"] == "succeeded" and answer["outcome"]["class"] == "passed", answer
+        run_dir = _run_dir(host, answer["run_id"])
+        spec = json.loads((run_dir / "evidence" / "spec.json").read_text(encoding="utf-8"))
+        paths = [v["path"] for v in spec["plan"]["vertices"]]
+        assert len(paths) == _label(name)["vertices"], paths
+        assert len(paths) > 1  # a tree, not the depth-1 leaf case
+        ends = [row.path for row in records.lane_rows(run_dir).rows if row.cls == "end"]
+        assert "" in ends and len(ends) == len(set(ends)) and set(ends) <= set(paths), ends

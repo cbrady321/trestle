@@ -12,10 +12,13 @@ from trestle.common import clock
 _GB = 1024**3
 
 # Run capacity (MC-30, OQ-10): `max_running_runs` runs hold a slot at once and up to `queue_depth`
-# more wait in a FIFO; a run beyond both is refused `admission.queue_full`. The two defaults are
-# provisional: OQ-10 sets them from the Slice A workload measurement (TM-C3).
-CAPACITY_DEFAULT_PROVISIONAL = True
-MAX_RUNNING_RUNS_DEFAULT = 8
+# more wait in a FIFO; a run beyond both is refused `admission.queue_full`. `max_running_runs` is
+# the measured one: the largest number of concurrent runs of the Slice A workload that ended every
+# run within its deadline, left no process behind and kept the p95 run time within the
+# measurement's degradation bound, on the recorded machine (`tests/tree/capacity_slice_a.json`,
+# `python -m tests.tree.capacity measure`, L.TR-6.8). `queue_depth` was not measured: a queued run
+# is bounded by its own deadline, not by the depth.
+MAX_RUNNING_RUNS_DEFAULT = 31
 QUEUE_DEPTH_DEFAULT = 256
 
 

@@ -17,22 +17,35 @@ from typing import Any
 import pytest
 
 from tests.proof.suites import guarantees
-from tests.proof.suites.workflows import ENTRY_KEYS, SLICE_A_WORKFLOWS, fixture_file
+from tests.proof.suites.workflows import (
+    ENTRY_KEYS,
+    SLICE_A_WORKFLOWS,
+    fixture_file,
+    is_tree,
+    published_source,
+)
 from tests.single.control import support
 from trestle.common.types import AdmitRequest, AdmitResultAdmitted
 from trestle.workflow.declarations import LeafDeclaration
 
 
 def _declared_codes(path: Path) -> tuple[str, ...]:
-    """The stable codes the fixture's declaration names, read from its `DECLARATION`."""
+    """The stable codes the fixture's declaration names, read from its `DECLARATION` (a tree
+    fixture: from every leaf of its `ENTRY`)."""
     spec = importlib.util.spec_from_file_location(f"_mc35_{path.stem}", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    decl = module.DECLARATION
-    assert isinstance(decl, LeafDeclaration)
-    remedy_codes = {r.code for r in decl.remedies}
-    return tuple(sorted(set(decl.retryable) | remedy_codes))
+    if hasattr(module, "ENTRY"):
+        units = [u.declare() for u in module.ENTRY.units.values() if hasattr(u, "observe")]
+        decls = [d for d in units if isinstance(d, LeafDeclaration)]
+    else:
+        decls = [module.DECLARATION]
+    codes: set[str] = set()
+    for decl in decls:
+        assert isinstance(decl, LeafDeclaration)
+        codes |= set(decl.retryable) | {r.code for r in decl.remedies}
+    return tuple(sorted(codes))
 
 
 def _env_arg(source: str) -> str | None:
@@ -68,6 +81,15 @@ def registry_problems(registry: dict[str, dict[str, Any]]) -> list[str]:
         if tuple(entry["declared_codes"]) != _declared_codes(path):
             problems.append(f"{name}: declared_codes differ from the declaration's")
     return problems
+
+
+def _label_vertices(entry: dict[str, Any]) -> int:
+    path = fixture_file(entry)
+    spec = importlib.util.spec_from_file_location(f"_mc35_label_{path.stem}", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return int(module.LABEL["vertices"])
 
 
 def test_registry_is_well_formed() -> None:
@@ -129,9 +151,10 @@ def test_planted_registry_defects_are_caught() -> None:
 
 def test_registry_entries_publish_and_admit(tmp_path: Path) -> None:
     """Every entry publishes (the registry holds a snapshot) and admits (one vertex, a run
-    directory whose spec carries the plan): the audit records each under this node."""
+    directory whose spec carries the plan; a tree entry's carries its `LABEL`'s vertex count): the
+    audit records each under this node."""
     for name, entry in SLICE_A_WORKFLOWS.items():
-        source = fixture_file(entry).read_text(encoding="utf-8")
+        source = published_source(entry)
         kernel = support.make_kernel(tmp_path / name, {name: source})
         kernel.registry.maybe_refresh()
         snap = kernel.registry.get(name)
@@ -146,7 +169,8 @@ def test_registry_entries_publish_and_admit(tmp_path: Path) -> None:
                 encoding="utf-8"
             )
         )
-        assert len(spec["plan"]["vertices"]) == 1, name
+        expected = _label_vertices(entry) if is_tree(entry) else 1
+        assert len(spec["plan"]["vertices"]) == expected, name
 
 
 # ---- the guarantee suites, parameterized over MC-35 (L.SL-11.1)
@@ -223,3 +247,25 @@ def test_planted_defects_are_caught_by_the_suite_that_owns_them() -> None:
     assert suites["no_process_left"](
         _observed_copy(survivors=("python -m trestle.child.main r_p",))
     )
+
+
+def test_lane_suite_counts_ends_per_vertex_of_a_tree() -> None:
+    """The lane suite reads the plan's vertices (L.TR-6.6): a tree run has one `NodeEnd` per
+    started vertex with the root's, a duplicate, a missing root end or a non-vertex path fails,
+    and a one-vertex plan still requires exactly one."""
+    from tests.proof import records
+
+    def lane(*ends: str) -> records.LaneRows:
+        entries = [{"class": "plan"}] + [{"class": "end", "path": path} for path in ends]
+        rows = [records.LaneRow(i * 10, i * 10 + 9, e) for i, e in enumerate(entries)]
+        return records.LaneRows(rows=rows)
+
+    check = guarantees.GUARANTEE_SUITES["lane_record_facts"]
+    tree = ("", "a", "b")
+    assert check(_observed_copy(lane=lane("a", "b", ""), vertices=tree)) == []
+    assert check(_observed_copy(lane=lane("a", ""), vertices=tree)) == []  # `b` never started
+    assert check(_observed_copy(lane=lane("a", "a", ""), vertices=tree))
+    assert check(_observed_copy(lane=lane("a", "b"), vertices=tree))
+    assert check(_observed_copy(lane=lane("a", "z", ""), vertices=tree))
+    assert check(_observed_copy(lane=lane("", ""), vertices=("",)))
+    assert check(_observed_copy(lane=lane(""), vertices=("",))) == []
