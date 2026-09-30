@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "env_key": "env",
+  "services": [
+    {"id": "postgres", "selector": "postgres"}
+  ],
+  "projects": [],
+  "tests": [],
+  "overrides": []
+}
