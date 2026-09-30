@@ -389,15 +389,18 @@ def test_bind_returns_one_composite_for_the_four_resource_protocols(rig) -> None
         CommandPort(),
         definitions={"suite-entry": DEFINITION},
     )
-    assert bound.compose is None  # the compose resolver joins with L.NW-2.7
+    assert bound.compose is not None  # the compose resolver joined with L.NW-2.7
     mapping = bound.as_map()
     assert set(mapping) == {
         ports.ResourceReads,
         ports.ResourceCreate,
         ports.ResourceOwned,
         ports.ResourceSafeStart,
+        ports.ComposeResolver,
     }
-    assert len({id(impl) for impl in mapping.values()}) == 1  # one composite adapter
+    assert mapping[ports.ComposeResolver] is bound.compose
+    containers = {t: impl for t, impl in mapping.items() if t is not ports.ComposeResolver}
+    assert len({id(impl) for impl in containers.values()}) == 1  # one composite adapter
     assert bound.containers.create(SPEC, ticket()).identity == SELECTOR
     with pytest.raises(ValueError, match="absolute"):
         bind("docker", None, CommandPort())  # a bare name is never resolved through PATH

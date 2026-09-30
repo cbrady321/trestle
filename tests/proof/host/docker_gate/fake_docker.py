@@ -26,7 +26,11 @@ creates a running container (exit 125 when the image is not in `images` or the n
 (`<private>/tcp -> 0.0.0.0:<host>`, exit 1 unless running), `exec NAME CMD...` (a container's
 optional `exec_exit` is the exit status of every exec; default 0), `rm` (a running container needs
 `-f`, as in docker), and `ps` lists a running container only unless `-a` is given; `create` makes
-a stopped one and `volume create NAME` a volume. A container row may carry
+a stopped one and `volume create NAME` a volume. `compose -f FILE config --format json
+[--no-interpolate]` (L.NW-2.7) answers without an engine, as the real one does: it prints the
+JSON-syntax definition FILE as compact JSON with every `depends_on` in the mapping form `config`
+prints and nothing else per service (so a five-service definition fits the execution port's
+512-byte console excerpt); exit 1 when FILE is missing or not JSON. A container row may carry
 `ports: [{"private": 8080, "host": 32768}]`.
 
 `$FAKE_DOCKER_MODE`: unset/`normal`; `stdin-read` (read stdin to EOF and log the bytes, for the
@@ -409,6 +413,26 @@ def _cmd_start(args: list[str], state: dict) -> int:
     return 0
 
 
+def _cmd_compose(args: list[str]) -> int:
+    definition = _opt(args, "-f")
+    if "config" not in args or definition is None:
+        sys.stderr.write(f"fake_docker: unsupported: compose {' '.join(args)}\n")
+        return 2
+    try:
+        document = json.loads(Path(definition).read_text(encoding="utf-8"))
+        services = {}
+        for name, service in document["services"].items():
+            raw = service.get("depends_on", [])
+            needs = list(raw) if isinstance(raw, dict) else raw
+            entry = {d: {"condition": "service_started", "required": True} for d in sorted(needs)}
+            services[name] = {"depends_on": entry} if entry else {}
+    except (OSError, ValueError, KeyError, AttributeError, TypeError) as exc:
+        sys.stderr.write(f"fake_docker: compose config: {definition}: {exc}\n")
+        return 1
+    print(json.dumps({"services": services}, separators=(",", ":"), sort_keys=True))
+    return 0
+
+
 def _dispatch(args: list[str], state: dict) -> int:
     if not args:
         sys.stderr.write("fake_docker: no command\n")
@@ -423,6 +447,8 @@ def _dispatch(args: list[str], state: dict) -> int:
     if cmd == "--version":
         print(f"Docker version {state.get('server_version', DEFAULT_VERSION)}, fake")
         return 0
+    if cmd == "compose":  # renders a file; needs no engine
+        return _cmd_compose(rest)
     if not _reachable(state):
         return _unreachable()
     if cmd == "info":

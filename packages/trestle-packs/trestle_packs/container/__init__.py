@@ -9,8 +9,8 @@ untouched (BFD-49).
 
 `bind(docker_path, endpoint, execution)` (MC-B-01) returns the port set the loop's facet binders
 take: one composite adapter serves `ResourceReads`, `ResourceCreate`, `ResourceOwned` and
-`ResourceSafeStart` (`PortSet.as_map()`), and the compose resolver joins it when L.NW-2.7 lands
-(`PortSet.compose` is `None` until then).
+`ResourceSafeStart` (`PortSet.as_map()`), and `compose` is the `ComposeResolver` (L.NW-2.7:
+`docker compose config`, read-only).
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from trestle.workflow.declarations import CheckRef
 from trestle.workflow.ports import CatalogEntry, ExecutionPort
 from trestle.workflow.values import CancelSignal
 
+from trestle_packs.container.compose import RealComposeResolver
 from trestle_packs.container.effects import ContainerDefinition, ContainerPort
 from trestle_packs.container.engine import (
     ADAPTER_CODES,
@@ -41,10 +42,10 @@ from trestle_packs.container.reads import ContainerReads, ExecCheck
 
 @dataclass(frozen=True, slots=True)
 class PortSet:
-    """What `bind` returns: the container adapter and, from L.NW-2.7, the compose resolver."""
+    """What `bind` returns: the container adapter and the compose resolver (L.NW-2.7)."""
 
     containers: ContainerPort
-    compose: ports.ComposeResolver | None = None
+    compose: RealComposeResolver | None = None
 
     def as_map(self) -> dict[type, object]:
         """Protocol type -> the one implementation, the map `FacetContext.ports` takes."""
@@ -66,14 +67,20 @@ def bind(
     *,
     definitions: Mapping[CatalogEntry, ContainerDefinition] | None = None,
     checks: Mapping[CheckRef, ExecCheck] | None = None,
+    compose_projects: Mapping[CatalogEntry, str | os.PathLike[str]] | None = None,
     cancel: CancelSignal | None = None,
 ) -> PortSet:
     """Bind the container adapter to an absolute docker path, an endpoint (`--host`, I-4; `None`
     binds none) and the injected execution port. `definitions` maps a catalog entry to what it
-    runs, `checks` a declared check id to its `docker exec` command, `cancel` the root's signal
-    (default: never requested)."""
+    runs, `checks` a declared check id to its `docker exec` command, `compose_projects` a
+    catalog project to the absolute path of its Compose definition (a project without one is
+    refused by the resolver as an invalid definition), `cancel` the root's signal (default: never
+    requested)."""
     docker = DockerCli(docker_path, endpoint, execution, cancel)
-    return PortSet(ContainerPort(docker, definitions, checks))
+    return PortSet(
+        ContainerPort(docker, definitions, checks),
+        RealComposeResolver(docker, compose_projects or {}),
+    )
 
 
 __all__ = [
@@ -88,6 +95,7 @@ __all__ = [
     "ExecCheck",
     "PortSet",
     "Reachable",
+    "RealComposeResolver",
     "Unreachable",
     "bind",
     "engine_state",

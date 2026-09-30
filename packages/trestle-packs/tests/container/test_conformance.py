@@ -22,7 +22,8 @@ from tests.proof.host.docker_gate import fake_docker, inventory
 from tests.proof.suites.ports import core
 from trestle.workflow import ports
 from trestle.workflow.declarations import RealizationKind
-from trestle.workflow.values import StopCause
+from trestle.workflow.ports import ExecutionClass, ExecutionResult
+from trestle.workflow.values import Confirmation, ConfirmationStatus, StopCause
 
 from trestle_packs.container import ContainerDefinition, bind
 from trestle_packs.fakes.compose import FakeComposeResolver
@@ -532,15 +533,116 @@ def fake_compose(base: Path) -> core.Implementation:
     )
 
 
+class StubComposeExecution:
+    """An `ExecutionPort` that renders a compose definition as `docker compose config --format
+    json` does (`-f FILE`: the JSON-syntax fixture, every `depends_on` in mapping form, the rest of
+    each service kept), in the excerpt, WITHOUT the real port's 512-byte tail cap. It is the
+    suite's stand-in for the operator's docker, so the real resolver's parsing and refusals run
+    the unmodified family in CI; `test_compose_resolver.py` pins what the real port does to a
+    definition that outgrows the cap."""
+
+    def policy(self, command: Any) -> Any:  # never asked: the resolver only calls `run`
+        raise NotImplementedError
+
+    def run(
+        self, command: Any, ticket: Any, cancel: Any, until: Any
+    ) -> tuple[Confirmation, ExecutionResult]:
+        argv = list(command.argv)
+        assert argv[argv.index("compose") + 1 :][:1] == ["-f"], argv
+        definition = Path(argv[argv.index("-f") + 1])
+        applied = Confirmation(ConfirmationStatus.APPLIED, None, None)
+        try:
+            document = json.loads(definition.read_text(encoding="utf-8"))
+            for service in document["services"].values():
+                raw = service.get("depends_on")
+                if isinstance(raw, list):
+                    service["depends_on"] = {
+                        n: {"condition": "service_started", "required": True} for n in raw
+                    }
+            out, status = json.dumps(document, indent=2), 0
+        except (OSError, ValueError, KeyError, AttributeError) as exc:
+            out, status = f"invalid compose project: {exc}", 1
+        klass = ExecutionClass.PASSED if status == 0 else ExecutionClass.FAILED
+        return applied, ExecutionResult(status, klass, None, (), None, out)
+
+
+def real_stub_compose(base: Path) -> core.Implementation:
+    """The real resolver over `StubComposeExecution`: the same fixtures, the same extras."""
+    built = fake_compose(base)
+    projects = {name: base / f"{name}.json" for name in built.impl.projects}
+    port = bind("/usr/bin/docker", None, StubComposeExecution(), compose_projects=projects)
+    assert port.compose is not None
+    return core.Implementation(
+        port.compose, built.reach, name="real-stub", extras=built.extras, close=built.close
+    )
+
+
+def real_docker_compose(base: Path) -> core.Implementation:
+    """The real resolver over the operator's docker (`docker_host`): `docker compose config`
+    needs the CLI and its compose plugin, not an engine or any image."""
+    cli = shutil.which("docker")  # the test names the operator's path; the adapter never searches
+    assert cli is not None, "the host-docker gate runs with a docker CLI (preflight)"
+    built = fake_compose(base)
+    projects = {name: base / f"{name}.json" for name in built.impl.projects}
+    port = bind(
+        cli, os.environ.get("TRESTLE_DOCKER_ENDPOINT"), CommandPort(), compose_projects=projects
+    )
+    assert port.compose is not None
+    return core.Implementation(
+        port.compose, built.reach, name="real", extras=built.extras, close=built.close
+    )
+
+
 COMPOSE_BINDINGS = [
-    pytest.param("fake", id="fake"),
+    pytest.param(
+        "fake",
+        id="fake",
+        marks=[
+            pytest.mark.proves(
+                "WR-ENV-1",
+                "WR-ENV-1:closure-from-compose-adapter",
+                "B",
+                "B",
+                "LOGIC",
+                "CI",
+            ),
+            # L.NW-2.7: the fake twin of the real closure case
+            pytest.mark.stub_proven("WR-ENV-1:closure-from-compose-adapter@host@stub-twin"),
+        ],
+    ),
+    pytest.param("real-stub", id="real-stub"),
+    pytest.param(
+        "real",
+        id="real",
+        marks=[
+            pytest.mark.docker_host,
+            pytest.mark.proves(
+                "WR-ENV-1",
+                "WR-ENV-1:closure-from-compose-adapter@host",
+                "B",
+                "B",
+                "DOCKER",
+                "HOST",
+            ),
+        ],
+    ),
 ]
+
+
+def compose_factory(binding: str, base: Path) -> Callable[[], core.Implementation]:
+    builders: dict[str, Callable[[Path], core.Implementation]] = {
+        "fake": fake_compose,
+        "real-stub": real_stub_compose,
+        "real": real_docker_compose,
+    }
+    return lambda: builders[binding](_fresh(base))
 
 
 @pytest.mark.parametrize("binding", COMPOSE_BINDINGS)
 def test_compose_resolver_suite(binding: str, tmp_path: Path) -> None:
-    run = core.run_family(compose_cases.FAMILY, lambda: fake_compose(_fresh(tmp_path)))
+    run = core.run_family(compose_cases.FAMILY, compose_factory(binding, tmp_path))
     assert run.cases_run == tuple(c.name for c in compose_cases.CASES)
+    assert run.suite_sha256 == core.sha256_of(Path(compose_cases.__file__))
 
 
 def _fresh(base: Path) -> Path:
