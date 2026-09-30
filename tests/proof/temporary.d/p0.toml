@@ -230,7 +230,7 @@ id = "TM-P0-3"
 mechanism = "reader seam reads the ledger only"
 introduced_by = "L.P0-0b.1"
 serves = []
-probe = "true"
+probe = "python -c \"import sys, tests.proof.records as r; sys.exit(0 if r.LANE_FORMAT == 'absent' else 1)\""
 removal_condition = "lane reader lands (the seam stays)"
 removed_by = "L.SV-1.4"
 permanent = false

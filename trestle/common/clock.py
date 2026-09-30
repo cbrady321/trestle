@@ -8,6 +8,13 @@ from __future__ import annotations
 
 import os
 
+# The V-13 lane bounds A-1 publishes through this module (L.SV-1.1): defined once, in the
+# stdlib-pure `trestle.common.plan.bounds` (so `trestle.workflow` reads them without importing this
+# module); re-exported here by import, never by a second assignment, so SA-05's one-definition
+# check holds.
+from trestle.common.plan.bounds import LANE_BASE_ENTRIES as LANE_BASE_ENTRIES
+from trestle.common.plan.bounds import LANE_ENTRY_MAX as LANE_ENTRY_MAX
+
 # Append cost independent of history (WR-EVID-4, published by CS-1): over 4 000 events, the
 # last quartile's throughput divided by the first quartile's must stay at or above this
 # fraction. S0 measured 1738 -> 464 events/s (0.27) and failed; a flat append stays near 1.0.
