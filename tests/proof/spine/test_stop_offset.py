@@ -133,6 +133,19 @@ def _observations(run_dir: Path) -> int:
     return len(events.read_text(encoding="utf-8").splitlines()) if events.exists() else 0
 
 
+def _action_confirmed(run_dir: Path) -> bool:
+    """The fixture's non-release action has its APPLIED confirmation in the lane. Cancelling only
+    after this puts the cancel mid-poll, never between a ticket's stop check (B1-C6 step 3a) and
+    its confirmation (step 5); the observation count alone is reached before the action starts."""
+    releases = release_effects(run_dir)
+    return any(
+        row.cls == "confirmation"
+        and row.entry["status"] == "applied"
+        and row.entry["effect"] not in releases
+        for row in records.lane_rows(run_dir).rows
+    )
+
+
 class SignalSpy:
     """Every os.kill / os.killpg made in this process, with the calling thread's name."""
 
@@ -174,7 +187,10 @@ def run_cancelled() -> Stopped:
         conductor.start()
         with support.reaping(admitted.run_id):
             assert support.wait_until(
-                lambda: _observations(admitted.run_dir) >= 3, tolerances.JOIN_WAIT_S
+                lambda: (
+                    _action_confirmed(admitted.run_dir) and _observations(admitted.run_dir) >= 3
+                ),
+                tolerances.JOIN_WAIT_S,
             ), "the wait never polled"
             spy.calls.clear()
             admitted.kernel.control.cancel(admitted.run_id)  # the request path
