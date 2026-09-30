@@ -19,6 +19,8 @@ comes from the operator's environment, never from a request:
   Without them a request that names a catalog test blocks (nothing is installed, OQ-18) and a
   request that names none is unaffected. `TRESTLE_ENV_ENVELOPE` and `TRESTLE_ENV_DISTRIBUTIONS`
   optionally name the resolver's cache directory and the Gradle distribution store;
+* `TRESTLE_ENV_RECORD_STORE` - optional: the container name of the environment's own Postgres
+  that holds the durable provisioning record (else the run's `backend.postgres` container);
 * `TRESTLE_ENV_PORTS` - `module:callable` (or `/abs/file.py:callable`), a binding seam for proof
   harnesses: when set, the named callable is given the environment and returns the port map
   INSTEAD of this module's own binding (how a stub twin runs the same tree on a fake engine
@@ -66,6 +68,7 @@ MISE_PATH_ENV: Final = "TRESTLE_MISE_PATH"
 PROJECTS_DIR_ENV: Final = "TRESTLE_ENV_PROJECTS_DIR"
 ENVELOPE_ENV: Final = "TRESTLE_ENV_ENVELOPE"
 DISTRIBUTIONS_ENV: Final = "TRESTLE_ENV_DISTRIBUTIONS"
+RECORD_STORE_ENV: Final = "TRESTLE_ENV_RECORD_STORE"
 REFERENCE_COMPOSE_PROJECT: Final = "reference"  # the catalog project the Compose file defines
 
 HTTP_SUPPORT_PORT: Final = 80
@@ -245,11 +248,15 @@ def toolchain_ports(
 
 def provision_port(env: Mapping[str, str], execution: ports.ExecutionPort) -> ProvisionPort:
     """The provisioning adapter over the reference Postgres: every statement is an authenticated
-    `psql` inside the container of the run's `backend.postgres` node (the run-scoped selector)."""
+    `psql` inside the container of the run's `backend.postgres` node (the run-scoped selector), or,
+    when the operator names one (`TRESTLE_ENV_RECORD_STORE`, a container name), inside that
+    environment's own Postgres, which outlives any one run: the durable record (`Durable
+    (ENVIRONMENT)`) is then there for the next equivalent run to find (L.RB-6.3)."""
     lineage_of = _postgres_lineage
+    named = env.get(RECORD_STORE_ENV) or None
 
     def container(lineage: Lineage) -> str:
-        return selector_name(lineage_of(lineage))
+        return named if named is not None else selector_name(lineage_of(lineage))
 
     store = RecordStore(
         container=container,

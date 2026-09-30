@@ -22,6 +22,7 @@ The plugin reaches the machine only through the operator's environment, never th
 | `TRESTLE_DOCKER_ENDPOINT` | The engine endpoint, passed to every docker command as `--host` (the `default` context's socket may be absent; use the active context's). |
 | `TRESTLE_IMAGE_<ROLE>` | The digest-pinned image of each role (`POSTGRES`, `HTTP_SUPPORT`), as `<repo>@sha256:<hex>`. Images are named by role, never pulled. |
 | `TRESTLE_ENV_COMPOSE_FILE` | Absolute path of the Compose definition the dependency closure is derived from. |
+| `TRESTLE_ENV_RECORD_STORE` | Optional: the container name of the environment's own Postgres that holds the durable fixture record. Unset: the run's `backend.postgres` container, which goes with the run. |
 
 `python -m tests.proof.host.docker_gate run` exports the image pins and the endpoint for the proof
 gate; an operator sets them once for a real deployment.
@@ -99,7 +100,8 @@ A catalog test marked `provision` needs the environment's fixture record: a `pro
 node (after `backend.postgres`) submits it to the Postgres store exactly once and the test starts
 only after it. The submit is not safe to resubmit: a store whose read lags an accepted submit is
 polled, never written twice, and an accepted submit is not reported as the record being there. The
-record is durable; no run removes it, and a second equivalent run finds it and submits nothing.
+record is durable; no run removes it, and a second equivalent run finds it and submits nothing when
+the store outlives the run (`TRESTLE_ENV_RECORD_STORE`; the run's own container does not).
 
 A test node starts only after EVERY readiness pass: it needs both backends (`backend.http_support`
 and `backend.postgres`, which are independent of each other), so a test never runs against a service
