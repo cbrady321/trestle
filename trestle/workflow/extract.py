@@ -1,8 +1,18 @@
-"""Declaration extraction (L.SV-2.2): walk a `WorkflowEntry` and produce the `DeclaredTree`.
+"""Declaration extraction (L.SV-2.2, L.TR-0.2): walk a `WorkflowEntry` and produce the
+`DeclaredTree`.
 
 Runs in the publication throwaway validator, the only place plugin code is imported at publish
-time. A leaf root extracts to one node; a composite root is recorded with unresolved children
-(`path: null`). Resolving descendants is the tree phase's (TR-0) and changes no format.
+time, and in the child at run start (B1-O3), so both derive the same tree. A leaf root extracts to
+one node. A composite root is resolved over its descendants (MC-34, no format bump): one node per
+declaration path with exactly the leaf/all/choice field set, and every `children[].path` /
+`alternatives[].path` the path of the node it names (V-1.2: a logical node is `(unit, name)`; its
+canonical path is its first occurrence in depth-first declaration order, the names joined by `/`,
+and every other occurrence is an alias that names the same path; an alternative's name is its
+choice's, so its path is `<choice path>/<unit>` and the same unit offered by two choices is two
+nodes). A child whose unit the entry does not resolve keeps `path: null`, an unresolved name that
+admission refuses (L.TR-1.1). Two distinct logical nodes that would share one path (one composite
+binding one name to two units) get a `#<n>` suffix on the later one, so the compiler sees two
+nodes under one name and refuses it (`DECLARATION_CONFLICT`).
 """
 
 from __future__ import annotations
@@ -161,26 +171,77 @@ def declaration_node(decl: object) -> dict[str, Any]:
     raise ExtractionRefused(type(decl).__name__, "not a declaration")
 
 
-def resolve_root(entry: WorkflowEntry) -> LeafDeclaration | AllDeclaration | ChoiceNode:
-    """The root's declaration: `declare()` for a unit, the object itself for a composite."""
+def resolve_unit(entry: WorkflowEntry, name: str) -> LeafDeclaration | AllDeclaration | ChoiceNode:
+    """One unit's declaration: `declare()` for a unit, the object itself for a composite."""
     units: Mapping[str, object] = entry.units
-    if entry.root not in units:
-        raise ExtractionRefused(entry.root, "root unit is not in the entry's units")
-    unit = units[entry.root]
+    if name not in units:
+        raise ExtractionRefused(name, "unit is not in the entry's units")
+    unit = units[name]
     if isinstance(unit, (LeafDeclaration, AllDeclaration, ChoiceNode)):
         return unit
     declare = getattr(unit, "declare", None)
     if not callable(declare):
-        raise ExtractionRefused(entry.root, "root unit has no declare()")
+        raise ExtractionRefused(name, "unit has no declare()")
     try:
         declared = declare()
     except Exception as exc:  # plugin code: any failure is a refusal, never a partial tree
-        raise ExtractionRefused(
-            entry.root, f"declare() raised {type(exc).__name__}: {exc}"
-        ) from exc
+        raise ExtractionRefused(name, f"declare() raised {type(exc).__name__}: {exc}") from exc
     if not isinstance(declared, (LeafDeclaration, AllDeclaration, ChoiceNode)):
-        raise ExtractionRefused(entry.root, f"declare() returned {type(declared).__name__}")
+        raise ExtractionRefused(name, f"declare() returned {type(declared).__name__}")
     return declared
+
+
+def resolve_root(entry: WorkflowEntry) -> LeafDeclaration | AllDeclaration | ChoiceNode:
+    """The root's declaration: `declare()` for a unit, the object itself for a composite."""
+    if entry.root not in entry.units:
+        raise ExtractionRefused(entry.root, "root unit is not in the entry's units")
+    return resolve_unit(entry, entry.root)
+
+
+def resolve_descendants(
+    entry: WorkflowEntry, root: LeafDeclaration | AllDeclaration | ChoiceNode
+) -> dict[str, dict[str, Any]]:
+    """The declared tree's nodes: the root at `ROOT_PATH` and every descendant at its canonical
+    path (V-1.2), each child reference carrying the path of the node it names. Every reachable
+    unit is declared once (`declare()` runs once per logical node, however many aliases)."""
+    nodes: dict[str, dict[str, Any]] = {}
+    placed: dict[tuple[str, str, str], str] = {("node", entry.root, entry.root): ROOT_PATH}
+    taken: set[str] = {ROOT_PATH}
+
+    def assign(parent: str, name: str) -> str:
+        base = f"{parent}/{name}" if parent != ROOT_PATH else name
+        path, n = base, 2
+        while path in taken:  # a second logical node under one name: distinct, so it conflicts
+            path, n = f"{base}#{n}", n + 1
+        taken.add(path)
+        return path
+
+    def visit(path: str, decl: LeafDeclaration | AllDeclaration | ChoiceNode) -> None:
+        node = declaration_node(decl)
+        nodes[path] = node
+        if node["compose"] == "all":
+            refs = [
+                (c, c["name"], c["binding"]["unit"], ("node", c["binding"]["unit"], c["name"]))
+                for c in node["children"]
+            ]
+        elif node["compose"] == "choice":
+            refs = [
+                (a, a["unit"], a["unit"], ("alt", a["unit"], path))
+                for a in node["choice"]["alternatives"]
+            ]
+        else:
+            return
+        for ref, name, unit, key in refs:
+            if unit not in entry.units:
+                continue  # an unresolved name: `path` stays null, admission refuses it (L.TR-1.1)
+            if key not in placed:
+                child_path = assign(path, name)
+                placed[key] = child_path
+                visit(child_path, resolve_unit(entry, unit))
+            ref["path"] = placed[key]
+
+    visit(ROOT_PATH, root)
+    return nodes
 
 
 def extract_root(
@@ -199,7 +260,7 @@ def extract_root(
         extra = f" (+{len(refusals) - 1} more)" if len(refusals) > 1 else ""
         raise ExtractionRefused(entry.root, first.message + extra, code=first.code)
     try:
-        return decl, DeclaredTree.build(entry.root, {ROOT_PATH: declaration_node(decl)})
+        return decl, DeclaredTree.build(entry.root, resolve_descendants(entry, decl))
     except DeclaredTreeInvalid as exc:
         raise ExtractionRefused(entry.root, f"declaration not encodable: {exc}") from exc
 

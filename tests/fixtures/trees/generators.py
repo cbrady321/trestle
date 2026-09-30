@@ -34,7 +34,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from trestle.common.plan.declared import ROOT_PATH, DeclaredTree
+from trestle.common.plan.declared import DeclaredTree
 from trestle.workflow import (
     AllDeclaration,
     ChildBinding,
@@ -47,6 +47,7 @@ from trestle.workflow import (
     WaitPolicy,
     WorkflowEntry,
 )
+from trestle.workflow.extract import extract_declared_tree
 
 FIXTURES = Path(__file__).resolve().parent
 
@@ -202,34 +203,9 @@ def measure(entry: WorkflowEntry) -> tuple[int, int, str | None]:
 
 
 def declared_of(entry: WorkflowEntry) -> DeclaredTree:
-    """The declared tree (MC-34) of `entry` with every descendant resolved to its canonical path
-    (V-1.2: the names joined by `/`, a shared node at its first depth-first occurrence), as the
-    validator records it once L.TR-0.2 resolves descendants. A test that needs to compile a tree
-    before that (L.TR-0.6) or hands the compiler a hand-built tree uses this; an unresolvable
-    reference keeps `path = None`."""
-    from trestle.workflow.extract import declaration_node
-
-    nodes: dict[str, dict[str, Any]] = {}
-    path_of: dict[str, str] = {}
-
-    def place(name: str, unit: str, path: str) -> None:
-        path_of[name] = path
-        node = declaration_node(declaration_of(entry, unit))
-        refs: list[tuple[dict[str, Any], str, str]] = []
-        if node["compose"] == "all":
-            refs = [(c, c["name"], c["binding"]["unit"]) for c in node["children"]]
-        elif node["compose"] == "choice":
-            refs = [(a, a["unit"], a["unit"]) for a in node["choice"]["alternatives"]]
-        for ref, child_name, child_unit in refs:
-            if child_unit not in entry.units:
-                continue  # unresolved: the path stays None
-            if child_name not in path_of:
-                place(child_name, child_unit, f"{path}/{child_name}" if path else child_name)
-            ref["path"] = path_of[child_name]
-        nodes[path] = node
-
-    place(entry.root, entry.root, ROOT_PATH)
-    return DeclaredTree.build(entry.root, nodes)
+    """The declared tree (MC-34) of `entry`, descendants resolved: exactly what the validator
+    records (L.TR-0.2), so a test can compile a tree without publishing it."""
+    return extract_declared_tree(entry)
 
 
 # ---- rendering a WorkflowEntry back to plugin source

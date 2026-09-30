@@ -41,7 +41,7 @@ globs         = ["tests/fixtures/fossils/slice-a/**", "tests/proof/reviews/*-sli
 # tests/proof/differ.py and tests/proof/differ_modes/__init__.py (the d6/d7 builders delete their UNBUILT_MODES
 # keys and register their dispatch, F-2), and core's deferral test (it asserted that no deferral label is declared
 # `claim` except the single phase's; the tree fragment declares the deferred core label WR-TERM-5:tree-size it
-# claims at TR-6, exactly as the single fragment declares its two).
+# claims at TR-6, exactly as the single fragment declares its two), and the A-1 test L.TR-0.2 inverts.
 [[lane]]
 name          = "tree-bundle"
 branch_prefix = "wr/tree-bundle/"
@@ -67,6 +67,8 @@ globs = [
   # additions the plan's lane misses (DAG F-2, AM-15) and the deferral test (see the header)
   "tests/proof/divergence.toml", "tests/proof/differ.py", "tests/proof/differ_modes/__init__.py",
   "tests/core/docs/test_cl_d1_deferrals.py",
+  # A-1's pin of the SV-2 "only the root is recorded" behaviour, inverted by L.TR-0.2
+  "tests/single/contract/test_extract.py",
 ]
 
 [[gate]]
