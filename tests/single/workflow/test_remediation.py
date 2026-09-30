@@ -225,6 +225,7 @@ def test_every_remedy_followed_by_postcondition_check(tmp_path: Path) -> None:
 # ------------------------------------------------------------------------------ J-3a, J-3
 
 
+@pytest.mark.proves("A7.2", "A7.2", "A", "single", "LOGIC", "CI")
 def test_trigger_code_persisting_after_wait_is_remedy_no_progress(tmp_path: Path) -> None:
     """FakeMarker(fixed_fingerprint=True): the repair is confirmed and the trigger code is still
     reported once the ticket's wait has elapsed: J-3a gives BLOCKED REMEDY_NO_PROGRESS after one
@@ -271,6 +272,7 @@ def test_join_no_progress_rows() -> None:
     assert run(t, still, rec_open, now=11).code != codes.REMEDY_NO_PROGRESS
 
 
+@pytest.mark.proves("A7.1", "A7.1", "A", "single", "LOGIC", "CI")
 def test_exhausted_blocked_remedy_exhausted(tmp_path: Path) -> None:
     """The remedy's only attempt is spent and the resource is still unhealthy: J-3 (which precedes
     J-3a) gives BLOCKED REMEDY_EXHAUSTED with V-11.1's human action and re-send."""
