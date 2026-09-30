@@ -262,3 +262,39 @@ def test_scale_only_reduces_by_sibling_count() -> None:
         assert dataclasses.replace(big_root, children=small_root.children) == small_root
         assert set(big.entry.units) == set(small.entry.units)
         assert big.entry.deadline == small.entry.deadline
+
+
+# The request a fixture is compiled against: every fixture compiles under the empty request but
+# `lease_pair`, whose root names the environment argument (a root that names one needs a value).
+COMPILE_REQUESTS: dict[str, dict[str, Any]] = {"lease_pair": {"env": "dev", "env_b": "dev"}}
+
+# What MC-23 says of each ground: a refusal code, or None when the declaration alone compiles
+# (misfit is the carve's, L.TR-1.3; uncovered_precondition is publication's, L.TR-1.5).
+COMPILE_GROUNDS: dict[str, str | None] = {
+    "cycle": "admission.dependency_cycle",
+    "conflict": "admission.declaration_conflict",
+    "unknown_descendant": "admission.unit_unresolved",
+    "misfit": None,
+    "uncovered_precondition": None,
+}
+
+
+@pytest.mark.parametrize("path", fixture_paths(), ids=lambda p: p.stem)
+def test_labels_hold_under_compile(path: Path) -> None:
+    """Every MC-B3-01 label holds under MC-23 (L.TR-1.1): a valid fixture compiles to a plan with
+    the labelled vertex count and depth, and a defective one is refused with its ground's code."""
+    from trestle.common.plan import compiler
+
+    module = load_fixture(path)
+    label = module.LABEL
+    request = COMPILE_REQUESTS.get(path.stem, {})
+    result = compiler.compile(generators.declared_of(module.ENTRY), request)
+    expect = label["expect"]
+    if expect in COMPILE_GROUNDS and COMPILE_GROUNDS[expect] is not None:
+        assert isinstance(result, compiler.Refusal), (path.stem, result)
+        assert result.code == COMPILE_GROUNDS[expect], (path.stem, result)
+        return
+    assert isinstance(result, compiler.AdmittedPlan), (path.stem, result)
+    assert len(result.vertices) == label["vertices"], path.stem
+    depth = 1 + max(len(v.path.split("/")) if v.path else 0 for v in result.vertices)
+    assert depth == label["depth"], path.stem
