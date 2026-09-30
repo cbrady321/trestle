@@ -79,6 +79,10 @@ SHORT = [
 ]
 
 
+# the lift set's clause (J-TRL T1 reads it from the result's `labels`, MC-B3-04)
+PROVES_A84 = pytest.mark.proves("WR-UNIT-5", "A8.4", "A", "tree", "PROC", "CI")
+
+
 def _proves(variant: str) -> Any:
     marks = [
         pytest.mark.proves(
@@ -90,6 +94,7 @@ def _proves(variant: str) -> Any:
             "CI",
         ),
         pytest.mark.proves("WR-OWN-3", "WR-OWN-3:tree-process", "A", "tree", "PROC", "CI"),
+        PROVES_A84,
     ]
     if variant == "restart":
         marks.append(
@@ -435,6 +440,7 @@ def test_unit5_host_variant(variant: str, tmp_path: Path, monkeypatch: pytest.Mo
         _assert_live_variant(variant, run_dir, live, view, took, since_request)
 
 
+@PROVES_A84
 @pytest.mark.proves("WR-UNIT-5", "WR-UNIT-5:claim-before-effect", "A", "tree", "PROC", "CI")
 @pytest.mark.proves("WR-OWN-3", "WR-OWN-3:tree-process", "A", "tree", "PROC", "CI")
 def test_host_claim_before_effect(host: mcp_host.McpHost) -> None:
@@ -463,6 +469,7 @@ def test_host_claim_before_effect(host: mcp_host.McpHost) -> None:
         assert descriptor == {"form": "in_run_group", "helpers_disclosed": False}, (seq, descriptor)
 
 
+@PROVES_A84
 @pytest.mark.proves(
     "WR-UNIT-5", "WR-UNIT-5:no-release-before-root-phase", "A", "tree", "PROC", "CI"
 )

@@ -37,6 +37,8 @@ proves_owner = pytest.mark.proves(
     "WR-UNIT-6", "WR-UNIT-6:owner-reads-child-view", "A", "tree", "PROC+MCP", "BOTH"
 )
 proves_auth = pytest.mark.proves("WR-AUTH-1", "WR-AUTH-1:tree", "A", "tree", "MCP", "CI")
+proves_a63 = pytest.mark.proves("WR-UNIT-6", "A6.3", "A", "tree", "PROC+MCP", "BOTH")
+proves_a64 = pytest.mark.proves("WR-UNIT-6", "A6.4", "A", "tree", "PROC+MCP", "BOTH")
 proves_cancel = pytest.mark.proves(
     "WR-UNIT-6", "WR-UNIT-6:child-addressed-cancel", "A", "tree", "PROC+MCP", "BOTH"
 )
@@ -96,6 +98,7 @@ def restricted(tmp_path: Path) -> Iterator[mcp_host.McpHost]:
         yield host
 
 
+@proves_a63
 @proves_exception
 @proves_listed
 def test_exception_stops_siblings_listed_in_answer(mcp: mcp_host.McpHost) -> None:
@@ -141,6 +144,7 @@ def test_exception_stops_siblings_listed_in_answer(mcp: mcp_host.McpHost) -> Non
     assert (ends["raiser"]["condition"], ends["raiser"]["cut"]) == ("failed", None), ends
 
 
+@proves_a64
 @proves_dependents
 def test_ordinary_failure_stops_only_dependents(mcp: mcp_host.McpHost) -> None:
     """One `run` call per case on `failure_dependents`: an ordinary failure or block of `broken`
@@ -175,6 +179,7 @@ def test_ordinary_failure_stops_only_dependents(mcp: mcp_host.McpHost) -> None:
         assert stop_rows == [], (mode, stop_rows)  # an ordinary failure is no whole-root stop
 
 
+@proves_a63
 @proves_owner
 @proves_auth
 def test_restricted_owner_reads_child_view(restricted: mcp_host.McpHost) -> None:
@@ -221,6 +226,7 @@ def test_restricted_owner_reads_child_view(restricted: mcp_host.McpHost) -> None
         other.close()
 
 
+@proves_a63
 @proves_cancel
 @pytest.mark.gated_on("OQ-27")
 def test_child_addressed_cancel(mcp: mcp_host.McpHost) -> None:
