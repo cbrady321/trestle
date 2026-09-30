@@ -10,6 +10,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from tests.proof import guards
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -21,6 +23,7 @@ def _plant_binary(directory: Path, name: str) -> None:
     path.chmod(0o755)
 
 
+@pytest.mark.proves("WR-CON-2", "WR-CON-2:absent", "core", "core", "PROC", "CI")
 def test_planted_aws_on_path_fails_session() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -41,6 +44,7 @@ def test_planted_aws_on_path_fails_session() -> None:
         assert "aws" in proc.stderr
 
 
+@pytest.mark.proves("WR-CON-2", "WR-CON-2:absent", "core", "core", "PROC", "CI")
 def test_clean_path_hides_forbidden_keeps_others() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -78,10 +82,12 @@ def test_clean_path_github_env_appends_path() -> None:
         assert shutil.which("gradle", path=shadow) is None
 
 
+@pytest.mark.proves("WR-CON-5", "WR-CON-5:no-model-client", "core", "core", "INSPECT", "CI")
 def test_no_model_client_in_deps_or_imports() -> None:
     assert guards.scan_for_model_client_imports() == []
 
 
+@pytest.mark.proves("WR-CON-1", "WR-CON-1:no-credential-read", "core", "core", "PROC", "CI")
 def test_planted_credential_open_fails_closed() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         fake_home = Path(tmp)
@@ -105,6 +111,7 @@ def test_planted_credential_open_fails_closed() -> None:
         assert "credential-read guard" in proc.stderr
 
 
+@pytest.mark.proves("WR-CON-1", "WR-CON-1:no-credential-read", "core", "core", "PROC", "CI")
 def test_subprocess_env_scrubbed() -> None:
     base = {
         "AWS_ACCESS_KEY_ID": "planted-key",

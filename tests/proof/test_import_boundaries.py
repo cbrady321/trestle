@@ -117,10 +117,14 @@ def test_workflow_imports_only_plugin_and_core() -> None:
 # real adapters): each imports only the standard library, itself and `trestle.workflow` (BFD-47).
 WORKFLOW_PACK_SUBPACKAGES = ("fakes", "process")
 
+# Slice B's toolchain subpackage (L.RB-4.2) is held to the same rule. It is listed on its own
+# line so that the B lanes' additions to the tuple above merge cleanly (L.P0-0d.33).
+TOOLCHAIN_PACK_SUBPACKAGES = ("toolchain",)
+
 
 def test_new_packs_subpackages_import_only_stdlib_and_workflow() -> None:
     packs_dir = ROOT / "packages" / "trestle-packs" / "trestle_packs"
-    for sub in WORKFLOW_PACK_SUBPACKAGES:
+    for sub in (*WORKFLOW_PACK_SUBPACKAGES, *TOOLCHAIN_PACK_SUBPACKAGES):
         directory = packs_dir / sub
         if not directory.exists():
             continue  # not-applicable(absent)

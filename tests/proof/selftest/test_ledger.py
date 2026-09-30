@@ -55,6 +55,7 @@ def _record(
     )
 
 
+@pytest.mark.proves("WR-PROOF-7", "WR-PROOF-7:3.14-only-not-proven", "core", "core", "LOGIC", "CI")
 def test_named_gate_312_pass_renders_proven_ci(tmp_path: Path) -> None:
     results_dir = tmp_path / "results"
     _record(results_dir, "CLAUSE-A", "passed", "ci-test", "CI")
@@ -90,6 +91,7 @@ def test_clause_unproven_while_any_registered_node_xfails(tmp_path: Path) -> Non
     assert report["CLAUSE-C"]["status"] == ledger_mod.UNPROVEN
 
 
+@pytest.mark.proves("WR-PROOF-7", "WR-PROOF-7:3.14-only-not-proven", "core", "core", "LOGIC", "CI")
 def test_planted_314_only_pass_is_corroborating_not_proven(tmp_path: Path) -> None:
     results_dir = tmp_path / "results"
     _record(results_dir, "CLAUSE-D", "passed", "ci-test", "CI", interpreter="3.14.7")
@@ -102,6 +104,7 @@ def test_planted_314_only_pass_is_corroborating_not_proven(tmp_path: Path) -> No
     assert report["CLAUSE-D"]["corroborating_314"] is True
 
 
+@pytest.mark.proves("WR-PROOF-7", "WR-PROOF-7:3.14-only-not-proven", "core", "core", "LOGIC", "CI")
 def test_local_venue_never_counts(tmp_path: Path) -> None:
     results_dir = tmp_path / "results"
     _record(results_dir, "CLAUSE-E", "passed", None, results_mod.LOCAL_VENUE)

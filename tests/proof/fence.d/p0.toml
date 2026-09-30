@@ -29,6 +29,7 @@ globs = [
   "tests/single/workflow/test_retry.py",
   "tests/single/workflow/test_polling.py",
   "tests/pins/c_surface/test_goldens.py",
+  "docs/agents.md",
   "!tests/proof/labels.d/p0-1*.toml",
   "tests/fixtures/golden/s0/nodeids.txt",
   "tests/fixtures/fossils/s0/MANIFEST.toml",
