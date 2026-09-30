@@ -144,6 +144,16 @@ class Stop:
     code: StableCode
 
 
+@dataclass(frozen=True, slots=True)
+class Selection:
+    """What the selection phase decided (B1-O4): the selection vector, the observations it used,
+    and the vertices stopped before the walk (by path: a gate's composite, a route's dependent)."""
+
+    selection: tuple[tuple[NodePath, NodePath], ...]
+    observed: tuple[Mapping[str, JsonValue], ...]
+    stops: Mapping[str, Stop]
+
+
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -875,9 +885,9 @@ class Loop:
             return
         if not isinstance(declaration, LeafDeclaration):
             assert tree is not None
-            selected, observed = self._select(plan, tree)  # B1-O4: before the plan identity
-            self._record_plan(plan, selected, observed)
-            TreeWalk(self, tree, dict(selected)).run()
+            picked = self._select(plan, tree)  # B1-O4: before the plan identity
+            self._record_plan(plan, picked.selection, picked.observed)
+            TreeWalk(self, tree, dict(picked.selection), picked.stops).run()
             return
         self._record_plan(plan)
         unit = self.entry.units[self.entry.root]
@@ -941,27 +951,37 @@ class Loop:
 
     # ------------------------------------------------------------------ B1-O4 selection
 
-    def _select(
-        self, plan: svc.PlanAccepted, tree: DeclaredTree
-    ) -> tuple[tuple[tuple[NodePath, NodePath], ...], tuple[Mapping[str, JsonValue], ...]]:
-        """The selection phase (V-7.2, B1-O4), run before the plan identity and so before the
-        first ticket anywhere in the root: for every CHOICE in the walked scope, in plan order,
-        observe each eligible alternative through read facets only (`plan.eligible` already holds
-        the `select_arg`-restricted set, in declared order), select the first whose provenance is
-        not ABSENT, else the declared `fallback` if it is eligible, else the first eligible one.
-        Selection stays within the declared space: it names a path the plan already holds. A
-        CHOICE inside an alternative the selection left out is not selected (it is outside
-        `V_run`, V-4.8). Returns the selection vector and the observations it used."""
+    def _select(self, plan: svc.PlanAccepted, tree: DeclaredTree) -> Selection:
+        """The selection phase (B1-O4), run before the plan identity and so before the first
+        ticket anywhere in the root, read-only throughout:
+
+        1. every `gates` child of every composite is observed and joined; a gate that is not
+           SATISFIED stops every node under its declaring composite (B1-E7: the gate's own code,
+           else DECLARATION_STALE, on that composite's `NodeEnd`);
+        2. for every CHOICE outside a stopped composite, in plan order (V-7.2): observe each
+           eligible alternative (`plan.eligible` is already the `select_arg`-restricted set, in
+           declared order), select the first whose provenance is not ABSENT, else the declared
+           `fallback` if it is eligible, else the first eligible one. Selection stays within the
+           declared space: it names a path the plan already holds, and a CHOICE inside an
+           alternative the selection left out is not selected (it is outside `V_run`, V-4.8);
+        3. route feasibility (V-7.3): a dependent whose vantage the selected alternative does not
+           declare in `reachable_from` is stopped BLOCKED with ROUTE_UNSUPPORTED."""
+        stops = self._gate_stops(plan, tree)
         chosen: dict[str, str] = {}
         observed: list[Mapping[str, JsonValue]] = []
         for vertex in plan.vertices:
-            if vertex.compose != "choice" or _left_out(vertex.path, chosen):
+            if (
+                vertex.compose != "choice"
+                or _left_out(vertex.path, chosen)
+                or _covered_by(vertex.path, stops)
+            ):
                 continue
             eligible = plan.eligible[vertex.path]
             node = tree.nodes[vertex.path]["choice"]
             picked: str | None = None
             for alternative in eligible:
-                provenance = self._observe_alternative(plan, alternative)
+                read = self._read_only_join(plan, alternative, {})
+                provenance = Provenance.ABSENT if read is None else read[1].provenance
                 observed.append(
                     {
                         "choice": vertex.path,
@@ -978,21 +998,63 @@ class Loop:
                 )
                 picked = fallback if fallback in eligible else eligible[0]
             chosen[vertex.path] = picked
-        selected = tuple((plan_path(c), plan_path(a)) for c, a in chosen.items())
-        return selected, tuple(observed)
+        self._route_stops(plan, tree, chosen, stops)
+        return Selection(
+            tuple((plan_path(c), plan_path(a)) for c, a in chosen.items()),
+            tuple(observed),
+            stops,
+        )
 
-    def _observe_alternative(self, plan: svc.PlanAccepted, alternative: str) -> Provenance:
-        """Observe one eligible alternative, read-only, and return the provenance the join gives
-        an observation and no record (V-3.2: FOUND when the instance is present, else ABSENT). An
-        alternative that is a composite, or whose `observe` raises or returns a malformed
-        observation, counts as absent (its own walk reports a raise if it is selected)."""
-        vertex = next(v for v in plan.vertices if v.path == alternative)
+    def _gate_stops(self, plan: svc.PlanAccepted, tree: DeclaredTree) -> dict[str, Stop]:
+        """B1-O4 step 1: the composites a gate stops (B1-E7). A gate is a child that only reads:
+        observed and joined with no record. Anything but SATISFIED stops its declaring composite
+        (FAILED), with DECLARATION_STALE (the live definition is not the declared one) or, when
+        the gate could not observe and says why, the code it observed (V-3.8)."""
+        stops: dict[str, Stop] = {}
+        for vertex in plan.vertices:
+            node = tree.nodes[vertex.path]
+            for name in node.get("gates", ()):
+                child = next(c for c in node["children"] if c["name"] == name)
+                params = compiler.resolve_params(child["binding"].get("params", {}), self.intent)
+                read = self._read_only_join(plan, child["path"], params)
+                if read is not None and read[1].condition is Condition.SATISFIED:
+                    continue
+                code = read[0].code if read is not None else None
+                stops.setdefault(
+                    vertex.path, Stop(Condition.FAILED, code or codes.DECLARATION_STALE)
+                )
+        return stops
+
+    def _route_stops(
+        self,
+        plan: svc.PlanAccepted,
+        tree: DeclaredTree,
+        chosen: Mapping[str, str],
+        stops: dict[str, Stop],
+    ) -> None:
+        """B1-O4 step 3 (V-7.3): for each dependency edge into a selected CHOICE, the dependent's
+        vantage must be one the selected alternative declares in `reachable_from`; a set-membership
+        test between two declared values, never a kind comparison (V-6.1). The dependent stops
+        BLOCKED with ROUTE_UNSUPPORTED before the first ticket; what needs it is never started."""
+        for dependent in compiler.unreachable_dependents(plan, tree.nodes, chosen):
+            if not _covered_by(dependent, stops):
+                stops[dependent] = Stop(Condition.BLOCKED, codes.ROUTE_UNSUPPORTED)
+
+    def _read_only_join(
+        self, plan: svc.PlanAccepted, path: str, params: Mapping[str, JsonValue]
+    ) -> tuple[Observation, Verdict] | None:
+        """Observe one leaf vertex, read-only, and join the observation with no record: the
+        observation and the verdict V-3.2 gives it (provenance FOUND when the instance is present,
+        else ABSENT). None
+        when it cannot be observed: a composite, or a unit whose `observe` raises or returns a
+        malformed observation (its own walk reports the raise if it is ever walked)."""
+        vertex = next(v for v in plan.vertices if v.path == path)
         unit: Any = self.entry.units[vertex.unit]
         declaration = _leaf_declaration_or_none(self.entry, vertex.unit)
         if declaration is None:
-            return Provenance.ABSENT
-        path = plan_path(alternative)
-        lineage = self.services.lineage(path)
+            return None
+        node = plan_path(path)
+        lineage = self.services.lineage(node)
         facets = FacetContext(
             lane=self.lane,
             lineage=lineage,
@@ -1005,16 +1067,18 @@ class Loop:
             now=self.now,
         )
         try:
-            observation = unit.observe({}, ReadBinder(facets), _CallContext(lineage, self.services))
-        except Exception as exc:  # noqa: BLE001 (plugin code: the alternative is not observable)
-            self._selection_fact(alternative, None, f"observe raised {type(exc).__name__}")
-            return Provenance.ABSENT
+            observation = unit.observe(
+                params, ReadBinder(facets), _CallContext(lineage, self.services)
+            )
+        except Exception as exc:  # noqa: BLE001 (plugin code: the vertex is not observable)
+            self._selection_fact(path, None, f"observe raised {type(exc).__name__}")
+            return None
         problem = _observation_problem(observation, declaration)
         if problem is not None:
-            self._selection_fact(alternative, None, problem)
-            return Provenance.ABSENT
+            self._selection_fact(path, None, problem)
+            return None
         assert isinstance(observation, Observation)
-        self._selection_fact(alternative, observation, None)
+        self._selection_fact(path, observation, None)
         terms = NodeTerms(
             flags=declaration.flags,
             retryable=declaration.retryable,
@@ -1022,20 +1086,20 @@ class Loop:
             wait=declaration.wait,
             budget=declaration.budget,
             max_attempts=declaration.max_attempts,
-            slice_end=self.services.slice_end(path),
-            path=path,
+            slice_end=self.services.slice_end(node),
+            path=node,
             currency_margin=self.currency_margin,
         )
         verdict = join(terms, observation, NodeRecordView(), self.host_scope, self.services.clock())
-        return verdict.provenance
+        return observation, verdict
 
     def _selection_fact(
-        self, alternative: str, observation: Observation | None, problem: str | None
+        self, path: str, observation: Observation | None, problem: str | None
     ) -> None:
-        """`step.observed` for an alternative the selection phase observed (WR-EVID-3): the same
-        fields as a leaf's observation, marked `phase: selection`."""
+        """`step.observed` for a vertex the selection phase observed (WR-EVID-3): the same fields
+        as a leaf's observation, marked `phase: selection`."""
         fields: dict[str, JsonValue] = {
-            "path": alternative or "(root)",
+            "path": path or "(root)",
             "phase": "selection",
             "present": False if observation is None else observation.present,
             "selector_present": False if observation is None else observation.selector_present,
@@ -1124,15 +1188,24 @@ class TreeWalk:
     `decide` stays the only per-node branch: a composite is scheduling, never a command."""
 
     def __init__(
-        self, loop: Loop, tree: DeclaredTree, selection: Mapping[NodePath, NodePath] | None = None
+        self,
+        loop: Loop,
+        tree: DeclaredTree,
+        selection: Mapping[NodePath, NodePath] | None = None,
+        stops: Mapping[str, Stop] | None = None,
     ) -> None:
         self._loop = loop
         plan = loop.services.admitted().accepted
         chosen = {_path_key(c): _path_key(a) for c, a in (selection or {}).items()}
+        self._stops = dict(stops or {})
         # V_run (V-4.8): the alternatives the selection did not name, and what lies under them,
-        # are not walked; a CHOICE with no recorded selection cannot be walked.
+        # are not walked; a CHOICE with no recorded selection cannot be walked unless a stop
+        # (a gate, B1-E7) covers it: nothing under a stopped vertex is ever started.
         walked = [v for v in plan.vertices if not _left_out(v.path, chosen)]
-        if any(v.compose == "choice" and v.path not in chosen for v in walked):
+        if any(
+            v.compose == "choice" and v.path not in chosen and not _covered_by(v.path, self._stops)
+            for v in walked
+        ):
             raise TreeBandError("a CHOICE vertex reached the walk with no selected alternative")
         self._order = [v.path for v in walked]
         self._vertex = {v.path: v for v in walked}
@@ -1194,6 +1267,7 @@ class TreeWalk:
     # ------------------------------------------------------------------ the walk
 
     def run(self) -> None:
+        self._apply_stops()
         with self._changed:
             while True:
                 self._time_out_expired()
@@ -1209,6 +1283,61 @@ class TreeWalk:
             raise self._failure
         self._end_composites()
         self._release()
+
+    def _apply_stops(self) -> None:
+        """The stops the selection phase decided (B1-E7, V-7.3), before any leaf starts: a stopped
+        vertex carries the stop's condition, code, and the human action and re-send V-3.7's
+        presence rule gives it, and every vertex below it is written `cut=NOT_STARTED` (nothing
+        under it ever runs). What only needed a stopped vertex is cut in turn by `_schedule`."""
+        for path in self._order:  # plan order: a stopped ancestor precedes what lies under it
+            stop = self._stops.get(path)
+            if stop is None or self._ended_already(path):
+                continue
+            human_action: str | None = None
+            resend: Resend | None = None
+            if _presence(stop.condition, stop.code):
+                human_action, resend = human_actions.render(
+                    stop.code, path=_path_text(plan_path(path)), effect="", subject=""
+                )
+            self._loop.end_vertex(
+                plan_path(path),
+                condition=stop.condition,
+                code=stop.code,
+                human_action=human_action,
+                resend=resend,
+            )
+            self._mark_ended(path)
+            for below in self._descendants(path):
+                if self._ended_already(below):
+                    continue
+                self._loop.end_vertex(
+                    plan_path(below), condition=None, code=None, cut=svc.Cut.NOT_STARTED
+                )
+                self._mark_ended(below)
+
+    def _ended_already(self, path: str) -> bool:
+        return path in self._ended or path in self._verdicts
+
+    def _mark_ended(self, path: str) -> None:
+        """A vertex the stops ended: a leaf leaves the queue (it never passed), a composite's end
+        is written."""
+        if self._vertex[path].compose == "leaf":
+            self._ended[path] = False
+            if path in self._pending:
+                self._pending.remove(path)
+        else:
+            self._verdicts.add(path)
+
+    def _descendants(self, path: str) -> list[str]:
+        """The vertices strictly below `path`, in plan order, through every child reference."""
+        below: set[str] = set()
+        work = list(self._vertex[path].children)
+        while work:
+            child = work.pop()
+            if child in self._vertex and child not in below:
+                below.add(child)
+                work.extend(self._vertex[child].children)
+        return [p for p in self._order if p in below]
 
     def _subtree_timed_out(self, leaf: str) -> bool:
         """A composite that timed out has `leaf` below it, through any parent that names it."""
@@ -1384,6 +1513,13 @@ def _leaf_declaration(entry: WorkflowEntry, unit: str) -> LeafDeclaration:
 def _leaf_declaration_or_none(entry: WorkflowEntry, unit: str) -> LeafDeclaration | None:
     declared = resolve_unit(entry, unit)
     return declared if isinstance(declared, LeafDeclaration) else None
+
+
+def _covered_by(path: str, stops: Mapping[str, Stop]) -> bool:
+    """`path` is a stopped vertex or lies under one (`""` is the root and covers every vertex)."""
+    return any(
+        stopped == "" or path == stopped or path.startswith(f"{stopped}/") for stopped in stops
+    )
 
 
 def _path_key(path: NodePath) -> str:

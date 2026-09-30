@@ -273,6 +273,7 @@ COMPILE_REQUESTS: dict[str, dict[str, Any]] = {
     "failure_dependents": {"env": "dev"},
     "exception_branch": {"env": "dev"},
     "readiness_sibling": {"env": "dev"},
+    "live_state": {"env": "dev"},
 }
 
 # What MC-23 says of each ground: a refusal code, or None when the declaration alone compiles
