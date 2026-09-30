@@ -22,6 +22,9 @@ from enum import StrEnum
 ENV_ARG = "env"
 """The request argument that carries the environment key (the Compose project name)."""
 
+SERVICES_ARG = "services"
+"""The request argument that names the services to bring up (identifiers, never content)."""
+
 
 class ServiceName(StrEnum):
     """The closed identifiers of tree v0 (`catalog_v0.CATALOG_V0`)."""

@@ -121,6 +121,17 @@ def test_postgres_readiness_is_authenticated_select() -> None:
     assert set(tree.READINESS) == {tree.POSTGRES_READY}
 
 
+def test_unknown_service_is_refused_at_compile_naming_it_and_where_valid_ones_are_listed() -> None:
+    request = {schema.ENV_ARG: PROJECT, schema.SERVICES_ARG: ["postgres", "mongo"]}
+    refused = compiler.compile(extract_declared_tree(tree.ENTRY), request)
+    assert isinstance(refused, compiler.Refusal)
+    assert refused.code == vocab.UNKNOWN_IDENTIFIER
+    assert refused.identifier == "mongo"
+    assert refused.valid_listed_at == f"identifier_sets.{tree.SERVICES_SET}"
+    known = {schema.ENV_ARG: PROJECT, schema.SERVICES_ARG: ["postgres"]}
+    assert isinstance(compiler.compile(extract_declared_tree(tree.ENTRY), known), AdmittedPlan)
+
+
 def test_catalog_v0_is_the_schemas_closed_set() -> None:
     assert catalog_v0.CATALOG_V0 == tuple(member.value for member in schema.ServiceName)
     assert tree.POSTGRES_SERVICE in catalog_v0.CATALOG_V0

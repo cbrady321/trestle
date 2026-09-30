@@ -33,6 +33,7 @@ from typing import Any, Final
 
 from trestle.workflow import (
     AllDeclaration,
+    ArgBinding,
     ChildBinding,
     CompletionSource,
     Compose,
@@ -50,12 +51,14 @@ from trestle.workflow.ports import ResourceCreate, ResourceOwned, ResourceReads,
 from trestle.workflow.units import ActContext, Acted, EffectFacets, ObserveContext, ReadFacets, Step
 from trestle.workflow.values import CheckResult, CreatedHandle, Observation, Verdict
 
-from trestle_env.schema import ENV_ARG
+from trestle_env.catalog_v0 import CATALOG_V0
+from trestle_env.schema import ENV_ARG, SERVICES_ARG
 
 ROOT_UNIT: Final = "reference_env"
 POSTGRES_UNIT: Final = "backend.postgres"
 POSTGRES_SERVICE: Final = "postgres"  # the catalog identifier and the logical system
 POSTGRES_ROLE: Final = "postgres"  # the MC-B-10 image role the composition root resolves
+SERVICES_SET: Final = "services"  # the declared identifier set the `services` argument names
 
 # Declared effects of a Docker-service leaf (V-14): one run-lifetime create and its owned release.
 UP: Final = "up"
@@ -201,8 +204,10 @@ ENTRY = WorkflowEntry(
             children=(ChildBinding(unit=POSTGRES_UNIT, params={}, needs=()),),
             concurrency=CONCURRENCY,
             budget=timedelta(seconds=ROOT_BUDGET_S),
-            identifier_sets={},
-            arg_bindings=(),
+            # the services a request may name: admission refuses any other before a run id
+            # (B2-C2 (1)); v0 draws the set from the hard-coded catalog (TM-B4-3)
+            identifier_sets={SERVICES_SET: frozenset(CATALOG_V0)},
+            arg_bindings=(ArgBinding(SERVICES_ARG, SERVICES_SET, False),),
             env_key_field=ENV_ARG,
         ),
         POSTGRES_UNIT: DockerServiceUnit(POSTGRES_UNIT, POSTGRES_SERVICE, POSTGRES_READY),
