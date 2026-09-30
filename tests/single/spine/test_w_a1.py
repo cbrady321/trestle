@@ -1,8 +1,9 @@
 """L.SV-5.9: the one-vertex spine fixture and the W-A1 variants, each in exactly one
 `run(completion="terminal")` call through the MC-12 MCP host, the same tools an agent calls.
 
-`spine_leaf` (tests/fixtures/workflows/spine_leaf.py) is a published workflow plugin whose declared
-tree is one leaf over the fakes of `trestle_packs.fakes`: skip (the postcondition already holds),
+`spine_leaf` (tests/fixtures/workflows/spine_leaf.py) is a published workflow plugin, written
+against the public unit-author surface of `trestle.workflow` (`PUBLIC_MODULES`), whose declared tree
+is one leaf over the fakes of `trestle_packs.fakes`: skip (the postcondition already holds),
 advance-and-poll (create once, poll until ready, release on done), cancel mid-poll and deadline
 mid-poll (the marker never turns ready; a stop ends the wait and the created marker is released).
 The variants are the spine gate's parametrization (TM-B2-3 `one-vertex-spine-fixture`).
@@ -24,7 +25,6 @@ from typing import Any
 import pytest
 
 from tests.core.spine import support
-from tests.fixtures.workflows import spine_support
 from tests.proof import mcp_host, records, tolerances
 from trestle.common import clock, codes
 
@@ -36,7 +36,9 @@ FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "workflows"
 SPINE_FIXTURES = ("spine_leaf",)
 FIXTURE = SPINE_FIXTURES[0]
 COMPOSITE_FIXTURES = ("probe_all_root", "probe_choice_root")
-EVENT_KIND = spine_support.OBSERVED_EVENT
+EVENT_KIND = "spine_observed"  # the fixture's evidence event, one per observation
+CREATE_EFFECT = "up"
+STOP_EFFECT = "stop"
 # the fixture's declared deadline (plugin decorator and entry) and a shorter one for the variant
 # that lets the deadline end the wait: the root budget plus the release slice must fit it
 DECLARED_DEADLINE_S = 120
@@ -120,10 +122,10 @@ def _assert_created_marker_released(run_dir: Path) -> None:
     stops = [
         i
         for i, row in enumerate(records.lane_rows(run_dir).rows)
-        if row.cls == "issue" and row.entry["effect"] == spine_support.STOP_EFFECT
+        if row.cls == "issue" and row.entry["effect"] == STOP_EFFECT
     ]
     assert len(stops) == 1 and stops[0] > end_at, classes
-    assert len(_released_after(run_dir, spine_support.CREATE_EFFECT)) == 1, classes
+    assert len(_released_after(run_dir, CREATE_EFFECT)) == 1, classes
     assert classes[-1] == "released", classes
 
 
