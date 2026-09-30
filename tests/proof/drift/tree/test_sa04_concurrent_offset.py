@@ -28,39 +28,10 @@ from tests.proof.records import LaneRows
 from tests.proof.spine import test_stop_offset as suite
 from tests.single.workflow import loopkit as kit
 from tests.tree import treekit as tk
-from trestle.workflow import ports
-from trestle.workflow.units import ActContext, EffectFacets, ObserveContext, ReadFacets
-from trestle.workflow.values import Observation, StopCause, Verdict
+from trestle.workflow.values import StopCause
 
 LEAVES = ("a", "b", "c")
 RELEASES = frozenset({kit.STOP_EFFECT})
-
-
-def _polling_unit(name: str, polling: threading.Barrier, gate: threading.Event) -> kit.Unit:
-    """Creates its marker, then polls: once the marker is present its observation waits at `gate`
-    (so the test raises the flag while every leaf is inside its wait), and never turns ready."""
-    base = tk.leaf_unit(name)
-    arrived: list[str] = []
-
-    def observe(unit: kit.Unit, params: Any, reads: ReadFacets, ctx: ObserveContext) -> Observation:
-        resource = reads.read(ports.ResourceReads)
-        seen = resource.observe(kit.SPEC, ctx.lineage, tk.EFFECT)
-        if seen.selector_present:
-            if not arrived:
-                arrived.append(name)
-                polling.wait()
-            assert gate.wait(tolerances.JOIN_WAIT_S)
-        return kit.observation(selector_present=seen.selector_present, ready=False)
-
-    def advance(
-        unit: kit.Unit, params: Any, state: Verdict, effects: EffectFacets, ctx: ActContext
-    ) -> Any:
-        return base.advance(params, state, effects, ctx)
-
-    def release(unit: kit.Unit, params: Any, handle: Any, effects: Any, ctx: ActContext) -> Any:
-        return base.release(params, handle, effects, ctx)
-
-    return kit.Unit(base.decl, observe, advance, release)
 
 
 def _copy_lane(run_dir: Path, tmp_path: Path, extra: Sequence[dict[str, Any]] = ()) -> LaneRows:
@@ -96,8 +67,14 @@ def _late_apply(lane: LaneRows, path: str, seq: int, attempt: int = 2) -> list[d
 def test_offset_sound_with_concurrent_nodes(sa: str, tmp_path: Path) -> None:
     polling = threading.Barrier(len(LEAVES) + 1, timeout=tolerances.JOIN_WAIT_S)
     gate = threading.Event()
+
+    def _arrived(path: str) -> None:
+        polling.wait()
+
     root = tk.group("app", tuple(tk.bind(n) for n in LEAVES), concurrency=len(LEAVES))
-    rig = tk.tree_rig(tmp_path / "run", root, {n: _polling_unit(n, polling, gate) for n in LEAVES})
+    rig = tk.tree_rig(
+        tmp_path / "run", root, {n: tk.held_unit(n, gate, on_hold=_arrived) for n in LEAVES}
+    )
     runner = threading.Thread(target=rig.run)
     runner.start()
     try:

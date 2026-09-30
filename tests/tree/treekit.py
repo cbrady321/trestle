@@ -19,7 +19,7 @@ from typing import Any
 from tests.proof import records, tolerances
 from tests.single.workflow import loopkit as kit
 from trestle.child import run_services as rs
-from trestle.common.plan import compiler
+from trestle.common.plan import carving, compiler
 from trestle.workflow import ports
 from trestle.workflow.declarations import (
     AllDeclaration,
@@ -32,6 +32,7 @@ from trestle.workflow.declarations import (
     Repeat,
     WorkflowEntry,
 )
+from trestle.workflow.extract import extract_root
 from trestle.workflow.units import (
     ActContext,
     Acted,
@@ -277,6 +278,7 @@ def tree_rig(
     shown: Callable[[compiler.AdmittedPlan], compiler.AdmittedPlan] | None = None,
     port_impl: Mapping[type, object] | None = None,
     run_id: str = "r_tree_0001",
+    request: Mapping[str, Any] | None = None,
 ) -> TreeRig:
     """Admit (compile, carve) `root` over `units` and build the loop's rig around it: the same
     plan is what admission would write and what the loop walks."""
@@ -286,7 +288,7 @@ def tree_rig(
         units={root.unit: root, **units},
         deadline=timedelta(seconds=deadline_s),
     )
-    admitted = kit.admit(entry, deadline_s)
+    admitted = admit_plan(entry, deadline_s, request or {})
     run_dir = tmp_path / run_id
     (run_dir / "work").mkdir(parents=True, exist_ok=True)
     (run_dir / "evidence").mkdir(parents=True, exist_ok=True)
@@ -325,8 +327,23 @@ def tree_rig(
         cancel=cancel,
         sink=sink,
         ports=dict(port_impl) if port_impl is not None else port_map(marker),
+        intent=dict(request or {}),
     )
     return TreeRig(rig, marker, dict(units))
+
+
+def admit_plan(
+    entry: WorkflowEntry, deadline_s: float, request: Mapping[str, Any]
+) -> compiler.AdmittedPlan:
+    """The plan admission writes for `entry` and `request`: compiled, carved, digest attached
+    (`loopkit.admit` with the request's arguments)."""
+    _, tree = extract_root(entry)
+    compiled = compiler.compile(tree, request)
+    assert isinstance(compiled, compiler.AdmittedPlan), compiled
+    release_slice = carving.release_slice_for(compiled, kit.RELEASE_SLICE_S)
+    slices = carving.carve(compiled, deadline_s, kit.RESERVE_S, release_slice)
+    assert isinstance(slices, dict), slices
+    return carving.attach(compiled, slices, release_slice)
 
 
 def wait_for(event: threading.Event) -> bool:
@@ -389,6 +406,9 @@ def rig_of_entry(
     marker: PathMarker | None = None,
     *,
     behaviour: Mapping[str, kit.Unit] | None = None,
+    port_impl: Mapping[type, object] | None = None,
+    request: Mapping[str, Any] | None = None,
+    keep_units: bool = False,
 ) -> TreeRig:
     """`tree_rig` over a fixture's declared tree: each leaf unit becomes a scripted `leaf_unit`
     over the fixture's own declaration (`behaviour` overrides by name), each composite is kept."""
@@ -398,14 +418,22 @@ def rig_of_entry(
     for name, unit in entry.units.items():
         if name == entry.root:
             continue
-        if isinstance(unit, (AllDeclaration,)):
+        if isinstance(unit, (AllDeclaration,)) or keep_units:
             units[name] = unit
         elif behaviour is not None and name in behaviour:
             units[name] = behaviour[name]
         else:
             declared = unit.declare()  # type: ignore[attr-defined]
             units[name] = leaf_unit(name, declaration=declared)
-    return tree_rig(tmp_path, root, units, marker, deadline_s=entry.deadline.total_seconds())
+    return tree_rig(
+        tmp_path,
+        root,
+        units,
+        marker,
+        deadline_s=entry.deadline.total_seconds(),
+        port_impl=port_impl,
+        request=request,
+    )
 
 
 class Recorded:
@@ -469,3 +497,39 @@ def recorded_unit(
         return Acted()
 
     return kit.Unit(decl, observe, run)
+
+
+def held_unit(
+    name: str,
+    gate: threading.Event,
+    *,
+    on_hold: Callable[[str], None] = lambda path: None,
+    budget_s: float = LEAF_BUDGET_S,
+) -> kit.Unit:
+    """A leaf that creates its marker and then holds: once the marker is present its observation
+    calls `on_hold(name)` (the first time) and waits at `gate`, and it never turns ready. A test
+    raises a flag, or moves the clock, while every such leaf is inside its wait."""
+    base = leaf_unit(name, budget_s=budget_s)
+    arrived: list[str] = []
+
+    def observe(unit: kit.Unit, params: Any, reads: ReadFacets, ctx: ObserveContext) -> Observation:
+        resource = reads.read(ports.ResourceReads)
+        seen = resource.observe(kit.SPEC, ctx.lineage, EFFECT)
+        if seen.selector_present:
+            if not arrived:
+                arrived.append(name)
+                on_hold(name)
+            assert gate.wait(tolerances.JOIN_WAIT_S)
+        return kit.observation(selector_present=seen.selector_present, ready=False)
+
+    def advance(
+        unit: kit.Unit, params: Any, state: Verdict, effects: EffectFacets, ctx: ActContext
+    ) -> Step:
+        return base.advance(params, state, effects, ctx)
+
+    def release(
+        unit: kit.Unit, params: Any, handle: CreatedHandle, effects: Any, ctx: ActContext
+    ) -> Step:
+        return base.release(params, handle, effects, ctx)
+
+    return kit.Unit(base.decl, observe, advance, release)
