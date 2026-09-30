@@ -14,9 +14,9 @@ from pathlib import Path
 import pytest
 from tests.tree import treekit as tk
 from trestle.common.plan.vocabulary import ResourceDisposition
-from twin_engine import SupportEngine, rig_over
 
 from trestle_env import tree
+from twin.twin_engine import SupportEngine, rig_over
 
 FOUND = tree.POSTGRES_SERVICE  # the exact name of the logical system: what a run finds
 
