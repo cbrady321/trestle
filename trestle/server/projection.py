@@ -256,6 +256,12 @@ def parse_result_target(target: str) -> str | None:
     return None
 
 
+def parse_answer_target(target: str) -> str | None:
+    if target.endswith("/answer"):
+        return target[: -len("/answer")]
+    return None
+
+
 def count_events(evidence: Path) -> int:
     """Non-blank lines of `events.ndjson`, streamed. Called once, when a run is finalized: the
     count is then recorded on the `evidence_finalized` row (MC-12) and read from there."""
@@ -284,6 +290,10 @@ def fetch_bytes(
     run_id = parse_result_target(target)
     if run_id is not None:
         return _fetch_result(home, run_id, target, kind, window, limits)
+
+    answered = parse_answer_target(target)
+    if answered is not None:
+        return _fetch_answer(home, answered, target, kind, window, limits)
 
     return _invalid_handle(f"unknown handle: {target}")
 
@@ -446,6 +456,27 @@ def _fetch_result(
 
     data = pread_range(result_path, 0, min(index.byte_length, limits.max_scan_bytes))
     return _fetch_text(data, target, kind, window, limits)
+
+
+def _fetch_answer(
+    home: Path,
+    run_id: str,
+    target: str,
+    kind: str,
+    window: dict[str, object],
+    limits: CaptureLimits,
+) -> dict[str, object] | RequestOutcome:
+    """`<run_id>/answer` (B4-C6's `detail` handle): the full, unbudgeted `TerminalAnswer` U2
+    persisted at finalization, through today's byte windows."""
+    if kind not in {"range", "head", "tail", "grep"}:
+        return _invalid_args(f"window kind {kind!r} not permitted for answer handles")
+    run_dir = _find_run_dir(home, run_id)
+    if run_dir is None:
+        return _invalid_handle(f"unknown run: {run_id}")
+    path = run_dir / "evidence" / "answer.json"
+    if not path.is_file():
+        return _missing(f"answer not available for {run_id}")
+    return _fetch_text(path.read_bytes(), target, kind, window, limits)
 
 
 def _fetch_jsonpath(

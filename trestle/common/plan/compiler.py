@@ -43,9 +43,12 @@ from typing import Any, final
 
 from trestle.common.plan import formats, ordinal
 from trestle.common.plan import vocabulary as vocab
+
+# V-13 bounds live once, in the stdlib-pure `bounds` (L.SV-1.1, AM-6): this module reads them.
+from trestle.common.plan.bounds import LANE_BASE_ENTRIES
+from trestle.common.plan.bounds import VERTEX_MAX as VERTEX_MAX
 from trestle.common.plan.declared import ROOT_PATH, DeclaredTree, canonical_json
 
-VERTEX_MAX = 1024  # V-13 (provisional): |PlanAccepted.selected_scope|; owner B2-C2
 REFUSAL_TEXT_MAX = 200  # V-13: `PlanRefused.subject` / `message` / `valid_listed_at`
 PLAN_FORMAT = formats.PLAN_FORMAT
 
@@ -140,6 +143,15 @@ class AdmittedPlan:
     release_rank: Mapping[str, int]
     precedence_ordinal: Mapping[str, int]
     plan_digest: str | None
+    # V-13 `LANE_ENTRIES` = LANE_BASE_ENTRIES + |selected_scope| + 2, fixed per root at admission
+    # (B2-C7); part of the body, so it is covered by `plan_digest`.
+    lane_entries: int = 0
+
+    @property
+    def selected_scope(self) -> frozenset[tuple[str, ...]]:
+        """`PlanAccepted.selected_scope` as lane paths: the root is `()`, a descendant its
+        `/`-separated segments (the shape `fold` and `AttemptLane` take)."""
+        return frozenset(tuple(v.path.split("/")) if v.path else () for v in self.vertices)
 
     @property
     def paths(self) -> tuple[str, ...]:
@@ -165,6 +177,7 @@ class AdmittedPlan:
             "lease_set": list(self.lease_set),
             "release_rank": dict(self.release_rank),
             "precedence_ordinal": dict(self.precedence_ordinal),
+            "lane_entries": self.lane_entries,
         }
 
     def to_json(self) -> str:
@@ -202,6 +215,7 @@ class AdmittedPlan:
                 release_rank=dict(body["release_rank"]),
                 precedence_ordinal=dict(body["precedence_ordinal"]),
                 plan_digest=digest,
+                lane_entries=int(body["lane_entries"]),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise formats.PlanInvalid(f"shape:{exc!r}") from exc
@@ -224,6 +238,7 @@ def implicit_depth1_plan(unit: str = "") -> AdmittedPlan:
         release_rank={ROOT_PATH: 0},
         precedence_ordinal={ROOT_PATH: 0},
         plan_digest=None,
+        lane_entries=LANE_BASE_ENTRIES + 1 + 2,
     )
 
 
@@ -617,5 +632,6 @@ def compile(  # noqa: A001  (MC-23 names the entry point `compile`)
         release_rank={p: rank[p] for p in scope},
         precedence_ordinal=precedence,
         plan_digest="",
+        lane_entries=LANE_BASE_ENTRIES + len(scope) + 2,
     )
     return replace(sealed, plan_digest=formats.plan_digest(sealed.body()))

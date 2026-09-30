@@ -223,7 +223,7 @@ abnormally is `worker_exit`; a run whose server died is `interrupted`.
 
 **`completion` (optional, default `"bounded"`, which is everything above unchanged).** Pass `completion="terminal"` to make one `run` call return only a finished run: the response follows the run's finalized terminal row (evidence finalized, then `succeeded`, `failed`, `cancelled`, `timed_out` or `interrupted`), never a `running` frame. The call is bounded by the run's own deadline plus a published finalization margin, not by `wait_ms`: a `wait_ms` above zero is accepted and ignored, and `wait_ms=0` (or below) is refused `admission.invalid_args` because a terminal call has to wait; so is any `completion` value other than `bounded` or `terminal`. If the run is somehow not terminal by that bound, the call answers `projection.terminal_wait_exceeded` (a refusal, not a run state; the run itself is unaffected and `await_runs` still joins it). While a `terminal` call is held, other calls (`cancel`, `query`, `await_runs`) are still answered.
 
-**One class per finished run.** A finished `RunView` carries `outcome: {class, code, identity, recovered}`. `class` is one of `passed`, `cancelled`, `timed_out`, `execution_error` (a plain plugin reaches these four; `failed` and `blocked` are reserved for workflow results). `code` is the `execution.*` code for an `execution_error` and `null` for the others; `state` keeps its meaning underneath.
+**One class per finished run.** A finished `RunView` carries `outcome: {class, code, identity, recovered}`. `class` is one of `passed`, `cancelled`, `timed_out`, `execution_error` (a plain plugin reaches these four; `failed` and `blocked` are reserved for workflow results). `code` is the `execution.*` code for an `execution_error` and `null` for the others; `state` keeps its meaning underneath. A finished run also carries one `answer` (the terminal answer: outcome, the deciding node as `primary`, `cleanup`, and the rest of the nodes in `listed`, bounded by the run's summary budget with the remainder behind `answer.detail`); see `docs/agent-console-mcp.md`.
 
 <!-- K-8 -->
 ### A succeeded run leaves no attributable process behind (K-8)
@@ -264,13 +264,18 @@ SIGTERM to every process attributable to the run at once, waits at most `grace`,
 and waits at most `kill` for confirmation. Attributable means the run's process group, and every
 descendant by parent id of a process already attributable, whatever session or group it has moved
 to (a plugin's `setsid` child is still the run's). The run's class comes from whichever came first,
-the cancel or the deadline; if both hold at the first look, cancel.
+the cancel or the deadline; if both hold at the first look, cancel. Only the supervisor signals:
+a cancel request writes a flag, and the supervisor records the stop (cause and the lane's committed
+length) before it stops anything. The release slice and the finalization reserve (10 s each) are
+plan defaults disclosed for the maintainer to set, not requirements.
 
 | Published bound (`trestle.common.clock`) | Default | Meaning |
 |---|---|---|
 | `grace` (10 s) | `TRESTLE_CANCEL_GRACE_S` | SIGTERM to SIGKILL |
 | `kill` (5 s) | `TRESTLE_CANCEL_KILL_S` | SIGKILL to confirmed gone |
-| `stop_bound` (15 s, `grace` + `kill`) | derived | from the stop decision to the tree gone |
+| `release_slice` (10 s) | `TRESTLE_RELEASE_SLICE_S` | a workflow run's cooperative release, before the kill (0 for a plain plugin) |
+| `stop_bound` (25 s, `release_slice` + `grace` + `kill`) | derived | from the stop decision to the tree gone |
+| `finalization_margin` (35 s, `stop_bound` + 10 s reserve) | `TRESTLE_FINALIZATION_MARGIN_S` | how long after the deadline a call may still be answered |
 | `poll_interval` (0.05 s) | fixed | how often the supervisor looks for a cancel |
 
 A cancel is seen within one `poll_interval`, so a stop completes within `stop_bound` plus

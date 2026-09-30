@@ -25,6 +25,7 @@ from trestle.common.types import (
     RunView,
 )
 from trestle.query.fs import FilesystemQueryBackend
+from trestle.server import answer as answer_mod
 from trestle.server.ledger import (
     TERMINAL_KINDS,
     RunLedger,
@@ -430,6 +431,7 @@ class Project:
             cleanup=_cleanup_view(ledger, state),
             error=_error_view(ledger, state),
             outcome=_outcome_view(ledger, state, evidence),
+            answer=_answer_view(ledger, state, run_dir),
         )
 
     def _summary_budget(self, spec: dict[str, object] | None) -> int:
@@ -473,6 +475,17 @@ def _read_spec(evidence: Path) -> dict[str, object] | None:
     except (OSError, ValueError):
         return None
     return loaded if isinstance(loaded, dict) else None
+
+
+def _answer_view(ledger: RunLedger, state: str, run_dir: Path | None) -> dict[str, Any] | None:
+    """B4-C6's one additive field: the `TerminalAnswer`, recomputed from the durable inputs U2
+    wrote (B4-C1 Post), only once the terminal row exists (WR-TERM-2). Bounded by the run's own
+    summary budget (CL-B1); the rest is behind its `detail` handle."""
+    if state in _NON_TERMINAL_STATES or run_dir is None:
+        return None
+    spec = _read_spec(evidence_dir(run_dir)) or {}
+    answer = answer_mod.answer_for_run(run_dir, ledger.records, state, spec)
+    return answer_mod.to_wire(answer, answer_mod.summary_budget_of(spec))
 
 
 def _terminal_wait_exceeded(run_id: Handle) -> RequestOutcome:
@@ -537,6 +550,14 @@ def _cleanup_view(ledger: RunLedger, state: str) -> CleanupView | None:
         return CleanupView(processes="nothing_created")
     row = ledger.last_kind("group_stop")
     released = row is not None and row.get("confirmed_gone") is True
+    # B2-C9, B2-C11: a release sweep that left a target unknown, or recovery declining to sweep a
+    # plan of an unknown format, makes the cleanup unknown whatever the group stop says; the
+    # answer (L.SV-4.2) composes the rest from the same rows
+    if ledger.has_kind("sweep_skipped") or any(
+        r.get("kind") == "sweep_disposition" and r.get("disposition") == "unknown"
+        for r in ledger.records
+    ):
+        released = False
     return CleanupView(processes="released" if released else "unknown")
 
 

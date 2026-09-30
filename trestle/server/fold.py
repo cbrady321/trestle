@@ -13,18 +13,31 @@ unchanged (SA-15, d2).
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import json
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
 from trestle.common import lane_format as lf
 from trestle.common.errtext import sanitize
+
+# The V-10 descriptor forms and the confirmation status are record data the sweep reads (B2-C9); it
+# gets them here, so this module stays the host's one reader of the lane codec.
+from trestle.common.lane_format import ArgvRelease as ArgvRelease
+from trestle.common.lane_format import ConfirmationStatus as ConfirmationStatus
+from trestle.common.lane_format import Durable as Durable
+from trestle.common.lane_format import InRunGroup as InRunGroup
+from trestle.common.lane_format import TicketEntry as TicketEntry
 from trestle.common.plan import bounds
+from trestle.common.plan.compiler import AdmittedPlan
 from trestle.server.ledger import RunLedger, ledger_path
 
 # The ledger kind U2's `StopRow` (B2-C15) is written under; L.SV-3.6 writes it, the fold reads it.
 STOP_ROW_KIND = "stop_row"
+# `StopRow.cause` (B2-C15): a cancel, or the release point (the deadline less the release slice).
+CAUSE_CANCEL = "cancel"
+CAUSE_RELEASE_POINT = "release_point"
 LANE_FOLDED_KIND = "lane_folded"
 
 # The `NodeEnd.code` that means the lane refused the node (V-11 `LANE_UNAVAILABLE`, F-11(a)). V-11's
@@ -108,6 +121,36 @@ def _stop_rows(run_dir: Path) -> tuple[StopRow, ...]:
             )
         )
     return tuple(rows)
+
+
+def plan_of_spec(spec: Mapping[str, Any]) -> AdmittedPlan | None:
+    """The admitted plan a run's `spec.json` carries (MC-20), or None when it carries none (a
+    spec written before plans: read as the implicit depth-1 plan, B2-C1). Raises
+    `formats.UnknownPlanFormat` for a plan of a format this reader does not know and
+    `formats.PlanInvalid` for one that does not verify (recovery decides what that means)."""
+    raw = spec.get("plan")
+    if not isinstance(raw, dict):
+        return None
+    return AdmittedPlan.from_json(json.dumps(raw))
+
+
+def record_stop(
+    run_dir: Path, ledger: RunLedger, cause: str, *, queued: bool = False
+) -> dict[str, Any]:
+    """Append U2's one `StopRow(cause, lane_committed_length)` to `ledger` (B2-C15): the root
+    lane's committed length as read now, 0 for a run finalized while queued (it has no lane), and
+    None when the length cannot be read (the row is still appended; the ordering proof for that
+    run is then reported unproven, never passed)."""
+    length: int | None
+    if queued:
+        length = 0
+    else:
+        try:
+            length = lf.committed_length(lf.lane_path(run_dir))
+        except OSError:
+            length = None
+    run_id = str(ledger.records[0].get("run_id", run_dir.name)) if ledger.records else run_dir.name
+    return ledger.append(STOP_ROW_KIND, run_id=run_id, cause=cause, lane_committed_length=length)
 
 
 def _empty(run_dir: Path, *, overflowed: bool = False) -> FoldedRecord:
@@ -224,6 +267,13 @@ def fold_into_ledger(
             ),
         )
     return folded
+
+
+def walked_paths(folded: FoldedRecord, accepted: AcceptedPlan | None) -> frozenset[tuple[str, ...]]:
+    """The run's walked set `V_run` (V-4.8): the plan's scope less every alternative the recorded
+    selection did not select. The answer reads it through here (it imports no lane codec)."""
+    selection = folded.plan.selection if folded.plan is not None else {}
+    return lf.walked_set(_scope(accepted), selection)
 
 
 def cleanup_is_unknown(folded: FoldedRecord) -> bool:

@@ -584,6 +584,8 @@ def build_parser() -> argparse.ArgumentParser:
     register_parser.add_argument("--final", action="store_true")
     kdoc_parser = sub.add_parser("kdoc")
     kdoc_parser.add_argument("--history", default=None)
+    drain_parser = sub.add_parser("drain-check")
+    drain_parser.add_argument("--home", default=None)
     ckpt_parser = sub.add_parser("ckpt")
     ckpt_parser.add_argument("name")
     ckpt_parser.add_argument("--dry", action="store_true")
@@ -619,6 +621,10 @@ def main(argv: list[str] | None = None) -> int:
         return kdoc_mod.cmd_kdoc(args)
     if args.command == "ckpt":
         return cmd_ckpt(args)
+    if args.command == "drain-check":
+        from tests.proof import drain_check
+
+        return drain_check.cmd_drain_check(args)
     parser.error(f"unknown command {args.command}")
     return 2
 

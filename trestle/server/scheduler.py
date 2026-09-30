@@ -122,6 +122,24 @@ class Scheduler:
             self.waiting.remove(entry)
         self._finalize_expired(entry.order)
 
+    def cancel_waiting(self, run_id: Handle, finalize: Callable[[WorkOrder], object]) -> bool:
+        """A cancel reached a run still waiting in the FIFO: take it out and finalize it through
+        `finalize` (the conductor's queued path, B2-C12) with no process and no lane. False when
+        the run is not waiting (running, dispatched first, or not yet enqueued): the conductor
+        sees its cancel flag then."""
+        with self._lock:
+            entry = next((w for w in self.waiting if w.order.run_id == run_id), None)
+            if entry is None:
+                return False
+            self.waiting.remove(entry)
+            if entry.timer is not None:
+                entry.timer.cancel()
+        try:
+            finalize(entry.order)
+        finally:
+            self.complete(run_id)
+        return True
+
     def _finalize_expired(self, order: WorkOrder) -> None:
         try:
             if self.on_expire is not None:
