@@ -225,6 +225,7 @@ class ControlSurface:
         run_ids: list[str],
         mode: str = "all",
         timeout_ms: int = 2000,
+        caller_session: str | None = None,
     ) -> list[RunView] | RequestOutcome:
         if mode not in {"all", "any", "first_failure"}:
             return RequestOutcome(
@@ -233,13 +234,16 @@ class ControlSurface:
                 retryable=False,
                 origin="projection",
             )
-        return self.project.await_many(run_ids, cast(JoinMode, mode), timeout_ms)
+        return self.project.await_many(
+            run_ids, cast(JoinMode, mode), timeout_ms, caller_session=caller_session
+        )
 
     async def await_runs_async(
         self,
         run_ids: list[str],
         mode: str = "all",
         timeout_ms: int = 2000,
+        caller_session: str | None = None,
     ) -> list[RunView] | RequestOutcome:
         if mode not in {"all", "any", "first_failure"}:
             return RequestOutcome(
@@ -248,7 +252,9 @@ class ControlSurface:
                 retryable=False,
                 origin="projection",
             )
-        return await self.project.await_many_async(run_ids, cast(JoinMode, mode), timeout_ms)
+        return await self.project.await_many_async(
+            run_ids, cast(JoinMode, mode), timeout_ms, caller_session=caller_session
+        )
 
     def cancel(self, run_id: str, caller_session: str | None = None) -> RequestOutcome:
         return self.project.cancel(run_id, caller_session=caller_session)

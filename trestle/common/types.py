@@ -249,6 +249,12 @@ class RunView:
     # B4-C6: the TerminalAnswer, one additive key beside today's run state (present only once the
     # terminal row exists, so a non-terminal frame never carries a class, WR-TERM-2)
     answer: dict[str, Any] | None = None
+    # MC-B3-08: a child view only (V-1.3): the root it belongs to, the vertex's canonical path and
+    # its B4 `Listing` when that is `not_started`, `stopped` or `unended` (else None). A root view
+    # leaves all three unset and emits none of them, so its bytes are unchanged.
+    root_run_id: str | None = None
+    path: str | None = None
+    disposition: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -257,6 +263,10 @@ class RunView:
             "status_frame_version": self.status_frame_version,
             "truncated": self.truncated,
         }
+        if self.root_run_id is not None:
+            out["root_run_id"] = self.root_run_id
+            out["path"] = self.path
+            out["disposition"] = self.disposition
         if self.duration_ms is not None:
             out["duration_ms"] = self.duration_ms
         out["event_count"] = self.event_count
