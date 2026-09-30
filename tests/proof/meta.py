@@ -609,13 +609,54 @@ def _load_all_labels() -> list[dict[str, object]]:
     return labels
 
 
-def cmd_audit_rows(_args: argparse.Namespace) -> int:
-    """`python -m tests.proof.meta audit-rows` (L.P0-0c.2, report mode):
-    validate the CSC-1 label schema exactly, then report every one of the
-    129 rows with no registered clause (a direct `<row>:<label>`, or credit
-    through one of MC-03's nine matrix-credited rows, `matrix_map.toml`'s
-    `rows` field). Report mode: always exits 0; `--enforce` is a later
-    leaf's addition (plan-workflow-runtime.md L1712)."""
+def audit_rows_problems(
+    rows: list[dict[str, Any]],
+    labels: list[dict[str, Any]],
+    clauses: list[dict[str, Any]],
+    world: EnforceWorld,
+) -> list[str]:
+    """`audit-rows --enforce` (L.CZ.2): each of the rows owns >= 1 CSC-1 label, or is credited
+    through an MC-03 clause (`matrix_map.toml`'s `rows`), whose test passed in a named gate
+    (`key_problems`: this run's ledger for a CI key, the selected HOST record for a HOST or
+    DOCKER one), or a `gated_on` (open question) / `both_variant` / `na` (reason) label. A label
+    whose test never ran renders UNPROVEN and does not count (WR-PROOF-2)."""
+    by_row: dict[str, list[dict[str, Any]]] = {}
+    for label in labels:
+        by_row.setdefault(str(label.get("row")), []).append(label)
+    credited: dict[str, list[dict[str, Any]]] = {}
+    for clause in clauses:
+        for row in clause.get("rows", []):
+            credited.setdefault(row, []).append(clause)
+
+    problems: list[str] = []
+    for row in rows:
+        rid = str(row["id"])
+        owners, credits = by_row.get(rid, []), credited.get(rid, [])
+        if not owners and not credits:
+            problems.append(f"{rid}: no registered clause")
+            continue
+        why: list[str] = []
+        closed = False
+        for label in owners:
+            found = label_problems(world, label)
+            closed = closed or not found
+            why += found
+        for clause in credits:
+            for key in clause_keys([clause]):
+                found = clause_problems(world, key)
+                closed = closed or not found
+                why += found
+        if not closed:
+            problems.append(f"{rid}: no label or clause has a passing test ({why[0]})")
+    return problems
+
+
+def cmd_audit_rows(args: argparse.Namespace) -> int:
+    """`python -m tests.proof.meta audit-rows [--enforce]` (L.P0-0c.2, L.CZ.2): validate the
+    CSC-1 label schema exactly, then report every one of the 129 rows with no registered clause
+    (a direct `<row>:<label>`, or credit through one of MC-03's matrix-credited rows,
+    `matrix_map.toml`'s `rows` field). The report mode always exits 0 on a well-formed registry;
+    `--enforce` exits 1 on any row without a passing test (`audit_rows_problems`)."""
     from tests.proof import transcribe as transcribe_mod
 
     labels = _load_all_labels()
@@ -660,6 +701,20 @@ def cmd_audit_rows(_args: argparse.Namespace) -> int:
     uncovered = [
         r["id"] for r in rows if r["id"] not in labeled_rows and r["id"] not in matrix_credited_rows
     ]
+
+    if getattr(args, "enforce", False):
+        from tests.proof import ledger as ledger_mod
+
+        try:
+            world = live_world("ci")
+        except ledger_mod.VacuousLedgerError as exc:
+            print(f"error: {exc}")
+            return 1
+        problems = audit_rows_problems(rows, labels, world.clauses, world)
+        for problem in problems:
+            print(f"audit-rows --enforce: {problem}")
+        print(f"audit-rows --enforce: {len(rows)} rows, {len(problems)} without a passing test")
+        return 1 if problems else 0
 
     print(f"audit-rows: {len(rows)} rows, {len(uncovered)} with no registered clause (report mode)")
     if uncovered:
@@ -823,7 +878,8 @@ def build_parser() -> argparse.ArgumentParser:
     ratchet_parser = sub.add_parser("mypy-ratchet")
     ratchet_parser.add_argument("--max", type=int, required=True)
     sub.add_parser("check-map")
-    sub.add_parser("audit-rows")
+    audit_parser = sub.add_parser("audit-rows")
+    audit_parser.add_argument("--enforce", action="store_true")
     sub.add_parser("open-questions")
     register_parser = sub.add_parser("register")
     register_parser.add_argument("--probe", default=None)

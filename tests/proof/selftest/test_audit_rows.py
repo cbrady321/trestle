@@ -142,3 +142,82 @@ def test_posture_outside_c9_vocabulary_rejected(monkeypatch: pytest.MonkeyPatch,
         extra = {"oq": "OQ-1"} if good == "gated_on" else {}
         monkeypatch.setattr(meta, "_load_all_labels", lambda g=good, e=extra: [{**label(g), **e}])
         assert meta.cmd_audit_rows(Namespace()) == 0
+
+
+# --- L.CZ.2: `audit-rows --enforce` ---------------------------------------------------------
+
+PROVEN = {"status": "PROVEN", "corroborating_314": False, "n_results": 1}
+UNPROVEN = {"status": "UNPROVEN", "corroborating_314": False, "n_results": 1}
+
+
+def _label(row: str, suffix: str = "x", posture: str = "claim", **extra) -> dict:
+    return {
+        "id": f"{row}:{suffix}",
+        "row": row,
+        "step": "core",
+        "slice": "core",
+        "tier": "LOGIC",
+        "venue": "CI",
+        "posture": posture,
+        "declared_by": "test",
+        **extra,
+    }
+
+
+def _row_world(labels: list[dict], report: dict, clauses: list[dict] | None = None):
+    return meta.EnforceWorld(
+        scope="ci",
+        report=report,
+        labels=labels,
+        clauses=clauses or [],
+        markers={"A1.2": [("LOGIC", "CI")]},
+    )
+
+
+@pytest.mark.proves(
+    "WR-PROOF-2", "WR-PROOF-2:no-unrun-verifier-counts", "core", "CZ", "LOGIC", "CI"
+)
+def test_planted_orphan_row_fails_enforce(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from argparse import Namespace
+
+    rows = [{"id": "WR-A-1"}, {"id": "WR-A-2"}, {"id": "WR-A-3"}, {"id": "WR-A-4"}]
+    clauses = [{"id": "A1.2", "rows": ["WR-A-4"], "parts": []}]
+    labels = [
+        _label("WR-A-1"),
+        _label("WR-A-2", posture="gated_on", oq="OQ-25"),
+        _label("WR-A-3", posture="na", reason="no such surface"),
+    ]
+    world = _row_world(labels, {"WR-A-1:x": PROVEN, "A1.2": PROVEN}, clauses)
+    assert meta.audit_rows_problems(rows, labels, clauses, world) == []
+
+    # a planted row with no registered clause fails
+    orphan = rows + [{"id": "WR-ORPHAN-1"}]
+    found = meta.audit_rows_problems(orphan, labels, clauses, world)
+    assert found == ["WR-ORPHAN-1: no registered clause"]
+
+    # a label whose test never ran, or ran unproven, does not own its row (WR-PROOF-2), and a
+    # matrix-credited row is owned only while its clause is proven
+    unrun = _row_world(labels, {"A1.2": PROVEN}, clauses)
+    assert [p.split(":")[0] for p in meta.audit_rows_problems(rows, labels, clauses, unrun)] == [
+        "WR-A-1"
+    ]
+    red = _row_world(labels, {"WR-A-1:x": PROVEN, "A1.2": UNPROVEN}, clauses)
+    assert [p.split(":")[0] for p in meta.audit_rows_problems(rows, labels, clauses, red)] == [
+        "WR-A-4"
+    ]
+
+    # the command: exit 1 with the orphan named, exit 0 without it
+    owners = tmp_path / "row_owners.toml"
+    owners.write_text("".join(f'[[row]]\nid = "{r["id"]}"\n' for r in orphan))
+    monkeypatch.setattr(meta, "ROW_OWNERS_PATH", owners)
+    monkeypatch.setattr(meta, "_load_all_labels", lambda: labels)
+    monkeypatch.setattr(meta, "live_world", lambda scope, commit="HEAD": world)
+    assert meta.cmd_audit_rows(Namespace(enforce=True)) == 1
+    assert "WR-ORPHAN-1: no registered clause" in capsys.readouterr().out
+    owners.write_text("".join(f'[[row]]\nid = "{r["id"]}"\n' for r in rows))
+    assert meta.cmd_audit_rows(Namespace(enforce=True)) == 0
+    # report mode is unchanged: it never fails on an unowned row
+    owners.write_text("".join(f'[[row]]\nid = "{r["id"]}"\n' for r in orphan))
+    assert meta.cmd_audit_rows(Namespace()) == 0
