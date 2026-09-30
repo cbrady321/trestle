@@ -13,6 +13,7 @@ from typing import Final
 
 EFFECT_UNCONFIRMED: Final = "execution.effect_unconfirmed"
 PRECONDITION_UNSATISFIED: Final = "execution.precondition_unsatisfied"
+PLAN_PRECONDITION_UNCOVERED: Final = "execution.plan_precondition_uncovered"
 FOUND_INCOMPATIBLE: Final = "execution.found_incompatible"
 FOUND_UNHEALTHY: Final = "execution.found_unhealthy"
 CURRENCY_UNCONFIRMED: Final = "execution.currency_unconfirmed"
