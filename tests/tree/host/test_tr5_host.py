@@ -82,7 +82,7 @@ def _lane(run_dir: Path) -> list[Any]:
 
 
 def _plan(rows: list[Any]) -> dict[str, Any]:
-    plans = [r.entry for r in rows if r.cls == "plan"]
+    plans: list[dict[str, Any]] = [r.entry for r in rows if r.cls == "plan"]
     assert len(plans) == 1, "the plan identity is recorded exactly once"
     return plans[0]
 
