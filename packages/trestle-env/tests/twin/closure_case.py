@@ -26,11 +26,15 @@ from twin import harness
 
 COMPOSE = Path(__file__).resolve().parents[1] / "fixtures" / "closure-compose" / "compose.json"
 PROJECT = _bind.REFERENCE_COMPOSE_PROJECT
-SERVICE_OF = {
-    tree.HTTP_SUPPORT_UNIT: tree.HTTP_SUPPORT_SERVICE,
-    tree.POSTGRES_UNIT: tree.POSTGRES_SERVICE,
-}
 SELECTED = [tree.POSTGRES_SERVICE]
+
+
+def service_of(path: str) -> str:
+    """The logical service a service node's path names: `backend.<service>` (the tree's naming,
+    `tree.POSTGRES_UNIT` = `backend.postgres` for the service `postgres`)."""
+    prefix, dot, service = path.partition(".")
+    assert dot and service, f"{path!r} is not a service node's path"
+    return service
 
 
 def environ(base: dict[str, str | None]) -> dict[str, str | None]:
@@ -71,7 +75,7 @@ def started(answer: dict[str, Any], entries: list[dict[str, Any]], run_id: str) 
     }
     answered = {p for p, d in harness.dispositions(answer).items() if d == "started"}
     assert answered == created, (answered, created)
-    return frozenset(SERVICE_OF[p] for p in created)
+    return frozenset(service_of(p) for p in created)
 
 
 def every_service() -> list[str]:
