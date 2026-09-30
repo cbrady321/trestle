@@ -10,8 +10,6 @@ marker port keys a resource by `(node path, effect)` and reports every other liv
 
 from __future__ import annotations
 
-from dataclasses import replace
-from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -20,26 +18,7 @@ import pytest
 from tests.proof import records
 from tests.single.workflow import loopkit as kit
 from tests.tree import treekit as tk
-from trestle.workflow import ports
-from trestle.workflow.units import (
-    ActContext,
-    Acted,
-    EffectFacets,
-    ObserveContext,
-    ReadFacets,
-    Step,
-)
-from trestle.workflow.values import (
-    CheckResult,
-    Confirmation,
-    ConfirmationStatus,
-    CreatedHandle,
-    FoundRef,
-    Lineage,
-    Observation,
-    SelectorRef,
-    Verdict,
-)
+from tests.tree.sharedkit import SharedMarker, observing_unit
 
 proves_claim = pytest.mark.proves(
     "WR-UNIT-5", "WR-UNIT-5:claim-before-effect", "A", "tree", "PROC", "CI"
@@ -53,125 +32,6 @@ proves_created = pytest.mark.proves(
 proves_root_record = pytest.mark.proves("WR-OWN-1", "WR-OWN-1:tree", "A", "tree", "PROC", "CI")
 
 SIDE = "side"  # a second creating effect of one node (test_created_then_healthy_not_found)
-STOP_TIMEOUT = timedelta(seconds=2)
-EXECUTABLE = "/opt/engine/ctl"
-
-
-class SharedMarker(tk.PathMarker):
-    """An in-memory marker port for a tree, keyed by `(node path, effect)`. `observe` addresses
-    the instance of this node and effect (`selector_present`); every other live instance, and each
-    planted one, is a `FoundRef`. `create` calls `on_create(path, effect)` after its ticket was
-    issued, before it changes anything. The release descriptor is an `ArgvRelease` that names the
-    creating node's own selector, so each claim carries a descriptor of its own (V-10.1)."""
-
-    def __init__(self, on_create: Any = None) -> None:
-        super().__init__()
-        self.on_create_effect = on_create
-        self.planted: set[str] = set()
-
-    @staticmethod
-    def selector(lineage: Lineage, effect: str) -> str:
-        return f"sel-{'/'.join(lineage.path.segments)}/{effect}"
-
-    def plant(self, selector: str) -> None:
-        """A resource this run did not make (present before it started): only ever `found`."""
-        self.planted.add(selector)
-
-    def observe(
-        self, spec: ports.ResourceSpec, lineage: Lineage, effect: str | None
-    ) -> ports.ResourceObservation:
-        mine = self.selector(lineage, effect or kit.EFFECT)
-        with self._lock:
-            self.calls.append(("observe", "/".join(lineage.path.segments)))
-            present = mine in self._live
-            others = sorted((self._live | self.planted) - {mine})
-        ref = SelectorRef(lineage, effect or kit.EFFECT, mine, kit.NOW) if present else None
-        found = tuple(FoundRef(spec.logical_system, other, kit.NOW) for other in others)
-        return ports.ResourceObservation(present, ref, True, True, (), found, None)
-
-    def release_descriptor(self, call: ports.EffectCall) -> ports.ReleaseDescriptor:
-        selector = self.selector(call.lineage, call.effect)
-        return ports.ArgvRelease(
-            executable=EXECUTABLE,
-            observe_argv=("observe", selector),
-            observe_ok_exit=frozenset({0}),
-            stop_argv=("stop", selector),
-            timeout=STOP_TIMEOUT,
-        )
-
-    def create(self, spec: ports.ResourceSpec, ticket: Any) -> Confirmation:
-        path = "/".join(ticket.lineage.path.segments)
-        selector = self.selector(ticket.lineage, ticket.effect)
-        with self._lock:
-            self.calls.append(("create", path))
-        if self.on_create_effect is not None:
-            self.on_create_effect(path, ticket.effect)
-        with self._lock:
-            self._live.add(selector)
-        return Confirmation(ConfirmationStatus.APPLIED, None, selector)
-
-    def stop(self, target: CreatedHandle, ticket: Any) -> Confirmation:
-        with self._lock:
-            self.calls.append(("stop", "/".join(ticket.lineage.path.segments)))
-            self._live.discard(target.selector)
-        return Confirmation(ConfirmationStatus.APPLIED, None, None)
-
-
-def _observing_unit(
-    name: str, effects: tuple[str, ...] = (kit.EFFECT,), *, reuse_found: bool = False
-) -> kit.Unit:
-    """A leaf that creates one resource per effect of `effects` and observes the first. The
-    observation carries the port's `found` as it is. `reuse_found`: a leaf that takes any found
-    instance for its own and is content with it (the reuse the rule forbids for a resource this
-    run created, and the rule's control for a stranger's)."""
-    declared = tuple(kit.effect(e, kit.EffectFacetClass.CREATE) for e in effects)
-    decl = replace(
-        kit.declaration(
-            effects=(
-                *declared,
-                kit.effect(kit.STOP_EFFECT, kit.EffectFacetClass.OWNED, release=True),
-            ),
-            max_attempts=1,
-            budget_s=tk.LEAF_BUDGET_S,
-            max_wait_s=5.0,
-        ),
-        unit=name,
-    )
-
-    def observe(unit: kit.Unit, params: Any, reads: ReadFacets, ctx: ObserveContext) -> Observation:
-        resource = reads.read(ports.ResourceReads)
-        seen = resource.observe(kit.SPEC, ctx.lineage, effects[0])
-        healthy = (
-            resource.check("ready", seen.selector_ref) if seen.selector_ref is not None else None
-        )
-        ready = (healthy is not None and healthy.satisfied) or (reuse_found and bool(seen.found))
-        return Observation(
-            present=seen.selector_present or bool(seen.found),
-            selector_present=seen.selector_present,
-            identity_proven=True,
-            configuration_compatible=True,
-            postcondition=CheckResult(ready, None, ""),
-            preconditions=(),
-            currency=(),
-            found=seen.found,
-            code=None,
-            payload=None,
-        )
-
-    def advance(
-        unit: kit.Unit, params: Any, state: Verdict, facets: EffectFacets, ctx: ActContext
-    ) -> Step:
-        for effect in effects:
-            facets.create(ports.ResourceCreate).create(kit.SPEC, effect)
-        return Acted()
-
-    def release(
-        unit: kit.Unit, params: Any, handle: CreatedHandle, facets: Any, ctx: ActContext
-    ) -> Step:
-        facets.owned(ports.ResourceOwned).stop(handle, kit.STOP_EFFECT)
-        return Acted()
-
-    return kit.Unit(decl, observe, advance, release)
 
 
 def _observed(rig: tk.TreeRig, path: str) -> list[dict[str, Any]]:
@@ -199,7 +59,7 @@ def test_child_claim_before_effect(tmp_path: Path) -> None:
 
     mid = tk.group("mid", (tk.bind("a"), tk.bind("b", "a")), concurrency=2, budget_s=100)
     app = tk.group("app", (tk.bind("mid"), tk.bind("c", "mid")), concurrency=2, budget_s=250)
-    units: dict[str, object] = {"mid": mid, **{n: _observing_unit(n) for n in ("a", "b", "c")}}
+    units: dict[str, object] = {"mid": mid, **{n: observing_unit(n) for n in ("a", "b", "c")}}
     rig = tk.tree_rig(tmp_path, app, units, SharedMarker(snapshot))
     rig.run()
 
@@ -237,8 +97,8 @@ def test_sibling_sees_created_not_found(tmp_path: Path) -> None:
     marker = SharedMarker()
     app = tk.group("app", (tk.bind("c"), tk.bind("s", "c")), concurrency=2)
     units: dict[str, object] = {
-        "c": _observing_unit("c"),
-        "s": _observing_unit("s", reuse_found=True),
+        "c": observing_unit("c"),
+        "s": observing_unit("s", reuse_found=True),
     }
     rig = tk.tree_rig(tmp_path, app, units, marker)
     rig.run()
@@ -270,7 +130,7 @@ def test_a_strangers_resource_is_still_found(tmp_path: Path) -> None:
     marker = SharedMarker()
     marker.plant("stranger")
     app = tk.group("app", (tk.bind("s"),), concurrency=1)
-    rig = tk.tree_rig(tmp_path, app, {"s": _observing_unit("s", reuse_found=True)}, marker)
+    rig = tk.tree_rig(tmp_path, app, {"s": observing_unit("s", reuse_found=True)}, marker)
     rig.run()
 
     seen = _observed(rig, "s")
@@ -288,7 +148,7 @@ def test_created_then_healthy_not_found(tmp_path: Path) -> None:
     and `side`, one system) and observes `up`, healthy. The port lists `side` as a found instance;
     the run made it, so it is never reported found by any later observation."""
     marker = SharedMarker()
-    rig = tk.tree_rig(tmp_path, _observing_unit("solo", (kit.EFFECT, SIDE)), {}, marker)
+    rig = tk.tree_rig(tmp_path, observing_unit("solo", (kit.EFFECT, SIDE)), {}, marker)
     rig.run()
 
     seen = _observed(rig, "(root)")
