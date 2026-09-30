@@ -22,6 +22,11 @@ CREDENTIAL_LIFETIME_INSUFFICIENT: Final = "execution.credential_lifetime_insuffi
 CREDENTIAL_INTERACTIVE: Final = "execution.credential_interactive"
 CREDENTIAL_STALE: Final = "execution.credential_stale"
 TOOLCHAIN_MISSING: Final = "execution.toolchain_missing"
+# V-7.4: an externally managed instance is not running (a unit's `Blocked`, no effect facet)
+REALIZATION_ABSENT: Final = "execution.realization_absent"
+# V-7.3: the selected alternative is not reachable from a dependent's vantage; the plan spelling
+# is shared with admission (V-11: "Admission, or in-run before the first ticket")
+ROUTE_UNSUPPORTED: Final = "admission.route_unsupported"
 REMEDY_EXHAUSTED: Final = "execution.remedy_exhausted"
 REMEDY_NO_PROGRESS: Final = "execution.remedy_no_progress"
 TICKET_REFUSED: Final = "execution.ticket_refused"

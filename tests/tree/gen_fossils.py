@@ -1,13 +1,16 @@
-"""Producers of the tree-lift fossil band `tree-trl` (L.TR-L.11; MC-11, MC-B3-05, CM-5).
+"""Producers of the tree-lift fossil bands `tree-trl` (L.TR-L.11) and `tree-tr5` (L.TR-5.4; MC-11,
+MC-B3-05, CM-5).
 
-`python -m tests.proof.fossils generate --checkpoint tree-trl --states all` runs the producers that
-`tests/fixtures/fossils/tree-trl/MANIFEST.toml` names into
+`python -m tests.proof.fossils generate --checkpoint tree-trl --states <ids>` runs the producers
+that `tests/fixtures/fossils/tree-trl/MANIFEST.toml` names into
 `tests/fixtures/fossils/tree-trl/<state>/home/{runs,snapshots,idempotency.json,service_epoch}`, and
-`--checkpoint slice-a` regenerates them under `slice-a/` with the same ids at L.J-SLICE-A.1. The
-runs are written by head: each goes through the host's own admission (`ControlSurface.run`; the
-lifted refusal admits an `AllDeclaration` tree), so its spec carries a `plan` that names a declared
-tree with more than one vertex, which no reader before TR-L has ever seen. Nothing here reaches
-`tests/proof/harness.py`'s admission bypass.
+`--checkpoint slice-a` regenerates them under `slice-a/` with the same ids at L.J-SLICE-A.1
+(`tree-tr5` is the same, over `tests/fixtures/fossils/tree-tr5/MANIFEST.toml`; name the ids, since
+`--states all` selects every band's states, and give `--fossils-root` as an absolute path: the run's
+home is a path its children resolve). The runs are written by head: each goes through the host's
+own admission (`ControlSurface.run`; the lifted refusal admits an `AllDeclaration` tree), so its
+spec carries a `plan` that names a declared tree with more than one vertex, which no reader before
+TR-L has ever seen. Nothing here reaches `tests/proof/harness.py`'s admission bypass.
 
 The states (ids unique across every band's MANIFEST):
 
@@ -20,6 +23,12 @@ The states (ids unique across every band's MANIFEST):
 - `trl-views-<fixture>`: the same finalized homes; the expectation is their child views only (a
   reader before TR-2 serves none, E-TR-1). Each is its own real run of the same fixture, so a
   home is never shared between two states.
+
+The `tree-tr5` band (L.TR-5.4) is the same three kinds over ChoiceNode roots (V-14), whose selection
+no reader before TR-5 has seen: `tr5-inflight-choice_long_running` (copied while the selected
+alternative is mid-step, then cancelled and reaped), `tr5-terminal-live_state` (a finalized root,
+`healthy`: both choices selected, `passed`) and `tr5-views-live_state` (its own real run of the same
+fixture; the expectation is its child views only).
 
 Every timing bound is the harness's or the published clock's (SA-05)."""
 
@@ -43,10 +52,12 @@ ROOT = Path(__file__).resolve().parents[2]
 TREES = ROOT / "tests" / "fixtures" / "trees"
 BAND = "tree-trl"
 ARGS = {"env": "dev"}
+LIVE_STATE_ARGS = {"env": "dev", "case": "healthy"}  # every node converges, both choices select
 HOME_ENTRIES = ("runs", "snapshots", "idempotency.json", "service_epoch")
 POLLS_SEEN = 3  # evidence events the waits record after the last create was confirmed
 TERMINAL_WAIT_MS = int(tolerances.JOIN_WAIT_S * 6 * 1000)
 INFLIGHT_LEAVES = 3  # `readiness_sibling`'s leaves that create a marker (waiter, w1, w2)
+CHOICE_INFLIGHT_LEAVES = 1  # `choice_long_running`'s one selected alternative creates a marker
 
 
 def _kernel(home: Path, fixture: str) -> Kernel:
@@ -140,12 +151,20 @@ def _plan_bearing_tree(run_dir: Path) -> None:
     assert len(plan.get("vertices", [])) > 1, "not a multi-vertex root"
 
 
-def _finalized(home: Path, fixture: str, expected_terminals: tuple[str, ...]) -> None:
+def _finalized(
+    home: Path,
+    fixture: str,
+    expected_terminals: tuple[str, ...],
+    args: dict[str, str] | None = None,
+) -> None:
     """One run of `fixture` through the host to its finalized terminal row."""
     kernel = _kernel(home, fixture)
     with _reaping(home):
         view = kernel.control.run(
-            plugin=fixture, args=dict(ARGS), wait_ms=TERMINAL_WAIT_MS, completion="terminal"
+            plugin=fixture,
+            args=dict(ARGS if args is None else args),
+            wait_ms=TERMINAL_WAIT_MS,
+            completion="terminal",
         )
         assert not isinstance(view, RequestOutcome), view
         assert isinstance(view, RunView), view
@@ -167,18 +186,18 @@ def produce_trl_terminal_upstream_covered(home: Path) -> None:
     _finalized(home, "upstream_covered", ("succeeded",))
 
 
-def produce_trl_inflight_readiness_sibling(home: Path) -> None:
-    """A non-terminal multi-vertex root: `readiness_sibling` copied while every leaf polls a
-    readiness that never comes, then the live run is cancelled and reaped. The copy has no terminal
-    row."""
+def _inflight(home: Path, fixture: str, leaves: int) -> None:
+    """A non-terminal multi-vertex root: `fixture` copied while its `leaves` created markers are
+    polling a readiness that never comes, then the live run is cancelled and reaped. The copy has no
+    terminal row."""
     scratch = Path(tempfile.mkdtemp(prefix="fossil-inflight-"))
-    kernel = _kernel(scratch, "readiness_sibling")
+    kernel = _kernel(scratch, fixture)
     views: list[Any] = []
 
     def drive() -> None:
         views.append(
             kernel.control.run(
-                plugin="readiness_sibling",
+                plugin=fixture,
                 args=dict(ARGS),
                 wait_ms=TERMINAL_WAIT_MS,
                 completion="terminal",
@@ -191,7 +210,7 @@ def produce_trl_inflight_readiness_sibling(home: Path) -> None:
         with _reaping(scratch), _fast_group_stop():
             _wait_until(lambda: bool(_run_dirs(scratch)), "the admission of the tree")
             (live,) = _run_dirs(scratch)
-            _wait_until(Polling(live, INFLIGHT_LEAVES), "the waits' polls")
+            _wait_until(Polling(live, leaves), "the waits' polls")
             home.mkdir(parents=True, exist_ok=True)
             for name in HOME_ENTRIES:
                 source = scratch / name
@@ -216,6 +235,12 @@ def produce_trl_inflight_readiness_sibling(home: Path) -> None:
     _tidy(home)
 
 
+def produce_trl_inflight_readiness_sibling(home: Path) -> None:
+    """A non-terminal multi-vertex root: `readiness_sibling` copied while every leaf polls a
+    readiness that never comes (the AllDeclaration crash image)."""
+    _inflight(home, "readiness_sibling", INFLIGHT_LEAVES)
+
+
 def produce_trl_views_exception_branch(home: Path) -> None:
     """The same finalized root as `trl-terminal-exception_branch`, whose expectation is its child
     views."""
@@ -226,3 +251,25 @@ def produce_trl_views_upstream_covered(home: Path) -> None:
     """The same finalized root as `trl-terminal-upstream_covered`, whose expectation is its child
     views."""
     produce_trl_terminal_upstream_covered(home)
+
+
+# ---- the tree-tr5 band (L.TR-5.4): ChoiceNode roots
+
+
+def produce_tr5_inflight_choice_long_running(home: Path) -> None:
+    """A non-terminal ChoiceNode root: `choice_long_running` copied while the alternative the
+    selection took (the declared fallback) is mid-step, its selection already recorded in the plan
+    entry, then the live run is cancelled and reaped. The copy has no terminal row."""
+    _inflight(home, "choice_long_running", CHOICE_INFLIGHT_LEAVES)
+
+
+def produce_tr5_terminal_live_state(home: Path) -> None:
+    """A finalized ChoiceNode-bearing root: `live_state` (`healthy`) selects a realization for each
+    of its two choices and passes (the terminal row is the process state, `succeeded`)."""
+    _finalized(home, "live_state", ("succeeded",), LIVE_STATE_ARGS)
+
+
+def produce_tr5_views_live_state(home: Path) -> None:
+    """The same finalized root as `tr5-terminal-live_state`, whose expectation is its child views
+    (the alternatives the selection left out are `not_started` views)."""
+    produce_tr5_terminal_live_state(home)

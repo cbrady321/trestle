@@ -443,6 +443,30 @@ def resolve_params(params: Mapping[str, Any], request: Mapping[str, Any]) -> dic
     return _resolved_params(params, request)
 
 
+def unreachable_dependents(
+    plan: AdmittedPlan, nodes: Mapping[str, Mapping[str, Any]], chosen: Mapping[str, str]
+) -> list[str]:
+    """V-7.3, at run time: the dependents whose vantage the alternative selected for a CHOICE they
+    depend on does not declare in `reachable_from`. `chosen` maps a CHOICE's canonical path to the
+    selected alternative's; the answer lists each dependent once, in plan edge order. The same
+    set-membership test of two declared values that (3) of `compile` applies over the eligible
+    set (V-6.1: a test of declared data, never a comparison against a kind)."""
+    vantage = {v.path: v.vantage for v in plan.vertices}
+    out: list[str] = []
+    for dependency, dependent in plan.edges:
+        selected = chosen.get(dependency)
+        if selected is None or dependent in out:
+            continue
+        declared = next(
+            alt["reachable_from"]
+            for alt in nodes[dependency]["choice"]["alternatives"]
+            if alt["path"] == selected
+        )
+        if vantage[dependent] not in declared:
+            out.append(dependent)
+    return out
+
+
 def compile(  # noqa: A001  (MC-23 names the entry point `compile`)
     declared: DeclaredTree,
     request: Mapping[str, Any],

@@ -25,6 +25,10 @@ TEMPLATES: Final[dict[str, tuple[str, Resend]]] = {
         "then re-send.",
         _AFTER,
     ),
+    codes.ROUTE_UNSUPPORTED: (
+        "Select a realization of {path} reachable from its dependent, then re-send.",
+        _AFTER,
+    ),
     codes.PRECONDITION_UNSATISFIED: (
         "Make the declared precondition of {path} hold, then re-send.",
         _AFTER,

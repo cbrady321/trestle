@@ -2,10 +2,10 @@
 
 `Admission.admit` loads the snapshot's declared tree (MC-34) and runs the plan compiler (MC-23)
 in B2-C2's check order, so a tree defective in a way the declaration alone shows is refused with
-its own code naming the identifier, before any run id, and a valid `ChoiceNode` tree still gets
-`admission.plan_multi_vertex_unsupported` (MC-B3-03 order; a valid `AllDeclaration` tree is
-admitted since L.TR-L.1). The defective trees are planted below publication
-(`tests/tree/planting.py`; L.TR-0.4 refuses them at publication)."""
+its own code naming the identifier, before any run id; a valid tree is admitted (`AllDeclaration`
+since L.TR-L.1, `ChoiceNode` since L.TR-5.3, which removed the temporary refusal). The defective
+trees are planted below publication (`tests/tree/planting.py`; L.TR-0.4 refuses them at
+publication)."""
 
 from __future__ import annotations
 
@@ -75,7 +75,8 @@ def refused(kernel: Kernel, plugin: str, args: dict[str, object] | None = None) 
 def admitted(
     kernel: Kernel, plugin: str, args: dict[str, object] | None = None
 ) -> AdmitResultAdmitted:
-    """A valid `AllDeclaration` tree through admission alone (since L.TR-L.1): a run id is minted
+    """A valid tree through admission alone (`AllDeclaration` since L.TR-L.1, `ChoiceNode` since
+    L.TR-5.3): a run id is minted
     and its run directory written, and admission itself spawns no process (MC-13)."""
     before = descendants()
     result = kernel.control.admission.admit(AdmitRequest(plugin=plugin, args=args or {}))
@@ -158,9 +159,8 @@ def test_valid_all_tree_admitted(tree_kernel: Kernel) -> None:
     admitted(tree_kernel, name)
 
 
-def test_valid_choice_tree_gets_temp_code_until_lift(tree_kernel: Kernel) -> None:
-    """A valid `ChoiceNode` tree compiles and then gets the temporary code (MC-B3-03 order)
-    until L.TR-5.3 removes the refusal."""
+def test_valid_choice_tree_admitted(tree_kernel: Kernel) -> None:
+    """A valid `ChoiceNode` tree compiles and is admitted (L.TR-5.3 removed the last temporary
+    refusal, MC-B3-03 order): a run id is minted."""
     name = publish(tree_kernel, source("choice_fake"))
-    outcome = refused(tree_kernel, name)
-    assert outcome.code == codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED
+    admitted(tree_kernel, name)

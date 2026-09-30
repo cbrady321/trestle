@@ -347,45 +347,67 @@ def test_lift_tests_are_host_path_fails_when_a_listed_module_is_removed(tmp_path
     assert copies[0].name in problem and "does not exist" in problem
 
 
-# T5/T6 (MC-31, DM-79): the D2 outcome record and the class TR-L's boundary carries.
+# T5/T6 (MC-31, DM-79): the D2 outcome record and the class a lift boundary's entry carries. TR-5's
+# (L.TR-5.4) is read the same way, over its own `tr5-*` states.
 INFLIGHT_STATES = "*/trl-inflight-*"
 EVIDENCE = "tests/tree/joins/test_j_trl.py::test_trl_rollback_class_consistent"
+TR5_INFLIGHT_STATES = "*/tr5-inflight-*"
+TR5_EVIDENCE = "tests/tree/joins/test_j_trl.py::test_tr5_rollback_class_consistent"
 
 
-def trl_class_for(runs: list[dict[str, Any]]) -> str | None:
-    """The class the recorded TR-L D2 runs imply (DM-79, A2c3-10): `transparent` iff every exit is
-    0; `drain` iff some exit is non-zero, some unexcused state diverged and every diverged path is
-    an in-flight state; `None` otherwise (a terminal or views state diverged, or a run failed
-    without naming a diverging state: no class is written, the band escalates to the root)."""
-    tr_l = [run for run in runs if run.get("merge") == "TR-L"]
-    if not tr_l:
+def class_for(runs: list[dict[str, Any]], merge: str, inflight: str) -> str | None:
+    """The class the recorded `merge` D2 runs imply (DM-79, A2c3-10): `transparent` iff every exit
+    is 0; `drain` iff some exit is non-zero, some unexcused state diverged and every diverged path
+    is an in-flight state (`inflight`, a glob); `None` otherwise (a terminal or views state
+    diverged, or a run failed without naming a diverging state: no class is written, the band
+    escalates to the root)."""
+    mine = [run for run in runs if run.get("merge") == merge]
+    if not mine:
         return None
-    if all(run["exit"] == 0 for run in tr_l):
+    if all(run["exit"] == 0 for run in mine):
         return "transparent"
-    diverged = [path for run in tr_l for path in run["diverged"]]
-    if diverged and all(fnmatch.fnmatch(path, INFLIGHT_STATES) for path in diverged):
+    diverged = [path for run in mine for path in run["diverged"]]
+    if diverged and all(fnmatch.fnmatch(path, inflight) for path in diverged):
         return "drain"
     return None
 
 
-def trl_class_problems(runs: list[dict[str, Any]], boundaries: list[dict[str, Any]]) -> list[str]:
-    """T6's check over the two records: TR-L's boundary carries the class the D2 runs imply and
-    names this test as its evidence."""
-    expected = trl_class_for(runs)
+def class_problems(
+    runs: list[dict[str, Any]],
+    boundaries: list[dict[str, Any]],
+    merge: str,
+    inflight: str,
+    evidence: str,
+) -> list[str]:
+    """T6's check over the two records: `merge`'s boundary carries the class the D2 runs imply and
+    names its own test as its evidence."""
+    expected = class_for(runs, merge, inflight)
     if expected is None:
         return [
-            "no class follows from the recorded TR-L D2 runs (a terminal or views state diverged, "
-            f"or no TR-L run is recorded): {runs}"
+            f"no class follows from the recorded {merge} D2 runs (a terminal or views state "
+            f"diverged, or no {merge} run is recorded): {runs}"
         ]
-    entries = [b for b in boundaries if b["merge"] == "TR-L"]
+    entries = [b for b in boundaries if b["merge"] == merge]
     if len(entries) != 1:
-        return [f"TR-L is registered {len(entries)} times in rollback.toml"]
+        return [f"{merge} is registered {len(entries)} times in rollback.toml"]
     problems = []
     if entries[0]["class"] != expected:
-        problems.append(f"TR-L is {entries[0]['class']!r}, the D2 outcomes imply {expected!r}")
-    if entries[0]["evidence"] != EVIDENCE:
-        problems.append(f"TR-L's evidence is {entries[0]['evidence']!r}, not {EVIDENCE!r}")
+        problems.append(f"{merge} is {entries[0]['class']!r}, the D2 outcomes imply {expected!r}")
+    if entries[0]["evidence"] != evidence:
+        problems.append(f"{merge}'s evidence is {entries[0]['evidence']!r}, not {evidence!r}")
     return problems
+
+
+def trl_class_for(runs: list[dict[str, Any]]) -> str | None:
+    return class_for(runs, "TR-L", INFLIGHT_STATES)
+
+
+def trl_class_problems(runs: list[dict[str, Any]], boundaries: list[dict[str, Any]]) -> list[str]:
+    return class_problems(runs, boundaries, "TR-L", INFLIGHT_STATES, EVIDENCE)
+
+
+def tr5_class_problems(runs: list[dict[str, Any]], boundaries: list[dict[str, Any]]) -> list[str]:
+    return class_problems(runs, boundaries, "TR-5", TR5_INFLIGHT_STATES, TR5_EVIDENCE)
 
 
 @pytest.mark.proves(
@@ -404,6 +426,44 @@ def test_trl_rollback_class_consistent() -> None:
     runs = tomllib.loads(D2_OUTCOMES.read_text(encoding="utf-8")).get("run", [])
     boundaries = tomllib.loads(ROLLBACK.read_text(encoding="utf-8")).get("boundary", [])
     assert trl_class_problems(runs, boundaries) == []
+
+
+def test_tr5_rollback_class_consistent() -> None:
+    """TR-5's MC-31 class is consistent with its recorded D2 outcome (L.TR-5.4), whichever class it
+    is: `transparent` iff every recorded TR-5 exit is 0, `drain` iff some exit is non-zero and every
+    diverged path is an in-flight state (`*/tr5-inflight-*`). Reads only `d2_outcomes.toml` and
+    `rollback.toml`: never re-runs d2 and never reads the live `d2_exceptions.toml` (DM-79)."""
+    runs = tomllib.loads(D2_OUTCOMES.read_text(encoding="utf-8")).get("run", [])
+    boundaries = tomllib.loads(ROLLBACK.read_text(encoding="utf-8")).get("boundary", [])
+    assert tr5_class_problems(runs, boundaries) == []
+
+
+def test_tr5_class_rule_rejects_planted_inconsistencies() -> None:
+    """The TR-5 rule is TR-L's over its own states: a planted `transparent` beside a non-zero exit
+    fails, so does a planted `drain` beside a diverged `tr5-terminal-*` or `tr5-views-*` path, and
+    TR-L's runs never decide TR-5's class."""
+
+    def run(exit_code: int, *diverged: str) -> dict[str, Any]:
+        return {**_run(exit_code, *diverged), "merge": "TR-5", "fossils": "tree-tr5"}
+
+    inflight = "tree-tr5/tr5-inflight-choice_long_running"
+    terminal = "tree-tr5/tr5-terminal-live_state"
+    views = "tree-tr5/tr5-views-live_state"
+    entry = {"merge": "TR-5", "class": "transparent", "evidence": TR5_EVIDENCE}
+    assert tr5_class_problems([run(0), run(0)], [entry]) == []
+    (problem,) = tr5_class_problems([run(0), run(1, inflight)], [entry])
+    assert "'transparent'" in problem and "'drain'" in problem
+    assert tr5_class_problems([run(0), run(1, inflight)], [{**entry, "class": "drain"}]) == []
+    drain = [{**entry, "class": "drain"}]
+    for path in (terminal, views):
+        (problem,) = tr5_class_problems([run(1, path)], drain)
+        assert "no class follows" in problem
+    (problem,) = tr5_class_problems([run(1, inflight, terminal)], drain)
+    assert "no class follows" in problem
+    # a TR-L in-flight path is not a TR-5 in-flight path, and a TR-L run is not a TR-5 run
+    assert class_for([{**run(1, "tree-trl/trl-inflight-x")}], "TR-5", TR5_INFLIGHT_STATES) is None
+    assert class_for([_run(0)], "TR-5", TR5_INFLIGHT_STATES) is None
+    assert tr5_class_problems([run(0)], [{**entry, "evidence": EVIDENCE}])
 
 
 def _run(exit_code: int, *diverged: str) -> dict[str, Any]:
@@ -444,11 +504,11 @@ def test_rollback_class_rule_rejects_planted_inconsistencies() -> None:
     assert trl_class_for([]) is None
 
 
-@pytest.mark.parametrize("band", ["trl"])
+@pytest.mark.parametrize("band", ["trl", "tr5"])
 def test_drain_check_counts_nonterminal_tree_root(band: str, tmp_path: Path) -> None:
-    """SV-3's drain procedure covers a TR-L root (A2c3-8): `meta drain-check` over a copy of a
-    `trl-inflight-*` fossil home exits 1 and names the root; over a `trl-terminal-*` home it
-    exits 0."""
+    """SV-3's drain procedure covers a TR-L and a TR-5 root (A2c3-8): `meta drain-check` over a copy
+    of a `<band>-inflight-*` fossil home exits 1 and names the root; over a `<band>-terminal-*` home
+    it exits 0."""
 
     def drain_check(state: Path) -> subprocess.CompletedProcess[str]:
         home = tmp_path / f"home-{state.name}"
@@ -462,9 +522,10 @@ def test_drain_check_counts_nonterminal_tree_root(band: str, tmp_path: Path) -> 
             check=False,
         )
 
-    inflight = sorted(FOSSILS.glob(f"{band}-inflight-*"))
-    terminal = sorted(FOSSILS.glob(f"{band}-terminal-*"))
-    assert inflight and terminal, "the tree-trl fossils are not committed"
+    fossils = FOSSILS.with_name(f"tree-{band}")
+    inflight = sorted(fossils.glob(f"{band}-inflight-*"))
+    terminal = sorted(fossils.glob(f"{band}-terminal-*"))
+    assert inflight and terminal, f"the tree-{band} fossils are not committed"
     for state in inflight:
         blocked = drain_check(state)
         assert blocked.returncode == 1, blocked.stdout

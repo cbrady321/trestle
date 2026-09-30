@@ -56,6 +56,7 @@ FOUND_UNHEALTHY = "execution.found_unhealthy"
 FOUND_INCOMPATIBLE = "execution.found_incompatible"
 CARVE_EXCEEDED = "execution.carve_exceeded"
 CURRENCY_UNCONFIRMED = "execution.currency_unconfirmed"
+REALIZATION_ABSENT = "execution.realization_absent"  # V-7.4 / V-11: a unit's Blocked (L.TR-5.2)
 VERTEX_UNENDED = "execution.vertex_unended"
 
 # V-11's remaining execution-error codes keep core's spellings (MC-CORE-04).
@@ -145,6 +146,7 @@ V11: Mapping[str, str] = {
     "LEASE_SET_UNDECIDABLE": LEASE_SET_UNDECIDABLE,
     "ROUTE_UNSUPPORTED": ROUTE_UNSUPPORTED,
     "DECLARATION_STALE": DECLARATION_STALE,
+    "REALIZATION_ABSENT": REALIZATION_ABSENT,
     "EFFECT_UNCONFIRMED": EFFECT_UNCONFIRMED,
     "TICKET_REFUSED": TICKET_REFUSED,
     "EXECUTION_CANCELLED": EXECUTION_CANCELLED,
