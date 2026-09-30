@@ -384,6 +384,8 @@ jobs:
           for f in tests/proof/ckpt/*.py; do
             mod=$(basename "$f" .py)
             [ "$mod" = "__init__" ] && continue
+            # only a condition module declares TRIGGER_MERGE; its helpers (test nodes, pytest plugins) are skipped
+            grep -q '^TRIGGER_MERGE *=' "$f" || continue
             name="${mod//_/-}"
             python -m tests.proof.meta ckpt "$name" | tee "ckpt-out/$name.txt"
             if grep -q "pass; digest=" "ckpt-out/$name.txt"; then
