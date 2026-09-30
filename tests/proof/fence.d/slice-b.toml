@@ -71,7 +71,8 @@ globs         = ["tests/fixtures/fossils/slice-b/**", "tests/proof/reviews/*-sli
 # (tests/proof/host/record.py OPTIONAL_KEYS `residue`, record.schema.json object-valued engine/images/diff), and
 # the import-boundary test (tests/proof/test_import_boundaries.py: L.NW-2.3 scans `trestle_packs.container` for
 # MJ.NW-2's stdlib + trestle.workflow rule), and tests/proof/meta.py (L.RB-0.1: the S0 baseline
-# measurement ignores packages/trestle-env, now in testpaths).
+# measurement ignores packages/trestle-env, now in testpaths), and tests/proof/selftest/test_compat_map.py
+# (its subprocess PYTHONPATH gains packages/trestle-env, whose tests testpaths now collects).
 [[lane]]
 name          = "slice-b-bundle"
 branch_prefix = "wr/slice-b-bundle/"
@@ -112,7 +113,8 @@ globs         = ["packages/trestle-packs/trestle_packs/core/dag.py", "packages/t
                  "tests/pins/e_packs/driver_g_e3.py", "tests/pins/e_packs/fake_backend.py", "tests/proof/host/docker_gate/__init__.py",
                  "tests/proof/b/__init__.py", "tests/core/docs/test_cl_d1_deferrals.py",
                  "tests/proof/host/record.py", "tests/proof/host/record.schema.json",
-                 "tests/proof/test_import_boundaries.py", "tests/proof/meta.py"]
+                 "tests/proof/test_import_boundaries.py", "tests/proof/meta.py",
+                 "tests/proof/selftest/test_compat_map.py"]
 
 [[gate]]
 branch         = "wr/slice-b-bundle/slice-b"

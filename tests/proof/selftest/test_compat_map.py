@@ -8,6 +8,8 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
+# the packs and env sources, so a checkout without either installed still collects every testpath
+PYTHONPATH = str(ROOT / "packages" / "trestle-packs") + ":" + str(ROOT / "packages" / "trestle-env")
 COMPAT_MAP_PATH = ROOT / "tests" / "proof" / "compat_map.toml"
 
 
@@ -19,7 +21,7 @@ def _collect_all() -> set[str]:
         text=True,
         env={
             **__import__("os").environ,
-            "PYTHONPATH": str(ROOT / "packages" / "trestle-packs"),
+            "PYTHONPATH": PYTHONPATH,
         },
     )
     return {line.strip() for line in proc.stdout.splitlines() if "::" in line}
@@ -41,7 +43,7 @@ def test_compat_marker_selects_nonzero_nodes() -> None:
         text=True,
         env={
             **__import__("os").environ,
-            "PYTHONPATH": str(ROOT / "packages" / "trestle-packs"),
+            "PYTHONPATH": PYTHONPATH,
         },
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
