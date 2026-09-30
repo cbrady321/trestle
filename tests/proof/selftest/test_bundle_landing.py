@@ -279,18 +279,97 @@ def test_markers_out_of_order_are_refused(rig):
     assert _master(rig) == before
 
 
-def test_last_marker_not_at_head_is_refused(rig):
+def test_a_fix_commit_after_the_last_marker_belongs_to_the_last_chunk(rig):
     cfg = _config(rig, [("A", []), ("B", ["A"])])
     _chunk(rig, "A")
     _chunk(rig, "B")
-    _chunk(rig, "Z", marker=False)  # real work after the last marker
+    _chunk(rig, "Z", marker=False)  # a post-marker fix, inside the lane globs
+    head = _publish(rig)
+    gates = fence_mod.match_gates(BRANCH, cfg.gates)
+    run = fence_mod.resolve_bundle(rig["runner"], gates, _master(rig), head)
+    assert run.boundaries["B"] == head
+
+    code, msg = _merge(rig, cfg, head)
+
+    assert code == fence_mod.FenceMergeExit.LANDED, msg
+    assert _master_subjects(rig)[-2:] == ["WR-Merge: A", "WR-Merge: B"]
+    assert _sh(rig["origin"], "rev-parse", "master^{tree}") == _sh(
+        rig["runner"], "rev-parse", "HEAD^{tree}"
+    )
+    assert _sh(rig["origin"], "show", "master:a/z.txt") == "Z"
+
+
+def test_a_commit_after_a_non_last_marker_needs_its_own_gates_marker(rig):
+    cfg = _config(rig, [("A", []), ("B", ["A"])])
+    _chunk(rig, "A")
+    _chunk(rig, "B", marker=False)  # gate B never gets its marker
     head = _publish(rig)
     before = _master(rig)
 
     code, msg = _merge(rig, cfg, head)
 
     assert code == fence_mod.FenceMergeExit.VERDICT_REFUSED
-    assert "gate B" in msg and "not the branch head" in msg
+    assert "gate B" in msg and "Bundle-Merge: B" in msg
+    assert _master(rig) == before
+
+
+def test_a_post_last_marker_commit_outside_the_lane_is_refused_by_r4(rig):
+    cfg = _config(rig, [("A", []), ("B", ["A"])])
+    _chunk(rig, "A")
+    _chunk(rig, "B")
+    _chunk(rig, "Z", files={"outside.txt": "out of lane"}, marker=False)
+    head = _publish(rig)
+    before = _master(rig)
+
+    code, msg = _merge(rig, cfg, head)
+
+    assert code == fence_mod.FenceMergeExit.VERDICT_REFUSED
+    assert "R4" in msg and "outside.txt" in msg
+    assert _master(rig) == before
+
+
+def test_a_post_last_marker_trailer_or_second_marker_is_refused(rig):
+    cfg = _config(rig, [("A", []), ("B", ["A"])])
+    _chunk(rig, "A")
+    _chunk(rig, "B")
+    _sh(rig["runner"], "commit", "-q", "--allow-empty", "-m", "typed by hand\n\nWR-Fix: B")
+    head = _publish(rig)
+    before = _master(rig)
+    code, msg = _merge(rig, cfg, head)
+    assert code == fence_mod.FenceMergeExit.VERDICT_REFUSED
+    assert "R5" in msg or "trailer" in msg
+    assert _master(rig) == before
+
+    _sh(rig["runner"], "reset", "-q", "--hard", "origin/master")
+    _chunk(rig, "A")
+    _chunk(rig, "B")
+    _sh(rig["runner"], "commit", "-q", "--allow-empty", "-m", "Bundle-Merge: B")
+    head = _publish(rig)
+    code, msg = _merge(rig, cfg, head)
+    assert code == fence_mod.FenceMergeExit.VERDICT_REFUSED
+    assert "gate B" in msg and "more than one" in msg
+    assert _master(rig) == before
+
+
+def test_a_post_last_marker_merge_of_a_non_base_branch_is_refused(rig):
+    cfg = _config(rig, [("A", []), ("B", ["A"])])
+    _chunk(rig, "A")
+    _chunk(rig, "B")
+    runner = rig["runner"]
+    _sh(runner, "checkout", "-q", "-b", "side")
+    (runner / "a").mkdir(exist_ok=True)
+    (runner / "a" / "side.txt").write_text("s")
+    _sh(runner, "add", "a/side.txt")
+    _sh(runner, "commit", "-q", "-m", "side work")
+    _sh(runner, "checkout", "-q", BRANCH)
+    _sh(runner, "merge", "-q", "--no-ff", "-m", "merge side", "side")
+    head = _publish(rig)
+    before = _master(rig)
+
+    code, msg = _merge(rig, cfg, head)
+
+    assert code == fence_mod.FenceMergeExit.VERDICT_REFUSED
+    assert "gate B" in msg and "merges something other than the base" in msg
     assert _master(rig) == before
 
 
@@ -320,6 +399,7 @@ def test_a_merge_forward_of_master_after_the_last_marker_is_allowed(rig):
     cfg = _config(rig, [("A", []), ("B", ["A"])])
     _chunk(rig, "A")
     _chunk(rig, "B")
+    _chunk(rig, "Z", marker=False)  # a fix, then the merge-forward
     _publish(rig)
     other = rig["tmp"] / "other"
     _sh(rig["tmp"], "clone", "-q", str(rig["origin"]), str(other))

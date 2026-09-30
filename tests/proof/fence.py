@@ -498,9 +498,11 @@ def bundle_base(
 def resolve_bundle(cwd: Path, gates: list[Gate], base: str, head: str) -> BundleRun:
     """CM-2 bundle boundaries. For gate G the boundary is the commit on the
     branch's first-parent line whose message carries `Bundle-Merge: <G>`:
-    exactly one per gate, in gate order, and the last gate's marker is the
-    head itself (a merge-forward of the base after it does not move it:
-    `_refresh_stale` publishes those). Raises `BundleError` naming the gate
+    exactly one per gate, in gate order. Commits after the last gate's marker
+    (trailer-free fix commits, or a merge-forward of the base that
+    `_refresh_stale` publishes) belong to that last chunk: its boundary is the
+    head itself. A commit after any other marker needs its own gate's marker
+    (a gate with no marker is refused). Raises `BundleError` naming the gate
     and the problem; `ValueError` from `bundle_base` never occurs here."""
     found = bundle_base(cwd, gates, base, head)
     if found is None:
@@ -534,11 +536,21 @@ def resolve_bundle(cwd: Path, gates: list[Gate], base: str, head: str) -> Bundle
         )
     last_idx = marks[-1][0]
     for tail in commits[last_idx + 1 :]:
+        # commits after the LAST gate's marker belong to that last chunk: its
+        # boundary is the head, so R4/R5 and the land-time simulation still
+        # judge them. Allowed: an ordinary trailer-free fix commit, or a
+        # merge-forward of the base; a merge of anything else, or a commit
+        # carrying a WR-Merge/WR-Fix trailer, is refused.
         parents = _git(cwd, "rev-list", "--parents", "-n", "1", tail.sha).stdout.split()
-        if len(parents) < 3 or not all(is_ancestor(cwd, p, base) for p in parents[2:]):
+        if len(parents) >= 3 and not all(is_ancestor(cwd, p, base) for p in parents[2:]):
             raise BundleError(
-                f"gate {ids[-1]}: its Bundle-Merge marker is not the branch head "
-                f"(commit {tail.sha[:12]} follows it)"
+                f"gate {ids[-1]}: commit {tail.sha[:12]} after its Bundle-Merge marker "
+                "merges something other than the base"
+            )
+        if tail.trailers():
+            raise BundleError(
+                f"gate {ids[-1]}: commit {tail.sha[:12]} after its Bundle-Merge marker "
+                "carries a WR-Merge/WR-Fix trailer"
             )
     run = BundleRun(base0=base0, landed=landed)
     for idx, mid in marks:
