@@ -9,6 +9,14 @@ everything else must not) and the two transcripts are compared step by step.
 `--pair process` drives `[fake-local]` and `[real-local]` (Local Process Supervision) through
 create, idempotent re-create, a found instance, repair, stop and the refusals. A pair with no
 builder yet is refused with exit 2. Exit 0: zero differences; 1: at least one; 2: usage.
+
+`--pair container` and `--pair compose` (L.NW-2.8) have a real side only on the host-docker gate:
+their scenarios (`container_scenario`, `compose_scenario`) are driven through the fake and the real
+adapter by the `docker_host` nodes named in `RECORD_PAIRS`, which assert zero differences. Outside
+the gate this mode is a check over the host-docker record admissible for HEAD (CM-6): the pair is
+equal only when that record is a `run` in which its node PASSED; otherwise the real side is
+reported UNPROVEN, never equal, and the exit is 3 (no record, a PRECONDITION_UNMET record, or the
+node not PASSED). It registers no label.
 """
 
 from __future__ import annotations
@@ -25,7 +33,7 @@ from typing import Any
 
 from tests.proof.suites.ports import core, families, implementations
 from trestle.workflow import ports
-from trestle.workflow.declarations import Lifetime, Vantage
+from trestle.workflow.declarations import EffectFacetClass, Lifetime, Vantage
 from trestle.workflow.values import CreatedHandle
 
 Scenario = Callable[[core.Implementation], list[tuple[str, Any]]]
@@ -146,6 +154,157 @@ PAIRS: dict[str, tuple[str, str, str, Scenario]] = {
     "process": (families.LOCAL_PROCESS_SUPERVISION, "fake-local", "real-local", process_scenario),
 }
 
+# -- the Docker pairs (L.NW-2.8): driven on the host-docker gate, read back from its record -------
+
+UNPROVEN_EXIT = 3
+REPO_ROOT = Path(__file__).resolve().parents[3]
+_CONTAINER_NODES = "packages/trestle-packs/tests/container/test_conformance.py"
+# pair -> the docker_host node that drives the scenario through `[fake]` and `[real]` on the gate
+RECORD_PAIRS: dict[str, str] = {
+    "container": f"{_CONTAINER_NODES}::test_d8_container_pair[real]",
+    "compose": f"{_CONTAINER_NODES}::test_d8_compose_pair[real]",
+}
+_HEX_ID = re.compile(r"\b[0-9a-f]{12,64}\b")
+
+
+def _neutral(built: core.Implementation) -> Callable[[Any], Any]:
+    """What differs between two engines by nature: the bound docker path and endpoint, engine
+    object ids, and the published host port. Everything else must not."""
+    executable = str(built.extras.get("executable") or "")
+    endpoint = str(built.extras.get("endpoint") or "")
+
+    def scrub(value: Any) -> Any:
+        if isinstance(value, str):
+            if executable:
+                value = value.replace(executable, "<docker>")
+            if endpoint:
+                value = value.replace(endpoint, "<endpoint>")
+            return _HEX_ID.sub("<id>", value)
+        if isinstance(value, list):
+            return [scrub(v) for v in value]
+        if isinstance(value, dict):
+            return {k: scrub(v) for k, v in value.items()}
+        return value
+
+    return scrub
+
+
+def container_scenario(built: core.Implementation) -> list[tuple[str, Any]]:
+    """The Container Control scenario (B3-C1..C6, MC-B-01): the process scenario's steps over the
+    container port, with the published host port and the engine-bound values neutralized."""
+    impl, spec = built.impl, built.extras["spec"]
+    lineage = families.LINEAGE
+    raw: list[tuple[str, Any]] = []
+
+    def observe(effect: str | None = "up") -> Any:
+        return impl.observe(spec, lineage, effect)
+
+    def call(member: str, lifetime: Lifetime = Lifetime.RUN, **arguments: Any) -> Any:
+        return ports.as_descriptor(
+            impl.release_descriptor(families.effect_call(member, arguments, lifetime, "up"))
+        )
+
+    def host_endpoint(ref: Any) -> Any:
+        answer = impl.endpoint(ref, Vantage.HOST)
+        if dataclasses.is_dataclass(answer) and hasattr(answer, "port"):
+            return {**normalize(answer), "port": "<published>"}  # the engine picks the host port
+        return answer
+
+    _step(raw, "observe before create", observe)
+    _step(raw, "observe with no effect", lambda: observe(None))
+    _step(raw, "launch policy", lambda: impl.launch_policy(spec))
+    _step(raw, "descriptor create RUN", lambda: call("create", spec=spec))
+    _step(raw, "descriptor create DURABLE", lambda: call("create", Lifetime.DURABLE, spec=spec))
+    planted = built.extras["plant_found"](spec.logical_system)
+    _step(raw, "observe with a found instance", observe, planted)
+    first = _step(raw, "create", lambda: impl.create(spec, families.ticket("up", _create())))
+    _step(
+        raw, "create again", lambda: impl.create(spec, families.ticket("up", _create(), attempt=2))
+    )
+    seen = _step(raw, "observe after create", observe, planted)
+    ref = seen.selector_ref if seen is not None else None
+    _step(raw, "check running", lambda: impl.check("running", ref))
+    _step(raw, "check unknown", lambda: impl.check("healthy", ref))
+    _step(raw, "endpoint host", lambda: host_endpoint(ref))
+    _step(raw, "endpoint container", lambda: impl.endpoint(ref, Vantage.CONTAINER))
+    identity = first.identity if first is not None else "none"
+    handle = CreatedHandle(lineage, "up", identity, call("create", spec=spec))
+    owned = families.ticket("repair", EffectFacetClass.OWNED)
+    _step(raw, "restart", lambda: impl.restart(handle, owned))
+    _step(raw, "check running after restart", lambda: impl.check("running", ref))
+    _step(raw, "recreate", lambda: impl.recreate(handle, owned))
+    _step(raw, "check running after recreate", lambda: impl.check("running", ref))
+    _step(raw, "stop", lambda: impl.stop(handle, owned))
+    _step(raw, "observe after stop", observe, planted)
+    _step(raw, "check running after stop", lambda: impl.check("running", ref))
+    _step(raw, "endpoint after stop", lambda: impl.endpoint(ref, Vantage.HOST))
+    _step(raw, "restart after stop", lambda: impl.restart(handle, owned))
+    scrub = _neutral(built)
+    return [(name, scrub(answer)) for name, answer in raw]
+
+
+def compose_scenario(built: core.Implementation) -> list[tuple[str, Any]]:
+    """The Compose resolver scenario (B3-C13, B3-C20): closures, the fingerprint across a changed
+    definition, and every refusal."""
+    impl, extras = built.impl, built.extras
+    log: list[tuple[str, Any]] = []
+
+    def closure(project: str, *selected: str) -> Any:
+        return impl.closure(project, frozenset(selected))
+
+    project = extras["project"]
+    _step(log, "closure of a chain", lambda: closure(project, "web"))
+    _step(log, "closure of a lone service", lambda: closure(project, "cache"))
+    _step(log, "closure of a selection", lambda: closure(project, "web", "worker"))
+    _step(
+        log, "closure of the changed definition", lambda: closure(extras["changed_project"], "web")
+    )
+    _step(log, "an unknown service", lambda: closure(project, "nope"))
+    _step(log, "an unreadable definition", lambda: closure(extras["invalid_project"], "web"))
+    _step(log, "a closure over the bound", lambda: closure(extras["oversized_project"], "s0"))
+    _step(log, "an unbound project", lambda: closure("no-such-project", "web"))
+    # an unreadable definition's subject is the reader's own words (json vs `compose config`);
+    # its code, and every other answer, must be equal
+    return [
+        (name, {**answer, "subject": "<reader's reason>"})
+        if isinstance(answer, dict) and answer.get("code") == "adapter.compose_definition_invalid"
+        else (name, answer)
+        for name, answer in log
+    ]
+
+
+def pair_transcripts(
+    scenario: Scenario, fake: core.Implementation, real: core.Implementation
+) -> tuple[list[tuple[str, Any]], list[tuple[str, Any]]]:
+    """Drive one scenario through each built implementation (the gate's `docker_host` nodes)."""
+    out = []
+    for built in (fake, real):
+        try:
+            out.append(scenario(built))
+        finally:
+            if built.close is not None:
+                built.close()
+    return out[0], out[1]
+
+
+def record_verdict(name: str, cwd: Path | None = None) -> tuple[bool, str]:
+    """(equal, reason) for a Docker pair from the host-docker record admissible for HEAD."""
+    from tests.proof import fence as fence_mod
+    from tests.proof.host import record as record_mod
+
+    root = cwd or REPO_ROOT
+    head = fence_mod._git(root, "rev-parse", "HEAD").stdout.strip()  # noqa: SLF001
+    record = record_mod.select("host-docker", head, cwd=root)
+    node = RECORD_PAIRS[name]
+    if record is None:
+        return False, "no host-docker record admissible for HEAD"
+    if record.get("mode") != "run":
+        return False, f"host-docker record {record['sha'][:12]} is {record.get('status')}"
+    outcome = next((r.get("outcome") for r in record["results"] if r.get("nodeid") == node), None)
+    if outcome != "PASSED":
+        return False, f"host-docker record {record['sha'][:12]}: {node} is {outcome or 'absent'}"
+    return True, f"host-docker record {record['sha'][:12]}: {node} PASSED"
+
 
 def transcript(impl_id: str, scenario: Scenario) -> list[tuple[str, Any]]:
     _, factory = implementations.IMPLEMENTATIONS[impl_id]
@@ -169,13 +328,22 @@ def compare(fake: list[tuple[str, Any]], real: list[tuple[str, Any]]) -> list[st
 
 
 def main(args: argparse.Namespace) -> int:
-    names = [args.pair] if args.pair else sorted(PAIRS)
-    unknown = [n for n in names if n not in PAIRS]
+    built = sorted({*PAIRS, *RECORD_PAIRS})
+    names = [args.pair] if args.pair else built
+    unknown = [n for n in names if n not in built]
     if unknown:
-        print(f"differ d8: no builder for pair {unknown[0]!r}; built: {', '.join(sorted(PAIRS))}")
+        print(f"differ d8: no builder for pair {unknown[0]!r}; built: {', '.join(built)}")
         return 2
-    total = 0
+    total = unproven = 0
     for name in names:
+        if name in RECORD_PAIRS:
+            equal, reason = record_verdict(name)
+            if equal:
+                print(f"differ d8 --pair {name}: equal on the host ({reason})")
+            else:
+                unproven += 1
+                print(f"differ d8 --pair {name}: real = UNPROVEN ({reason})")
+            continue
         _, fake_id, real_id, scenario = PAIRS[name]
         fake, real = transcript(fake_id, scenario), transcript(real_id, scenario)
         diffs = compare(fake, real)
@@ -183,4 +351,6 @@ def main(args: argparse.Namespace) -> int:
         print(f"differ d8 --pair {name}: {len(fake)} steps, {len(diffs)} differences")
         for line in diffs:
             print(f"  {line}")
-    return 0 if total == 0 else 1
+    if total:
+        return 1
+    return UNPROVEN_EXIT if unproven else 0

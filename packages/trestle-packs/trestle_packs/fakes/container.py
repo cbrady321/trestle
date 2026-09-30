@@ -251,7 +251,7 @@ class FakeContainerEngine:
         if down is not None:
             return CheckResult(False, down, "the engine could not be read")
         if check != "running":
-            return CheckResult(False, None, f"{check} is not a check this engine knows")
+            return CheckResult(False, None, f"{check} is not a check this adapter knows")
         c = self._containers.get(target.selector)
         if c is not None and c.state == "running":
             return CheckResult(True, None, f"{target.selector} is running")
@@ -263,10 +263,17 @@ class FakeContainerEngine:
             return RouteRefused(down, "Start the Docker engine or install the CLI, then retry.")
         kind = getattr(target, "resource_kind", DOCKER_KIND)
         c = self._containers.get(target.selector)
-        if kind not in (DOCKER_KIND, ENGINE_KIND) or c is None or c.state != "running":
+        if kind not in (DOCKER_KIND, ENGINE_KIND):
             return RouteRefused(
                 ROUTE_UNSUPPORTED,
-                "Select a running Docker realization of this service reachable from its dependent.",
+                "Select a Docker realization of this service: only a Docker container has an "
+                "address a dependant can be routed to (a local process has none).",
+            )
+        if c is None or c.state != "running":  # the real adapter's words (d8, L.NW-2.8)
+            return RouteRefused(
+                ROUTE_UNSUPPORTED,
+                f"Start {target.selector} with a published port: it is not running or publishes "
+                "none.",
             )
         if _value(vantage) == "container":
             return Endpoint("tcp", c.name, c.container_port)

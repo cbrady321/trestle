@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 from conformance import compose_cases, container_cases
 from tests.proof import tolerances
+from tests.proof.differ_modes import d8_fake_real
 from tests.proof.host.docker_gate import fake_docker, inventory
 from tests.proof.suites.ports import core
 from trestle.workflow import ports
@@ -301,6 +302,22 @@ def real_docker_container(base: Path) -> Callable[[], core.Implementation]:
     )
 
 
+# L.NW-2.8: the `[real]` suite nodes (container and compose) prove the real binding passes the
+# unmodified family cases under the read-only watcher (DOCKER · HOST, counted only through a
+# host-docker record, CSC-9); their `[fake]` twins carry the `@stub-twin` labels (STUB · CI).
+NW28_REAL_MARKS = (
+    pytest.mark.proves(
+        "WR-PROOF-4", "WR-PROOF-4:b-docker-real-equals-fake", "B", "B", "DOCKER", "HOST"
+    ),
+    pytest.mark.proves(
+        "WR-VERIFY-8", "WR-VERIFY-8:b-docker-real-read-facets", "B", "B", "DOCKER", "HOST"
+    ),
+)
+NW28_TWIN_MARKS = (
+    pytest.mark.stub_proven("WR-PROOF-4:b-docker-real-equals-fake@stub-twin"),
+    pytest.mark.stub_proven("WR-VERIFY-8:b-docker-real-read-facets@stub-twin"),
+)
+
 CONTAINER_BINDINGS = [
     pytest.param(
         "fake",
@@ -320,6 +337,8 @@ CONTAINER_BINDINGS = [
             # L.NW-2.6: the fake twin of the real effect cases
             pytest.mark.stub_proven("WR-OWN-4:b-port-stop-never-removes-volume@host@stub-twin"),
             pytest.mark.stub_proven("WR-PROOF-4:b-descriptor-before-effect@host@stub-twin"),
+            # L.NW-2.8: the fake twin of the real suite run on the host-docker gate
+            *NW28_TWIN_MARKS,
         ],
     ),
     pytest.param("real-shim", id="real-shim"),
@@ -355,6 +374,8 @@ CONTAINER_BINDINGS = [
                 "DOCKER",
                 "HOST",
             ),
+            # L.NW-2.8: the unmodified family passes on the real engine under the read watcher
+            *NW28_REAL_MARKS,
         ],
     ),
 ]
@@ -608,6 +629,7 @@ COMPOSE_BINDINGS = [
             ),
             # L.NW-2.7: the fake twin of the real closure case
             pytest.mark.stub_proven("WR-ENV-1:closure-from-compose-adapter@host@stub-twin"),
+            *NW28_TWIN_MARKS,  # L.NW-2.8
         ],
     ),
     pytest.param("real-stub", id="real-stub"),
@@ -624,6 +646,7 @@ COMPOSE_BINDINGS = [
                 "DOCKER",
                 "HOST",
             ),
+            *NW28_REAL_MARKS,  # L.NW-2.8
         ],
     ),
 ]
@@ -643,6 +666,38 @@ def test_compose_resolver_suite(binding: str, tmp_path: Path) -> None:
     run = core.run_family(compose_cases.FAMILY, compose_factory(binding, tmp_path))
     assert run.cases_run == tuple(c.name for c in compose_cases.CASES)
     assert run.suite_sha256 == core.sha256_of(Path(compose_cases.__file__))
+
+
+# ------------------------------------------------------------------------------- d8 (L.NW-2.8)
+#
+# `differ d8 --pair container|compose` has its real side only here: `[real]` (docker_host) drives
+# the pair's scenario through the fake and the real adapter on the operator's engine and asserts
+# zero differences; the offline `differ d8` reads this node's outcome from the host-docker record.
+# `[fake]` is its CI twin: the same scenario, fake against the real adapter over the CI stand-in
+# (`real-shim` / `real-stub`). Neither registers a label (the d8 check is merge acceptance only).
+
+D8_BINDINGS = [
+    pytest.param("fake", id="fake"),
+    pytest.param("real", id="real", marks=[pytest.mark.docker_host]),
+]
+
+
+@pytest.mark.parametrize("binding", D8_BINDINGS)
+def test_d8_container_pair(binding: str, tmp_path: Path) -> None:
+    real = container_factory("real-shim" if binding == "fake" else "real", tmp_path)
+    fake, other = d8_fake_real.pair_transcripts(
+        d8_fake_real.container_scenario, fake_container()(), real()
+    )
+    assert d8_fake_real.compare(fake, other) == []
+
+
+@pytest.mark.parametrize("binding", D8_BINDINGS)
+def test_d8_compose_pair(binding: str, tmp_path: Path) -> None:
+    other = compose_factory("real-stub" if binding == "fake" else "real", tmp_path)()
+    fake, real = d8_fake_real.pair_transcripts(
+        d8_fake_real.compose_scenario, fake_compose(_fresh(tmp_path)), other
+    )
+    assert d8_fake_real.compare(fake, real) == []
 
 
 def _fresh(base: Path) -> Path:
