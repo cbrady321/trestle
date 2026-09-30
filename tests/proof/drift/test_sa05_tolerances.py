@@ -55,6 +55,7 @@ def _definitions(name: str) -> list[str]:
     return found
 
 
+@pytest.mark.proves("WR-PROOF-9", "WR-PROOF-9:tolerances-declared", "core", "core", "LOGIC", "CI")
 @pytest.mark.parametrize("sa", ["SA-05"])
 def test_single_definition(sa: str) -> None:
     for name, (s0_module, s0_attr) in tolerances._S0_FALLBACKS.items():
@@ -72,6 +73,7 @@ def test_single_definition(sa: str) -> None:
         assert float(getattr(tolerances, ACCESSORS[name])()) == float(getattr(mod, s0_attr))
 
 
+@pytest.mark.proves("WR-PROOF-9", "WR-PROOF-9:tolerances-declared", "core", "core", "LOGIC", "CI")
 @pytest.mark.parametrize("sa", ["SA-05"])
 def test_no_timing_literal_in_proof_tests(sa: str) -> None:
     offenders: list[str] = []
@@ -93,6 +95,7 @@ def test_no_timing_literal_in_proof_tests(sa: str) -> None:
     assert not offenders, offenders
 
 
+@pytest.mark.proves("WR-PROOF-9", "WR-PROOF-9:tolerances-declared", "core", "core", "LOGIC", "CI")
 @pytest.mark.parametrize("sa", ["SA-05"])
 def test_pending_raises_on_read(sa: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(tolerances, "_clock_module", lambda: None)
@@ -126,6 +129,7 @@ def test_published_in_clock_module_is_picked_up_without_editing_tolerances(
     assert Path(tolerances.__file__).read_text() == source_before
 
 
+@pytest.mark.proves("WR-PROOF-9", "WR-PROOF-9:tolerances-declared", "core", "core", "LOGIC", "CI")
 @pytest.mark.parametrize("sa", ["SA-05"])
 def test_bound_resolves_under_its_mc09_name(sa: str, monkeypatch: pytest.MonkeyPatch) -> None:
     clock = types.ModuleType("trestle.common.clock")
