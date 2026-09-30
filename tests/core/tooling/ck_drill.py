@@ -577,17 +577,30 @@ def _call_reads_switch(call: ast.Call, parents: dict[ast.AST, ast.AST], name: st
     return False
 
 
+def is_test_path(path: str) -> bool:
+    """A test file: under a `tests/` directory (the repo's, or a package's)."""
+    return path.startswith("tests/") or "/tests/" in path
+
+
 def switch_isolation_violations(
     repo: Path, decline: dict[str, Any], span: Span, patch: Patch
 ) -> list[str]:
     """CM-7 (b): every call site the CK merge changed, in a file step 3 leaves in place,
-    reads the CK's switch (AST). A command switch has no call sites to read it."""
+    reads the CK's switch (AST). A command switch has no call sites to read it.
+
+    Only product source is checked (L.P0-0d.29). Step 3 puts behind the switch the behaviour a
+    CK adds; a test file left in place adds no behaviour, and its nodes are judged by (a): a node
+    carrying the CK's labels renders na and is deselected, and every other node must pass REG on
+    the declined tree. So a later marker edit to a CK-changed test file (for example the A9.3
+    marker on test_cl_c2_strict.py) is not a switch-isolation failure."""
     switch = decline["switch"]
     name = switch.get("name")
     if name is None:
         return []
     violations = []
     for path in sorted(patch.left):
+        if is_test_path(path):
+            continue
         source = _show(repo, span.head, path)  # the merge's own version: its line numbers
         if not path.endswith(".py") or source is None:
             continue

@@ -1127,6 +1127,17 @@ def fence_merge(
         return FenceMergeExit.CRASHED, f"crash: {exc}"
 
 
+def landing_trailer_kind(merge_id: str, ref: str, cwd: Path) -> str:
+    """The CM-1 trailer kind a landing of `merge_id` on `ref` carries. A checkpoint id
+    (`J0`, `J-<NAME>`) is always `WR-Merge`: it repeats by design (CM-5's failure exit
+    lands a NEW carrier as a second `WR-Merge: J-<NAME>`, and `trailers.newest` /
+    the CI `ckpt` job act on that newest carrier). A product id already landed on `ref`
+    lands again as `WR-Fix`; otherwise `WR-Merge`."""
+    if _is_checkpoint_id(merge_id):
+        return "WR-Merge"
+    return "WR-Fix" if trailers_mod.landing(merge_id, ref=ref, cwd=cwd) else "WR-Merge"
+
+
 def _land_single(
     cfg: FenceConfig, cwd: Path, branch: str, gate: Gate, X: str, H: str
 ) -> str | tuple[int, str]:
@@ -1134,15 +1145,8 @@ def _land_single(
     `(exit, message)` refusal."""
     # Step 4: build the --no-ff merge commit and derive the trailer (CM-1).
     _git(cwd, "checkout", "-q", "-B", "_fence_merge_master", X)
-    trailer_kind = "WR-Fix" if trailers_mod.landing(gate.merge, ref=X, cwd=cwd) else "WR-Merge"
-    merge = _git(
-        cwd,
-        "merge",
-        "--no-ff",
-        "-m",
-        f"WR-Merge: {gate.merge}" if trailer_kind == "WR-Merge" else f"WR-Fix: {gate.merge}",
-        H,
-    )
+    trailer_kind = landing_trailer_kind(gate.merge, X, cwd)
+    merge = _git(cwd, "merge", "--no-ff", "-m", f"{trailer_kind}: {gate.merge}", H)
     if merge.returncode != 0:
         _git(cwd, "merge", "--abort")
         return FenceMergeExit.VERDICT_REFUSED, f"merge failed: {merge.stderr}"
@@ -1172,9 +1176,9 @@ def _land_bundle(
 ) -> str | tuple[int, str]:
     """Steps 4-5 for a bundle branch: one `--no-ff` merge of each gate's
     boundary commit onto the running base, in gate order, each with its own
-    `WR-Merge: <id>` (or `WR-Fix: <id>` when that id already has a landing on
-    the base) and its own full verdict (R1-R6 on that chunk, the K-doc rule on
-    that merge). A gate this same bundle already landed on `X` (a partial
+    `WR-Merge: <id>` (or `WR-Fix: <id>` when that product id already has a landing on
+    the base; see `landing_trailer_kind`) and its own full verdict (R1-R6 on that
+    chunk, the K-doc rule on that merge). A gate this same bundle already landed on `X` (a partial
     landing) is skipped. Returns the last merge's sha, or the first refusal
     (`(exit, message)` naming the gate) — nothing is pushed here, so a refusal
     at any gate leaves `origin/master` exactly as it was (all-or-nothing)."""
@@ -1190,9 +1194,7 @@ def _land_bundle(
         if gate.merge in run.landed:
             continue  # idempotent re-run: this bundle already landed this gate
         boundary = run.boundaries[gate.merge]
-        trailer_kind = (
-            "WR-Fix" if trailers_mod.landing(gate.merge, ref=cur, cwd=cwd) else "WR-Merge"
-        )
+        trailer_kind = landing_trailer_kind(gate.merge, cur, cwd)
         merge = _git(cwd, "merge", "--no-ff", "-m", f"{trailer_kind}: {gate.merge}", boundary)
         if merge.returncode != 0:
             _git(cwd, "merge", "--abort")

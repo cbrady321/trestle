@@ -1,4 +1,5 @@
-"""L.CL-D1.3: the nine core deferrals, in CM-8's schema, cited and unproven until their band closes.
+"""L.CL-D1.3: the nine core deferrals, in CM-8's schema, cited and unproven until their band closes;
+L.P0-0d.27: plus the four P0 target labels tagged core whose targets flip in slice B.
 
 Reads only `tests/proof/deferrals.toml`, `tests/proof/labels.d`, `tests/proof/trailers.py` and the
 rendered ledger, never the fence. No `closes_at` value is validated here: each checkpoint's CM-8
@@ -33,6 +34,21 @@ CORE_DEFERRALS = {
     "WR-OWN-6:docker-inventory": "RB-12",
 }
 DECLARED_BY = "L.CL-D1.3"
+# L.P0-0d.27: P0 target labels declared `step = "core"` (claims, by L.P0-1E.* / L.P0-0a.5) whose
+# strict-xfail targets are un-xfailed only in slice B, by the remover of their TM-P0-2 entry. J-CORE
+# (c) needs each PROVEN or deferred; they stay declared claims (P0 owns the declaration).
+P0_TARGET_DEFERRALS = {
+    "WR-ENV-1:legacy-explicit-waves-refuse-unknown-duplicate": "NW-1",  # G-E1, L.NW-1.3
+    "WR-VERIFY-4:legacy-run_pytest-errors": "NW-1",  # G-E3, L.NW-1.5
+    "WR-ENV-11:pipeline-one-teardown@fake": "NW-1",  # G-E3, L.NW-1.5
+    "WR-PROOF-2:pack-docker-live": "NW-2",  # G-E2, L.NW-2.8
+}
+P0_TARGET_DECLARED_BY = "L.P0-0d.27"
+ALL_DEFERRALS = {**CORE_DEFERRALS, **P0_TARGET_DEFERRALS}
+
+
+def _declared_by(label: str) -> str:
+    return P0_TARGET_DECLARED_BY if label in P0_TARGET_DEFERRALS else DECLARED_BY
 
 
 def problems(entries: list[dict]) -> list[str]:
@@ -43,21 +59,21 @@ def problems(entries: list[dict]) -> list[str]:
     for label in sorted(set(labels)):
         if labels.count(label) > 1:
             found.append(f"{label}: {labels.count(label)} entries, expected exactly one")
-    for label in sorted(set(CORE_DEFERRALS) - set(labels)):
+    for label in sorted(set(ALL_DEFERRALS) - set(labels)):
         found.append(f"{label}: no entry")
-    for label in sorted(set(labels) - set(CORE_DEFERRALS)):
+    for label in sorted(set(labels) - set(ALL_DEFERRALS)):
         found.append(f"{label}: not one of the core deferrals")
     for entry in core:
         label = entry["label"]
         if not str(entry.get("citation", "")).strip():
             found.append(f"{label}: no citation")
-        if entry.get("declared_by") != DECLARED_BY:
+        if entry.get("declared_by") != _declared_by(label):
             found.append(
-                f"{label}: declared_by {entry.get('declared_by')!r}, expected {DECLARED_BY}"
+                f"{label}: declared_by {entry.get('declared_by')!r}, expected {_declared_by(label)}"
             )
         if "until" in entry:
             found.append(f"{label}: carries `until`, but no upstream precondition is open (CSC-15)")
-        if label in CORE_DEFERRALS and entry.get("closes_at") != CORE_DEFERRALS[label]:
+        if label in ALL_DEFERRALS and entry.get("closes_at") != ALL_DEFERRALS[label]:
             found.append(f"{label}: closes_at {entry.get('closes_at')!r}")
     return found
 
@@ -71,16 +87,16 @@ def _entry(label: str, **overrides: str) -> str:
     fields = {
         "label": label,
         "from_step": "core",
-        "closes_at": CORE_DEFERRALS.get(label, "SL-8"),
+        "closes_at": ALL_DEFERRALS.get(label, "SL-8"),
         "citation": "planted citation",
-        "declared_by": DECLARED_BY,
+        "declared_by": _declared_by(label),
     }
     fields.update(overrides)
     return "[[deferral]]\n" + "".join(f'{k} = "{v}"\n' for k, v in fields.items())
 
 
 def _all_entries() -> str:
-    return "\n".join(_entry(label) for label in CORE_DEFERRALS)
+    return "\n".join(_entry(label) for label in ALL_DEFERRALS)
 
 
 def _ledger_statuses() -> dict[str, str]:
@@ -95,11 +111,11 @@ def _ledger_statuses() -> dict[str, str]:
 def test_core_deferrals_cited_and_unproven() -> None:
     entries = deferrals_mod.load_deferrals()  # P0's exact CM-8 schema; a withdrawn key raises
     assert problems(entries) == []
-    assert len([e for e in entries if e["from_step"] == "core"]) == 9
+    assert len([e for e in entries if e["from_step"] == "core"]) == 9 + 4
 
     statuses = _ledger_statuses()
     declared = {label["id"]: label for label in meta_mod._load_all_labels()}
-    for label, closes_at in CORE_DEFERRALS.items():
+    for label, closes_at in ALL_DEFERRALS.items():
         if trailers_mod.landing(closes_at, cwd=REPO_ROOT) is not None:
             continue  # the band is on master: its checkpoint asserts the PROVEN side (CM-8)
         assert statuses.get(label, ledger_mod.UNPROVEN) == ledger_mod.UNPROVEN, label
@@ -110,7 +126,11 @@ def test_core_deferrals_cited_and_unproven() -> None:
             # `claim`); the status assertion above is what holds until a node registers one
             assert posture in ("claim", "deferred"), f"{label}: posture {posture!r}"
             continue
-        assert posture in (None, "deferred"), f"{label}: claimed with posture {posture!r}"
+        if label in P0_TARGET_DEFERRALS:
+            # P0's declared claim; its node is a strict-xfail target until the slice-B flip
+            assert posture == "claim", f"{label}: posture {posture!r}"
+        else:
+            assert posture in (None, "deferred"), f"{label}: claimed with posture {posture!r}"
 
 
 def test_unclaimed_deferral_renders_unproven_beside_a_proven_label(tmp_path: Path) -> None:
@@ -129,7 +149,7 @@ def test_unclaimed_deferral_renders_unproven_beside_a_proven_label(tmp_path: Pat
     )
     report = ledger_mod.render(results_dir=results_dir)
     assert report["WR-OTHER-1:planted"]["status"] == ledger_mod.PROVEN
-    for label in CORE_DEFERRALS:
+    for label in ALL_DEFERRALS:
         assert report.get(label, {"status": ledger_mod.UNPROVEN})["status"] == ledger_mod.UNPROVEN
 
 

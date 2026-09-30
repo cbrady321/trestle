@@ -1,19 +1,32 @@
-# RV-5 at J-CORE (L.J-CORE.1, CM-5 role 1): stage-critic transcription review paired
-# with `python -m tests.proof.transcribe --check all`. Reviewer: stage critic, read-only.
-# One round, pass, at 174ba22 (WR-Merge: CL-PX2). The next master commit, 6cef746
-# (WR-Fix: CS-1, doc fix c07ee28 for RV-1/RV-4), changes no transcribed file
-# (matrix_map, row_owners, k_doc_map, open_questions, transcribe.py, labels.d, temporary.d,
-# deferrals, divergence all identical 174ba22..6cef746), and the paired check re-run at
-# 6cef746 exits 0, so the record names 6cef746, the candidate base.
-# Maintainer's attention (no fix required here): divergence.toml still lists the pre-repoint
-# docs for K-8/K-18 (no proof tool reads that field); K-8's container half (Slice B RB-12)
-# has no k_doc_map docs entry and rides the CM-8 deferral; divergence K-5/K-9
-# due_checkpoint names the first code half. Verdict: _tmp/delivery/RV-5-core-review.md.
+# RV-5 at J-CORE (CM-5 role 1): stage-critic transcription review paired with
+# `python -m tests.proof.transcribe --check all`. Reviewer: stage critic, read-only.
+# Round history:
+# - Round 1, pass, at 174ba22 (WR-Merge: CL-PX2); re-stamped to 6cef746 (WR-Fix: CS-1), which
+#   changed no transcribed file (L.J-CORE.1, 68a7d77; verdict _tmp/delivery/RV-5-core-review.md).
+# - The first J-CORE carrier (PR #32, 19f7fb1) failed its own master CI, so the ckpt job never
+#   ran; the fix WR-Fix: P0-0d (PR #33, dfd44c2) changed labels.d/p0.toml (+WR-CON-4:loopback-only),
+#   compat_map.toml (+WR-CON-4 row, 5 node ids) and deferrals.toml (+4 entries), so RV-5 re-ran.
+# - Round 2, pass, at dfd44c2 (this record; verdict _tmp/delivery/RV-5-core-r2-verdict.md).
+#   matrix_map, row_owners, k_doc_map, open_questions, transcribe.py, temporary.d and divergence
+#   are byte-identical 6cef746..dfd44c2; round-1 results for them stand.
+# Departure recorded (CM-8): deferrals.toml now holds 13 core entries, not plan (c)'s 9. The four
+# extra (L.P0-0d.27: WR-ENV-1:legacy-explicit-waves-refuse-unknown-duplicate, WR-VERIFY-4:legacy-
+# run_pytest-errors, WR-ENV-11:pipeline-one-teardown@fake -> NW-1; WR-PROOF-2:pack-docker-live ->
+# NW-2) depart from CM-8's "written once, by L.CL-D1.3" under CM-5's failure exit; the file and
+# CKPT-CARRIER-FIX-RETURN.md record it. Each is faithful to the temporary.d TM-P0-2 entry, gaps.toml
+# flip_merge, slice-B merge row and claiming leaf it cites, and J-CORE (c) justifies it. The nine plan
+# entries are unchanged. WR-CON-4:loopback-only is the P0 compat-gate credit route the plans name
+# (plan-workflow-runtime.md SC-4; plans/core.md ## Coverage); its 5 node ids are WR-COMPAT-11's.
+# Maintainer's attention (no fix required here): fence.d/p0.toml gained 9 tests/core/** globs by
+# WR-Fix leaves beyond p0-court.md's lane-globs table (CM-2 overlap allowed; header sentence could
+# say so); carried from round 1: divergence.toml pre-repoint K-8/K-18 docs, K-8 container half with
+# no k_doc_map entry (rides the CM-8 deferral), divergence K-5/K-9 due_checkpoint naming the first
+# code half.
 id = "RV-5"
 mode = "stage-critic review"
 outcome = "pass"
-sha = "6cef746e6a540870eb9eecd6a376ddbe74cbc8bc"
-transcribe_log = "transcribe --check all --requirements requirements-workflow-runtime.md --decomposition decomposition-workflow-runtime.md: exit 0, no findings (reviewed at 174ba22; re-run at 6cef746 exit 0, no transcribed file changed between them). Also TRESTLE_REQUIREMENTS/TRESTLE_DECOMPOSITION pytest tests/proof/drift -k SA-08: 4 passed; meta check-map: exit 0. Reviewer: 65 clauses / 8 parts / 73 proves ids verbatim in cell order, no uncovered cell text; temporary.d/core.toml byte-identical to the plan literal (TM-C1..TM-C4b); labels.d/core.toml 102 labels = the plan's rows table; deferrals.toml 9/9 equal plan (c); 129 rows = decomposition s7 (owners, dispositions 71/58, contributing, join_cids, slice_tag equal); K-1..K-19 rows/confirm equal requirements L532-550, landing merges equal the phase merge tables; K-8 and K-18 repoints faithful."
+sha = "dfd44c28972fd83f94a13da5da5ad92a7fec2706"
+transcribe_log = "Round 2 at dfd44c2 (reviewer, scratch git-archive extraction): transcribe --check all --requirements requirements-workflow-runtime.md --decomposition decomposition-workflow-runtime.md: exit 0, empty output; TRESTLE_REQUIREMENTS/TRESTLE_DECOMPOSITION pytest tests/proof/drift -k SA-08: 4 passed; meta check-map: exit 0; meta register: exit 0; pytest test_core_fence.py, test_cl_d1_deferrals.py, test_compat_map.py: 8 passed. Re-run by the checkpoint executor in the j-core worktree at dfd44c2: transcribe exit 0, SA-08 4 passed, check-map exit 0. Reviewer: labels.d/p0.toml +1 label WR-CON-4:loopback-only faithful to SC-4 and plans/core.md Coverage (5 node ids exist, shared with WR-COMPAT-11); compat_map +1 row; deferrals.toml 9 plan entries unchanged + 4 L.P0-0d.27 entries each faithful to its cited TM-P0-2 entry, gaps flip_merge, slice-B merge row and claiming leaf; row_owners unchanged (129 rows, WR-CON-4 owner wr-answer owned core = decomposition s7); k_doc_map unchanged, K-17 docs-inspection test consistent with docs/plugins.md. Round 1 (174ba22, re-run at 6cef746): transcribe exit 0; 65 clauses / 8 parts / 73 proves ids verbatim; temporary.d/core.toml byte-identical to the plan literal; labels.d/core.toml 102 labels = the plan's rows table; 129 rows = s7; K-1..K-19 = requirements L532-550."
 
 [criteria]
 verbatim_fragments = "pass"
