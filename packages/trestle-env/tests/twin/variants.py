@@ -14,7 +14,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from tests.proof import mcp_host, tolerances
+from tests.proof import mcp_host, records, tolerances
+from trestle.common import clock
 
 from twin import harness
 
@@ -102,3 +103,63 @@ def released_after_root_end(entries: list[dict[str, Any]]) -> bool:
     ends = [i for i, e in enumerate(entries) if e["class"] == "end" and e.get("path") == ""]
     stops = [i for i, e in enumerate(entries) if e["class"] == "issue" and e.get("effect") == STOP]
     return len(ends) == 1 and bool(stops) and all(i > ends[0] for i in stops)
+
+
+# ---- a stopped root (L.RB-12.2) ------------------------------------------------------------
+
+RELEASE_EFFECTS = frozenset({STOP})  # the tree's only `is_release` effect
+STOP_WAIT_MS = int((clock.stop_bound + tolerances.JOIN_WAIT_S * 3) * 1000)
+
+
+def start(host: mcp_host.McpHost, env: str, mode: str) -> str:
+    """Admit a variant run and return its id at once (the stop comes from outside)."""
+    started = host.call(
+        "run", {"plugin": PLUGIN_NAME, "args": {"env": env, "mode": mode}, "wait_ms": 0}
+    )
+    assert isinstance(started, dict) and "run_id" in started, started
+    return str(started["run_id"])
+
+
+def both_created(host: mcp_host.McpHost, run_id: str) -> bool:
+    """Both containers are confirmed created and the helper is done: the step is holding."""
+    found = sorted((host.home / "runs").glob(f"*/{run_id}"))
+    if not found:
+        return False
+    entries = [row.entry for row in records.lane_rows(found[0]).rows]
+    ended = {e.get("path") for e in entries if e["class"] == "end"}
+    return set(created(entries)) == {POSTGRES, HELPER} and HELPER in ended
+
+
+def cancel_and_await(host: mcp_host.McpHost, run_id: str) -> dict[str, Any]:
+    """Cancel the root through the MCP `cancel` tool, then await its terminal view."""
+    host.call("cancel", {"run_id": run_id})
+    joined = host.call(
+        "await_runs", {"run_ids": [run_id], "mode": "all", "timeout_ms": STOP_WAIT_MS}
+    )
+    views = joined["result"] if isinstance(joined, dict) and "result" in joined else joined
+    (view,) = views
+    assert isinstance(view, dict), view
+    return view
+
+
+def applied_past_stop(run_dir_: Path) -> list[str]:
+    """B2-C15: exactly one stop row, and no APPLIED non-release confirmation at or past the lane
+    length it recorded (a release is the loop giving back what it made). The violations, or a
+    reason the record proves nothing."""
+    stops = [r for r in records.ledger_rows(run_dir_).rows if r.get("kind") == "stop_row"]
+    if len(stops) != 1:
+        return [f"{len(stops)} stop rows, not exactly one"]
+    length = stops[0].get("lane_committed_length")
+    if length is None:
+        return ["the stop row's lane_committed_length is None (unproven)"]
+    lane = records.lane_rows(run_dir_)
+    if not lane.rows or lane.problems or lane.torn:
+        return ["the lane is empty or unreadable", *lane.problems]
+    return [
+        f"APPLIED {row.entry['effect']} at byte {row.offset} is past offset {length}"
+        for row in lane.rows
+        if row.cls == "confirmation"
+        and row.entry["status"] == "applied"
+        and row.offset >= length
+        and row.entry["effect"] not in RELEASE_EFFECTS
+    ]
