@@ -1450,3 +1450,14 @@ items = [
   { path = "$.fields", value = ["disposition", "str | None"] },
 ]
 authorized_by = "plans/a2-tree.md L.TR-2.2 (V-1.3 child run view: root_run_id, path, disposition; MC-B3-08), MC-06 seed"
+
+# L.TR-2.5 (MC-B3-08, V-11): a cancel addressed to a child handle is refused (OQ-27 assumed default).
+[[entry]]
+id = "ADD-code-projection-cancel-not-root"
+facet = "refusal_codes"
+row_or_k = "MC-06"
+codes = ["projection.cancel_not_root"]
+docs = []
+due_checkpoint = "TR-2 (leaf L.TR-2.5)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06: projection.{terminal_wait_exceeded, outside_window, not_owner, cancel_not_root}); interfaces/00-shared-vocabulary.md V-11 CANCEL_NOT_ROOT; plans/a2-tree.md L.TR-2.5"

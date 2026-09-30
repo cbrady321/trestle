@@ -13,6 +13,7 @@ from typing import Any
 
 from trestle.common import clock, codes
 from trestle.common.outcome import classify
+from trestle.common.plan.compiler import REFUSAL_TEXT_MAX
 from trestle.common.types import (
     CatalogView,
     CleanupView,
@@ -46,6 +47,17 @@ from trestle.server.runs import RunRegistry
 from trestle.server.snapshots import load_declared
 
 DEFAULT_SUMMARY_BUDGET = 4096
+
+
+@dataclass(frozen=True)
+class _Child:
+    """A child handle resolved against its root (V-1.1)."""
+
+    root_id: Handle
+    ledger: RunLedger
+    run_dir: Path
+    spec: dict[str, object]
+    path: tuple[str, ...]
 
 
 @dataclass
@@ -221,6 +233,9 @@ class Project:
     def cancel(self, run_id: Handle, caller_session: str | None = None) -> RequestOutcome:
         ledger = self._ledger_for(run_id)
         if ledger is None:
+            refused = self._cancel_child(run_id, caller_session)
+            if refused is not None:
+                return refused
             return RequestOutcome(
                 code=codes.INVALID_HANDLE,
                 message=f"unknown run: {run_id}",
@@ -264,6 +279,29 @@ class Project:
         return RequestOutcome(
             code=codes.CANCEL_ACCEPTED,
             message=f"cancel accepted for {run_id}",
+            retryable=False,
+            origin="projection",
+        )
+
+    def _cancel_child(self, handle: Handle, caller_session: str | None) -> RequestOutcome | None:
+        """A cancel addressed to a child handle (B2-C12, OQ-27 assumed default): after today's
+        checks (an unknown handle stays `projection.invalid_handle`, a foreign session
+        `projection.not_owner`, a root that cannot be cancelled `projection.invalid_handle`), the
+        refusal `projection.cancel_not_root` naming the root. Nothing is written: no cancel flag,
+        no ledger row, and the root runs on. None when `handle` is not a child handle."""
+        child = self._resolve_child(handle, caller_session)
+        if child is None or isinstance(child, RequestOutcome):
+            return child
+        if child.ledger.projected_state() not in {"queued", "running"}:
+            return RequestOutcome(
+                code=codes.INVALID_HANDLE,
+                message=f"run not cancellable: {child.root_id} ({child.ledger.projected_state()})",
+                retryable=False,
+                origin="projection",
+            )
+        return RequestOutcome(
+            code=codes.CANCEL_NOT_ROOT,
+            message=f"cancel is addressed to the root run: {child.root_id}"[:REFUSAL_TEXT_MAX],
             retryable=False,
             origin="projection",
         )
@@ -358,16 +396,15 @@ class Project:
                 return run_dir
         return None
 
-    def _child_view(
-        self, handle: Handle, caller_session: str | None = None
-    ) -> RunView | RequestOutcome | None:
-        """The view of a child handle (V-1.1, V-1.3; MC-B3-08), or None when `handle` is not a
-        child handle of an admitted root: a root that does not exist, one whose plan has no such
-        vertex, or a handle that does not derive from (root run id, path) all read as unknown.
-        `state` is the root's run state, so a child is non-terminal while its root is live; once the
-        root is finalized the vertex's B4-C8 account is the materialized one (finalization and
-        recovery wrote it), or, for a run finalized before it existed, recomputed from the same
-        durable inputs."""
+    def _resolve_child(
+        self, handle: Handle, caller_session: str | None
+    ) -> _Child | RequestOutcome | None:
+        """`handle` as a child of an admitted root (V-1.1), or None when it is not one: a root that
+        does not exist, one whose plan has no such vertex, or a handle that does not derive from
+        (root run id, path) all read as unknown. Under the restricted profile only the session that
+        received the root resolves its children (WR-AUTH-1, L.TR-2.4), as only it may cancel it;
+        that is checked before the handle is resolved, so another session learns nothing of the
+        root's vertices."""
         root_id = answer_mod.root_run_id_of(handle)
         if root_id is None:
             return None
@@ -375,9 +412,6 @@ class Project:
         run_dir = self._run_dir_for(root_id)
         if ledger is None or run_dir is None:
             return None
-        # WR-AUTH-1 (L.TR-2.4): under the restricted profile only the session that received the run
-        # reads its child views, as only it may cancel it; checked before the handle is resolved, so
-        # another session learns nothing of the root's vertices
         if self.session_scoped_cancel and caller_session is not None:
             created = ledger.last_kind("created")
             if created is None or created.get("caller_session") != caller_session:
@@ -395,6 +429,26 @@ class Project:
         path = answer_mod.child_paths(root_id, plan).get(handle)
         if path is None:
             return None
+        return _Child(root_id, ledger, run_dir, spec, path)
+
+    def _child_view(
+        self, handle: Handle, caller_session: str | None = None
+    ) -> RunView | RequestOutcome | None:
+        """The view of a child handle (V-1.1, V-1.3; MC-B3-08), or None when `handle` is not one.
+        `state` is the root's run state, so a child is non-terminal while its root is live; once the
+        root is finalized the vertex's B4-C8 account is the materialized one (finalization and
+        recovery wrote it), or, for a run finalized before it existed, recomputed from the same
+        durable inputs."""
+        child = self._resolve_child(handle, caller_session)
+        if child is None or isinstance(child, RequestOutcome):
+            return child
+        root_id, ledger, run_dir, spec, path = (
+            child.root_id,
+            child.ledger,
+            child.run_dir,
+            child.spec,
+            child.path,
+        )
         state = ledger.projected_state()
         view = RunView(run_id=handle, state=state, root_run_id=root_id, path="/".join(path))
         if state in _NON_TERMINAL_STATES:
