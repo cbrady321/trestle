@@ -179,7 +179,9 @@ def run_server(
         timeout_ms: int = 2000,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Wait for existing runs to reach a terminal state."""
-        result = await kernel.control.await_runs_async(run_ids, mode=mode, timeout_ms=timeout_ms)
+        result = await kernel.control.await_runs_async(
+            run_ids, mode=mode, timeout_ms=timeout_ms, caller_session=_caller_session()
+        )
         if isinstance(result, RequestOutcome):
             return result.to_dict()
         return [view.to_dict() for view in result]

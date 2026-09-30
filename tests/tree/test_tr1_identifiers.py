@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from tests.tree.test_tr1_admission import publish, refused, source
+from tests.tree.test_tr1_admission import admitted, publish, refused, source
 from trestle.common import codes
 from trestle.common.plan.compiler import AdmittedPlan
 from trestle.common.types import AdmitRequest
@@ -33,12 +33,11 @@ def test_unknown_identifier_refused_names_it_and_set(tree_kernel: Kernel) -> Non
     assert outcome.code == codes.UNKNOWN_IDENTIFIER == "admission.unknown_identifier"
     assert "nonesuch" in outcome.message, outcome.message  # the value
     assert "identifier_sets.services" in outcome.message, outcome.message  # where the set is listed
-    # a listed value is no unknown identifier: it compiles and reaches the temporary code
-    listed = refused(tree_kernel, name, {"only": "web"})
-    assert listed.code == codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED
     # a schema failure keeps its own code: the schema check runs before the identifier check
     schema = refused(tree_kernel, name, {"only": 7})
     assert schema.code == codes.INVALID_ARGS
+    # a listed value is no unknown identifier: it compiles and is admitted (L.TR-L.1)
+    admitted(tree_kernel, name, {"only": "web"})
 
 
 @pytest.mark.proves("WR-PLAN-2", "WR-PLAN-2:domain-identifier", "A", "tree", "MCP+LOGIC", "CI")

@@ -193,9 +193,10 @@ class Admission:
         planned = plan_for_admission(snap, req, deadline_s)
         if isinstance(planned, AdmitResultRefused):
             return planned
-        # TM-B2-1 (MC-B3-03 order): a valid multi-vertex root is still refused, after every
-        # specific refusal above and still before any run id exists (the tree band's TR-L / TR-5
-        # narrow and remove this call, register entry `multi-vertex-refusal`).
+        # TM-B2-1 (MC-B3-03 order): a valid ChoiceNode root is still refused, after every
+        # specific refusal above and still before any run id exists (L.TR-L.1 lifted the refusal
+        # for an AllDeclaration tree; L.TR-5.3 removes this call, register entry
+        # `multi-vertex-refusal`, phase `choice-only`).
         composite = multi_vertex_refusal(snap)
         if composite is not None:
             return composite
@@ -263,25 +264,18 @@ def _plan_refusal(refusal: compiler.Refusal) -> AdmitResultRefused:
 
 
 def multi_vertex_refusal(snap: PluginSnapshot) -> AdmitResultRefused | None:
-    """TM-B2-1 (register entry `multi-vertex-refusal`, phase `full`), the one home of the
-    refusal (DM-07): a declared root with more than one vertex, an `AllDeclaration` with children
-    or a `ChoiceNode` with alternatives, is refused `admission.plan_multi_vertex_unsupported`.
-    Decided on the declaration alone, after `plan_for_admission` has compiled the whole tree (a
-    defective tree gets its own code, L.TR-1.1); `plan_for_admission` and `write_admitted_run`
-    (the harness's path, MC-B2-08) never refuse a composite. A plain plugin and a leaf root are
-    not refused."""
+    """TM-B2-1 (register entry `multi-vertex-refusal`, phase `choice-only`), the one home of the
+    refusal (DM-07): a declared root that is a `ChoiceNode` with alternatives is refused
+    `admission.plan_multi_vertex_unsupported`. An `AllDeclaration` tree of any size is admitted
+    (L.TR-L.1). Decided on the declaration alone, after `plan_for_admission` has compiled the
+    whole tree (a defective tree gets its own code, L.TR-1.1); `plan_for_admission` and
+    `write_admitted_run` (the harness's path, MC-B2-08) never refuse a composite. A plain plugin,
+    a leaf root and an `AllDeclaration` root are not refused."""
     declared = load_declared_tree(snap)
     if declared is None:
         return None
     root = declared.nodes[ROOT_PATH]
-    compose = root["compose"]
-    if compose == "all":
-        composite = bool(root["children"])
-    elif compose == "choice":
-        composite = bool(root["choice"]["alternatives"])
-    else:
-        composite = False
-    if not composite:
+    if root["compose"] != "choice" or not root["choice"]["alternatives"]:
         return None
     return AdmitResultRefused(
         tag="refused",
