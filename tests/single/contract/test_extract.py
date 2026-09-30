@@ -63,12 +63,15 @@ def test_leaf_root_extracts_one_vertex_deterministic() -> None:
     assert json.loads(first)["digest"] == tree.digest
 
 
-def test_composite_root_recorded_with_unresolved_children() -> None:
+def test_composite_root_recorded_with_resolved_children() -> None:
+    # L.TR-0.2 resolves descendants (it inverted the SV-2 pin "only the root is recorded"): one
+    # node per declaration path, each child reference naming its node's path; a name the entry
+    # does not resolve keeps `path: null` (the choice root below)
     tree = extract_declared_tree(fx.composite_entry())
-    assert list(tree.nodes) == [ROOT_PATH]  # only the root is recorded; descendants are TR-0's
+    assert list(tree.nodes) == [ROOT_PATH, "db", "api1"]
     node = tree.nodes[ROOT_PATH]
     assert node["compose"] == "all" and node["concurrency"] == 2 and node["gates"] == ["db"]
-    assert [c["path"] for c in node["children"]] == [None, None]
+    assert [c["path"] for c in node["children"]] == ["db", "api1"]
     assert [c["name"] for c in node["children"]] == ["db", "api1"]
     assert node["children"][1]["binding"] == {
         "unit": "api",

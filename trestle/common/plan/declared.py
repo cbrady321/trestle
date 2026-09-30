@@ -29,10 +29,18 @@ import json
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, final
+from typing import Any, Literal, final
 
 FORMAT_VERSION = 1
 ROOT_PATH = ""
+
+# OQ-31 (root-entry eligibility, MC-B3-09): whether a unit that is not eligible as a root entry (a
+# leaf whose precondition only a sibling could cover) is refused when it is published as a root
+# (`refuse_at_publication`) or admitted and stopped before any effect by the loop's in-node refusal
+# (`admit_and_stop`, the shipped variant: no publication refusal is added). Both variants are
+# written and tested; the question stays open and the label both-variant.
+RootEligibility = Literal["refuse_at_publication", "admit_and_stop"]
+ROOT_ELIGIBILITY: RootEligibility = "admit_and_stop"
 
 _COMMON_KEYS = frozenset(
     {"unit", "compose", "completion", "repeat", "budget", "env_key_field", "declared_codes"}
