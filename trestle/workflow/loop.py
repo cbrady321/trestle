@@ -234,6 +234,7 @@ class LeafWalk:
         self._held: list[StepView] = []  # steps the lane refused to hold, in process (V-4.5)
         self._observation: Observation | None = None
         self._refusal_seen = False  # a facet refused or recorded UNKNOWN in the current call
+        self._polls = 0  # CONVERGE polls since the last ADVANCE: the backoff exponent (V-14)
         self.verdict: Verdict | None = None
         self._reached = False  # the walk ended at a condition the node reached itself
         self._terms = NodeTerms(
@@ -399,10 +400,21 @@ class LeafWalk:
         assert isinstance(observation, Observation)
         return observation
 
+    def _next_interval(self) -> timedelta:
+        """V-14: the wait policy's next interval, `poll_every * backoff ** polls`, the exponent
+        counted from the last ADVANCE (a new attempt starts a new wait, V-3.1). It never runs past
+        `terms.slice_end`: a node is polled at most until its slice ends (J-13a, J-21)."""
+        wait = self._decl.wait
+        seconds = wait.poll_every.total_seconds() * wait.backoff**self._polls
+        left = (self._terms.slice_end - self._loop.now()).total_seconds()
+        return timedelta(seconds=max(min(seconds, left), 0.0))
+
     def _poll(self) -> None:
-        """POLL under CONVERGE: wait the policy's interval through `CancelSignal.wait`, then
+        """POLL under CONVERGE: wait the policy's next interval through `CancelSignal.wait`, then
         observe (V-3.5); never `advance` (B1-C10). The join follows the tuple."""
-        self._loop.services.cancellation().wait(self._decl.wait.poll_every)
+        interval = self._next_interval()
+        self._polls += 1
+        self._loop.services.cancellation().wait(interval)
         if not self._stopped():
             self._observation = self._observe() or self._observation
 
@@ -421,6 +433,7 @@ class LeafWalk:
         before = self._loop.lane.node_record(self.path)
         marked = self._mark()
         self._refusal_seen = False
+        self._polls = 0  # a new attempt starts a new wait
         context = _CallContext(self._lineage, self._loop.services, verdict.remedy)
         facets = EffectBinder(self._facets(verdict.remedy))
         returned: object = _ESCAPED
