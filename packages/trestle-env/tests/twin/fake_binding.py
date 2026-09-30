@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -55,6 +56,7 @@ class FakeReferenceEngine(FakeContainerEngine):
         self._checks = {name: dict(env) for name, env in checks.items()}
         self.calls: list[dict[str, Any]] = []
         self.environment: dict[str, dict[str, str]] = {}  # selector -> the container's env
+        self._lock = threading.RLock()  # sibling nodes run concurrently in one process
         self._load()
 
     # ---- durable state (the plugin runs in another process)
@@ -76,6 +78,11 @@ class FakeReferenceEngine(FakeContainerEngine):
     def _save(self) -> None:
         if self._state_path is None:
             return
+        with self._lock:
+            self._write()
+
+    def _write(self) -> None:
+        assert self._state_path is not None
         data = {
             "containers": [
                 {
@@ -95,8 +102,9 @@ class FakeReferenceEngine(FakeContainerEngine):
         os.replace(tmp, self._state_path)
 
     def _log(self, member: str, selector: str | None, **extra: Any) -> None:
-        self.calls.append({"member": member, "selector": selector, **extra})
-        self._save()
+        with self._lock:
+            self.calls.append({"member": member, "selector": selector, **extra})
+            self._save()
 
     # ---- the port members a run reaches (each logged, state saved)
 
