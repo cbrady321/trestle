@@ -10,16 +10,24 @@
 #    `--fossils tests/fixtures/fossils/tree-trl` finds no state and exits 0 vacuously. Each run below points d2 at
 #    a scratch root holding one symlink `tree-trl -> tests/fixtures/fossils/tree-trl` (the TR-5 runs, likewise,
 #    `tree-tr5 -> tests/fixtures/fossils/tree-tr5`).
-#  * The tag `wr-ckpt/single` does not exist in this repository (it is created by CI's `ckpt` job on master; the
-#    commit it will name is `WR-Merge: J-SINGLE`, 45efafc, which is `origin/master` here), so the reader `wr-ckpt/single`
-#    failed to resolve (`git worktree add` refused it). The two runs below use `origin/master` (that commit) and
-#    the merge base with it as their readers. The orchestrator re-runs `--reader wr-ckpt/single` at H and refreshes
-#    this file from the same states; E-TR-1 in d2_exceptions.toml is keyed to that reader name, as the plan says.
+#  * The lanes ran before the tag `wr-ckpt/single` existed and recorded `origin/master` (then 45efafc, the J-SINGLE
+#    carrier) and the lanes' merge base 9b7cd8a (J-CORE). At the bundle's merge-forward (A-2 finalize, origin/master
+#    3e26e39) every run was re-made over the same states: reader `wr-ckpt/single` (675f226, `WR-Merge: J-SINGLE`),
+#    reader `origin/master` (3e26e39) and reader 9b7cd8a. Every exit is 0 with no diverging path, so TR-L and TR-5
+#    stay transparent. E-TR-1 in d2_exceptions.toml is keyed to `wr-ckpt/single`, as the plan says.
+
+[[run]]
+merge = "TR-L"
+reader = "wr-ckpt/single"
+reader_sha = "675f2262bd2aa25fa5d52b55de87d21b9debdf71"
+fossils = "tests/fixtures/fossils/tree-trl"
+exit = 0
+diverged = []
 
 [[run]]
 merge = "TR-L"
 reader = "origin/master"
-reader_sha = "45efafccdbe7ff45f9cab5d8ecb2104a7f3694ea"
+reader_sha = "3e26e39f6e8ae68fa894c135f297ee538be21b1"
 fossils = "tests/fixtures/fossils/tree-trl"
 exit = 0
 diverged = []
@@ -34,8 +42,16 @@ diverged = []
 
 [[run]]
 merge = "TR-5"
+reader = "wr-ckpt/single"
+reader_sha = "675f2262bd2aa25fa5d52b55de87d21b9debdf71"
+fossils = "tests/fixtures/fossils/tree-tr5"
+exit = 0
+diverged = []
+
+[[run]]
+merge = "TR-5"
 reader = "origin/master"
-reader_sha = "45efafccdbe7ff45f9cab5d8ecb2104a7f3694ea"
+reader_sha = "3e26e39f6e8ae68fa894c135f297ee538be21b1"
 fossils = "tests/fixtures/fossils/tree-tr5"
 exit = 0
 diverged = []
