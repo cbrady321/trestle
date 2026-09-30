@@ -63,6 +63,9 @@ def test_poll_until_default_sleep_behaviour_pinned(monkeypatch: pytest.MonkeyPat
     assert fake2.sleeps == [2.0, 2.0, 2.0]
 
 
+@pytest.mark.proves(
+    "WR-DEADLINE-4", "WR-DEADLINE-4:legacy-poll-until-cancel-and-clock", "B", "B", "PROC", "CI"
+)
 def test_poll_until_injected_clock_times_out_without_sleep(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -83,6 +86,9 @@ def test_poll_until_injected_clock_times_out_without_sleep(
     assert fake.sleeps == [7.0] * 5  # 35 s of virtual time, none of it real
 
 
+@pytest.mark.proves(
+    "WR-DEADLINE-4", "WR-DEADLINE-4:legacy-poll-until-cancel-and-clock", "B", "B", "PROC", "CI"
+)
 def test_poll_until_cancel_returns_within_bound() -> None:
     bound = tolerances.stop_bound()
 
