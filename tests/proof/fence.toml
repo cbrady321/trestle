@@ -54,4 +54,6 @@ single = [
 ]
 tree = ["wr/tree/", "wr/tree-ckpt/", "wr/tree-bundle/"]
 slice-b = ["wr/b-legacy/", "wr/b-adapters/", "wr/b-env/", "wr/b-ckpt/", "wr/slice-b-bundle/"]
-cz = ["wr/j-root/"]
+# cz owns the closure lane `wr/cz/` (L.CZ.1 creates fence.d/cz.toml on
+# `wr/cz/cz`) and the root checkpoint lane `wr/j-root/` (L.P0-0d.33).
+cz = ["wr/cz/", "wr/j-root/"]
