@@ -21,6 +21,7 @@ in-library test builds the same leaf at either depth. Three vertices, depth 3.""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -177,11 +178,12 @@ class StubGrant:
     """The demo-credential port as a STUB (B3-C11): the issuer needs an interactive login, so the
     refresh is NOT_APPLIED(`CREDENTIAL_INTERACTIVE`) carrying the identity that needs it."""
 
-    def __init__(self) -> None:
+    def __init__(self, now: Callable[[], datetime] | None = None) -> None:
         self.refreshes = 0
+        self._now = now or (lambda: datetime.now(UTC))
 
     def observe_host(self) -> GrantObservation:
-        now = datetime.now(UTC)
+        now = self._now()
         return GrantObservation(
             SUBJECT,
             now + timedelta(hours=1),
@@ -284,12 +286,18 @@ def _absent() -> Observation:
     )
 
 
-def make_ports(condition: str, root: Path) -> dict[type, object]:
-    """The fake ports `condition` runs on; `root` is the directory the marker keeps its state in."""
+def make_ports(
+    condition: str, root: Path, now: Callable[[], datetime] | None = None
+) -> dict[type, object]:
+    """The fake ports `condition` runs on; `root` is the directory the marker keeps its state in.
+    `now` is the clock the time-reading fakes compare against (default: the wall clock, as in a real
+    run): an in-library rig passes its manual clock, since the `until` the loop hands the command
+    port is read off that clock, and against the wall clock it would expire once the wall clock
+    passed the rig's fixed start (a date bomb, not a timing)."""
     if condition == "assertion":
-        return {ExecutionPort: FakeCommand({"test": failed_result(FAILED_CODE, COUNTS)})}
+        return {ExecutionPort: FakeCommand({"test": failed_result(FAILED_CODE, COUNTS)}, now=now)}
     if condition == "mfa":
-        grant = StubGrant()
+        grant = StubGrant(now)
         return {GrantReads: grant, GrantRefresh: grant}
     if condition in ("never_ready", "no_progress"):
         marker: FakeMarker = ConditionsMarker(root / "markers", fixed=condition == "no_progress")

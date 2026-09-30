@@ -115,12 +115,27 @@ def account_in(answer: Mapping[str, Any], path: str) -> Mapping[str, Any] | None
 
 
 def first_exception_stop(entries: Sequence[Mapping[str, Any]]) -> int | None:
-    """The `seq` of the first step row that records an uncaught exception (`execution.unit_raised`,
-    B1-E6): the whole-root stop a sibling's raise causes."""
-    for entry in entries:
-        if entry.get("class") == "step" and entry.get("code") == UNIT_RAISED:
-            return int(entry["seq"])
-    return None
+    """The `seq` of the whole-root stop a sibling's raise causes: the first step row that records an
+    uncaught exception (`execution.unit_raised`, B1-E6) or, when one comes first, the first
+    `NodeEnd` that stop cut (`stopped` or `not_started`). The loop flips the goal *before* it
+    records the raising node's step (B1-E6), so a sibling that sees the flip in between may end
+    ahead of that row; its end is past the stop all the same. None: no raise was recorded."""
+    raised = next(
+        (
+            int(e["seq"])
+            for e in entries
+            if e.get("class") == "step" and e.get("code") == UNIT_RAISED
+        ),
+        None,
+    )
+    if raised is None:
+        return None
+    cut = (
+        int(e["seq"])
+        for e in entries
+        if e.get("class") == "end" and e.get("cut") in STOPPED_CUTS and int(e["seq"]) < raised
+    )
+    return min(cut, default=raised)
 
 
 def normalize_row(row: Mapping[str, Any]) -> dict[str, Any]:

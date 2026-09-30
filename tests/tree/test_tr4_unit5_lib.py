@@ -70,18 +70,22 @@ OUTCOME = {
     "deadline": ("timed_out", "release_point"),
 }
 
-# The deadline variant's own clocks: `(constant in the fixture, value)`; a release slice and a
-# reserve of one second, so a leaf's budget and the deadline that carries it are a few seconds.
+# The deadline variant's own clocks: `(constant in the fixture, value)`; a reserve of one second and
+# a release slice of three, so a leaf's budget and the deadline that carries it are a few seconds.
 SHORT = [
     ("WAIT_MAX_S = 6", "WAIT_MAX_S = 1"),
     ("RELEASE_TIMEOUT_S = 2", "RELEASE_TIMEOUT_S = 1"),
     ("LEAF_BUDGET_S = 10", "LEAF_BUDGET_S = 3"),
     ("ROOT_BUDGET_S = 20", "ROOT_BUDGET_S = 5"),
-    ("DEADLINE_S = 36", "DEADLINE_S = 7"),
-    ("deadline=36", "deadline=7"),
+    ("DEADLINE_S = 36", "DEADLINE_S = 10"),
+    ("deadline=36", "deadline=10"),
 ]
-SHORT_DEADLINE_S = 7
-SHORT_RELEASE_S = 1.0
+# The release slice is the time the child has, from the release point's flag to the kill, to end its
+# nodes cooperatively (B2-C10). One second passed idle but a loaded runner can miss it (the child is
+# killed with no NodeEnd written); three seconds, and a deadline that carries them (root budget +
+# release slice <= deadline, B2-C2).
+SHORT_DEADLINE_S = 10
+SHORT_RELEASE_S = 3.0
 
 
 def _proves(variant: str) -> Any:
