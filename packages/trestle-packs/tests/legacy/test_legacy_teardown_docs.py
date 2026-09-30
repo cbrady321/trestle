@@ -49,6 +49,8 @@ def _observed_removal_set(tmp_path: Path, teardown: str, *, reset: bool) -> set[
     return {"containers", "networks"} | ({"volumes"} if remove_volumes else set())
 
 
+@pytest.mark.proves("WR-OWN-4", "WR-OWN-4:docs-equal-code-fake", "B", "B", "LOGIC", "CI")
+@pytest.mark.proves("WR-PROOF-10", "WR-PROOF-10:K-6", "B", "B", "LOGIC", "CI")
 def test_documented_removal_sets_match_code(tmp_path: Path) -> None:
     documented = _documented_removal_sets()
     assert set(documented) == {"down", "stop", "none", "reset_volumes"}

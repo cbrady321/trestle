@@ -97,6 +97,8 @@ def test_stack_runner_teardown_stop_policy(workdir: Path) -> None:
     assert "teardown: compose stop complete" in ctx.logs
 
 
+@pytest.mark.proves("WR-OWN-4", "WR-OWN-4:legacy-default-keeps-volumes", "B", "B", "LOGIC", "CI")
+@pytest.mark.proves("WR-PROOF-10", "WR-PROOF-10:K-6", "B", "B", "LOGIC", "CI")
 def test_stack_runner_teardown_on_failure(workdir: Path) -> None:
     backend = FakeComposeBackend(fail_on_wave=1)
     ctx = FakePackContext(work=workdir)
@@ -111,6 +113,7 @@ def test_stack_runner_teardown_on_failure(workdir: Path) -> None:
     assert "teardown: compose down complete" in ctx.logs
 
 
+@pytest.mark.proves("WR-OWN-4", "WR-OWN-4:legacy-default-keeps-volumes", "B", "B", "LOGIC", "CI")
 def test_stack_runner_explicit_reset_removes_volumes(workdir: Path) -> None:
     backend = FakeComposeBackend()
     ctx = FakePackContext(work=workdir)
