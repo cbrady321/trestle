@@ -39,7 +39,7 @@ from trestle_packs.fakes.marker import (
     SelectorRef,
 )
 
-DOCKER_ENGINE_UNREACHABLE = "adapter.docker_engine_unreachable"
+PROVISION_STORE_UNREADABLE = "adapter.provision_store_unreadable"
 RECORD_KIND = "postgres_record"
 FOUND_KEEP = 4
 _UNSAFE = re.compile(r"[^a-z0-9_.-]")
@@ -80,7 +80,9 @@ class FakeProvision:
 
     def observe(self, spec: Any, lineage: Any, effect: str | None) -> ResourceObservation:
         if not self.readable:
-            return ResourceObservation(False, None, False, False, (), (), DOCKER_ENGINE_UNREACHABLE)
+            return ResourceObservation(
+                False, None, False, False, (), (), PROVISION_STORE_UNREADABLE
+            )
         selector = "" if effect is None else selector_name(lineage)
         present = selector in self.records and self.records[selector][0] == spec.logical_system
         others = sorted(
@@ -96,7 +98,7 @@ class FakeProvision:
     def check(self, check: str, target: Any) -> CheckResult:
         if not self.readable:
             return CheckResult(
-                False, DOCKER_ENGINE_UNREACHABLE, "the record store could not be read"
+                False, PROVISION_STORE_UNREADABLE, "the record store could not be read"
             )
         selector = getattr(target, "selector", "")
         if check != "recorded" or selector not in self.records:
@@ -126,7 +128,7 @@ class FakeProvision:
         if _value(ticket.lifetime) != "durable":
             raise ValueError("a provisioned record has no RUN form: it is created DURABLE (V-10.2)")
         if not self.readable:
-            return Confirmation(ConfirmationStatus.NOT_APPLIED, DOCKER_ENGINE_UNREACHABLE, None)
+            return Confirmation(ConfirmationStatus.NOT_APPLIED, PROVISION_STORE_UNREADABLE, None)
         key = selector_name(ticket.lineage)
         if key not in self.records:  # idempotent per key: a repeat changes nothing
             self.records[key] = (spec.logical_system, "fixture-record")

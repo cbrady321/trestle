@@ -27,7 +27,7 @@ from trestle.workflow.values import (
 
 from trestle_packs.container.engine import (
     DOCKER_CLI_MISSING,
-    DOCKER_ENGINE_UNREACHABLE,
+    PROVISION_STORE_UNREADABLE,
     DockerCli,
 )
 from trestle_packs.container.reads import selector_name as container_selector_name
@@ -86,7 +86,7 @@ def test_a_script_that_connects_over_a_trusted_path_is_refused_by_the_double(
 ) -> None:
     monkeypatch.setattr(module, "PSQL_SCRIPT", module.PSQL_SCRIPT.replace("-h ", "-h 127.0.0.1 "))
     seen = rig.port_over(shim).observe(rig.SPEC, LINEAGE, "up")
-    assert seen.code == DOCKER_ENGINE_UNREACHABLE  # the double's exit 97: a read that failed
+    assert seen.code == PROVISION_STORE_UNREADABLE  # the double's exit 97: a read that failed
 
 
 def test_a_wrong_password_is_never_read_as_absent_and_a_submit_changes_nothing(
@@ -94,9 +94,9 @@ def test_a_wrong_password_is_never_read_as_absent_and_a_submit_changes_nothing(
 ) -> None:
     port = rig.port_over(shim, rig.WRONG_PASSWORD)
     seen = port.observe(rig.SPEC, LINEAGE, "up")
-    assert seen.code == DOCKER_ENGINE_UNREACHABLE and seen.selector_present is False
+    assert seen.code == PROVISION_STORE_UNREADABLE and seen.selector_present is False
     refused = port.create(rig.SPEC, create_ticket())
-    assert refused.status is STATUS.NOT_APPLIED and refused.code == DOCKER_ENGINE_UNREACHABLE
+    assert refused.status is STATUS.NOT_APPLIED and refused.code == PROVISION_STORE_UNREADABLE
     assert shim.keys() == frozenset()
 
 

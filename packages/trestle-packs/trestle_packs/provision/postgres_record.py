@@ -46,9 +46,9 @@ fixture's, never recorded by the port.
 Executor-chosen values (the contract names none): the table `trestle_provisioned` and its three
 columns; `FOUND_KEEP = 4` found rows read, each key cut at `KEY_MAX = 100` characters (a probe's
 output must fit the execution port's 512-byte excerpt: five 100-character lines and their
-newlines); the codes for an unreadable store (`DOCKER_ENGINE_UNREACHABLE`: no V-11 code names a
-store that did not answer) and for an output that is not the expected shape
-(`TOOLCHAIN_INTERFACE_DRIFT`); the `ExecutionPolicy` of a submit (no launch happens).
+newlines); the codes for an unreadable store (`PROVISION_STORE_UNREADABLE`, the V-11 name
+L.RB-6.3.fix1 added for a store that did not answer) and for an output that is not the expected
+shape (`TOOLCHAIN_INTERFACE_DRIFT`); the `ExecutionPolicy` of a submit (no launch happens).
 """
 
 from __future__ import annotations
@@ -86,7 +86,7 @@ from trestle.workflow.values import (
 
 from trestle_packs.container.engine import (
     DOCKER_CLI_MISSING,
-    DOCKER_ENGINE_UNREACHABLE,
+    PROVISION_STORE_UNREADABLE,
     TOOLCHAIN_INTERFACE_DRIFT,
     Call,
     DockerCli,
@@ -316,7 +316,7 @@ class ProvisionPort:
             return None
         if f'relation "{self._store.table}" does not exist' in call.output:
             return "absent"
-        return DOCKER_ENGINE_UNREACHABLE
+        return PROVISION_STORE_UNREADABLE
 
     def _present(
         self, lineage: Lineage, selector: str, ticket: AttemptTicket
