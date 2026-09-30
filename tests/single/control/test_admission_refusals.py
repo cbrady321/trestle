@@ -1,6 +1,7 @@
-"""L.SV-3.5: refusals before a run id (B2-I1: a refusal is not a run) -- a composite declared root
-(temporary, TM-B2-1), a root-slice misfit and a finalization-margin misfit (B2-C2 (4), (5)), and
-the schema refusal that names the identifier and where the valid ones are listed (B2-C2 (1))."""
+"""L.SV-3.5: refusals before a run id (B2-I1: a refusal is not a run) -- a ChoiceNode declared root
+(temporary, TM-B2-1; an AllDeclaration root is admitted since L.TR-L.1), a root-slice misfit and a
+finalization-margin misfit (B2-C2 (4), (5)), and the schema refusal that names the identifier and
+where the valid ones are listed (B2-C2 (1))."""
 
 from __future__ import annotations
 
@@ -64,6 +65,10 @@ def _fixture(name: str) -> str:
     return (FIXTURES / f"{name}.py").read_text(encoding="utf-8")
 
 
+def _tree_fixture(name: str) -> str:
+    return (REPO / "tests" / "fixtures" / "trees" / f"{name}.py").read_text(encoding="utf-8")
+
+
 def _run_dirs(kernel: Kernel) -> list[Path]:
     runs = kernel.home / "runs"
     return sorted(p for p in runs.glob("*/*") if p.is_dir()) if runs.exists() else []
@@ -99,25 +104,35 @@ def _admit_result(kernel: Kernel, plugin: str) -> object:
     return kernel.control.admission.admit(AdmitRequest(plugin=plugin, args={}))
 
 
-def test_all_root_refused_no_run_id_no_effect(tmp_path: Path) -> None:
-    kernel = support.make_kernel(tmp_path, {"probe_all_root": _fixture("probe_all_root")})
-    outcome = _refused(kernel, "probe_all_root")
-    assert outcome.code == codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED
-    assert outcome.code == "admission.plan_multi_vertex_unsupported"
-    assert "probe_all_root" in outcome.message
+def test_all_root_admitted_run_id_minted(tmp_path: Path) -> None:
+    """L.TR-L.1 lifted the refusal for an `AllDeclaration` root (TM-B2-1, phase `choice-only`):
+    the MC-B3-01 fixture `two_branch_barrier` is admitted, a run id is minted and its run directory
+    written, and admission spawns no process (MC-13)."""
+    kernel = support.make_kernel(
+        tmp_path, {"two_branch_barrier": _tree_fixture("two_branch_barrier")}
+    )
+    before = _descendants()
+    result = _admit_result(kernel, "two_branch_barrier")
+    assert isinstance(result, AdmitResultAdmitted), result
+    assert [p.name for p in _run_dirs(kernel)] == [result.run_id]
+    assert _descendants() == before
 
 
-def test_choice_root_refused_same_code(tmp_path: Path) -> None:
+def test_choice_root_still_refused_temp_code(tmp_path: Path) -> None:
+    """A `ChoiceNode` root keeps the temporary code (until L.TR-5.3) with no run id or effect,
+    while an `AllDeclaration` root beside it is admitted."""
     kernel = support.make_kernel(
         tmp_path,
         {
-            "probe_all_root": _fixture("probe_all_root"),
+            "two_branch_barrier": _tree_fixture("two_branch_barrier"),
             "probe_choice_root": _fixture("probe_choice_root"),
         },
     )
-    all_root = _refused(kernel, "probe_all_root")
     choice = _refused(kernel, "probe_choice_root")
-    assert choice.code == all_root.code == codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED
+    assert choice.code == codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED
+    assert choice.code == "admission.plan_multi_vertex_unsupported"
+    assert "probe_choice_root" in choice.message
+    assert isinstance(_admit_result(kernel, "two_branch_barrier"), AdmitResultAdmitted)
 
 
 def test_one_vertex_roots_are_not_refused_for_shape(tmp_path: Path) -> None:
@@ -270,12 +285,13 @@ def _probe(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_probe_reports_phase_full_by_exit_status(tmp_path: Path) -> None:
-    """TM-B2-1's probe: exit 0 for phase `full` (both composite roots refused) and for the entry;
-    exit 1 for `choice-only` (the AllDeclaration root is refused too); nothing is written."""
+def test_probe_reports_phase_choice_only_by_exit_status(tmp_path: Path) -> None:
+    """TM-B2-1's probe at L.TR-L.1: exit 0 for phase `choice-only` (the ChoiceNode root is refused,
+    the AllDeclaration root is not) and for the entry; exit 1 for `full` (which needed the
+    AllDeclaration root refused too); nothing is written."""
     home_before = sorted(p.name for p in REPO.glob("*"))
-    assert _probe("--phase", "full").returncode == 0
+    assert _probe("--phase", "choice-only").returncode == 0
     assert _probe().returncode == 0
-    assert _probe("--phase", "choice-only").returncode == 1
+    assert _probe("--phase", "full").returncode == 1
     assert _probe("--phase", "nonsense").returncode == 2
     assert sorted(p.name for p in REPO.glob("*")) == home_before

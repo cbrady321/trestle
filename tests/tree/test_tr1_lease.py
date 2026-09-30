@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from tests.tree.test_tr1_admission import edited, publish, refused, run_dirs, source
+from tests.tree.test_tr1_admission import admitted, edited, publish, refused, run_dirs, source
 from trestle.common import codes
 from trestle.common.plan.compiler import AdmittedPlan
 from trestle.common.plan.declared import canonical_json
@@ -53,10 +53,11 @@ def test_child_env_mismatch_refused_before_run_id(tree_kernel: Kernel) -> None:
     assert outcome.code == codes.LEASE_SET_UNDECIDABLE == "admission.lease_set_undecidable"
     assert "second" in outcome.message, outcome.message  # names the child, not the root
     untouched(tree_kernel)
-    # the same tree with one value (E, E) is valid: it compiles and gets the temporary code
-    same = refused(tree_kernel, name, {"env": "dev", "env_b": "dev"})
-    assert same.code == codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED
-    untouched(tree_kernel)
+    # the same tree with one value (E, E) is valid: it is admitted (L.TR-L.1) and holds the one
+    # lease key of the whole tree
+    admitted(tree_kernel, name, {"env": "dev", "env_b": "dev"})
+    (holder,) = tree_kernel.control.admission.holders.held()
+    assert holder.key == canonical_json("dev")
 
 
 @proves_mismatch
@@ -68,9 +69,7 @@ def test_undeclared_child_runs_under_root_key(tree_kernel: Kernel) -> None:
     plan = plan_of(tree_kernel, name, {"env": "dev", "env_b": "anything"})
     assert isinstance(plan, AdmittedPlan), plan
     assert plan.lease_set == (canonical_json("dev"),)
-    assert refused(tree_kernel, name, {"env": "dev", "env_b": "anything"}).code == (
-        codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED
-    )
+    admitted(tree_kernel, name, {"env": "dev", "env_b": "anything"})  # valid: admitted (L.TR-L.1)
 
 
 @proves_no_verb
@@ -91,12 +90,10 @@ def test_plan_has_no_child_lease_entry(tree_kernel: Kernel) -> None:
 @proves_mismatch
 def test_root_without_env_not_refused_on_child_env(tree_kernel: Kernel) -> None:
     """`lease_root_undeclared`: the root declares no environment and the child declares `env`. It
-    is not refused (it compiles and reaches the temporary code), and it holds no lease."""
+    is not refused (it compiles and is admitted, L.TR-L.1), and it holds no lease."""
     name = publish(tree_kernel, source("lease_root_undeclared"))
     plan = plan_of(tree_kernel, name, {"env": "dev"})
     assert isinstance(plan, AdmittedPlan), plan
     assert plan.lease_set == ()
-    outcome = refused(tree_kernel, name, {"env": "dev"})
-    assert outcome.code == codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED
-    assert outcome.code != codes.LEASE_SET_UNDECIDABLE
-    untouched(tree_kernel)
+    admitted(tree_kernel, name, {"env": "dev"})
+    assert tree_kernel.control.admission.holders.held() == ()

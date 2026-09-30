@@ -5,8 +5,9 @@ Each ground a tree can be refused for returns its own code and names its identif
 declaration alone shows is refused at publication (`publication.*`, L.TR-0.4 and L.TR-1.5): a
 published declaration cannot reach admission's defensive second reach for it, so the same ground
 is also driven at admission by planting the declaration below publication (`planting.py`). A
-valid `AllDeclaration` or `ChoiceNode` tree still gets `admission.plan_multi_vertex_unsupported`,
-and the register shows A2.5 and A5.3 not served (DM-12)."""
+valid `ChoiceNode` tree still gets `admission.plan_multi_vertex_unsupported` (a valid
+`AllDeclaration` tree is admitted since L.TR-L.1), and the register shows A2.5 and A5.3 not served
+(DM-12)."""
 
 from __future__ import annotations
 
@@ -209,13 +210,10 @@ VALID_TREES = {"all": "shared_diamond", "choice": "choice_fake"}
 
 
 @pytest.mark.proves("A5.3", "A5.3", "A", "tree", "MCP", "CI")
-@pytest.mark.parametrize("tree", sorted(VALID_TREES))
-def test_valid_tree_still_temp_refused(
-    tree: str, tree_kernel: Kernel, mcp: mcp_host.McpHost
-) -> None:
-    """A valid tree compiles and is refused only by the temporary rule, through both entry points
-    (L.TR-L.1 lifts it for `all` and L.TR-5.3 for `choice`)."""
-    text = source(VALID_TREES[tree])
+def test_valid_choice_tree_still_temp_refused(tree_kernel: Kernel, mcp: mcp_host.McpHost) -> None:
+    """A valid `ChoiceNode` tree compiles and is refused only by the temporary rule, through both
+    entry points (L.TR-5.3 lifts it)."""
+    text = source(VALID_TREES["choice"])
     published = hostpath.publish_tree_via_host(tree_kernel, text)
     assert isinstance(published, PublishView), published
     refused = hostpath.run_tree_via_host(tree_kernel, published.name)
@@ -227,6 +225,21 @@ def test_valid_tree_still_temp_refused(
     answer = hostpath.mcp_run_tree(mcp, str(on_wire["name"]))
     assert answer.get("code") == codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED, answer
     _no_runs(mcp.home)
+
+
+def test_valid_all_tree_not_refused(tree_kernel: Kernel, mcp: mcp_host.McpHost) -> None:
+    """A valid `AllDeclaration` tree is no longer refused by either entry point (L.TR-L.1): each
+    mints a run id and reaches a terminal state."""
+    text = source(VALID_TREES["all"])
+    published = hostpath.publish_tree_via_host(tree_kernel, text)
+    assert isinstance(published, PublishView), published
+    view = hostpath.run_tree_via_host(tree_kernel, published.name)
+    assert isinstance(view, RunView), view
+    assert view.state in ("succeeded", "failed", "cancelled", "timed_out"), view.state
+    on_wire = hostpath.mcp_publish_tree(mcp, text)
+    assert "code" not in on_wire, on_wire
+    answer = hostpath.mcp_run_tree(mcp, str(on_wire["name"]))
+    assert "code" not in answer and str(answer.get("run_id", "")).startswith("r_"), answer
 
 
 def test_a25_and_a53_not_served() -> None:

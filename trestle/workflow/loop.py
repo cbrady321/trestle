@@ -47,7 +47,7 @@ import hashlib
 import threading
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from typing import Any
 
@@ -555,6 +555,7 @@ class LeafWalk:
             return None
         assert isinstance(observation, Observation)
         if handle is None:  # a release-pass observation is the cleanup's, reported there
+            observation, by_run = self._without_run_created(observation)
             self._fact(
                 STEP_OBSERVED,
                 {
@@ -567,6 +568,7 @@ class LeafWalk:
                         {"resource_kind": f.resource_kind, "selector": f.selector}
                         for f in observation.found
                     ],
+                    **({"created_by_run": list(by_run)} if by_run else {}),
                     "currency": [
                         {
                             "subject": _value(c.subject),
@@ -578,6 +580,35 @@ class LeafWalk:
                 },
             )
         return observation
+
+    def _created_selectors(self) -> frozenset[str]:
+        """The run-scoped selector of every resource this root created, at any vertex: the
+        identity of each applied creation in the root's one ownership record (V-4.4, WR-UNIT-5)."""
+        lane = self._loop.lane
+        selectors: set[str] = set()
+        for vertex in self._loop.services.admitted().accepted.vertices:
+            for ticket in lane.node_record(plan_path(vertex.path)).tickets:
+                if ticket.handle is not None:
+                    selectors.add(ticket.handle.selector)
+        return frozenset(selectors)
+
+    def _without_run_created(self, observation: Observation) -> tuple[Observation, tuple[str, ...]]:
+        """A resource any node under this root created is "created by this run" for every node
+        under it and never "found" (WR-UNIT-5, WR-UNIT-1): a `FoundRef` naming one is dropped
+        from what the join reads (`present` follows: `selector_present or bool(found)`, V-3.5) and
+        listed apart, so a sibling that observes it never joins `FOUND` on it. A found instance
+        the record does not hold is untouched. Returns the observation and the dropped selectors."""
+        if not observation.found:
+            return observation, ()
+        created = self._created_selectors()
+        mine = tuple(f.selector for f in observation.found if f.selector in created)
+        if not mine:
+            return observation, ()
+        kept = tuple(f for f in observation.found if f.selector not in created)
+        return (
+            replace(observation, found=kept, present=observation.selector_present or bool(kept)),
+            mine,
+        )
 
     def _next_interval(self) -> timedelta:
         """V-14: the wait policy's next interval, `poll_every * backoff ** polls`, the exponent
