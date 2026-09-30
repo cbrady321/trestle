@@ -65,6 +65,7 @@ def _of(rows: list[Any], cls: str, effect: str = CREATE_EFFECT) -> list[dict[str
 
 
 @pytest.mark.proves("WR-IDEM-3", "WR-IDEM-3:once-never-reissued", "A", "single", "LOGIC", "CI")
+@pytest.mark.proves("WR-IDEM-3", "A3.2", "A", "single", "LOGIC+MCP", "CI")
 def test_transient_cured_by_retry_one_call(tmp_path: Path) -> None:
     with _host(tmp_path) as host:
         answer, rows = _terminal(host, mode="cure", fails=1)

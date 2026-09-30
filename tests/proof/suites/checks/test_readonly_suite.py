@@ -201,6 +201,7 @@ def implementation(impl_id: str, base: Path) -> core.Implementation:
     return _with_base(factory(base), base)
 
 
+@pytest.mark.proves("WR-VERIFY-8", "A4.4", "A", "single", "STUB+PROC", "CI")
 @pytest.mark.parametrize("impl_id", IMPLEMENTATION_IDS)
 def test_readonly_suite(impl_id: str, tmp_path: Path) -> None:
     """The unmodified suite passes: no write outside INCIDENTAL_WRITES, no process, no signal."""

@@ -64,6 +64,7 @@ def _attempts(rig: Rig) -> list[int]:
     return [t["attempt"] for t in rig.rows("issue") if t["effect"] == EFFECT]
 
 
+@pytest.mark.proves("WR-IDEM-3", "A3.2", "A", "single", "LOGIC", "CI")
 def test_declared_code_retried_within_budget(tmp_path: Path) -> None:
     marker = Flaky(fails=2, code=RETRYABLE)
     rig, unit = _run(tmp_path, marker, retryable=frozenset({RETRYABLE}), max_attempts=3)
@@ -82,6 +83,7 @@ def test_declared_code_retried_within_budget(tmp_path: Path) -> None:
     assert not rig.rows("step"), "a retry is a ticket, not a step"
 
 
+@pytest.mark.proves("WR-IDEM-3", "A3.2", "A", "single", "LOGIC", "CI")
 def test_undeclared_code_never_retried(tmp_path: Path) -> None:
     marker = Flaky(fails=1, code=OTHER)
     rig, unit = _run(tmp_path, marker, retryable=frozenset({RETRYABLE}), max_attempts=3)
@@ -98,6 +100,7 @@ def test_no_retryable_declared_means_no_retry(tmp_path: Path) -> None:
     assert rig.ends()[0]["code"] == RETRYABLE and rig.ends()[0]["condition"] == "failed"
 
 
+@pytest.mark.proves("WR-IDEM-3", "A3.2", "A", "single", "LOGIC", "CI")
 @pytest.mark.parametrize("max_attempts", [1, 2, 4])
 def test_attempts_never_exceed_max(tmp_path: Path, max_attempts: int) -> None:
     marker = Flaky(fails=99, code=RETRYABLE)

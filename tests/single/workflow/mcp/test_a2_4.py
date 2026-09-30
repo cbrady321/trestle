@@ -99,6 +99,7 @@ VARIANTS: dict[str, Any] = {
 @pytest.mark.proves(
     "WR-PLAN-12", "WR-PLAN-12:precondition-single-vertex", "A", "single", "LOGIC", "CI"
 )
+@pytest.mark.proves("WR-PLAN-12", "A2.4", "A", "single", "LOGIC+MCP", "CI")
 @pytest.mark.parametrize("variant", list(VARIANTS))
 def test_refused_before_mutation(variant: str, tmp_path: Path) -> None:
     with _host(tmp_path) as host:
