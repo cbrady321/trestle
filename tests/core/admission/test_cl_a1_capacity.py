@@ -136,8 +136,13 @@ def test_queued_run_gets_no_extra_time(monkeypatch: pytest.MonkeyPatch) -> None:
         )
         # no process-group target exists (B2-C12)
         assert answer.cleanup is not None and answer.cleanup.processes == "nothing_created"
-        # it left the queue: the slot and the waiting place are the holder's and free
-        assert answer.run_id not in kernel.control.scheduler.queue
+        # it left the queue: the slot and the waiting place are the holder's and free. The
+        # expiry timer writes the terminal record (which answers the wait) before it releases
+        # the queue place, so the release is awaited, bounded, not read at once
+        scheduler = kernel.control.scheduler
+        assert support.wait_until(
+            lambda: answer.run_id not in scheduler.queue, tolerances.JOIN_WAIT_S
+        ), list(scheduler.queue)
         assert not kernel.control.scheduler.waiting
     finally:
         kernel.control.cancel(holder.run_id)
@@ -185,7 +190,10 @@ def test_expiry_is_off_the_dispatch_path() -> None:
     assert support.wait_until(lambda: len(expired) == 2, tolerances.JOIN_WAIT_S)
     assert set(expired) == {late.run_id, waiter.run_id}
     assert started == [holder.run_id]
-    assert list(scheduler.queue) == [holder.run_id]
+    # `on_expire` runs before the timer thread releases the queue place: await the release
+    assert support.wait_until(
+        lambda: list(scheduler.queue) == [holder.run_id], tolerances.JOIN_WAIT_S
+    ), list(scheduler.queue)
 
 
 def test_capacity_defaults_are_provisional_and_overridable(

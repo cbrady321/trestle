@@ -41,17 +41,19 @@ def _load_labels() -> dict[str, dict[str, object]]:
     return labels
 
 
-def _load_compat_map() -> dict[str, str]:
-    """nodeid -> WR-COMPAT row id, from `compat_map.toml` (L.P0-0a.5)."""
-    nodeid_to_row: dict[str, str] = {}
+def _load_compat_map() -> dict[str, list[str]]:
+    """nodeid -> the row ids that map it, in file order, from `compat_map.toml`
+    (L.P0-0a.5). One existing node may serve more than one row: the loopback
+    tests preserve WR-COMPAT-11 and also carry WR-CON-4's label (L.P0-0d.25)."""
+    nodeid_to_rows: dict[str, list[str]] = {}
     if not COMPAT_MAP_PATH.exists():
-        return nodeid_to_row
+        return nodeid_to_rows
     data = tomllib.loads(COMPAT_MAP_PATH.read_text())
     for row in data.get("row", []):
         row_id = row.get("id")
         for nodeid in row.get("nodeids", []):
-            nodeid_to_row[nodeid] = row_id
-    return nodeid_to_row
+            nodeid_to_rows.setdefault(nodeid, []).append(row_id)
+    return nodeid_to_rows
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -90,12 +92,12 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     for item in items:
         item_labels: list[str] = []
 
-        row_id = compat_map.get(item.nodeid)
-        if row_id is not None:
+        for row_id in compat_map.get(item.nodeid, []):
             # compat_map.toml (L.P0-0a.5) marks this node `compat` and
             # `proves(row, "<row>:preserved")` without editing the test
-            # file itself. WR-PROOF-2:pack-docker-live is not a WR-COMPAT
-            # row (it labels the alpine live-compose skip UNPROVEN) so it
+            # file itself. A non-WR-COMPAT entry (WR-PROOF-2:pack-docker-live,
+            # the alpine live-compose skip rendered UNPROVEN; WR-CON-4:loopback-only,
+            # credited through the P0 compat gate) is a label id itself and
             # gets no `compat` marker, only the label.
             if row_id.startswith("WR-COMPAT"):
                 item.add_marker(pytest.mark.compat)

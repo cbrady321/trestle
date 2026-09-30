@@ -331,6 +331,7 @@ def _assert_every_handle_fetches(
     "WR-TERM-5", "WR-TERM-5:hundred-service-decisive-in-budget", "core", "core", "MCP", "CI"
 )
 @pytest.mark.proves("WR-TERM-5", "WR-TERM-5:every-handle-fetches", "core", "core", "MCP", "CI")
+@pytest.mark.proves("WR-TERM-5", "A1.4", "A", "core", "MCP", "CI")
 def test_hundred_service_answer_pass_and_fail(tmp_path: Path) -> None:
     with mcp_host.McpHost(home=tmp_path / "host-home") as host:
         passed = _host_run(host, "pass")

@@ -257,3 +257,50 @@ def test_a_failed_run_still_promotes_what_it_staged(tmp_path: Path) -> None:
     assert view.state == "failed", view
     run_dir = run_dir_for(kernel.home, view.run_id)
     assert [row["name"] for row in _ledger(run_dir, "artifact_available")] == ["partial-report.txt"]
+
+
+# ---- K-17 documented (L.CL-B1.3 "K-17 is documented"; L.P0-0d.28) -----------------------------
+
+K17_DOC = Path(__file__).resolve().parents[3] / "docs" / "plugins.md"  # k_doc_map.toml K-17
+K17_SECTION = "## Artifacts and their limits"
+
+
+def k17_problems(doc: str) -> list[str]:
+    """Why `doc` does not state K-17 (requirements K-17: artifact limits are enforced on every
+    path, and staged artifacts are promoted or refused); empty when it does."""
+    if K17_SECTION not in doc:
+        return [f"no {K17_SECTION!r} section"]
+    section = doc.split(K17_SECTION, 1)[1].split("\n## ", 1)[0]
+    limits = CaptureLimits()
+    wanted = {
+        "the K-17 statement": "the same limits hold on all three (K-17)",
+        "the outputs/ path": "`outputs/`",
+        "the attach path": "`ctx.attach(path, name=...)`",
+        "the staging path": "`ctx.artifact(name)`",
+        "a staged file is promoted": "promoted when the run ends",
+        "the count limit": f"at most {limits.max_artifact_count:,} artifacts".replace(",", " "),
+        "the byte limit": f"{limits.max_artifact_bytes // 1024**3} GiB of artifact bytes",
+        "an over-limit artifact is refused": "is **not** stored",
+        "the count marker": '"max_artifact_count"',
+        "the byte marker": '"max_artifact_bytes"',
+        "a refused promotion stays in place": "a refused promotion leaves the file",
+    }
+    return [f"missing {what}: {text!r}" for what, text in wanted.items() if text not in section]
+
+
+@pytest.mark.proves("WR-PROOF-10", "WR-PROOF-10:K-17", "core", "core", "INSPECT", "CI")
+def test_k17_documented() -> None:
+    assert k17_problems(K17_DOC.read_text(encoding="utf-8")) == []
+
+
+def test_k17_planted_doc_without_the_statement_fails() -> None:
+    doc = K17_DOC.read_text(encoding="utf-8")
+    assert k17_problems(doc.replace(K17_SECTION, "## Something else")) == [
+        f"no {K17_SECTION!r} section"
+    ]
+    unstated = doc.replace("the same limits hold on all three (K-17)", "limits apply")
+    assert k17_problems(unstated) == [
+        "missing the K-17 statement: 'the same limits hold on all three (K-17)'"
+    ]
+    unrefused = doc.replace("is **not** stored", "is stored anyway")
+    assert any("refused" in p for p in k17_problems(unrefused))

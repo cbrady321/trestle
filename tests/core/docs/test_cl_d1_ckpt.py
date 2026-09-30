@@ -478,14 +478,77 @@ def test_na_without_the_decline_patch_on_head_fails_k(world) -> None:
     assert not ok and "decline patch is not on HEAD" in reason
 
 
-def test_non_trigger_commit_is_not_evaluated(monkeypatch, capsys) -> None:
+def _history(tmp_path: Path, subjects: list[str]) -> tuple[Path, list[str]]:
+    """A throwaway repo with one empty commit per subject; returns it and the shas, oldest first.
+    The carrier question is asked of these commits, never of the checkout's own HEAD, which on a
+    `J-CORE` carrier's own CI run IS the carrier (DM-11: the answer must hold at every head)."""
+    repo = tmp_path / "carrier-repo"
+    repo.mkdir()
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args], cwd=repo, check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    git("init", "-q", "-b", "master")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "t")
+    shas = []
+    for subject in subjects:
+        git("commit", "-q", "--allow-empty", "-m", subject)
+        shas.append(git("rev-parse", "HEAD"))
+    return repo, shas
+
+
+NON_CARRIERS = {
+    # no J-CORE carrier in history at all
+    "no-carrier": (["WR-Merge: CL-PX2"], -1),
+    # a later master commit after the carrier (the carrier is reachable, not HEAD)
+    "after-carrier": (["WR-Merge: CL-PX2", "WR-Merge: J-CORE", "WR-Fix: CS-1"], -1),
+    # a WR-Fix naming the checkpoint is never a landing (CM-1)
+    "wr-fix": (["WR-Merge: CL-PX2", "WR-Fix: J-CORE"], -1),
+}
+
+
+@pytest.mark.parametrize(("subjects", "pick"), NON_CARRIERS.values(), ids=NON_CARRIERS.keys())
+def test_non_trigger_commit_is_not_evaluated(
+    subjects, pick, tmp_path: Path, monkeypatch, capsys
+) -> None:
+    repo, shas = _history(tmp_path, subjects)
+
     def boom(commit: str):
         raise AssertionError("a non-carrier commit must not be evaluated")
 
     monkeypatch.setattr(core, "make_world", boom)
-    code, out = _ckpt([], capsys)
-    assert code == 0
+    monkeypatch.setattr(meta_mod, "ROOT", repo)
+    code, out = _ckpt(["--commit", shas[pick]], capsys)
+    assert code == 0, out
     assert "no-op" in out
+
+
+@pytest.mark.parametrize("newest_of_two", [False, True], ids=["first-carrier", "newest-carrier"])
+def test_carrier_commit_is_evaluated(
+    newest_of_two: bool, tmp_path: Path, world, monkeypatch, capsys
+) -> None:
+    """The newest `WR-Merge: J-CORE` carrier is evaluated: the world is built and a green one
+    passes with the ledger digest; a planted failure on the carrier exits 1."""
+    subjects = ["WR-Merge: CL-PX2", "WR-Merge: J-CORE"]
+    if newest_of_two:
+        subjects += ["WR-Fix: CS-1", "WR-Merge: J-CORE"]
+    repo, shas = _history(tmp_path, subjects)
+    built: list[str] = []
+    monkeypatch.setattr(core, "make_world", lambda commit: built.append(commit) or world["w"])
+    monkeypatch.setattr(meta_mod, "ROOT", repo)
+
+    code, out = _ckpt(["--commit", shas[-1]], capsys)
+    assert code == 0, out
+    assert out.strip().endswith(f"pass; digest={_digest(world['w'].report)}")
+    assert built and set(built) == {shas[-1]}
+
+    _unflipped_target(world["w"])
+    code, out = _ckpt(["--commit", shas[-1]], capsys)
+    assert code == 1, out
+    assert "not the newest" not in out
 
 
 # ---------------------------------------------------------------------------

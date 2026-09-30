@@ -113,3 +113,13 @@ venue = "CI"
 posture = "claim"
 reason = "alpine:3.20 image absent on this host; skip renders UNPROVEN, never a silent pass"
 declared_by = "L.P0-0a.5"
+
+[[label]]
+id = "WR-CON-4:loopback-only"
+row = "WR-CON-4"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0d.26"

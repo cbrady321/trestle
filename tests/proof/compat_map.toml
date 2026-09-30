@@ -65,3 +65,16 @@ id = "WR-PROOF-2:pack-docker-live"
 nodeids = [
     "packages/trestle-packs/tests/test_docker_integration.py::test_stack_runner_live_compose",
 ]
+
+# WR-CON-4 is credited through the P0 compat gate by node id (plan-workflow-runtime.md
+# row audit SC-4; plans/core.md ## Coverage: owned by P0, CL-A2 adds no non-loopback
+# surface). The loopback tests also preserve WR-COMPAT-11; a node may serve both rows.
+[[row]]
+id = "WR-CON-4:loopback-only"
+nodeids = [
+    "tests/test_local_bind.py::test_cli_serve_rejects_host_flag",
+    "tests/test_local_bind.py::test_cli_ops_serve_rejects_host_flag",
+    "tests/test_local_bind.py::test_run_server_uses_loopback",
+    "tests/test_local_bind.py::test_run_ops_server_uses_loopback",
+    "tests/test_local_bind.py::test_loopback_host_constant",
+]
