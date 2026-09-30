@@ -1,5 +1,11 @@
 """Workflow declaration surface (L.SV-2.1). Plugins import public names from here; the
-package imports only stdlib, `trestle.plugin` and `trestle.common.plan` (C.5 step 4)."""
+package imports only stdlib, `trestle.plugin` and `trestle.common.plan` (C.5 step 4).
+
+Besides the declaration data it re-exports the unit-author names of the public `units` and
+`values` modules (the step and observation types a work unit returns and reads, B1-C1..C8), so
+`from trestle.workflow import Acted, Observation` works as well as the module imports. `run_tree`
+and the port protocols stay in their modules (`trestle.workflow.loop`, `trestle.workflow.ports`):
+importing this package does not load the loop."""
 
 from trestle.workflow.declarations import (
     AllDeclaration,
@@ -23,6 +29,43 @@ from trestle.workflow.declarations import (
     Vantage,
     WaitPolicy,
     WorkflowEntry,
+)
+from trestle.workflow.units import (
+    ActContext,
+    Acted,
+    Blocked,
+    EffectFacets,
+    EffectRefused,
+    Failed,
+    NoAction,
+    NodeRecordView,
+    ObserveContext,
+    ReadFacets,
+    ReleaseFacets,
+    Step,
+    StepView,
+    Ticketed,
+    TicketView,
+    WorkUnit,
+)
+from trestle.workflow.values import (
+    CheckResult,
+    Condition,
+    Confirmation,
+    ConfirmationStatus,
+    CreatedHandle,
+    CurrencyFact,
+    FoundRef,
+    Lineage,
+    NodePath,
+    Observation,
+    OwnedHandle,
+    Provenance,
+    RecordedResult,
+    RemedyGrant,
+    Resend,
+    SelectorRef,
+    Verdict,
 )
 
 # Submodules a plugin may import from (`import trestle.workflow.<m>`); every other module of the
@@ -57,4 +100,39 @@ __all__ = [
     "Vantage",
     "WaitPolicy",
     "WorkflowEntry",
+    # units (B1-C1..C8)
+    "ActContext",
+    "Acted",
+    "Blocked",
+    "EffectFacets",
+    "EffectRefused",
+    "Failed",
+    "NoAction",
+    "NodeRecordView",
+    "ObserveContext",
+    "ReadFacets",
+    "ReleaseFacets",
+    "Step",
+    "StepView",
+    "TicketView",
+    "Ticketed",
+    "WorkUnit",
+    # values (V-1..V-4)
+    "CheckResult",
+    "Condition",
+    "Confirmation",
+    "ConfirmationStatus",
+    "CreatedHandle",
+    "CurrencyFact",
+    "FoundRef",
+    "Lineage",
+    "NodePath",
+    "Observation",
+    "OwnedHandle",
+    "Provenance",
+    "RecordedResult",
+    "RemedyGrant",
+    "Resend",
+    "SelectorRef",
+    "Verdict",
 ]
