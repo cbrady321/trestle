@@ -18,9 +18,12 @@ from tests.proof import harness
 from trestle.child.attempt_lane import AttemptLane
 from trestle.common import lane_format as lf
 from trestle.common.plan.compiler import AdmittedPlan
-from trestle.server import fold
-from trestle.server.ledger import evidence_dir
+from trestle.common.types import AdmitRequest, AdmitResultRefused, WorkOrder
+from trestle.server.admission import plan_for_admission, write_admitted_run
+from trestle.server.fold import plan_of_spec
+from trestle.server.ledger import evidence_dir, run_dir_for
 from trestle.server.main import Kernel
+from trestle.server.snapshots import deadline_of, discover_plugin_name
 
 AT = datetime(2026, 9, 30, 12, 0, 0, tzinfo=UTC)
 
@@ -53,12 +56,17 @@ class TreeRun:
         return [p for p in self.paths() if p and p not in parents]
 
 
-def admit(kernel: Kernel, tree: generators.Tree) -> TreeRun:
-    """Publish `tree` into the kernel's plugin directory and admit a run of it."""
+def admit(kernel: Kernel, tree: generators.Tree, *, caller_session: str | None = None) -> TreeRun:
+    """Publish `tree` into the kernel's plugin directory and admit a run of it. `caller_session`
+    seeds the MCP session that received the run (its `created` row, WR-AUTH-1): no tree is
+    admissible through MCP before TR-L, so a test names the owning session here."""
     plugin = tree.write(kernel.registry.plugin_dirs[0])
-    admitted = harness.admit_tree(plugin, kernel=kernel)
+    if caller_session is None:
+        admitted = harness.admit_tree(plugin, kernel=kernel)
+    else:
+        admitted = _admit_as(kernel, plugin, caller_session)
     spec = json.loads((evidence_dir(admitted.run_dir) / "spec.json").read_text(encoding="utf-8"))
-    plan = fold.plan_of_spec(spec)
+    plan = plan_of_spec(spec)
     assert plan is not None and len(plan.vertices) == tree.vertices
     return TreeRun(admitted, plan)
 
@@ -111,3 +119,31 @@ def write_all_ends(run: TreeRun, lane: AttemptLane) -> None:
             lane.record_end(end(run, path))
         else:
             lane.record_end(end(run, path, None, provenance=None))
+
+
+def _admit_as(kernel: Kernel, plugin: Path, caller_session: str) -> harness.AdmittedTree:
+    """`harness.admit_tree` for a request that carries a caller session (same post-refusal half
+    of admission: `plan_for_admission`, `write_admitted_run`, the scheduler's mint)."""
+    kernel.registry.maybe_refresh()
+    name = discover_plugin_name(plugin)
+    assert name is not None
+    snap = kernel.registry.get(name)
+    assert snap is not None
+    req = AdmitRequest(plugin=name, args={}, caller_session=caller_session)
+    deadline_s, _ = deadline_of(snap)
+    planned = plan_for_admission(snap, req, deadline_s)
+    assert not isinstance(planned, AdmitResultRefused), planned
+    admission = kernel.control.admission
+    made = write_admitted_run(
+        kernel.home, snap, req, planned, service_epoch=admission.service_epoch
+    )
+    admission.scheduler.mint(made.run_id, snap.snapshot_id, made.spec_hash)
+    order = WorkOrder(
+        run_id=made.run_id,
+        snapshot_id=snap.snapshot_id,
+        spec_hash=made.spec_hash,
+        secrets=made.secrets,
+    )
+    return harness.AdmittedTree(
+        kernel, name, made.run_id, run_dir_for(kernel.home, made.run_id), order
+    )

@@ -53,17 +53,22 @@ class Project:
     home: Path
     registry: Registry
     run_registry: RunRegistry
-    # The restricted profile scopes `cancel` to the MCP session that started the run (WR-AUTH-1).
+    # The restricted profile scopes `cancel`, and the read of a child view (L.TR-2.4), to the MCP
+    # session that started the run (WR-AUTH-1).
     session_scoped_cancel: bool = False
     # Status polls run on worker threads (L.CS-4.2), so two of them can overlap: a projection
     # rewrites the run's summary.json through one fixed temporary name, one writer at a time.
     _status_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
-    def status(self, run_id: Handle) -> RunView | RequestOutcome:
+    def status(self, run_id: Handle, caller_session: str | None = None) -> RunView | RequestOutcome:
+        """The run view of `run_id`: a root run, or a child handle (L.TR-2.2). Under the restricted
+        profile a child view is read only by the session that admitted its root (WR-AUTH-1,
+        L.TR-2.4); a root view is unscoped, as it has been. A call outside an MCP session
+        (`caller_session` None: the operator's CLI or console) is not scoped."""
         with self._status_lock:
             ledger = self._ledger_for(run_id)
             if ledger is None:
-                child = self._child_view(run_id)
+                child = self._child_view(run_id, caller_session)
                 if child is not None:
                     return child
                 return RequestOutcome(
@@ -74,10 +79,12 @@ class Project:
                 )
             return self._run_view(ledger, run_id)
 
-    def await_one(self, run_id: Handle, wait_ms: int) -> RunView | RequestOutcome:
+    def await_one(
+        self, run_id: Handle, wait_ms: int, caller_session: str | None = None
+    ) -> RunView | RequestOutcome:
         deadline = time.monotonic() + (wait_ms / 1000.0)
         while True:
-            view = self.status(run_id)
+            view = self.status(run_id, caller_session)
             if isinstance(view, RequestOutcome):
                 return view
             if view.state not in {"queued", "running"}:
@@ -86,10 +93,12 @@ class Project:
                 return view
             time.sleep(0.05)
 
-    async def await_one_async(self, run_id: Handle, wait_ms: int) -> RunView | RequestOutcome:
+    async def await_one_async(
+        self, run_id: Handle, wait_ms: int, caller_session: str | None = None
+    ) -> RunView | RequestOutcome:
         deadline = time.monotonic() + (wait_ms / 1000.0)
         while True:
-            view = await asyncio.to_thread(self.status, run_id)
+            view = await asyncio.to_thread(self.status, run_id, caller_session)
             if isinstance(view, RequestOutcome):
                 return view
             if view.state not in {"queued", "running"}:
@@ -98,24 +107,28 @@ class Project:
                 return view
             await asyncio.sleep(0.05)
 
-    def await_terminal(self, run_id: Handle) -> RunView | RequestOutcome:
+    def await_terminal(
+        self, run_id: Handle, caller_session: str | None = None
+    ) -> RunView | RequestOutcome:
         """`completion="terminal"`: answer only from the finalized terminal row (the run view's
         state is terminal exactly when `evidence_finalized` and a terminal kind are both in the
         ledger), never a running frame. The wait is bounded by the run's admitted deadline plus
         `clock.finalization_margin`; past it the answer is `projection.terminal_wait_exceeded`."""
         limit = time.monotonic() + self._terminal_bound_s(run_id)
         while True:
-            view = self.status(run_id)
+            view = self.status(run_id, caller_session)
             if isinstance(view, RequestOutcome) or view.state not in _NON_TERMINAL_STATES:
                 return view
             if time.monotonic() >= limit:
                 return _terminal_wait_exceeded(run_id)
             time.sleep(clock.poll_interval)
 
-    async def await_terminal_async(self, run_id: Handle) -> RunView | RequestOutcome:
+    async def await_terminal_async(
+        self, run_id: Handle, caller_session: str | None = None
+    ) -> RunView | RequestOutcome:
         limit = time.monotonic() + await asyncio.to_thread(self._terminal_bound_s, run_id)
         while True:
-            view = await asyncio.to_thread(self.status, run_id)
+            view = await asyncio.to_thread(self.status, run_id, caller_session)
             if isinstance(view, RequestOutcome) or view.state not in _NON_TERMINAL_STATES:
                 return view
             if time.monotonic() >= limit:
@@ -157,10 +170,13 @@ class Project:
         run_ids: list[Handle],
         mode: JoinMode,
         timeout_ms: int,
+        caller_session: str | None = None,
     ) -> list[RunView] | RequestOutcome:
         deadline = time.monotonic() + (timeout_ms / 1000.0)
         while True:
-            views, outcome = await asyncio.to_thread(self._collect_run_views, run_ids)
+            views, outcome = await asyncio.to_thread(
+                self._collect_run_views, run_ids, caller_session
+            )
             if outcome is not None:
                 return outcome
             assert views is not None
@@ -175,10 +191,11 @@ class Project:
         run_ids: list[Handle],
         mode: JoinMode,
         timeout_ms: int,
+        caller_session: str | None = None,
     ) -> list[RunView] | RequestOutcome:
         deadline = time.monotonic() + (timeout_ms / 1000.0)
         while True:
-            views, outcome = self._collect_run_views(run_ids)
+            views, outcome = self._collect_run_views(run_ids, caller_session)
             if outcome is not None:
                 return outcome
             assert views is not None
@@ -191,10 +208,11 @@ class Project:
     def _collect_run_views(
         self,
         run_ids: list[Handle],
+        caller_session: str | None = None,
     ) -> tuple[list[RunView] | None, RequestOutcome | None]:
         views: list[RunView] = []
         for run_id in run_ids:
-            view = self.status(run_id)
+            view = self.status(run_id, caller_session)
             if isinstance(view, RequestOutcome):
                 return None, view
             views.append(view)
@@ -340,7 +358,9 @@ class Project:
                 return run_dir
         return None
 
-    def _child_view(self, handle: Handle) -> RunView | None:
+    def _child_view(
+        self, handle: Handle, caller_session: str | None = None
+    ) -> RunView | RequestOutcome | None:
         """The view of a child handle (V-1.1, V-1.3; MC-B3-08), or None when `handle` is not a
         child handle of an admitted root: a root that does not exist, one whose plan has no such
         vertex, or a handle that does not derive from (root run id, path) all read as unknown.
@@ -355,6 +375,18 @@ class Project:
         run_dir = self._run_dir_for(root_id)
         if ledger is None or run_dir is None:
             return None
+        # WR-AUTH-1 (L.TR-2.4): under the restricted profile only the session that received the run
+        # reads its child views, as only it may cancel it; checked before the handle is resolved, so
+        # another session learns nothing of the root's vertices
+        if self.session_scoped_cancel and caller_session is not None:
+            created = ledger.last_kind("created")
+            if created is None or created.get("caller_session") != caller_session:
+                return RequestOutcome(
+                    code=codes.NOT_OWNER,
+                    message=f"run not received in this session: {root_id}",
+                    retryable=False,
+                    origin="projection",
+                )
         spec = _read_spec(evidence_dir(run_dir)) or {}
         try:
             plan = fold.plan_of_spec(spec)
