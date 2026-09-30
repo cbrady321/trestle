@@ -75,6 +75,7 @@ def test_tree_globs_exclude_leave_targets(sa: str, tmp_path: Path) -> None:
         "tests/proof/differ_modes/__init__.py",
         "tests/core/docs/test_cl_d1_deferrals.py",
         "tests/single/contract/test_extract.py",
+        "tests/fixtures/workflows/probe_choice_root.py",
     ):
         assert extra in bundle_lane.globs, extra
         assert extra not in tree_lane.globs, extra

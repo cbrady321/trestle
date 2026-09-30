@@ -24,3 +24,12 @@ def tree_kernel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Kernel:
     plugins.mkdir()
     monkeypatch.setenv("TRESTLE_HOME", str(home))
     return harness.fresh_kernel([plugins], home=home)
+
+
+@pytest.fixture(autouse=True)
+def _no_stale_plugin_bytecode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A tree test rewrites one plugin file several times within a second, often to a source of the
+    same length; the throwaway validator's interpreter would trust a `__pycache__` entry keyed by
+    the source's (mtime, size) and validate the previous text. No bytecode is written, so none is
+    ever stale (the children inherit the environment)."""
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")

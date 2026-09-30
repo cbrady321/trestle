@@ -114,10 +114,10 @@ def test_choice_alternatives_are_resolved_under_their_choice(tmp_path: Path) -> 
     assert tree.nodes["db"]["choice"]["fallback"] == "db_docker"
 
 
-def test_unresolvable_name_stays_an_unresolved_name(tmp_path: Path) -> None:
-    # a name that resolves to no unit keeps `path: null` and no node (admission refuses it, TR-1.1);
-    # publication is unchanged in this leaf (L.TR-0.4 refuses it there)
-    tree = _published("unknown_descendant", tmp_path)
+def test_unresolvable_name_stays_an_unresolved_name() -> None:
+    # a name that resolves to no unit keeps `path: null` and no node: extraction records it (the
+    # tree is the declaration's own), and publication refuses it (L.TR-0.4), admission too (TR-1.1)
+    tree = extract_declared_tree(_fixture("unknown_descendant").ENTRY)
     assert list(tree.nodes) == [ROOT_PATH]
     assert _children(tree.nodes[ROOT_PATH]) == {"ghost": None}
 
