@@ -196,10 +196,11 @@ def test_expiry_is_off_the_dispatch_path() -> None:
     ), list(scheduler.queue)
 
 
-def test_capacity_defaults_are_provisional_and_overridable(
+def test_capacity_defaults_are_final_and_overridable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert server_config.CAPACITY_DEFAULT_PROVISIONAL  # TM-C3's probe
+    # TM-C3 is removed (L.TR-6.8): the defaults are measured, and the marker is gone
+    assert not hasattr(server_config, "CAPACITY_DEFAULT_PROVISIONAL")
     defaults = server_config.load_config(tmp_path)
     assert defaults.max_running_runs == server_config.MAX_RUNNING_RUNS_DEFAULT
     assert defaults.queue_depth == server_config.QUEUE_DEPTH_DEFAULT

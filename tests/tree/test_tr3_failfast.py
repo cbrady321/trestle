@@ -157,7 +157,7 @@ def test_cancel_no_nonrelease_entry_past_offset_any_node(
     releases = _release_effects(admitted.run_dir)
     verdict = suite.offset_verdict(lane, stops, releases)
     assert verdict.ok and not verdict.vacuous and not verdict.unproven, verdict
-    # not vacuous: every node applied its create before the offset, and gave it back after it
+    # not vacuous: every node applied its create before the offset, and gave it back
     (stop,) = stops
     length = stop["lane_committed_length"]
     creates = [r for r in lane.rows if r.cls == "confirmation" and r.entry["effect"] == "up"]
@@ -165,7 +165,11 @@ def test_cancel_no_nonrelease_entry_past_offset_any_node(
     assert all(r.end <= length for r in creates)
     stops_after = [r for r in lane.rows if r.cls == "confirmation" and r.entry["effect"] == "stop"]
     assert {r.path for r in stops_after} == {"waiter", "branch/w1", "branch/w2"}
-    assert all(r.offset >= length for r in stops_after)
+    # the child reads the cancel flag itself and U2 reads the length on its next poll, so a release
+    # may land between the two (a loaded runner): it is not required to lie past the offset (the
+    # host twin's rule, test_trl_cancel); it must follow the create it gives back
+    first_stop = {r.path: r.offset for r in stops_after}
+    assert all(first_stop[r.path] > r.offset for r in creates)
     assert not support.marked(admitted.run_id)  # the plugin is dead: nothing of the run is alive
 
 

@@ -298,6 +298,31 @@ gets no signal at all; its answer reports the stop as unconfirmed.
 
 ---
 
+## Run capacity
+
+A service runs at most `max_running_runs` runs at once; a run admitted beyond that waits in a FIFO
+of at most `queue_depth` runs, its deadline running from admission, and a run that would exceed
+both is refused `admission.queue_full` before it has a run id. Both are settable in the operator's
+`config.toml` and by `TRESTLE_MAX_RUNNING_RUNS` and `TRESTLE_QUEUE_DEPTH`.
+
+<!-- capacity -->
+Defaults: `max_running_runs` = 31 (measured), `queue_depth` = 256 (not measured); ratio bound = 2.0.
+<!-- /capacity -->
+
+`max_running_runs` is the value the measurement chose (`tests/tree/capacity_slice_a.json`): the
+Slice A workload (every registered workflow, the tree workflows included) was run at 1, 2, ...
+concurrent runs on a darwin Python 3.12 host, and the largest number of concurrent runs at which
+every run ended `passed` within its deadline, no process of a run outlived its answer, and the p95
+run time stayed within the ratio bound times the p95 at one run. The **ratio bound (2.0)** is the
+measurement's own degradation bound, a plan default disclosed for the maintainer to set; it is a
+ratio of run times, not the append-cost ratio of the record and not a stop bound. `queue_depth`
+was not measured: it keeps its provisional value, now final, because a queued run is bounded by
+its deadline (it is finalized `timed_out` if still waiting when it passes), not by the depth. The
+number is for the recorded machine; a service on other hardware should re-run
+`python -m tests.tree.capacity measure` or set its own value.
+
+---
+
 ## Composite workflows (trees)
 
 A workflow plugin may declare a **tree**: a root that runs several children, each child a leaf or a

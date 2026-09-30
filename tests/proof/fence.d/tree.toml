@@ -78,6 +78,11 @@ globs = [
   # L.TR-L.9: the MCP `await_runs` tool passes the caller session, so a child view is scoped over MCP
   # (a lane `tree` glob too, above): the one-line wiring A-2 (L.TR-2.4) could not make from its own lane
   "trestle/server/main.py",
+  # L.TR-6.6: the spine gate and the guarantee suites read the tree workflows it registers (MC-29, MC-35;
+  # the plan names test_conformance_matrix.py among 6.6's affected callers)
+  "tests/proof/suites/guarantees.py", "tests/proof/suites/test_conformance_matrix.py",
+  # L.TR-6.8: core's capacity pin asserted the provisional default TM-C3 held; inverted with the measured one
+  "tests/core/admission/test_cl_a1_capacity.py",
 ]
 
 [[gate]]

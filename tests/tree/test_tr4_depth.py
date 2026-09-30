@@ -82,12 +82,14 @@ def load_fixture() -> ModuleType:
 
 def rig_at_depth(depth: int, condition: str, directory: Path) -> tk.TreeRig:
     """The fixture's `probe` (`condition`) two levels down (`depth` 2: `app/stage/probe`) or alone
-    as a root (`depth` 0), on the fake ports the fixture names."""
+    as a root (`depth` 0), on the fake ports the fixture names. The fakes read the rig's manual
+    clock, never the wall clock (the rig's clock starts at a fixed instant, `loopkit.NOW`)."""
     module = load_fixture()
-    ports = module.make_ports(condition, directory)
+    built: list[tk.TreeRig] = []
+    ports = module.make_ports(condition, directory, now=lambda: built[0].rig.clock.now)
     request = {"env": "dev"}
     if depth == 0:
-        return tk.tree_rig(
+        rig = tk.tree_rig(
             directory / "run",
             module.Probe(condition),
             {},
@@ -95,10 +97,14 @@ def rig_at_depth(depth: int, condition: str, directory: Path) -> tk.TreeRig:
             request=request,
             deadline_s=module.DEADLINE_S,
         )
-    entry = replace(module.ENTRY, units={**module.ENTRY.units, "probe": module.Probe(condition)})
-    return tk.rig_of_entry(
-        directory / "run", entry, port_impl=ports, request=request, keep_units=True
-    )
+    else:
+        units = {**module.ENTRY.units, "probe": module.Probe(condition)}
+        entry = replace(module.ENTRY, units=units)
+        rig = tk.rig_of_entry(
+            directory / "run", entry, port_impl=ports, request=request, keep_units=True
+        )
+    built.append(rig)
+    return rig
 
 
 def answered(rig: tk.TreeRig) -> answer.TerminalAnswer:

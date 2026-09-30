@@ -17,14 +17,14 @@ Every timing bound is the harness's or the published clock's (SA-05)."""
 
 from __future__ import annotations
 
-import shutil
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from tests.proof import ancestry, mcp_host, record_facts, records, tolerances
-from tests.proof.suites.workflows import fixture_file
+from tests.proof.suites.workflows import published_source
 from trestle.common import clock
 
 # the decisive fields of a terminal answer, never omitted (B4-C6: `null`, never absent)
@@ -58,6 +58,7 @@ class Observed:
     run_dirs: tuple[Path, ...]  # every run directory under the host's home
     lane: records.LaneRows
     survivors: tuple[str, ...] = field(default=())  # argv of any process still carrying the run id
+    vertices: tuple[str, ...] = ("",)  # the encoded paths of the plan's vertices (the root is "")
 
     @property
     def answer(self) -> dict[str, Any]:
@@ -113,7 +114,9 @@ def identical_resend_joins_one_execution(o: Observed) -> list[str]:
 
 def lane_record_facts(o: Observed) -> list[str]:
     """MC-19..21: the lane is readable (no torn or foreign entry), holds one plan entry first and
-    exactly one `NodeEnd` for the one vertex, and every effect entry has its own claim before it."""
+    one `NodeEnd` for the root and none for any path but the plan's vertices (a vertex the run
+    never started, such as an alternative a choice left out, has none), and every effect entry has
+    its own claim before it. A one-vertex plan has exactly one."""
     lane = o.lane
     if lane.problems or lane.torn:
         return [f"{o.name}: unreadable lane: {list(lane.problems) or 'torn'}"]
@@ -123,8 +126,13 @@ def lane_record_facts(o: Observed) -> list[str]:
     classes = [row.cls for row in lane.rows]
     if classes[0] != "plan":
         problems.append(f"{o.name}: the lane opens with {classes[0]!r}, not the plan entry")
-    if classes.count("end") != 1:
-        problems.append(f"{o.name}: {classes.count('end')} NodeEnd entries for one vertex")
+    ends = [row.path for row in lane.rows if row.cls == "end"]
+    if len(ends) != len(set(ends)) or "" not in ends:
+        problems.append(f"{o.name}: NodeEnd entries {ends} are not one per vertex with the root's")
+    if len(o.vertices) == 1 and len(ends) != 1:
+        problems.append(f"{o.name}: {len(ends)} NodeEnd entries for one vertex")
+    if unknown := sorted(set(ends) - set(o.vertices)):
+        problems.append(f"{o.name}: NodeEnd entries for paths that are not vertices: {unknown}")
     verdict = record_facts.claim_before_effect(lane)
     if not verdict.ok:
         problems.append(f"{o.name}: {'; '.join(verdict.violations)}")
@@ -170,7 +178,7 @@ def observe(name: str, entry: dict[str, Any], directory: Path) -> Observed:
         "idempotency_key": f"guarantee-{name}",
     }
     with mcp_host.McpHost(home=directory / "host-home", timeout_s=HOST_TIMEOUT_S) as host:
-        shutil.copy(fixture_file(entry), host.home / "plugins" / f"{name}.py")
+        (host.home / "plugins" / f"{name}.py").write_text(published_source(entry), encoding="utf-8")
         reply = host.call("run", call)
         resent = host.call("run", call)
         assert isinstance(reply, dict) and isinstance(resent, dict), (reply, resent)
@@ -186,6 +194,10 @@ def observe(name: str, entry: dict[str, Any], directory: Path) -> Observed:
         lane = records.lane_rows(run_dirs[0]) if run_dirs else records.LaneRows()
         run_id = str(reply["run_id"])
         survivors = tuple(p.argv for p in ancestry.snapshot() if run_id in p.argv)
+        vertices: tuple[str, ...] = ("",)
+        if run_dirs:
+            spec = json.loads((run_dirs[0] / "evidence" / "spec.json").read_text(encoding="utf-8"))
+            vertices = tuple(str(v["path"]) for v in spec["plan"]["vertices"])
         return Observed(
             name,
             reply,
@@ -194,6 +206,7 @@ def observe(name: str, entry: dict[str, Any], directory: Path) -> Observed:
             run_dirs,
             lane,
             survivors,
+            vertices,
         )
 
 

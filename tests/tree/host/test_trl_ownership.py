@@ -41,15 +41,16 @@ HOST_TIMEOUT_S = tolerances.JOIN_WAIT_S * 6
 HOST_WAIT_MS = int(tolerances.JOIN_WAIT_S * 3 * 1000)
 
 # The server's own stop clocks for these tests (seconds): a short grace and kill, as the in-library
-# variants, and (deadline variant) a one second release slice and finalization reserve.
+# variants, and (deadline variant) a one second finalization reserve and a three second release
+# slice (see `test_tr4_unit5_lib.SHORT_RELEASE_S`: one second passed idle, not on a loaded runner).
 GRACE_S = support.TEST_GRACE_S
 KILL_S = support.TEST_KILL_S
-SHORT_RELEASE_S = 1.0
+SHORT_RELEASE_S = 3.0
 SHORT_RESERVE_S = 1.0
 SHORT_MARGIN_S = (
-    10.0  # admission's finalization margin: the tree's release phase needs 8 s after the deadline
+    12.0  # admission's finalization margin: the tree's release phase needs 10 s after the deadline
 )
-SHORT_DEADLINE_S = 7
+SHORT_DEADLINE_S = 10
 DEFAULT_RELEASE_S = (
     10.0  # `clock.release_slice`'s default: the server's, unless the test shortens it
 )
@@ -74,8 +75,8 @@ SHORT = [
     ("RELEASE_TIMEOUT_S = 2", "RELEASE_TIMEOUT_S = 1"),
     ("LEAF_BUDGET_S = 10", "LEAF_BUDGET_S = 3"),
     ("ROOT_BUDGET_S = 20", "ROOT_BUDGET_S = 5"),
-    ("DEADLINE_S = 36", "DEADLINE_S = 7"),
-    ("deadline=36", "deadline=7"),
+    ("DEADLINE_S = 36", "DEADLINE_S = 10"),
+    ("deadline=36", "deadline=10"),
 ]
 
 
