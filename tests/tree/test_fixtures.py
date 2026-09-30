@@ -265,8 +265,15 @@ def test_scale_only_reduces_by_sibling_count() -> None:
 
 
 # The request a fixture is compiled against: every fixture compiles under the empty request but
-# `lease_pair`, whose root names the environment argument (a root that names one needs a value).
-COMPILE_REQUESTS: dict[str, dict[str, Any]] = {"lease_pair": {"env": "dev", "env_b": "dev"}}
+# `lease_pair` and `slice_coop`, whose roots name the environment argument (a root that names one
+# needs a value; `slice_coop` names it because it reaches a port, WR-OWN-8).
+COMPILE_REQUESTS: dict[str, dict[str, Any]] = {
+    "lease_pair": {"env": "dev", "env_b": "dev"},
+    "slice_coop": {"env": "dev"},
+    "failure_dependents": {"env": "dev"},
+    "exception_branch": {"env": "dev"},
+    "readiness_sibling": {"env": "dev"},
+}
 
 # What MC-23 says of each ground: a refusal code, or None when the declaration alone compiles
 # (misfit is the carve's, L.TR-1.3; uncovered_precondition is publication's, L.TR-1.5).
