@@ -22,6 +22,7 @@ from trestle.workflow.values import (
 from trestle_env import tree
 from trestle_env.plugins import _bind
 from trestle_env.plugins._http import HttpReadinessReads
+from trestle_env.plugins._tasks import TaskExecution
 
 IMAGE = "postgres@sha256:" + "a" * 64
 SUPPORT_IMAGE = "nginx@sha256:" + "b" * 64
@@ -93,7 +94,8 @@ def test_the_port_map_binds_the_container_ports_and_the_execution_port(tmp_path:
         ports.ResourceSafeStart,
         ports.ExecutionPort,
     }  # no Compose definition configured: no resolver bound
-    assert bound[ports.ExecutionPort] is recorder
+    # the execution port is the toolchain leg's: it runs a task through the runner, or nothing
+    assert isinstance(bound[ports.ExecutionPort], TaskExecution)
     # the reads answer the tree's HTTP readiness contracts over the container adapter
     assert isinstance(bound[ports.ResourceReads], HttpReadinessReads)
     assert bound[ports.ResourceCreate] is bound[ports.ResourceOwned]
@@ -163,7 +165,9 @@ def test_the_ports_seam_replaces_the_binding_for_a_proof_harness(tmp_path: Path)
     marker = {ports.ResourceReads: object()}
     SEAM.calls.append(marker)
     env = {_bind.PORTS_ENV: f"{__name__}:seam_factory"}  # no docker path, no images: not read
-    assert _bind.reference_ports(env) is marker
+    bound = _bind.reference_ports(env)
+    assert bound[ports.ResourceReads] is marker[ports.ResourceReads]
+    assert isinstance(bound[ports.ExecutionPort], TaskExecution)  # a run of nothing still binds
     with pytest.raises(_bind.BindingError, match="module:callable"):
         _bind.reference_ports({_bind.PORTS_ENV: "no-colon"})
 

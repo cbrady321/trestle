@@ -121,3 +121,11 @@ def test_row_leaf_mapping_follows_the_merge_of_declared_by():
     assert sl.row_leaf({"declared_by": "L.RB-9.3"}) == "L.RB-9.6"
     assert sl.row_leaf({"declared_by": "L.RB-10.2"}) == "L.RB-10.2"
     assert sl.row_leaf({"declared_by": "L.NW-2.3"}) is None
+
+
+def test_docs_state_real_tool_unverified():
+    """RV-2 reads this at J-SLICE-B: docs/environment.md says the toolchain leg is STUB-PROVEN and
+    that the real mise (OPEN-MISE-HOST) and Gradle (D-19) are unverified."""
+    text = (sl.ROOT / "docs" / "environment.md").read_text()
+    assert "STUB-PROVEN" in text and "unverified" in text
+    assert "OPEN-MISE-HOST" in text and "D-19" in text and "OQ-26" in text

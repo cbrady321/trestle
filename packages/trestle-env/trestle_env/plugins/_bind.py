@@ -13,6 +13,12 @@ comes from the operator's environment, never from a request:
   `docker_gate run`; an image is named by role and never pulled;
 * `TRESTLE_ENV_COMPOSE_FILE` - the absolute path of the reference Compose definition the closure
   is derived from (optional until a leaf reads a closure);
+* `TRESTLE_MISE_PATH` - the operator's absolute path of the toolchain manager (`mise`; only by
+  absolute path, never on `PATH`); with `TRESTLE_ENV_PROJECTS_DIR` (the directory holding one
+  directory per catalog project) it binds the toolchain leg: the resolver and the task runner.
+  Without them a request that names a catalog test blocks (nothing is installed, OQ-18) and a
+  request that names none is unaffected. `TRESTLE_ENV_ENVELOPE` and `TRESTLE_ENV_DISTRIBUTIONS`
+  optionally name the resolver's cache directory and the Gradle distribution store;
 * `TRESTLE_ENV_PORTS` - `module:callable` (or `/abs/file.py:callable`), a binding seam for proof
   harnesses: when set, the named callable is given the environment and returns the port map
   INSTEAD of this module's own binding (how a stub twin runs the same tree on a fake engine
@@ -31,15 +37,18 @@ import shutil
 import sys
 from collections.abc import Callable, Iterable, Mapping
 from types import ModuleType
-from typing import Final
+from typing import Any, Final
 
 from trestle.workflow import ports
 from trestle_packs.container import ContainerDefinition, ExecCheck, bind
 from trestle_packs.process.command import CommandPort
+from trestle_packs.toolchain import MiseToolchainResolver
+from trestle_packs.toolchain.tasks import ProjectTasks, TaskDeclaration, TaskRunner
 
 from trestle_env import tree
 from trestle_env.closure import ClosurePlan, Refused, closure
 from trestle_env.plugins._http import HttpReadinessReads
+from trestle_env.plugins._tasks import TaskExecution
 from trestle_env.stages import closure_failure
 
 DOCKER_PATH_ENV: Final = "TRESTLE_DOCKER_PATH"
@@ -47,6 +56,10 @@ ENDPOINT_ENV: Final = "TRESTLE_DOCKER_ENDPOINT"
 IMAGE_ENV_PREFIX: Final = "TRESTLE_IMAGE_"
 COMPOSE_ENV: Final = "TRESTLE_ENV_COMPOSE_FILE"
 PORTS_ENV: Final = "TRESTLE_ENV_PORTS"
+MISE_PATH_ENV: Final = "TRESTLE_MISE_PATH"
+PROJECTS_DIR_ENV: Final = "TRESTLE_ENV_PROJECTS_DIR"
+ENVELOPE_ENV: Final = "TRESTLE_ENV_ENVELOPE"
+DISTRIBUTIONS_ENV: Final = "TRESTLE_ENV_DISTRIBUTIONS"
 REFERENCE_COMPOSE_PROJECT: Final = "reference"  # the catalog project the Compose file defines
 
 HTTP_SUPPORT_PORT: Final = 80
@@ -138,7 +151,11 @@ def reference_ports(
     env = os.environ if environ is None else environ
     seam = env.get(PORTS_ENV) if use_seam else None
     if seam:
-        return _seam(seam)(env)
+        # a harness's fake binding need not know the toolchain leg: the tree's task nodes run
+        # nothing unless the request names a test, and running nothing needs only this port
+        mapping = dict(_seam(seam)(env))
+        mapping.setdefault(ports.ExecutionPort, TaskExecution(None, None))
+        return mapping
     runner: ports.ExecutionPort = CommandPort() if execution is None else execution
     compose = env.get(COMPOSE_ENV)
     bound = bind(
@@ -150,12 +167,68 @@ def reference_ports(
         compose_projects={REFERENCE_COMPOSE_PROJECT: compose} if compose else None,
     )
     mapping = bound.as_map()
+    resolver, tasks = toolchain_ports(env, runner)
+    if resolver is not None:
+        mapping[ports.ToolchainResolver] = resolver
     # the HTTP readiness contracts the tree declares are answered by a decorator over the reads
     mapping[ports.ResourceReads] = HttpReadinessReads(bound.containers, tree.HTTP_READINESS)
     if not compose:
         del mapping[ports.ComposeResolver]  # no definition to derive a closure from: none bound
-    mapping[ports.ExecutionPort] = runner
+    mapping[ports.ExecutionPort] = TaskExecution(runner, tasks)
     return mapping
+
+
+def project_tasks(
+    projects_dir: str, *, distribution_store: str | None = None
+) -> dict[str, ProjectTasks]:
+    """What the task runner is allowed to run: every catalog project's tasks, from the catalog."""
+    return {
+        str(p.id): ProjectTasks(
+            directory=os.path.join(projects_dir, str(p.id)),
+            tasks={
+                str(t.id): TaskDeclaration(str(t.id), tuple(str(a) for a in t.argv))
+                for t in p.tasks
+            },
+            environment={},
+            distribution_store=distribution_store,
+        )
+        for p in tree.CATALOG.projects
+    }
+
+
+def toolchain_ports(
+    env: Mapping[str, str],
+    execution: ports.ExecutionPort,
+    *,
+    mise: str | None = None,
+    project_environment: Mapping[str, Mapping[str, str]] | None = None,
+) -> tuple[MiseToolchainResolver | None, TaskRunner | None]:
+    """The toolchain resolver and the task runner, or `(None, None)` when none is configured.
+    `mise` and `project_environment` (a catalog project -> the allowlisted environment that makes
+    the toolchain manager answer for it) default to the operator's environment; a proof harness
+    names them to bind the mise-shaped stub."""
+    path = mise if mise is not None else env.get(MISE_PATH_ENV)
+    projects_dir = env.get(PROJECTS_DIR_ENV)
+    if not path or not projects_dir:
+        return None, None
+    environment = project_environment or {str(p.id): {} for p in tree.CATALOG.projects}
+    resolver = MiseToolchainResolver(
+        path, execution, environment, envelope=env.get(ENVELOPE_ENV) or None
+    )
+    runner = TaskRunner(
+        resolver,
+        execution,
+        project_tasks(projects_dir, distribution_store=env.get(DISTRIBUTIONS_ENV) or None),
+    )
+    return resolver, runner
+
+
+def bind_evidence(bound: Mapping[type, object], sink: Any) -> None:
+    """Give the run's evidence sink to every bound port that records identity through one."""
+    for impl in bound.values():
+        binder = getattr(impl, "bind_evidence", None)
+        if callable(binder):
+            binder(sink)
 
 
 class ClosureRefusedError(RuntimeError):

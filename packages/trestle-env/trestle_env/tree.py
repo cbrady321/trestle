@@ -29,9 +29,11 @@ adapter is bound by the composition root (`plugins/reference_env.py`), never her
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import timedelta
+from pathlib import Path
 from typing import Any, Final
 
 from trestle.workflow import (
@@ -50,11 +52,30 @@ from trestle.workflow import (
     WaitPolicy,
     WorkflowEntry,
 )
-from trestle.workflow.ports import ResourceCreate, ResourceOwned, ResourceReads, ResourceSpec
-from trestle.workflow.units import ActContext, Acted, EffectFacets, ObserveContext, ReadFacets, Step
-from trestle.workflow.values import CheckResult, CreatedHandle, Observation, Verdict
+from trestle.workflow.ports import (
+    BoundCommand,
+    ExecutionPort,
+    Resolved,
+    ResourceCreate,
+    ResourceOwned,
+    ResourceReads,
+    ResourceSpec,
+    ToolchainResolver,
+    Unresolved,
+)
+from trestle.workflow.units import (
+    ActContext,
+    Acted,
+    Blocked,
+    EffectFacets,
+    ObserveContext,
+    ReadFacets,
+    Step,
+)
+from trestle.workflow.values import CheckResult, CreatedHandle, Observation, Resend, Verdict
 
 from trestle_env.catalog import Catalog, load_reference
+from trestle_env.catalog.model import Project, TaskEntry, TestSpec
 from trestle_env.schema import ENV_ARG, OVERRIDES_ARG, SERVICES_ARG, TESTS_ARG
 
 ROOT_UNIT: Final = "reference_env"
@@ -313,8 +334,121 @@ class ServiceUnit:
         return Acted()
 
 
-CATALOG: Final[Catalog] = load_reference()
-"""The trusted catalog the tree's identifier sets are drawn from (`catalog/reference.json`)."""
+CATALOG_ENV: Final = "TRESTLE_ENV_CATALOG"
+
+
+def configured_catalog(environ: Mapping[str, str]) -> Catalog:
+    """The trusted catalog: the operator's (`TRESTLE_ENV_CATALOG`, an absolute path to a catalog
+    file) or the reference one that ships with the package. The catalog is the operator's data, so
+    which tests exist, and so which test nodes the tree has, is the operator's to configure."""
+    named = environ.get(CATALOG_ENV)
+    if not named:
+        return load_reference()
+    if not os.path.isabs(named):
+        raise ValueError(f"{CATALOG_ENV} must be an absolute path, got {named!r}")
+    return Catalog.load(Path(named))
+
+
+CATALOG: Final[Catalog] = configured_catalog(os.environ)
+"""The trusted catalog the tree's identifier sets and test nodes are drawn from."""
+
+TASK_PREFIX: Final = "test"  # a catalog test's node is `test.<test id>` (stages.py: the test stage)
+TASK: Final = "task"  # the declared effect: one run of the allowlisted task
+NOTHING: Final = ""  # the `BoundCommand.task` of "no test was requested": a run of nothing
+
+
+def task_unit_name(test_id: str) -> str:
+    return f"{TASK_PREFIX}.{test_id}"
+
+
+class TaskUnit:
+    """The toolchain leg for one catalog test: run its project's allowlisted task once, when the
+    request names the test, through the `ExecutionPort` (L.RB-4.5; B3-C14, WR-ENV-3, WR-ENV-15).
+
+    The task is the catalog's data: `argv[0]` a bare tool name the `ToolchainResolver` resolves to
+    an absolute executable EXACTLY (the project's declared pin), the rest literals; nothing of the
+    request but the test identifier reaches a command. A pin that does not resolve ends the node
+    BLOCKED with that resolution's own code and human action BEFORE any effect is issued, so no
+    task-start record can exist (nothing installs the tool, OQ-18). A test the request did not
+    name is a run of nothing (`NOTHING`): recorded as passed with no command, so the node is
+    always in the tree and always ends. Completion is RECORDED: the recorded result decides."""
+
+    def __init__(self, test: TestSpec, project: Project, task: TaskEntry) -> None:
+        self._unit = task_unit_name(str(test.id))
+        self._test = str(test.id)
+        self._project = str(project.id)
+        self._task = str(task.id)
+        self._argv = tuple(str(a) for a in task.argv)
+
+    def declare(self) -> LeafDeclaration:
+        return LeafDeclaration(
+            unit=self._unit,
+            flags=LoopFlags(Compose.LEAF, CompletionSource.RECORDED, Repeat.SAFE),
+            preconditions=(),
+            postcondition="task_recorded",
+            wait=WaitPolicy(timedelta(seconds=READY_POLL_S), 1.0, timedelta(seconds=READY_WAIT_S)),
+            resource_kind="toolchain_task",
+            may_touch=frozenset({"toolchain_task"}),
+            effects=(
+                EffectDeclaration(
+                    TASK, EffectFacetClass.EVENT, "", Lifetime.RUN, frozenset(), None
+                ),
+            ),
+            retryable=frozenset(),
+            remedies=(),
+            budget=timedelta(seconds=LEAF_BUDGET_S),
+            max_attempts=1,
+        )
+
+    def observe(self, params: Any, reads: ReadFacets, ctx: ObserveContext) -> Observation:
+        return Observation(
+            present=False,
+            selector_present=False,
+            identity_proven=False,
+            configuration_compatible=True,
+            postcondition=CheckResult(False, None, ""),
+            preconditions=(),
+            currency=(),
+            found=(),
+            code=None,
+            payload=None,
+        )
+
+    def _requested(self, params: Any) -> bool:
+        named = params.get("tests") if isinstance(params, Mapping) else None
+        return isinstance(named, list) and self._test in named
+
+    def advance(self, params: Any, state: Verdict, effects: EffectFacets, ctx: ActContext) -> Step:
+        if not self._requested(params):
+            command = _nothing()
+        else:
+            tool, *rest = self._argv
+            resolved = effects.read(ToolchainResolver).resolve(self._project, tool)
+            if isinstance(resolved, Unresolved):
+                return Blocked(resolved.code, resolved.human_action, Resend.SUCCEEDS_AFTER_ACTION)
+            command = BoundCommand(
+                task=f"{self._project}/{self._task}",
+                argv=(resolved.executable, *rest),
+                environment={},
+                resolved=resolved,
+                reports_tests=False,
+            )
+        effects.event(ExecutionPort).run(command, TASK, ctx.cancellation, ctx.clock.release_point)
+        return Acted()
+
+    def release(self, params: Any, handle: CreatedHandle, effects: Any, ctx: ActContext) -> Step:
+        raise AssertionError("a task creates nothing to release")
+
+
+def _task_unit(test: TestSpec) -> TaskUnit:
+    project = CATALOG.project(str(test.project))
+    task = CATALOG.task(str(test.project), str(test.task))
+    assert project is not None and task is not None  # the catalog checked the reference at load
+    return TaskUnit(test, project, task)
+
+
+def _nothing() -> BoundCommand:
+    return BoundCommand(NOTHING, (), {}, Resolved("", "", "", ""), False)
 
 
 def identifier_sets(catalog: Catalog) -> dict[str, frozenset[str]]:
@@ -336,6 +470,14 @@ ENTRY = WorkflowEntry(
                 # the supporting service first: the backend starts only after its readiness pass
                 ChildBinding(unit=HTTP_SUPPORT_UNIT, params={}, needs=()),
                 ChildBinding(unit=POSTGRES_UNIT, params={}, needs=(HTTP_SUPPORT_UNIT,)),
+                # the toolchain leg: one node per test the operator's catalog lists (none in the
+                # reference catalog), running the test's project task when the request names it
+                *(
+                    ChildBinding(
+                        unit=task_unit_name(str(t.id)), params={"tests": TESTS_ARG}, needs=()
+                    )
+                    for t in CATALOG.tests
+                ),
             ),
             concurrency=CONCURRENCY,
             budget=timedelta(seconds=ROOT_BUDGET_S),
@@ -353,7 +495,9 @@ ENTRY = WorkflowEntry(
         POSTGRES_UNIT: ServiceUnit(
             POSTGRES_UNIT, POSTGRES_SERVICE, POSTGRES_READY, reuse=POSTGRES_REUSE
         ),
+        **{task_unit_name(str(t.id)): _task_unit(t) for t in CATALOG.tests},
     },
     deadline=timedelta(seconds=DEADLINE_S),
 )
-"""The reference tree at v2: `reference_env` -> `backend.http_support` -> `backend.postgres`."""
+"""The reference tree: `reference_env` over `backend.http_support` -> `backend.postgres` and one
+`test.<test id>` per catalog test (the toolchain leg)."""

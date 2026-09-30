@@ -19,3 +19,57 @@
 # deferral = "OPEN-MISE-HOST"   # the open question or disclosure the row cites
 
 twin_suffix = "@stub-twin"
+
+[[row]]
+label    = "WR-ENV-15:adapter-exact-or-unresolved"
+group    = "D-1"
+text     = "The resolver is proven against the mise-shaped stub only: it resolves the pinned tool to an absolute executable exactly or returns Unresolved. The real mise's output is unverified."
+deferral = "OPEN-MISE-HOST"
+
+[[row]]
+label    = "WR-VERIFY-8:b-stub-read-facets-toolchain"
+group    = "D-1"
+text     = "The toolchain read facets are proven on the resolver's conformance suite against the stub mise; the real tool is unverified."
+deferral = "OPEN-MISE-HOST"
+
+[[row]]
+label    = "WR-PROOF-4:b-toolchain-suite"
+group    = "D-1"
+text     = "The toolchain family suite runs unmodified on the fake and the real resolver over the stub mise; a real mise run has not been made."
+deferral = "OPEN-MISE-HOST"
+
+[[row]]
+label    = "WR-ENV-3:allowlisted-noninteractive-identity"
+group    = "D-1"
+text     = "An allowlisted task runs non-interactively with its toolchain identity recorded, on the real task runner over stub tools; the real mise is unverified."
+deferral = "OPEN-MISE-HOST"
+
+[[row]]
+label    = "WR-ENV-3:never-via-backing-tool-orchestration"
+group    = "B8.4"
+text     = "A task never runs through mise exec, mise run or a shim: shown against the stub, which logs and refuses them; the real tool is unverified."
+deferral = "OPEN-MISE-HOST"
+
+[[row]]
+label    = "WR-ENV-16:no-install-side-effect"
+group    = "B8.4"
+text     = "No install, download or upgrade happens as a side effect of a task: shown against the stub and the fetch logger; the real tool is unverified."
+deferral = "OPEN-MISE-HOST"
+
+[[row]]
+label    = "WR-ENV-16:jvm-wrapper-fetch-disabled-or-blocked"
+group    = "D-19"
+text     = "A Gradle-shaped task runs the wrapper main class with the daemon and toolchain auto-download off, or blocks: shown on a stub tool. Gradle itself is absent and unproven."
+deferral = "D-19"
+
+[[row]]
+label    = "WR-EVID-10:by-hand-identical"
+group    = "D-1"
+text     = "A task's result classification matches the by-hand invocation: shown on the stub tools; real tools are unverified."
+deferral = "OPEN-MISE-HOST"
+
+[[row]]
+label    = "WR-ENV-15:workflow-blocked-before-task"
+group    = "B4.6"
+text     = "The reference workflow blocks with TOOLCHAIN_MISSING before any task start when the pin does not resolve: shown through one MCP call against the stub mise; the real tool is unverified."
+deferral = "OPEN-MISE-HOST"

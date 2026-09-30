@@ -12,13 +12,25 @@ digest covers the domain and adapter code that actually runs (MC-18). The declar
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from trestle.plugin import Context, trestle
 from trestle.workflow.declarations import JsonValue
 from trestle.workflow.loop import run_tree
 
-from trestle_env.plugins._bind import derive_closure, reference_ports
+from trestle_env.plugins._bind import bind_evidence, derive_closure, reference_ports
 from trestle_env.schema import OverrideId, ServiceId, TestId
 from trestle_env.tree import ENTRY
+
+
+class _Evidence:
+    """The run's evidence sink for ports that record identity (`toolchain.task_start`)."""
+
+    def __init__(self, ctx: Context) -> None:
+        self._ctx = ctx
+
+    def event(self, kind: str, fields: Mapping[str, JsonValue]) -> None:
+        self._ctx.event(kind, **fields)
 
 
 @trestle(deadline=120, env_arg="env", packages=("trestle_env", "trestle_packs"))
@@ -37,6 +49,7 @@ def reference_env(
         if chosen is not None:
             intent[name] = sorted(chosen)
     bound = reference_ports()
+    bind_evidence(bound, _Evidence(ctx))
     derive_closure(bound, services, overrides or ())  # refused before any effect (WR-ENV-1)
     run_tree(ctx, ENTRY, intent, ports=bound)
     return {"env": env}
