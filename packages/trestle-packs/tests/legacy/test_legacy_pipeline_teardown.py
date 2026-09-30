@@ -73,6 +73,8 @@ def _drive(
     return backend, raised
 
 
+@pytest.mark.proves("WR-ENV-11", "WR-ENV-11:entry-points-callable", "B", "B", "LOGIC+PROC", "CI")
+@pytest.mark.proves("WR-PROOF-10", "WR-PROOF-10:K-15", "B", "B", "LOGIC+PROC", "CI")
 @pytest.mark.parametrize("variant", ["up_fails", "pytest_fails", "success"])
 def test_pipeline_tears_down_once(
     variant: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -94,6 +96,7 @@ def test_declared_stop_policy_stops_once_and_none_does_nothing(
     assert (backend.stop_calls, backend.down_calls) == (0, [])
 
 
+@pytest.mark.proves("WR-ENV-11", "WR-ENV-11:entry-points-callable", "B", "B", "LOGIC+PROC", "CI")
 def test_pipeline_signature_and_schema_unchanged() -> None:
     module = _load_pipeline()
     params = inspect.signature(module.integration_pipeline).parameters
