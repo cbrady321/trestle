@@ -456,6 +456,7 @@ class ServicesInput:
     event_max: int  # V-13 EVENT_MAX (`CaptureLimits.max_single_event_bytes`)
     now: Callable[[], datetime] = lambda: datetime.now(UTC)  # noqa: E731
     reserve_s: float = clock_limits.FINALIZATION_RESERVE_S  # the carve's reserve (B2-C5)
+    margin_s: float = clock_limits.finalization_margin  # J-25's currency margin (V-3.1)
 
 
 class ChildRunServices:
@@ -473,6 +474,16 @@ class ChildRunServices:
         self._lane_lock = threading.Lock()
         self._cancel = FlagCancelSignal(given.run_dir / "work")
         self._sink = ContextEvidenceSink(given.event, given.event_max)
+
+    @property
+    def finalization_reserve_s(self) -> float:
+        """`svc.FinalizationBounds`: the reserve the carve holds back per parent."""
+        return self._given.reserve_s
+
+    @property
+    def currency_margin_s(self) -> float:
+        """`svc.FinalizationBounds`: the finalization margin (V-3.1 J-25)."""
+        return self._given.margin_s
 
     def admitted(self) -> svc.AdmittedPlan:
         return svc.AdmittedPlan(lineage_root=self._root, accepted=self._plan)
@@ -514,7 +525,12 @@ class ChildRunServices:
         with self._lane_lock:
             if self._lane is None:
                 self._lane = ChildAttemptLane(
-                    LaneWriter(self._given.run_dir, self._plan.lane_entries, self._scope)
+                    LaneWriter(
+                        self._given.run_dir,
+                        self._plan.lane_entries,
+                        self._scope,
+                        now=self._given.now,  # one clock: entries are stamped as `clock()` reads
+                    )
                 )
             return cast(svc.AttemptLane, self._lane)
 

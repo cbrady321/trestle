@@ -182,10 +182,19 @@ def resolve_root(entry: WorkflowEntry) -> LeafDeclaration | AllDeclaration | Cho
     return declared
 
 
-def extract_declared_tree(entry: WorkflowEntry) -> DeclaredTree:
-    """Extract `entry`'s declared tree, or raise `ExtractionRefused`."""
+def extract_root(
+    entry: WorkflowEntry,
+) -> tuple[LeafDeclaration | AllDeclaration | ChoiceNode, DeclaredTree]:
+    """The root's declaration and the declared tree built from that one value, or raise
+    `ExtractionRefused`. The loop proves the admitted digest against the tree and then walks the
+    very declaration the digest covers (B1-O3)."""
     decl = resolve_root(entry)
     try:
-        return DeclaredTree.build(entry.root, {ROOT_PATH: declaration_node(decl)})
+        return decl, DeclaredTree.build(entry.root, {ROOT_PATH: declaration_node(decl)})
     except DeclaredTreeInvalid as exc:
         raise ExtractionRefused(entry.root, f"declaration not encodable: {exc}") from exc
+
+
+def extract_declared_tree(entry: WorkflowEntry) -> DeclaredTree:
+    """Extract `entry`'s declared tree, or raise `ExtractionRefused`."""
+    return extract_root(entry)[1]
