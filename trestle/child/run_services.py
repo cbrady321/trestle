@@ -103,9 +103,10 @@ def _event_bytes(kind: str, payload: Mapping[str, Any]) -> int:
 
 
 class ContextEvidenceSink:
-    """V-13 `EvidenceSink` over `Context.event` (B2-C13): an event over `EVENT_MAX` is truncated
-    and marked, and no failure ever reaches the loop or a port. The context's own limits, its
-    scrubber and its reserved kinds apply unchanged (`Context.event`); a refused kind is dropped.
+    """V-13 `EvidenceSink` over the run's event path (B2-C13; `RuntimeContext.runtime_event`, which
+    is `Context.event` plus the runtime-only step-fact kinds, L.SL-10.1): an event over `EVENT_MAX`
+    is truncated and marked, and no failure ever reaches the loop or a port. The context's own
+    limits, its scrubber and its reserved kinds apply unchanged; a refused kind is dropped.
 
     Truncated form (executor-chosen): the payload becomes `{"truncated": true, "original_bytes":
     N, "excerpt": <the payload's JSON text cut to fit>}`. A field named `kind` is renamed
@@ -452,7 +453,7 @@ class ServicesInput:
     run_dir: Path
     plan: svc.PlanAccepted
     deadline: datetime  # the admitted deadline, minted at admission (B2-C5)
-    event: Callable[..., None]  # `Context.event`
+    event: Callable[..., None]  # `RuntimeContext.runtime_event`: `Context.event` plus step facts
     event_max: int  # V-13 EVENT_MAX (`CaptureLimits.max_single_event_bytes`)
     now: Callable[[], datetime] = lambda: datetime.now(UTC)  # noqa: E731
     reserve_s: float = clock_limits.FINALIZATION_RESERVE_S  # the carve's reserve (B2-C5)
