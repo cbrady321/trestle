@@ -46,17 +46,18 @@ LABEL = {"vertices": 3, "depth": 2, "shared": None, "expect": "valid"}
 
 CREATE_EFFECT = "up"
 STOP_EFFECT = "stop"
-SPEC = ResourceSpec("marker", RealizationKind.AGENT_LAUNCHED_PROJECT, "slice-coop", None)
 
 # The plan carves each child the root's budget less the finalization reserve (10 s), ending 20 s
-# before the deadline: `slow` gets 16 s, so its slice ends 16 s after the run starts. `slow` holds
-# its first observation for STALL_S, so its own wait (12 s) would end after the slice does.
+# before the deadline: `slow` gets 16 s, and its slice ends DEADLINE_S - 20 s after the run starts.
+# `slow` holds its first observation for STALL_S, so its own wait (12 s) would end after the slice
+# does. The deadline exceeds the tree's worst case plus the release slice (26 + 10 s) by 6 s, so the
+# dispatch check (B2-C5) passes on a real run.
 QUICK_BUDGET_S = 10
 SLOW_BUDGET_S = 16
 ROOT_BUDGET_S = 26
-DEADLINE_S = 36
+DEADLINE_S = 42
 SLOW_WAIT_S = 12
-STALL_S = 8
+STALL_S = 12
 
 
 def _declaration(unit: str, budget_s: int, max_wait_s: int) -> LeafDeclaration:
@@ -101,6 +102,8 @@ class Leaf:
     def __init__(self, unit: str, budget_s: int, max_wait_s: int, *, patient: bool) -> None:
         self._decl = _declaration(unit, budget_s, max_wait_s)
         self._patient = patient
+        # one logical system per node: a marker another node made is not this node's to find
+        self._spec = ResourceSpec(unit, RealizationKind.AGENT_LAUNCHED_PROJECT, "slice-coop", None)
         self._stalled = False
 
     def declare(self) -> LeafDeclaration:
@@ -111,7 +114,7 @@ class Leaf:
             self._stalled = True  # the first observation is slow: the wait starts late
             ctx.cancellation.wait(timedelta(seconds=STALL_S))  # cooperative: a cancel ends it
         resource = reads.read(ResourceReads)
-        seen = resource.observe(SPEC, ctx.lineage, CREATE_EFFECT)
+        seen = resource.observe(self._spec, ctx.lineage, CREATE_EFFECT)
         checked = resource.check("ready", seen.selector_ref) if seen.selector_ref else None
         ready = checked is not None and checked.satisfied and not self._patient
         return Observation(
@@ -128,7 +131,7 @@ class Leaf:
         )
 
     def advance(self, params: Any, state: Verdict, effects: EffectFacets, ctx: ActContext) -> Step:
-        effects.create(ResourceCreate).create(SPEC, CREATE_EFFECT)
+        effects.create(ResourceCreate).create(self._spec, CREATE_EFFECT)
         return Acted()
 
     def release(self, params: Any, handle: CreatedHandle, effects: Any, ctx: ActContext) -> Step:
@@ -159,7 +162,7 @@ ENTRY = WorkflowEntry(
 )
 
 
-@trestle(deadline=36, env_arg="env")  # deadline: DEADLINE_S (a decorator argument is a literal)
+@trestle(deadline=42, env_arg="env")  # deadline: DEADLINE_S (a decorator argument is a literal)
 def slice_coop(ctx: Context, env: str = "dev") -> dict[str, str]:
     marker = FakeMarker(ctx.tmp / "markers", "run")
     ports = {ResourceReads: marker, ResourceCreate: marker, ResourceOwned: marker}
