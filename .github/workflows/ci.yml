@@ -282,6 +282,10 @@ jobs:
           path: tests/proof/results
           merge-multiple: true
       - run: python -m tests.proof.meta report --json > proof-ledger.json
+      # L.CZ.1 (CM-4): WR-PROOF-1 as the permanent check. HOST, BOTH and DOCKER keys render from the
+      # committed host records at the last successful checkpoint (fetch-depth 0 above); no digest,
+      # no CI artifact beyond this run's own results, and no fresh HOST record per PR.
+      - run: python -m tests.proof.meta enforce --scope ci
       - uses: actions/upload-artifact@v4
         with:
           name: proof-ledger.json

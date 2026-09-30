@@ -3,19 +3,25 @@
 `L.P0-0a.1` builds only the `baseline` subcommand. Later leaves
 (`L.P0-0a.3`, `L.P0-0a.4`, `L.P0-0a.6`) extend this module with
 `report`, `enforce`, `inventory`, `tolerances --list-s0-literal-sites`
-style neighbors, and `mypy-ratchet`.
+style neighbors, and `mypy-ratchet`. The closure phase (`L.CZ.1`-`L.CZ.7`) turns the
+report-mode checks into enforcing ones: `enforce --scope`, `audit-rows --enforce`,
+`kdoc --enforce` and `open-questions --final`.
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import re
 import subprocess
 import sys
 import tomllib
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 BASELINE_PATH = ROOT / "tests" / "proof" / "baseline.json"
@@ -155,10 +161,10 @@ def cmd_baseline(_args: argparse.Namespace) -> int:
     current = measure_current()
 
     ok = True
-    for field in BASELINE_FIELDS:
-        if current[field] != ev01[field] and field not in explained:
+    for name in BASELINE_FIELDS:
+        if current[name] != ev01[name] and name not in explained:
             ok = False
-            print(f"UNEXPLAINED DIFF: {field}: ev01={ev01[field]!r} current={current[field]!r}")
+            print(f"UNEXPLAINED DIFF: {name}: ev01={ev01[name]!r} current={current[name]!r}")
 
     if not NODEIDS_PATH.exists():
         print(f"missing {NODEIDS_PATH}")
@@ -192,31 +198,267 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# enforce (L.CZ.1): WR-PROOF-1 as the permanent post-delivery check
+# ---------------------------------------------------------------------------
+
+ENFORCE_SCOPES = ("ci", "checkpoint")
+PROVEN = "PROVEN"
+_MATRIX_ID_KEY = re.compile(r"^[AB]\d+\.\d+")
+
+
+@dataclass
+class EnforceWorld:
+    """Everything `meta enforce` judges, as plain data: the self-tests build these; `live_world`
+    fills the same names from the checkout. Nothing here reads a CI artifact: `report` is the
+    current run's own MC-02 ledger, and the HOST records are committed files that
+    `record.select` / `record.paired_docker` pick at `anchor` (CM-6, PC5-4)."""
+
+    scope: str
+    report: dict[str, dict[str, Any]] = field(default_factory=dict)
+    labels: list[dict[str, Any]] = field(default_factory=list)
+    clauses: list[dict[str, Any]] = field(default_factory=list)
+    # matrix clause/part key -> the (tier, venue) each registering `proves()` marker declares
+    markers: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
+    anchor: str | None = None
+    host_proc: dict[str, Any] | None = None
+    host_docker: dict[str, Any] | None = None
+    admissible: Callable[[dict[str, Any]], tuple[bool, str | None]] = (
+        lambda record: (True, None)  # noqa: E731
+    )
+    pass_set: Callable[[dict[str, Any]], list[str]] = lambda record: []  # noqa: E731
+
+
+def _tier_tokens(tier: object) -> list[str]:
+    return str(tier).upper().replace("+", " ").split()
+
+
+def clause_keys(clauses: list[dict[str, Any]]) -> list[str]:
+    """Every ledger key of the matrix: a clause id, or `<clause>:<part>` for each part of a
+    clause that declares parts (`transcribe.matrix_ids` minus the parts' parents)."""
+    keys: list[str] = []
+    for clause in clauses:
+        parts = clause.get("parts") or []
+        if parts:
+            keys += [f"{clause['id']}:{part['name']}" for part in parts]
+        else:
+            keys.append(str(clause["id"]))
+    return keys
+
+
+def scan_proves_markers(roots: list[Path]) -> dict[str, list[tuple[str, str]]]:
+    """`proves(row, clause, slice, step, tier, venue)` markers naming a matrix clause, read from
+    the source (nothing is imported, collected or run): clause key -> [(tier, venue), ...]."""
+    found: dict[str, list[tuple[str, str]]] = {}
+    for root in roots:
+        for path in sorted(root.rglob("*.py")):
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+            except (OSError, SyntaxError, UnicodeDecodeError):
+                continue
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call) or len(node.args) < 6:
+                    continue
+                func = node.func
+                name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+                if name != "proves":
+                    continue
+                values = [a.value if isinstance(a, ast.Constant) else None for a in node.args[:6]]
+                clause, tier, venue = values[1], values[4], values[5]
+                if not (
+                    isinstance(clause, str) and isinstance(tier, str) and isinstance(venue, str)
+                ):
+                    continue
+                if _MATRIX_ID_KEY.match(clause.split(":", 1)[0]):
+                    pair = (tier, venue)
+                    if pair not in found.setdefault(clause, []):
+                        found[clause].append(pair)
+    return found
+
+
+def _record_hits(record: dict[str, Any] | None, key: str) -> list[dict[str, Any]]:
+    if record is None:
+        return []
+    return [r for r in record.get("results", []) if key in (r.get("labels") or [])]
+
+
+def key_problems(w: EnforceWorld, key: str, pairs: list[tuple[str, str]]) -> list[str]:
+    """One clause or label key at the (tier, venue) pairs its nodes declare. A CI or BOTH venue is
+    PROVEN in the current run's ledger; a HOST or BOTH venue is PASSED in the selected host-proc
+    record; a DOCKER tier is PASSED in the paired host-docker record. A HOST clause's status is
+    re-rendered from the record and never from a result of this run (R2-5, R3-3)."""
+    need_ledger = need_proc = need_docker = False
+    for tier, venue in pairs:
+        if "DOCKER" in _tier_tokens(tier):
+            need_docker = True
+        elif venue == "HOST":
+            need_proc = True
+        elif venue == "BOTH":
+            need_ledger = need_proc = True
+        else:
+            need_ledger = True
+    problems: list[str] = []
+    if need_ledger and w.report.get(key, {}).get("status") != PROVEN:
+        problems.append(f"{key} is not PROVEN in this run's ledger")
+    for need, record, gate in (
+        (need_proc, w.host_proc, "host-proc"),
+        (need_docker, w.host_docker, "host-docker"),
+    ):
+        if not need:
+            continue
+        if record is None:
+            problems.append(
+                f"{key}: no admissible {gate} record at anchor {(w.anchor or 'none')[:12]}"
+            )
+            continue
+        hits = _record_hits(record, key)
+        if not hits or any(r.get("outcome") != "PASSED" for r in hits):
+            problems.append(f"{key} is not PASSED in the {gate} record {str(record['sha'])[:12]}")
+    return problems
+
+
+def label_problems(w: EnforceWorld, label: dict[str, Any]) -> list[str]:
+    """A label is green when its tier and venue are proven as `key_problems` reads them, or is
+    declared: `gated_on` with an open question, `both_variant`, or `na` with a reason (C.9)."""
+    label_id = str(label["id"])
+    posture = label.get("posture")
+    if posture == "gated_on":
+        return [] if str(label.get("oq", "")).strip() else [f"{label_id} is gated_on with no oq"]
+    if posture == "both_variant":
+        return []
+    if posture == "na":
+        return [] if str(label.get("reason", "")).strip() else [f"{label_id} is na with no reason"]
+    return key_problems(w, label_id, [(str(label.get("tier")), str(label.get("venue")))])
+
+
+def clause_problems(w: EnforceWorld, key: str) -> list[str]:
+    pairs = w.markers.get(key)
+    if not pairs:
+        # registered through the compat map (no proves() marker in source): CI when it ran at all
+        if key not in w.report:
+            return [f"{key} has no registering node"]
+        pairs = [("LOGIC", "CI")]
+    return key_problems(w, key, pairs)
+
+
+def enforce_problems(w: EnforceWorld) -> list[str]:
+    """WR-PROOF-1 over the whole declared universe: every matrix clause (part) and every CSC-1
+    label green or declared (gated, both-variant, na). Empty means the check passes."""
+    problems: list[str] = []
+    for key in clause_keys(w.clauses):
+        problems += clause_problems(w, key)
+    for label in w.labels:
+        problems += label_problems(w, label)
+    if w.scope == "checkpoint":
+        for gate, record in (("host-proc", w.host_proc), ("host-docker", w.host_docker)):
+            if record is None:
+                problems.append(f"no admissible {gate} record at the candidate (CM-6)")
+                continue
+            ok, why = w.admissible(record)
+            if not ok:
+                problems.append(f"{gate} record {str(record['sha'])[:12]} is not admissible: {why}")
+            problems += [f"{gate} pass set: {v}" for v in w.pass_set(record)]
+    return sorted(set(problems))
+
+
+def scope_ci_anchor(
+    ref: str = "HEAD", cwd: Path | None = None, check_run_reader: Any = None
+) -> str | None:
+    """CM-6's `--scope ci` anchor: the newest `WR-Merge: J-<NAME>` commit on `ref`'s first-parent
+    history, of any checkpoint, that carries its success mark (`fence.ckpt_succeeded`, CM-5). A
+    newer carrier whose evaluation failed is skipped, so the anchor is the last checkpoint that
+    passed. `None` before any checkpoint has."""
+    from tests.proof import fence as fence_mod
+    from tests.proof import trailers as trailers_mod
+
+    cwd = cwd or ROOT
+    carriers = [
+        (commit.sha, merge_id)
+        for commit in trailers_mod._commits(ref, cwd)  # noqa: SLF001
+        for kind, merge_id in commit.trailers()
+        if kind == "WR-Merge" and merge_id in fence_mod.CKPT_SUCCESS_MARK
+    ]
+    for sha, merge_id in reversed(carriers):
+        if fence_mod.ckpt_succeeded(merge_id, sha, cwd=cwd, check_run_reader=check_run_reader):
+            return sha
+    return None
+
+
+def host_evidence(
+    scope: str,
+    *,
+    cwd: Path | None = None,
+    commit: str = "HEAD",
+    check_run_reader: Any = None,
+) -> dict[str, Any]:
+    """The anchor and the HOST records of an enforce world, all through `tests/proof/host/record.py`
+    (this module implements no selection): `ci` selects at the last successful checkpoint's
+    carrier, `checkpoint` at the candidate `commit`."""
+    from tests.proof import fence as fence_mod
+    from tests.proof.host import record as record_mod
+
+    cwd = cwd or ROOT
+    if scope == "ci":
+        anchor = scope_ci_anchor(commit, cwd, check_run_reader)
+    else:
+        anchor = fence_mod._git(cwd, "rev-parse", commit).stdout.strip()  # noqa: SLF001
+    if anchor is None:
+        return {"anchor": None, "host_proc": None, "host_docker": None}
+    proc = record_mod.select("host-proc", anchor, cwd=cwd)
+    docker = None if proc is None else record_mod.paired_docker(proc, cwd=cwd)
+    labels = {str(lb["id"]): lb for lb in _load_all_labels()}
+    return {
+        "anchor": anchor,
+        "host_proc": proc,
+        "host_docker": docker,
+        "admissible": lambda record: record_mod.is_admissible(record, anchor, cwd),
+        "pass_set": lambda record: record_mod.pass_set_violations(record, labels),
+    }
+
+
+def live_world(scope: str, commit: str = "HEAD") -> EnforceWorld:
+    from tests.proof import ledger as ledger_mod
+    from tests.proof import transcribe as transcribe_mod
+
+    report = ledger_mod.render()
+    roots = [ROOT / "tests", *sorted((ROOT / "packages").glob("*/tests"))]
+    return EnforceWorld(
+        scope=scope,
+        report=report,
+        labels=_load_all_labels(),
+        clauses=list(transcribe_mod.load_matrix_map()),
+        markers=scan_proves_markers(roots),
+        **host_evidence(scope, commit=commit),
+    )
+
+
 def cmd_enforce(args: argparse.Namespace) -> int:
-    """Report mode only (L.P0-0a.3): prints what enforcement would refuse
-    and exits 0. `--print-mode` prints just the mode name and exits 0 —
-    TM-P0-6's probe, removed once L.CZ.1 builds the scoped enforcement
-    mode."""
+    """`python -m tests.proof.meta enforce --scope ci|checkpoint` (L.CZ.1, CSC-5), the permanent
+    post-delivery WR-PROOF-1 check: exit 1 on any clause or label neither green nor declared.
+    `--scope ci` (the `proof-ledger` job, every PR and push) reads this run's CI results and
+    re-renders HOST, BOTH and DOCKER statuses from the committed records at the last successful
+    checkpoint; `--scope checkpoint` (the `ckpt` job, J-ROOT) reads the candidate's records and
+    requires them admissible. `--print-mode` prints `enforce` and exits 0 (TM-P0-6's probe)."""
     if args.print_mode:
-        print("report")
+        print("enforce")
         return 0
+    if args.scope is None:
+        print("enforce: --scope ci|checkpoint is required")
+        return 2
 
     from tests.proof import ledger as ledger_mod
 
     try:
-        report = ledger_mod.render()
+        world = live_world(args.scope, args.commit or "HEAD")
     except ledger_mod.VacuousLedgerError as exc:
         print(f"error: {exc}")
         return 1
-
-    unproven = {c: e for c, e in report.items() if e["status"] != ledger_mod.PROVEN}
-    if unproven:
-        print("[report mode] enforcement would refuse on:")
-        for clause in sorted(unproven):
-            print(f"  {clause}: {unproven[clause]['status']}")
-    else:
-        print("[report mode] enforcement would pass")
-    return 0
+    problems = enforce_problems(world)
+    for problem in problems:
+        print(f"enforce --scope {args.scope}: {problem}")
+    if not problems:
+        print(f"enforce --scope {args.scope}: every clause and label is green or declared")
+    return 1 if problems else 0
 
 
 def _load_inventories() -> tuple[list[dict], list[dict], list[dict]]:
@@ -572,6 +814,8 @@ def build_parser() -> argparse.ArgumentParser:
     report_parser.add_argument("--json", action="store_true")
     enforce_parser = sub.add_parser("enforce")
     enforce_parser.add_argument("--print-mode", action="store_true", dest="print_mode")
+    enforce_parser.add_argument("--scope", choices=ENFORCE_SCOPES, default=None)
+    enforce_parser.add_argument("--commit", default=None)
     inventory_parser = sub.add_parser("inventory")
     inventory_parser.add_argument("--strict", action="store_true")
     inventory_parser.add_argument("--count-pending", action="store_true", dest="count_pending")
