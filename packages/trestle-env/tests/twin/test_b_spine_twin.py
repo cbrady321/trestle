@@ -16,6 +16,7 @@ from trestle_env import tree
 from twin import fake_binding, harness
 
 POSTGRES = tree.POSTGRES_UNIT
+SUPPORT = tree.HTTP_SUPPORT_UNIT
 
 
 @pytest.mark.spine  # the B-spine twin joins the spine gate (MC-29)
@@ -30,9 +31,9 @@ def test_one_call_passed_healthy_machine(tmp_path: Path) -> None:
         assert answer["answer"]["outcome"] == "passed", answer
         run_id = answer["run_id"]
         entries = harness.lane(harness.run_dir(host, run_id))
-    # dispositions equal the engine snapshot: postgres was not there before, so it was started
-    assert not [c for c in before["containers"] if c["name"] == tree.POSTGRES_SERVICE]
-    assert harness.dispositions(answer) == {POSTGRES: "started"}
+    # dispositions equal the engine snapshot: neither service was there before, so both started
+    assert not before["containers"]
+    assert harness.dispositions(answer) == {SUPPORT: "started", POSTGRES: "started"}
     assert harness.claim_precedes_create(entries)
     assert harness.container_released(answer)
     after = fake_binding.read_state(state)
@@ -41,7 +42,7 @@ def test_one_call_passed_healthy_machine(tmp_path: Path) -> None:
     assert created and all(s.startswith(prefix) for s in created)
     assert not [c for c in after["containers"] if c["name"].startswith(prefix)]  # absent after
     stops = [c["selector"] for c in after["calls"] if c["member"] == "stop"]
-    assert stops == created[:1]  # released once, through the owned stop
+    assert sorted(stops) == sorted(created)  # each released once, through the owned stop
 
 
 @pytest.mark.stub_proven("WR-ENV-10:readiness-authenticated-postgres@stub-twin")
@@ -56,7 +57,9 @@ def test_wrong_postgres_password_never_ready(tmp_path: Path) -> None:
     assert harness.dispositions(answer).get(POSTGRES) != "started"
     after = fake_binding.read_state(state)
     checks = [c for c in after["calls"] if c["member"] == "check"]
-    assert checks and not any(c["satisfied"] for c in checks), "readiness never passed"
-    assert {c["check"] for c in checks} == {tree.POSTGRES_READY}
+    postgres = [c for c in checks if c["check"] == tree.POSTGRES_READY]
+    assert postgres and not any(c["satisfied"] for c in postgres), "readiness never passed"
+    # the only other check is the supporting service's, which passed before Postgres was made
+    assert {c["check"] for c in checks} == {tree.HTTP_SUPPORT_READY, tree.POSTGRES_READY}
     prefix = harness.selector_prefix(run_id)
     assert not [c for c in after["containers"] if c["name"].startswith(prefix)]
