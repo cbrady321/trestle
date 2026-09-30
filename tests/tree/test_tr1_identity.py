@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 
 from tests.single.control import support
-from tests.tree.test_tr1_admission import KEY, publish, refused, run_dirs, source
+from tests.tree.test_tr1_admission import KEY, admitted, publish, refused, run_dirs, source
 from trestle.common import codes
 from trestle.common.plan.compiler import AdmittedPlan
 from trestle.common.types import AdmitRequest, AdmitResultAdmitted
@@ -90,13 +90,12 @@ def test_same_node_one_vertex(tree_kernel: Kernel) -> None:
 @pytest.mark.proves("WR-UNIT-2", "WR-UNIT-2:two-nodes-not-refused", "A", "tree", "MCP+LOGIC", "CI")
 def test_same_unit_two_nodes_not_conflict(tree_kernel: Kernel) -> None:
     """One unit under two names is two nodes with two vertices, not a conflict: the tree compiles
-    and gets the temporary code (until L.TR-L.1)."""
+    and is admitted (L.TR-L.1)."""
     name = publish(tree_kernel, two_names())
     plan = plan_of(tree_kernel, name, {})
     assert isinstance(plan, AdmittedPlan), plan
     assert [v.path for v in plan.vertices] == ["", "first", "second"]
-    outcome = refused(tree_kernel, name)
-    assert outcome.code == codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED
+    admitted(tree_kernel, name)
 
 
 FORGED = {"root": "evil", "path": "x/y", "root_run_id": "r_forged", "lineage": "l"}

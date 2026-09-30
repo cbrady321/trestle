@@ -298,6 +298,58 @@ gets no signal at all; its answer reports the stop as unconfirmed.
 
 ---
 
+## Composite workflows (trees)
+
+A workflow plugin may declare a **tree**: a root that runs several children, each child a leaf or a
+group with its own children, ordered by `needs` (a child starts only after the children it needs
+are done). The root is an `AllDeclaration` (every child must succeed); `plugins.md` has a worked
+example ([Composite workflows](plugins.md#composite-workflows)). You run a tree exactly like any
+other plugin: `run(plugin="…", args={…}, wait_ms=<above zero>, completion="terminal")` admits the
+whole tree as **one run** with **one run id**, and returns one answer for all of it.
+
+- **One answer.** The answer has one `outcome` class for the whole tree and one `primary` node
+  (its `path` names where in the tree the deciding condition arose). The order in which the
+  children finished never changes it, and a shared node starts once. A child that failed only
+  stops the nodes that need it; an exception raised in any node, a `cancel` of the root, or the
+  root's deadline stops the whole tree.
+- **Child views.** Every node below the root has a view of its own. `await_runs` accepts a child
+  handle (the root's run id, then `~`, then a digest of the node's path) as well as a run id; the
+  view names its `root_run_id` and its `path`. A child view's `state` is the root's state, so it is
+  non-terminal while the root is live, and its `answer` is that node's account, the same one the
+  root's answer holds. Under the restricted profile a child view is read only by the session that
+  admitted its root (`projection.not_owner` otherwise).
+- **Cancel is addressed to the root.** `cancel` on a child handle is refused with
+  `projection.cancel_not_root`; nothing is written and the root runs on. Cancel the root's run id
+  instead. This is **open question OQ-27** (what a cancel addressed to a child view should do while
+  its root is live: refuse, or act on that child); Trestle ships the assumed answer, the refusal,
+  and a maintainer answer of "act on the child" would change it.
+- **Root-entry eligibility is open (OQ-31).** Whether a unit whose preconditions only a sibling
+  could satisfy may be published as a root is undecided. What is shipped is `admit_and_stop`: such
+  a root is admitted and stopped by the loop's own in-node refusal before any effect. That is the
+  pre-existing in-node stop, not a decision on the question.
+- **`ChoiceNode` roots are still refused.** A tree whose root (or any node) is a `ChoiceNode` is
+  refused before any run id with `admission.plan_multi_vertex_unsupported` until its selection
+  pass lands; a refusal is not a run.
+
+The refusal and stop codes a tree adds (none has a `run_id` unless it is an `execution.*` code on a
+started run):
+
+| Code | Meaning | Fix |
+|------|---------|-----|
+| `publication.unit_unresolved` | A child names a unit the plugin does not declare | Declare it, or fix the name |
+| `publication.dependency_cycle` | The `needs` graph, or the containment, loops | Break the cycle |
+| `publication.declaration_conflict` | One name is bound to two different nodes, or two references to one node carry different parameters | Use one binding per node |
+| `publication.plan_precondition_uncovered` | A leaf's precondition is covered by no node before it | Add the covering node to its `needs`, or drop the precondition |
+| `admission.unit_unresolved` | The admitted declaration names a unit that does not resolve | Republish the plugin |
+| `admission.dependency_cycle` | The admitted declaration has a cycle | Republish the plugin |
+| `admission.declaration_conflict` | The admitted declaration binds one node twice | Republish the plugin |
+| `admission.lease_set_undecidable` | The request gives no value for the root's environment field, or a node declares an environment that does not match the root's | Pass the environment argument; declare one environment |
+| `admission.unknown_identifier` | A request value names no identifier in the declared set (the refusal lists the valid ones) | Use a listed value |
+| `execution.declaration_stale` | The declaration the run was admitted with no longer matches what the plugin declares (or the admitted plan does not verify); nothing ran | Run again; republish if it repeats |
+| `projection.cancel_not_root` | `cancel` was addressed to a child | Cancel the root's run id |
+
+---
+
 ## Publishing plugins
 
 See [`plugins.md`](plugins.md) for authoring, filesystem drop-in, and `publish_plugin`.

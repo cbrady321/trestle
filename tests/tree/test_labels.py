@@ -108,25 +108,33 @@ def test_labels_fragment_loads_and_composes_resolve() -> None:
 
 
 def test_planted_held_label_unclaimable(capsys: Any) -> None:
-    """A planted passing test for a label composing A1.5 is reported unclaimable while
-    `meta register --probe multi-vertex-refusal` prints `full` (CM-7: an entry that serves a clause
-    also serves every label whose `composes` is that clause)."""
+    """After L.TR-L.1 `meta register --probe multi-vertex-refusal` prints `choice-only` (CM-7: an
+    entry that serves a clause also serves every label whose `composes` is that clause): a planted
+    passing test for a label composing A2.6 is reported unclaimable, one composing a lifted clause
+    (A1.5) is claimable, and with the entry served away the A2.6 label is claimable too."""
     labels = _tree_labels()
-    (planted,) = [lb for lb in labels if lb["id"] == "WR-UNIT-7:permutation-invariant"]
-    assert planted["composes"] == "A1.5" and planted["posture"] == "claim"
+    (held_label,) = [lb for lb in labels if lb["id"] == "WR-UNIT-2:record-slices"]
+    assert held_label["composes"] == "A2.6" and held_label["posture"] == "claim"
+    (lifted,) = [lb for lb in labels if lb["id"] == "WR-UNIT-7:permutation-invariant"]
+    assert lifted["composes"] == "A1.5" and lifted["posture"] == "claim"
 
-    # TM-B2-1 is registered with DM-12 phases and its probe prints `full` (else the band cannot run)
+    # TM-B2-1 is registered with DM-12 phases and its probe prints `choice-only` (the AllDeclaration
+    # refusal is lifted; the ChoiceNode refusal stays until L.TR-5.3)
     assert register.cmd_probe("multi-vertex-refusal") == 0
-    assert capsys.readouterr().out.strip() == "full"
+    assert capsys.readouterr().out.strip() == "choice-only"
 
-    passing = {planted["id"]: [{"gap": None, "strict_xfail": False}]}
+    passing = {
+        held_label["id"]: [{"gap": None, "strict_xfail": False}],
+        lifted["id"]: [{"gap": None, "strict_xfail": False}],
+    }
     entries = register.load_entries()
     held = register.register_violations(entries, passing)
-    assert planted["id"] in held
-    # ... and it is the entry, not the label, that holds it: with the entry's `full` phase served
-    # away, the same passing test is claimable
+    assert held_label["id"] in held
+    assert lifted["id"] not in held
+    # ... and it is the entry, not the label, that holds it: with the entry's phase served away,
+    # the same passing test is claimable
     without = [e for e in entries if e["id"] != "multi-vertex-refusal"]
-    assert planted["id"] not in register.register_violations(without, passing)
+    assert held_label["id"] not in register.register_violations(without, passing)
 
     # a label composing a clause no present entry serves (A2.5) is claimable as it stands
     (free,) = [lb for lb in labels if lb["id"] == "WR-UNIT-8:declared-tree-extracted"]

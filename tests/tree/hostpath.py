@@ -35,13 +35,19 @@ def run_tree_via_host(
 
 
 def mcp_run_tree(
-    host: mcp_host.McpHost, plugin: str, args: dict[str, Any] | None = None
+    host: mcp_host.McpHost,
+    plugin: str,
+    args: dict[str, Any] | None = None,
+    *,
+    wait_ms: int = WAIT_MS,
 ) -> dict[str, Any]:
     """The MCP `run` tool (MC-12) on `host`, waiting for the terminal row: the wire dict, with a
-    `code` when the tree was refused and a `run_id` when it was admitted."""
+    `code` when the tree was refused and a `run_id` when it was admitted. `wait_ms` bounds the
+    wait (a tree that outlives the default patience names its own bound, MC-16); the host's own
+    timeout must be at least as long."""
     result = host.call(
         "run",
-        {"plugin": plugin, "args": args or {}, "wait_ms": WAIT_MS, "completion": "terminal"},
+        {"plugin": plugin, "args": args or {}, "wait_ms": wait_ms, "completion": "terminal"},
     )
     assert isinstance(result, dict), result
     return result
