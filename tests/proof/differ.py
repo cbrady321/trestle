@@ -45,7 +45,6 @@ CM9_ALL_KEYS = CM9_REQUIRED_KEYS | CM9_OPTIONAL_KEYS
 UNBUILT_MODES = {
     "d3": "L.CS-2.4",
     "d6": "L.TR-6.1",
-    "d7": "L.TR-4.7",
 }
 
 
@@ -544,6 +543,9 @@ def build_parser() -> argparse.ArgumentParser:
     d5 = sub.add_parser("d5")
     d5.add_argument("--fossils", default=None)
 
+    d7 = sub.add_parser("d7")
+    d7.add_argument("--answers", default=None)
+
     d8 = sub.add_parser("d8")
     d8.add_argument("--pair", default=None)
 
@@ -568,6 +570,10 @@ def main(argv: list[str] | None = None) -> int:
         from tests.proof.differ_modes import d5_one_key
 
         return d5_one_key.main(args)
+    if args.mode == "d7":
+        from tests.proof.differ_modes import d7_permutation_depth
+
+        return d7_permutation_depth.main(args)
     if args.mode == "d8":
         from tests.proof.differ_modes import d8_fake_real
 
