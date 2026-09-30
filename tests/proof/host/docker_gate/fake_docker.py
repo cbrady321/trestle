@@ -19,6 +19,15 @@ State file (all keys optional)::
      "volumes": [{"name": "v1", "labels": {}}],
      "networks": [{"id": "n1", "name": "bridge", "labels": {}}]}
 
+The container verbs the adapters use (L.NW-2.5/2.6) are simulated over the same state: `run -d
+[--pull never] --name N [--tmpfs P]... [--publish 127.0.0.1::P]... [-e K=V]... IMAGE [CMD...]`
+creates a running container (exit 125 when the image is not in `images` or the name is taken:
+`--pull` is refused, so nothing is ever pulled), `stop`/`start`/`restart NAME`, `port NAME`
+(`<private>/tcp -> 0.0.0.0:<host>`, exit 1 unless running), `exec NAME CMD...` (a container's
+optional `exec_exit` is the exit status of every exec; default 0), `rm` (a running container needs
+`-f`, as in docker), and `ps` lists a running container only unless `-a` is given. A container
+row may carry `ports: [{"private": 8080, "host": 32768}]`.
+
 `$FAKE_DOCKER_MODE`: unset/`normal`; `stdin-read` (read stdin to EOF and log the bytes, for the
 later leaves' stdin-closed assertions); `hang` (block forever after logging, for the bounded-run
 tests).
@@ -26,6 +35,7 @@ tests).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -175,14 +185,17 @@ def _unreachable() -> int:
 def _cmd_ps(args: list[str], state: dict) -> int:
     rows = state.get("containers", [])
     pat = _name_filter(args)
-    quiet = "-q" in args or "-aq" in args or "--quiet" in args
+    quiet = any(a in ("-q", "-aq", "-qa", "--quiet") for a in args)
+    every = any(a in ("-a", "-aq", "-qa", "--all") for a in args)
     out = []
     for c in rows:
         names = c.get("names") or [c.get("name", "")]
+        if not every and c.get("state", "running") != "running":
+            continue
         if pat is not None and not any(pat.search("/" + n) for n in names):
             continue
         if quiet:
-            out.append(c["id"])
+            out.append(c["id"] if "--no-trunc" in args or len(c["id"]) <= 12 else c["id"][:12])
             continue
         out.append(
             {
@@ -240,9 +253,16 @@ def _cmd_image(args: list[str], state: dict) -> int:
     return 2
 
 
-def _cmd_remove(kind: str, names: list[str], state: dict) -> int:
+def _cmd_remove(kind: str, names: list[str], state: dict, force: bool = True) -> int:
     key = {"container": "containers", "network": "networks", "volume": "volumes"}[kind]
     rows = state.get(key, [])
+    if kind == "container" and not force:
+        for row in rows:
+            row_names = row.get("names") or [row.get("name", "")]
+            hit = row.get("id") in names or any(n in names for n in row_names)
+            if hit and row.get("state", "running") == "running":
+                sys.stderr.write("Error response from daemon: cannot remove a running container\n")
+                return 1
     keep, gone = [], []
     for row in rows:
         row_names = row.get("names") or [row.get("name", "")]
@@ -257,6 +277,134 @@ def _cmd_remove(kind: str, names: list[str], state: dict) -> int:
     _save_state(state)
     for row in gone:
         print(row.get("id") or row.get("name"))
+    return 0
+
+
+def _find(state: dict, name: str) -> dict | None:
+    for c in state.get("containers", []):
+        if name == c.get("id") or name in (c.get("names") or [c.get("name", "")]):
+            return c
+    return None
+
+
+def _cmd_run(args: list[str], state: dict) -> int:
+    """`docker run -d ...`: create a running container; never pulls."""
+    name = image = None
+    tmpfs: list[str] = []
+    publish: list[str] = []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in (
+            "--name",
+            "--pull",
+            "--tmpfs",
+            "--publish",
+            "-p",
+            "-e",
+            "--env",
+            "--network",
+            "--label",
+        ):
+            value = args[i + 1] if i + 1 < len(args) else ""
+            if a == "--name":
+                name = value
+            elif a == "--pull" and value != "never":
+                sys.stderr.write("fake_docker: pull refused (WR-PROOF-5)\n")
+                return 125
+            elif a == "--tmpfs":
+                tmpfs.append(value)
+            elif a in ("--publish", "-p"):
+                publish.append(value)
+            i += 2
+            continue
+        if a.startswith("--pull="):
+            if a != "--pull=never":
+                sys.stderr.write("fake_docker: pull refused (WR-PROOF-5)\n")
+                return 125
+        elif a.startswith("-"):
+            pass
+        else:
+            image = a
+            break
+        i += 1
+    if not name or not image:
+        sys.stderr.write("fake_docker: run needs --name and an image\n")
+        return 125
+    refs = {
+        ref
+        for img in state.get("images", [])
+        for ref in (
+            [f"{img.get('repository')}:{img.get('tag')}", img.get("repository"), img["id"]]
+            + list(img.get("repo_digests", []))
+        )
+    }
+    if image not in refs:
+        sys.stderr.write(f"Unable to find image '{image}' locally (pull never)\n")
+        return 125
+    if _find(state, name) is not None:
+        sys.stderr.write(f'Conflict. The container name "/{name}" is already in use\n')
+        return 125
+    ports = []
+    for spec in publish:
+        private = int(spec.rsplit(":", 1)[-1].split("/")[0])
+        host = 32768 + int(hashlib.sha256(f"{name}:{private}".encode()).hexdigest()[:4], 16) % 28000
+        ports.append({"private": private, "host": host})
+    cid = hashlib.sha256(name.encode()).hexdigest()
+    state.setdefault("containers", []).append(
+        {
+            "id": cid,
+            "names": [name],
+            "image": image,
+            "state": "running",
+            "labels": {},
+            "ports": ports,
+            "tmpfs": tmpfs,
+        }
+    )
+    _save_state(state)
+    print(cid)
+    return 0
+
+
+def _cmd_port(args: list[str], state: dict) -> int:
+    names = [a for a in args if not a.startswith("-")]
+    c = _find(state, names[0]) if names else None
+    if c is None:
+        sys.stderr.write("Error response from daemon: No such container\n")
+        return 1
+    if c.get("state", "running") != "running":
+        sys.stderr.write("Error response from daemon: Container is not running\n")
+        return 1
+    for p in c.get("ports", []):
+        print(f"{p['private']}/tcp -> 0.0.0.0:{p['host']}")
+    return 0
+
+
+def _cmd_exec(args: list[str], state: dict) -> int:
+    rest = list(args)
+    while rest and rest[0].startswith("-"):
+        rest = (
+            rest[2:] if rest[0] in ("-e", "--env", "-u", "--user", "-w", "--workdir") else rest[1:]
+        )
+    c = _find(state, rest[0]) if rest else None
+    if c is None or c.get("state", "running") != "running":
+        sys.stderr.write("Error response from daemon: container is not running\n")
+        return 1
+    return int(c.get("exec_exit", 0))
+
+
+def _cmd_start(args: list[str], state: dict) -> int:
+    names = [a for a in args if not a.startswith("-")]
+    hits = [c for n in names if (c := _find(state, n)) is not None]
+    if not names or len(hits) != len(names):
+        sys.stderr.write("Error response from daemon: No such container\n")
+        return 1
+    for c in hits:
+        c["state"] = "running"
+    _save_state(state)
+    for n in names:
+        print(n)
     return 0
 
 
@@ -315,6 +463,14 @@ def _dispatch(args: list[str], state: dict) -> int:
         return _cmd_remove("network", [a for a in rest[1:] if not a.startswith("-")], state)
     if cmd == "volume" and rest[:1] == ["rm"]:
         return _cmd_remove("volume", [a for a in rest[1:] if not a.startswith("-")], state)
+    if cmd == "run":
+        return _cmd_run(rest, state)
+    if cmd == "port":
+        return _cmd_port(rest, state)
+    if cmd == "exec":
+        return _cmd_exec(rest, state)
+    if cmd in ("start", "restart"):
+        return _cmd_start(rest, state)
     if cmd in ("rm", "stop"):
         names = [a for a in rest if not a.startswith("-")]
         if cmd == "stop":
@@ -329,7 +485,9 @@ def _dispatch(args: list[str], state: dict) -> int:
                 return 1
             _save_state(state)
             return 0
-        return _cmd_remove("container", names, state)
+        return _cmd_remove(
+            "container", names, state, force=any(a in ("-f", "--force") for a in rest)
+        )
     sys.stderr.write(f"fake_docker: unsupported: {' '.join(args)}\n")
     return 2
 

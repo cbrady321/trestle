@@ -76,6 +76,11 @@ CONTAINER_BINDINGS = [
             pytest.mark.proves(
                 "WR-VERIFY-8", "WR-VERIFY-8:b-docker-fake-read-facets", "B", "B", "LOGIC", "CI"
             ),
+            # L.NW-2.5: the fake twin of the real read cases (the `[real]` node is L.NW-2.6's)
+            pytest.mark.stub_proven(
+                "WR-OWN-7:b-identity-not-port-occupancy-adapter@host@stub-twin"
+            ),
+            pytest.mark.stub_proven("WR-ENV-2:route-refused-adapter@host@stub-twin"),
         ],
     ),
 ]
