@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import os
 import platform
 import sys
 import time
@@ -187,18 +186,19 @@ class Admission:
                     ),
                 )
 
-        # TM-B2-1: A-1 admits one-vertex roots only; a composite root is refused whatever its other
-        # defects (the tree band's TR-L / TR-5 narrow and remove this call, register entry
-        # `multi-vertex-refusal`), still before any run id exists.
-        composite = multi_vertex_refusal(snap)
-        if composite is not None:
-            return composite
-
         # B2-C2: every root is compiled and carved to a plan before any run id exists (a refusal
-        # is not a run); a plan-less root gets the implicit depth-1 plan (B2-C1).
+        # is not a run); a plan-less root gets the implicit depth-1 plan (B2-C1). The whole
+        # declared tree is compiled here (MC-23 over MC-34), so a tree defective in any way the
+        # declaration and the request show is refused with its own code naming the identifier.
         planned = plan_for_admission(snap, req, deadline_s)
         if isinstance(planned, AdmitResultRefused):
             return planned
+        # TM-B2-1 (MC-B3-03 order): a valid multi-vertex root is still refused, after every
+        # specific refusal above and still before any run id exists (the tree band's TR-L / TR-5
+        # narrow and remove this call, register entry `multi-vertex-refusal`).
+        composite = multi_vertex_refusal(snap)
+        if composite is not None:
+            return composite
         busy = self._environment_busy(planned, deadline_s)
         if busy is not None:
             return busy
@@ -266,9 +266,10 @@ def multi_vertex_refusal(snap: PluginSnapshot) -> AdmitResultRefused | None:
     """TM-B2-1 (register entry `multi-vertex-refusal`, phase `full`), the one home of the
     refusal (DM-07): a declared root with more than one vertex, an `AllDeclaration` with children
     or a `ChoiceNode` with alternatives, is refused `admission.plan_multi_vertex_unsupported`.
-    Decided on the declaration alone (the tree's descendants are unresolved in A-1), so it
-    precedes every plan refusal; `plan_for_admission` and `write_admitted_run` (the harness's
-    path, MC-B2-08) never refuse a composite. A plain plugin and a leaf root are not refused."""
+    Decided on the declaration alone, after `plan_for_admission` has compiled the whole tree (a
+    defective tree gets its own code, L.TR-1.1); `plan_for_admission` and `write_admitted_run`
+    (the harness's path, MC-B2-08) never refuse a composite. A plain plugin and a leaf root are
+    not refused."""
     declared = load_declared_tree(snap)
     if declared is None:
         return None
@@ -363,11 +364,7 @@ def write_admitted_run(
 ) -> AdmittedRun:
     """The post-refusal half of admission (MC-B2-08): mint the run id, write the run directory,
     `spec.json` (with `plan`), the `created` row and the idempotency record. Every refusal has
-    already happened; the harness's `run_tree` (L.SV-5.7) admits through here too. When the
-    `TRESTLE_ADMISSION_AUDIT` environment variable names a file, one ndjson line
-    `{run_dir, vertex_count, plugin, pid, nodeid}` is appended to it (TM-B2-8, test
-    instrumentation for J-SINGLE (b): each admission is attributable to its suite through
-    `PYTEST_CURRENT_TEST`); unset, nothing is written."""
+    already happened; the harness's `run_tree` (L.SV-5.7) admits through here too."""
     a_hash = args_hash(req.args)
     deadline_s, _ = deadline_of(snap)
     run_id = generate_run_id()
@@ -451,17 +448,6 @@ def write_admitted_run(
             ),
         )
 
-    audit_path = os.environ.get("TRESTLE_ADMISSION_AUDIT")
-    if audit_path:
-        line = {
-            "run_dir": str(run_dir),
-            "vertex_count": len(plan.vertices),
-            "plugin": snap.plugin,
-            "pid": os.getpid(),
-            "nodeid": os.environ.get("PYTEST_CURRENT_TEST"),
-        }
-        with open(audit_path, "a", encoding="utf-8") as audit:
-            audit.write(json.dumps(line, sort_keys=True) + "\n")
     return AdmittedRun(
         run_id=run_id,
         spec_hash=spec_hash,

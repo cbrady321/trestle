@@ -363,6 +363,75 @@ def _literal_conflict(bindings: list[Mapping[str, Any]]) -> str | None:
     return None
 
 
+def _provides(
+    nodes: Mapping[str, Mapping[str, Any]], path: str, seen: frozenset[str]
+) -> frozenset[str]:
+    """The checks that hold once the node at `path` has completed: a leaf's postcondition, every
+    child's for an ALL composite (it completes when they all have), and only what every
+    alternative establishes for a choice (any one of them may be the one that ran)."""
+    node = nodes[path]
+    if path in seen:
+        return frozenset()
+    seen = seen | {path}
+    if node["compose"] == "leaf":
+        return frozenset({node["postcondition"]})
+    kids = [
+        _provides(nodes, ref["path"], seen)
+        for _name, _unit, ref in _refs(path, node)
+        if ref["path"] is not None
+    ]
+    if node["compose"] == "all":
+        return frozenset().union(*kids)
+    return frozenset.intersection(*kids) if kids else frozenset()
+
+
+def _uncovered_child_precondition(
+    nodes: Mapping[str, Mapping[str, Any]],
+) -> tuple[str, str] | None:
+    """(node path, check) of the first child leaf precondition no upstream node establishes, or
+    None. A child's precondition is covered by the postcondition of a sibling it `needs` (directly
+    or through the siblings that one needs) or of anything that already had to complete before its
+    parent could start (the parent's own `needs` closure, inherited down). The root is judged by
+    `refuse_at_publication` (OQ-31), not here. An inline check of the child's own `observe` is
+    code the declaration cannot show, so it does not count at publication (one vertex's inline
+    coverage stays the loop's, L-7)."""
+
+    def walk(path: str, inherited: frozenset[str], trail: frozenset[str]) -> tuple[str, str] | None:
+        if path in trail:
+            return None
+        node = nodes[path]
+        if node["compose"] == "leaf":
+            if path == ROOT_PATH:
+                return None
+            for check in node["preconditions"]:
+                if check not in inherited:
+                    return path, check
+            return None
+        refs = _refs(path, node)
+        by_name = {name: ref for name, _unit, ref in refs}
+        for _name, _unit, ref in refs:
+            if ref["path"] is None:
+                continue
+            available = inherited
+            if node["compose"] == "all":
+                queue, closure = list(ref["binding"]["needs"]), set()
+                while queue:
+                    need = queue.pop()
+                    if need in closure or need not in by_name:
+                        continue
+                    closure.add(need)
+                    queue.extend(by_name[need]["binding"]["needs"])
+                for need in closure:
+                    if by_name[need]["path"] is not None:
+                        available = available | _provides(nodes, by_name[need]["path"], frozenset())
+            found = walk(ref["path"], available, trail | {path})
+            if found is not None:
+                return found
+        return None
+
+    return walk(ROOT_PATH, frozenset(), frozenset())
+
+
 def publication_refusal(
     tree: DeclaredTree, root_eligibility: RootEligibility = "admit_and_stop"
 ) -> ExtractionRefused | None:
@@ -374,6 +443,8 @@ def publication_refusal(
     sibling, child or alternative (`publication.unit_unresolved`, naming the unit or the entry);
     two references to one logical node whose literal parameters differ
     (`publication.declaration_conflict`, naming the node; the request-argument half is admission's);
+    a child leaf declaring a precondition no upstream postcondition through `needs` covers
+    (`publication.plan_precondition_uncovered`, naming the node and the check; L.TR-1.5);
     and, under `refuse_at_publication` only, a root that is not eligible as a root entry (OQ-31: a
     leaf declaring a precondition only a sibling could cover,
     `publication.plan_precondition_uncovered`). Admission's own refusals of the same grounds stay
@@ -441,6 +512,15 @@ def publication_refusal(
                 f"two references bind parameter {key!r} to different literals",
                 code=vocab.PUBLICATION_DECLARATION_CONFLICT,
             )
+    uncovered = _uncovered_child_precondition(nodes)
+    if uncovered is not None:
+        where, check = uncovered
+        return ExtractionRefused(
+            _shown(where),
+            f"precondition {check!r} of {_shown(where)!r} is covered by no upstream postcondition "
+            "through needs",
+            code=vocab.PUBLICATION_PLAN_PRECONDITION_UNCOVERED,
+        )
     root = nodes[ROOT_PATH]
     if root_eligibility == "refuse_at_publication" and root["compose"] == "leaf":
         if root["preconditions"]:
