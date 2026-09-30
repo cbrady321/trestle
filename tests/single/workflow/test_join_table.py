@@ -365,7 +365,10 @@ def test_rows_J10_to_J23a() -> None:
         used,
         now=20,
     )
-    assert v.condition is C.FAILED
+    # J-20 finds no remedy issuable (FAILED), and group 5a's J-3 (L.SL-6.1) turns that not-SATISFIED
+    # verdict into BLOCKED REMEDY_EXHAUSTED: both of the remedy's attempts are ticketed and the
+    # latest remedy ticket's wait has elapsed
+    assert shape(v) == (P.CREATED, C.BLOCKED, codes.REMEDY_EXHAUSTED)
     # J-21: no fact older, a generation differs: STALE within the slice, BLOCKED after
     v = run(t, obs(selector_present=True, currency=(drift,)), owned, now=1, host=CURRENT)
     assert shape(v) == (P.CREATED, C.STALE, None)
