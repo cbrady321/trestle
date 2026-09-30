@@ -156,8 +156,9 @@ real identity provider does is unverified and out of scope. The labels are
 
 ### Containment boundary: build daemons and helpers
 
-A task the toolchain leg runs is contained by the run: every process it starts stays in the run's
-process group and session, and a stop or cancel ends all of them within the stop bound. A
+A task the toolchain leg runs is contained by the run: a process it starts that stays attributable
+to the run (in the run's process group and session) is ended by a stop or cancel within the stop
+bound. A
 Gradle-shaped build adds a case: Gradle starts a build daemon that outlives the build. That is
 **prevented by declared configuration**: the catalog's task argv carries `--no-daemon` and
 `-Porg.gradle.java.installations.auto-download=false`, its policy reads `DISABLED_BY_CONFIGURATION`
