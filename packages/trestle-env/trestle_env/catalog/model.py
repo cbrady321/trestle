@@ -10,6 +10,9 @@ tests, selectors and local overrides a request may name. Everything is closed:
   (never a path) and whose remaining entries are literals; a test or an override names a task by
   id, never an argv, and an unknown key in the file is refused, so no free-form executable is
   representable (WR-AUTH-3's catalog half);
+* a `RemediationPair` declares, as data, which stable code the loop may answer with which effect,
+  and the budget of that repair (attempts, total time, cooldown; V-14): the pair is the catalog's,
+  the bound and the recording are the runtime's;
 * `Catalog.load` refuses a duplicate identifier (of one type, or a duplicate JSON key), an unknown
   key, a malformed value and a cross-reference to an identifier that is not in the catalog, naming
   the identifier (`CatalogError`), before anything is built.
@@ -30,6 +33,8 @@ ID_MAX = 128  # = trestle.common.plan.bounds.NAME_MAX (V-13: a logical name)
 PIN_VERSION_MAX = 64
 ARG_MAX = 256  # bytes of one task argument
 ARGV_MAX = 32  # entries of one task argv, tool included
+ATTEMPTS_MAX = 16  # attempts one remediation pair may declare
+BUDGET_SECONDS_MAX = 3600.0  # total time or cooldown one remediation pair may declare
 SCHEMA_VERSION = 1
 
 
@@ -110,6 +115,20 @@ class PinVersion(Closed):
     MAX = PIN_VERSION_MAX
 
 
+class StableCodeName(Closed):
+    """A V-11 stable code, spelled `<origin>.<snake>` (the code a remediation answers)."""
+
+    KIND = "stable code"
+    PATTERN = re.compile(r"[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*")
+
+
+class EffectName(Closed):
+    """The declared effect a remediation runs (a leaf's effect id)."""
+
+    KIND = "effect id"
+    PATTERN = re.compile(r"[a-z][a-z0-9_]*")
+
+
 class Arg(Closed):
     """One literal task argument: printable, no control character, not a shell fragment."""
 
@@ -128,6 +147,8 @@ CLOSED_TYPES: tuple[type[Closed], ...] = (
     EnvKey,
     ToolName,
     PinVersion,
+    StableCodeName,
+    EffectName,
     Arg,
 )
 
@@ -184,7 +205,30 @@ class Override:
     task: TaskId
 
 
-_TOP = ("schema", "env_key", "services", "projects", "tests", "overrides")
+@dataclass(frozen=True)
+class RemediationPair:
+    """A declared repair: on `code` the loop may run `effect`, at most `attempts` times within
+    `total_s` seconds, `cooldown_s` seconds apart (V-14 `RemedyDeclaration`, as data)."""
+
+    code: StableCodeName
+    effect: EffectName
+    attempts: int
+    total_s: float
+    cooldown_s: float
+
+    def __post_init__(self) -> None:
+        bad = (
+            type(self.attempts) is not int
+            or not 1 <= self.attempts <= ATTEMPTS_MAX
+            or not 0 < self.total_s <= BUDGET_SECONDS_MAX
+            or not 0 <= self.cooldown_s <= self.total_s
+        )
+        if bad:
+            raise CatalogError("invalid", str(self.code), "a remediation budget is out of bounds")
+
+
+_TOP = ("schema", "env_key", "services", "projects", "tests", "overrides", "remediation")
+_REMEDIATION = ("code", "effect", "attempts", "total_s", "cooldown_s")
 _SERVICE = ("id", "selector")
 _PROJECT = ("id", "pin", "tasks")
 _TASK = ("id", "argv", "reports_tests")
@@ -243,6 +287,7 @@ class Catalog:
     tests: tuple[TestSpec, ...]
     overrides: tuple[Override, ...]
     env_key: EnvKey
+    remediation: tuple[RemediationPair, ...] = ()
     _index: dict[str, dict[str, Any]] = field(init=False, repr=False, compare=False, hash=False)
 
     def __post_init__(self) -> None:
@@ -250,6 +295,7 @@ class Catalog:
         _unique([p.id for p in self.projects])
         _unique([t.id for t in self.tests])
         _unique([o.id for o in self.overrides])
+        _unique([r.code for r in self.remediation])  # one repair per code
         for project in self.projects:
             _unique([t.id for t in project.tasks])
             for pin in project.pin:
@@ -290,6 +336,9 @@ class Catalog:
     def override(self, identifier: str) -> Override | None:
         return self._index["override"].get(identifier)
 
+    def remedy(self, code: str) -> RemediationPair | None:
+        return next((r for r in self.remediation if r.code == code), None)
+
     def task(self, project: str, task: str) -> TaskEntry | None:
         found = self.project(project)
         return next((t for t in found.tasks if t.id == task), None) if found else None
@@ -311,7 +360,9 @@ class Catalog:
 
     @classmethod
     def from_data(cls, data: object) -> Catalog:
-        top = _keys(data, _TOP, "the catalog", optional=("tests", "overrides", "projects"))
+        top = _keys(
+            data, _TOP, "the catalog", optional=("tests", "overrides", "projects", "remediation")
+        )
         if top["schema"] != SCHEMA_VERSION or isinstance(top["schema"], bool):
             raise CatalogError("invalid", str(top["schema"])[:ID_MAX], "unsupported schema version")
         services = tuple(
@@ -341,7 +392,8 @@ class Catalog:
                 for o in _items(top.get("overrides", []), "overrides")
             )
         )
-        return cls(services, projects, tests, overrides, EnvKey(top["env_key"]))
+        remediation = tuple(_remedy(o) for o in _items(top.get("remediation", []), "remediation"))
+        return cls(services, projects, tests, overrides, EnvKey(top["env_key"]), remediation)
 
 
 def _project(obj: Mapping[str, Any]) -> Project:
@@ -360,3 +412,23 @@ def _project(obj: Mapping[str, Any]) -> Project:
             raise CatalogError("invalid", str(entry["id"])[:ID_MAX], "reports_tests is a boolean")
         tasks.append(TaskEntry(TaskId(entry["id"]), tuple(Arg(a) for a in argv), reports))
     return Project(ProjectId(obj["id"]), pin, tuple(tasks))
+
+
+def _number(value: object, where: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise CatalogError("invalid", where, "expected a number")
+    return float(value)
+
+
+def _remedy(obj: object) -> RemediationPair:
+    entry = _keys(obj, _REMEDIATION, "a remediation pair")
+    attempts = entry["attempts"]
+    if isinstance(attempts, bool) or not isinstance(attempts, int):
+        raise CatalogError("invalid", str(entry["code"])[:ID_MAX], "attempts is an integer")
+    return RemediationPair(
+        StableCodeName(entry["code"]),
+        EffectName(entry["effect"]),
+        attempts,
+        _number(entry["total_s"], "total_s"),
+        _number(entry["cooldown_s"], "cooldown_s"),
+    )
