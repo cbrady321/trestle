@@ -229,7 +229,8 @@ def test_d6_after_sibling_exception_compared_to_first_stop(
     # after it the node is a stopped node of the parent's answer (V-8 L-8)
     assert pair.child.account is not None and pair.child.account["listing"] == "stopped"
     (end,) = [r for r in pair.child.rows if r["class"] == "end"]
-    assert end["cut"] == "stopped" and end["seq"] > stop
+    # `==`: it saw the goal flip before the raise row was written (B1-E6), so it is the stop
+    assert end["cut"] == "stopped" and end["seq"] >= stop
     # ... while called directly, nothing stopped it: it ran to its own end
     (direct_end,) = [r for r in pair.direct.rows if r["class"] == "end"]
     assert direct_end["cut"] is None and direct_end["code"] == "execution.postcondition_timeout"
@@ -436,3 +437,19 @@ def test_first_stop_is_the_first_exception_record() -> None:
     ]
     assert d6.first_exception_stop(entries) == 2
     assert d6.first_exception_stop(entries[:1]) is None
+
+
+def test_first_stop_is_a_cut_end_recorded_before_the_raise_row() -> None:
+    """B1-E6 flips the goal before the raising node's step row is written, so a sibling that saw the
+    flip can end (`cut=stopped`) ahead of that row: the stop is then that end, not the raise row. An
+    end that was not cut, or a cut end with no raise at all, is no exception stop."""
+    entries = [
+        {"seq": 1, "class": "plan"},
+        {"seq": 2, "class": "issue", "path": "work"},
+        {"seq": 3, "class": "end", "cut": "stopped", "path": "work"},
+        {"seq": 4, "class": "step", "code": "execution.unit_raised", "path": "boom"},
+    ]
+    assert d6.first_exception_stop(entries) == 3
+    uncut = [{**e, "cut": None} if e["class"] == "end" else e for e in entries]
+    assert d6.first_exception_stop(uncut) == 4
+    assert d6.first_exception_stop(entries[:3]) is None
