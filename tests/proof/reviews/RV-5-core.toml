@@ -1,0 +1,22 @@
+# RV-5 at J-CORE (L.J-CORE.1, CM-5 role 1): stage-critic transcription review paired
+# with `python -m tests.proof.transcribe --check all`. Reviewer: stage critic, read-only.
+# One round, pass, at 174ba22 (WR-Merge: CL-PX2). The next master commit, 6cef746
+# (WR-Fix: CS-1, doc fix c07ee28 for RV-1/RV-4), changes no transcribed file
+# (matrix_map, row_owners, k_doc_map, open_questions, transcribe.py, labels.d, temporary.d,
+# deferrals, divergence all identical 174ba22..6cef746), and the paired check re-run at
+# 6cef746 exits 0, so the record names 6cef746, the candidate base.
+# Maintainer's attention (no fix required here): divergence.toml still lists the pre-repoint
+# docs for K-8/K-18 (no proof tool reads that field); K-8's container half (Slice B RB-12)
+# has no k_doc_map docs entry and rides the CM-8 deferral; divergence K-5/K-9
+# due_checkpoint names the first code half. Verdict: _tmp/delivery/RV-5-core-review.md.
+id = "RV-5"
+mode = "stage-critic review"
+outcome = "pass"
+sha = "6cef746e6a540870eb9eecd6a376ddbe74cbc8bc"
+transcribe_log = "transcribe --check all --requirements requirements-workflow-runtime.md --decomposition decomposition-workflow-runtime.md: exit 0, no findings (reviewed at 174ba22; re-run at 6cef746 exit 0, no transcribed file changed between them). Also TRESTLE_REQUIREMENTS/TRESTLE_DECOMPOSITION pytest tests/proof/drift -k SA-08: 4 passed; meta check-map: exit 0. Reviewer: 65 clauses / 8 parts / 73 proves ids verbatim in cell order, no uncovered cell text; temporary.d/core.toml byte-identical to the plan literal (TM-C1..TM-C4b); labels.d/core.toml 102 labels = the plan's rows table; deferrals.toml 9/9 equal plan (c); 129 rows = decomposition s7 (owners, dispositions 71/58, contributing, join_cids, slice_tag equal); K-1..K-19 rows/confirm equal requirements L532-550, landing merges equal the phase merge tables; K-8 and K-18 repoints faithful."
+
+[criteria]
+verbatim_fragments = "pass"
+row_set = "pass"
+owner = "pass"
+k_docs = "pass"
