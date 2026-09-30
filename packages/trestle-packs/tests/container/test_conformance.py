@@ -8,19 +8,25 @@ not vacuous. The real adapters register their own bindings in L.NW-2.5 - L.NW-2.
 from __future__ import annotations
 
 import json
+import os
 import shutil
-from collections.abc import Callable
+import subprocess
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
 from conformance import compose_cases, container_cases
+from tests.proof import tolerances
+from tests.proof.host.docker_gate import fake_docker, inventory
 from tests.proof.suites.ports import core
 from trestle.workflow import ports
 from trestle.workflow.declarations import RealizationKind
 
+from trestle_packs.container import ContainerDefinition, bind
 from trestle_packs.fakes.compose import FakeComposeResolver
 from trestle_packs.fakes.container import FakeContainerEngine
+from trestle_packs.process.command import CommandPort
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 SPEC = ports.ResourceSpec("suite-db", RealizationKind.DOCKER_SERVICE, "suite-entry", None)
@@ -65,6 +71,209 @@ def fake_container(
     return build
 
 
+# ------------------------------------------------------------------------------- real binding
+#
+# The real adapter, bound to a docker CLI, an endpoint and a pinned image. Two bindings run the ONE
+# suite file: `real-shim` (CI: the absolute-path `fake_docker.py` shim, no engine) and `real` (the
+# host-docker gate, `docker_host`: the operator's docker and the MC-B-10 alpine image the gate
+# exports as `TRESTLE_IMAGE_ALPINE`, `TRESTLE_DOCKER_ENDPOINT`). What the family needs beyond the
+# port (planting a found instance, seeding a volume, running a descriptor's argv, the engine
+# inventory) is done here with plain docker calls, never with the adapter under test.
+
+FIXTURE_LABEL = "trestle.proof.fixture=container-suite"
+KEEP_RUNNING = ("sh", "-c", "trap 'exit 0' TERM; while :; do sleep 1; done")
+SELECTOR_ROOT = "^/trwr-" + container_cases.ROOT_RUN + "-"
+
+
+class RealEngine:
+    """One docker CLI bound to one endpoint and image: the suite's infrastructure calls."""
+
+    def __init__(self, cli: str, endpoint: str | None, image: str) -> None:
+        self.cli, self.endpoint, self.image = cli, endpoint, image
+        self.volumes: list[str] = []
+
+    def docker(self, *args: str) -> tuple[int, str]:
+        host = ["--host", self.endpoint] if self.endpoint else []
+        return self.run_argv([self.cli, *host, *args])
+
+    def run_argv(self, argv: Sequence[str]) -> tuple[int, str]:
+        try:
+            done = subprocess.run(  # noqa: S603 - the suite's own docker, an absolute path
+                list(argv),
+                capture_output=True,
+                text=True,
+                stdin=subprocess.DEVNULL,
+                env=inventory.docker_env(),
+                timeout=tolerances.JOIN_WAIT_S,
+                check=False,
+            )
+        except FileNotFoundError:
+            return 127, ""
+        return done.returncode, done.stdout
+
+    def plant_found(self, system: str, running: bool = True) -> str:
+        verb = "run" if running else "create"
+        code, out = self.docker(
+            verb, *(["-d"] if running else []), "--pull", "never", "--name", system,
+            "--label", FIXTURE_LABEL, self.image, *KEEP_RUNNING,
+        )  # fmt: skip
+        assert code == 0, out
+        return system
+
+    def seed_volume(self, name: str) -> None:
+        code, out = self.docker("volume", "create", "--label", FIXTURE_LABEL, name)
+        assert code == 0, out
+        self.volumes.append(name)
+
+    def cleanup(self) -> None:
+        """Remove what one case left: this root's selectors, the planted found instance, the seeded
+        volumes (fixture-labelled; CSC-10). Never an unattributable object."""
+        for name_filter in (SELECTOR_ROOT, "^/suite-db$"):
+            _, ids = self.docker("ps", "-aq", "--no-trunc", "--filter", f"name={name_filter}")
+            for cid in ids.split():
+                self.docker("rm", "-f", cid)
+        for volume in self.volumes:
+            self.docker("volume", "rm", volume)
+        self.volumes.clear()
+
+
+def _real_definitions(image: str) -> dict[str, ContainerDefinition]:
+    return {
+        "suite-entry": ContainerDefinition(
+            image, command=KEEP_RUNNING, data_paths=("/data",), ports=(8080,)
+        )
+    }
+
+
+def real_container(
+    cli: str,
+    endpoint: str | None,
+    image: str,
+    inventory_of: Callable[[], dict[str, frozenset[str]]],
+    down_of: Callable[[], tuple[str, str | None]],
+) -> Callable[[], core.Implementation]:
+    """A factory of `real` implementations. `down_of` names the CLI and endpoint of an engine that
+    does not answer (the same descriptor argv is run against it)."""
+
+    def build() -> core.Implementation:
+        engine = RealEngine(cli, endpoint, image)
+        port = bind(cli, endpoint, CommandPort(), definitions=_real_definitions(image)).containers
+
+        def unreachable() -> core.Implementation:
+            down_cli, down_endpoint = down_of()
+            dead = RealEngine(down_cli, down_endpoint, image)
+            broken = bind(down_cli, down_endpoint, CommandPort()).containers
+
+            def rebind(argv: Sequence[str]) -> tuple[int, str]:
+                moved = [down_cli, *argv[1:]]
+                if "--host" in moved and down_endpoint is not None:
+                    moved[moved.index("--host") + 1] = down_endpoint
+                return dead.run_argv(moved)
+
+            return core.Implementation(broken, name="real-unreachable", extras={"run_argv": rebind})
+
+        def missing_cli() -> core.Implementation:
+            absent = str(Path(cli).parent / "no-such-docker")
+            broken = bind(absent, endpoint, CommandPort()).containers
+            return core.Implementation(broken, name="real-missing-cli")
+
+        return core.Implementation(
+            port,
+            core.Reach(engine_inventory=inventory_of),
+            name="real",
+            extras={
+                "spec": SPEC,
+                "lifetimes": ("run", "durable"),
+                "executable": cli,
+                "endpoint": endpoint,
+                "plant_found": engine.plant_found,
+                "seed_volume": engine.seed_volume,
+                "run_argv": engine.run_argv,
+                "unreachable": unreachable,
+                "missing_cli": missing_cli,
+            },
+            close=engine.cleanup,
+        )
+
+    return build
+
+
+def shim_inventory(state: Path) -> Callable[[], dict[str, frozenset[str]]]:
+    def read() -> dict[str, frozenset[str]]:
+        data = fake_docker.read_state(state)
+        return {
+            "containers": frozenset(n for c in data["containers"] for n in c["names"]),
+            "images": frozenset(f"{i['repository']}:{i['tag']}" for i in data["images"]),
+            "volumes": frozenset(v["name"] for v in data["volumes"]),
+            "networks": frozenset(n["name"] for n in data["networks"]),
+        }
+
+    return read
+
+
+def docker_inventory(cli: str, endpoint: str | None) -> Callable[[], dict[str, frozenset[str]]]:
+    def read() -> dict[str, frozenset[str]]:
+        snap = inventory.snapshot(cli, endpoint)
+        assert snap["engine"]["reachable"], snap["engine"]
+        return {
+            kind: frozenset(
+                name
+                for obj in snap[kind]
+                for name in (
+                    inventory.object_names(obj) if kind != "images" else [inventory._key(kind, obj)]
+                )
+            )
+            for kind in inventory.KINDS
+        }
+
+    return read
+
+
+def real_shim_container(base: Path) -> Callable[[], core.Implementation]:
+    """The real adapter over `CommandPort` and the shim: one fresh engine state per case."""
+    counter = iter(range(10_000))
+
+    def build() -> core.Implementation:
+        directory = base / f"engine-{next(counter)}"
+        directory.mkdir()
+        state = directory / "state.json"
+        fake_docker.write_state(
+            state,
+            reachable=True,
+            server_version="29.8.0",
+            containers=[],
+            images=[{"id": "sha256:aa", "repository": "alpine", "tag": "3.20", "repo_digests": []}],
+            volumes=[],
+            networks=[],
+        )
+        cli = fake_docker.install_shim(directory, state)
+        dead_dir = directory / "down"
+        dead_dir.mkdir()
+        dead_state = dead_dir / "state.json"
+        fake_docker.write_state(dead_state, reachable=False)
+        dead_cli = fake_docker.install_shim(dead_dir, dead_state)
+        endpoint = "unix:///fake/desktop-linux.sock"
+        return real_container(
+            cli, endpoint, "alpine:3.20", shim_inventory(state), lambda: (dead_cli, endpoint)
+        )()
+
+    return build
+
+
+def real_docker_container(base: Path) -> Callable[[], core.Implementation]:
+    """The real adapter over the operator's docker at the gate's endpoint (`docker_host`)."""
+    cli = shutil.which("docker")  # the test names the operator's path; the adapter never searches
+    assert cli is not None, "the host-docker gate runs with a docker CLI (preflight)"
+    endpoint = os.environ.get("TRESTLE_DOCKER_ENDPOINT")
+    image = os.environ[
+        "TRESTLE_IMAGE_ALPINE"
+    ]  # `<repo>@sha256:<hex>`, exported by `docker_gate run`
+    absent = f"unix://{base}/absent.sock"
+    return real_container(
+        cli, endpoint, image, docker_inventory(cli, endpoint), lambda: (cli, absent)
+    )
+
+
 CONTAINER_BINDINGS = [
     pytest.param(
         "fake",
@@ -76,20 +285,66 @@ CONTAINER_BINDINGS = [
             pytest.mark.proves(
                 "WR-VERIFY-8", "WR-VERIFY-8:b-docker-fake-read-facets", "B", "B", "LOGIC", "CI"
             ),
-            # L.NW-2.5: the fake twin of the real read cases (the `[real]` node is L.NW-2.6's)
+            # L.NW-2.5: the fake twin of the real read cases
             pytest.mark.stub_proven(
                 "WR-OWN-7:b-identity-not-port-occupancy-adapter@host@stub-twin"
             ),
             pytest.mark.stub_proven("WR-ENV-2:route-refused-adapter@host@stub-twin"),
+            # L.NW-2.6: the fake twin of the real effect cases
+            pytest.mark.stub_proven("WR-OWN-4:b-port-stop-never-removes-volume@host@stub-twin"),
+            pytest.mark.stub_proven("WR-PROOF-4:b-descriptor-before-effect@host@stub-twin"),
+        ],
+    ),
+    pytest.param("real-shim", id="real-shim"),
+    pytest.param(
+        "real",
+        id="real",
+        marks=[
+            pytest.mark.docker_host,
+            pytest.mark.proves(
+                "WR-OWN-7",
+                "WR-OWN-7:b-identity-not-port-occupancy-adapter@host",
+                "B",
+                "B",
+                "DOCKER",
+                "HOST",
+            ),
+            pytest.mark.proves(
+                "WR-ENV-2", "WR-ENV-2:route-refused-adapter@host", "B", "B", "DOCKER", "HOST"
+            ),
+            pytest.mark.proves(
+                "WR-OWN-4",
+                "WR-OWN-4:b-port-stop-never-removes-volume@host",
+                "B",
+                "B",
+                "DOCKER",
+                "HOST",
+            ),
+            pytest.mark.proves(
+                "WR-PROOF-4",
+                "WR-PROOF-4:b-descriptor-before-effect@host",
+                "B",
+                "B",
+                "DOCKER",
+                "HOST",
+            ),
         ],
     ),
 ]
-CONTAINER_FACTORIES: dict[str, Callable[[], core.Implementation]] = {"fake": fake_container()}
+
+
+def container_factory(binding: str, base: Path) -> Callable[[], core.Implementation]:
+    factories: dict[str, Callable[[Path], Callable[[], core.Implementation]]] = {
+        "fake": lambda _: fake_container(),
+        "real-shim": real_shim_container,
+        "real": real_docker_container,
+    }
+    return factories[binding](base)
 
 
 @pytest.mark.parametrize("binding", CONTAINER_BINDINGS)
-def test_container_port_suite(binding: str) -> None:
-    run = core.run_family(container_cases.FAMILY, CONTAINER_FACTORIES[binding])
+def test_container_port_suite(binding: str, tmp_path: Path) -> None:
+    run = core.run_family(container_cases.FAMILY, container_factory(binding, tmp_path))
     assert run.cases_run == tuple(c.name for c in container_cases.CASES)
     assert run.suite_sha256 == core.sha256_of(Path(container_cases.__file__))
 

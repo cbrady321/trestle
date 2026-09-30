@@ -25,8 +25,9 @@ creates a running container (exit 125 when the image is not in `images` or the n
 `--pull` is refused, so nothing is ever pulled), `stop`/`start`/`restart NAME`, `port NAME`
 (`<private>/tcp -> 0.0.0.0:<host>`, exit 1 unless running), `exec NAME CMD...` (a container's
 optional `exec_exit` is the exit status of every exec; default 0), `rm` (a running container needs
-`-f`, as in docker), and `ps` lists a running container only unless `-a` is given. A container
-row may carry `ports: [{"private": 8080, "host": 32768}]`.
+`-f`, as in docker), and `ps` lists a running container only unless `-a` is given; `create` makes
+a stopped one and `volume create NAME` a volume. A container row may carry
+`ports: [{"private": 8080, "host": 32768}]`.
 
 `$FAKE_DOCKER_MODE`: unset/`normal`; `stdin-read` (read stdin to EOF and log the bytes, for the
 later leaves' stdin-closed assertions); `hang` (block forever after logging, for the bounded-run
@@ -287,8 +288,8 @@ def _find(state: dict, name: str) -> dict | None:
     return None
 
 
-def _cmd_run(args: list[str], state: dict) -> int:
-    """`docker run -d ...`: create a running container; never pulls."""
+def _cmd_run(args: list[str], state: dict, started: bool = True) -> int:
+    """`docker run -d ...` (`started`) or `docker create ...`: never pulls."""
     name = image = None
     tmpfs: list[str] = []
     publish: list[str] = []
@@ -356,7 +357,7 @@ def _cmd_run(args: list[str], state: dict) -> int:
             "id": cid,
             "names": [name],
             "image": image,
-            "state": "running",
+            "state": "running" if started else "created",
             "labels": {},
             "ports": ports,
             "tmpfs": tmpfs,
@@ -465,6 +466,14 @@ def _dispatch(args: list[str], state: dict) -> int:
         return _cmd_remove("volume", [a for a in rest[1:] if not a.startswith("-")], state)
     if cmd == "run":
         return _cmd_run(rest, state)
+    if cmd == "create":
+        return _cmd_run(rest, state, started=False)
+    if cmd == "volume" and rest[:1] == ["create"]:
+        names = [a for a in rest[1:] if not a.startswith("-")]
+        state.setdefault("volumes", []).append({"name": names[-1], "labels": {}})
+        _save_state(state)
+        print(names[-1])
+        return 0
     if cmd == "port":
         return _cmd_port(rest, state)
     if cmd == "exec":
