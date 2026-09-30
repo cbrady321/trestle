@@ -24,9 +24,17 @@ Nodes = MutableMapping[str, MutableMapping[str, Any]]
 def plant(snap: PluginSnapshot, mutate: Callable[[Nodes], None]) -> DeclaredTree:
     """Rewrite `snap`'s declaration: `mutate` edits a deep copy of the nodes in place. Returns the
     tree now on disk."""
-    path = Path(snap.source_path).with_name(DECLARATION_FILE)
+    return plant_file(Path(snap.source_path).with_name(DECLARATION_FILE), mutate)
+
+
+def plant_snapshot_dir(snapshot_dir: Path, mutate: Callable[[Nodes], None]) -> DeclaredTree:
+    """`plant` for a snapshot another process published: its directory under `<home>/snapshots`."""
+    return plant_file(snapshot_dir / DECLARATION_FILE, mutate)
+
+
+def plant_file(path: Path, mutate: Callable[[Nodes], None]) -> DeclaredTree:
     tree = DeclaredTree.from_json(path.read_text(encoding="utf-8"))
-    nodes: Nodes = copy.deepcopy(dict(tree.nodes))  # type: ignore[assignment]
+    nodes: Nodes = {path: copy.deepcopy(dict(node)) for path, node in tree.nodes.items()}
     mutate(nodes)
     planted = DeclaredTree.build(tree.root, nodes)
     path.write_text(planted.to_json(), encoding="utf-8")
