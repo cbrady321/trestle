@@ -72,6 +72,8 @@ globs = [
   "tests/single/contract/test_extract.py",
   # A-1's choice probe fixture: its alternatives become units (they are refused at publication otherwise)
   "tests/fixtures/workflows/probe_choice_root.py",
+  # A-1's pins of the composite raise (TM-B2-6), inverted by L.TR-3.2
+  "tests/single/workflow/test_loop.py",
 ]
 
 [[gate]]
