@@ -36,10 +36,10 @@ FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "workflows"
 SPINE_FIXTURES = ("spine_leaf",)
 FIXTURE = SPINE_FIXTURES[0]
 TREES = Path(__file__).resolve().parents[2] / "fixtures" / "trees"
-# the composite roots of the tree lift (L.TR-L.1): an AllDeclaration tree is admitted (the MC-B3-01
-# fixture `two_branch_barrier`), a ChoiceNode root keeps the temporary refusal
+# the composite roots of the tree lift: an AllDeclaration tree (L.TR-L.1) and a ChoiceNode root
+# (L.TR-5.3) are admitted (the MC-B3-01 fixtures `two_branch_barrier`, `choice_fake`)
 ALL_TREE = "two_branch_barrier"
-CHOICE_ROOT = "probe_choice_root"
+CHOICE_TREE = "choice_fake"
 EVENT_KIND = "spine_observed"  # the fixture's evidence event, one per observation
 CREATE_EFFECT = "up"
 STOP_EFFECT = "stop"
@@ -305,35 +305,24 @@ def test_wait_ends_on_stop_read_from_the_record(tmp_path: Path) -> None:
             assert classes.index("end") < classes.index("released"), classes
 
 
-def test_composite_roots_admit_all_refuse_choice(tmp_path: Path) -> None:
-    """An `AllDeclaration` root is admitted through the one call (L.TR-L.1: the MC-B3-01 fixture
-    `two_branch_barrier`, a run id minted and a terminal answer); a `ChoiceNode` root is still
-    refused with the temporary code before any run id (TM-B2-1, phase `choice-only`, DM-07)."""
+def test_composite_roots_are_admitted(tmp_path: Path) -> None:
+    """An `AllDeclaration` root (L.TR-L.1: the MC-B3-01 fixture `two_branch_barrier`) and a
+    `ChoiceNode` root (L.TR-5.3: `choice_fake`) are each admitted through the one call: a run id
+    minted, a terminal answer, one run directory each; the temporary refusal (TM-B2-1) is gone."""
     with mcp_host.McpHost(home=tmp_path / "host-home", timeout_s=HOST_TIMEOUT_S) as host:
-        shutil.copy(TREES / f"{ALL_TREE}.py", host.home / "plugins")
-        admitted = host.call(
-            "run",
-            {
-                "plugin": ALL_TREE,
-                "wait_ms": tolerances.HARNESS_WAIT_MS,
-                "completion": "terminal",
-            },
-        )
-        assert "code" not in admitted and admitted["run_id"].startswith("r_"), admitted
-        assert admitted["state"] in ("succeeded", "failed", "cancelled", "timed_out"), admitted
-        assert len(list((host.home / "runs").glob("*/*"))) == 1  # the admitted run's directory
-        shutil.copy(FIXTURES / f"{CHOICE_ROOT}.py", host.home / "plugins")
-        refused = host.call(
-            "run",
-            {
-                "plugin": CHOICE_ROOT,
-                "wait_ms": tolerances.HARNESS_WAIT_MS,
-                "completion": "terminal",
-            },
-        )
-        assert refused["code"] == codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED, refused
-        assert "run_id" not in refused, refused
-        assert len(list((host.home / "runs").glob("*/*"))) == 1, "a refused root left a run dir"
+        for count, plugin in enumerate((ALL_TREE, CHOICE_TREE), start=1):
+            shutil.copy(TREES / f"{plugin}.py", host.home / "plugins")
+            admitted = host.call(
+                "run",
+                {
+                    "plugin": plugin,
+                    "wait_ms": tolerances.HARNESS_WAIT_MS,
+                    "completion": "terminal",
+                },
+            )
+            assert "code" not in admitted and admitted["run_id"].startswith("r_"), admitted
+            assert admitted["state"] in ("succeeded", "failed", "cancelled", "timed_out"), admitted
+            assert len(list((host.home / "runs").glob("*/*"))) == count  # one directory per run
 
 
 def test_plan_vertex_count_is_one(tmp_path: Path) -> None:

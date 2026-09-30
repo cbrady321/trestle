@@ -29,6 +29,7 @@ globs = [
   "tests/proof/suites/workflows.py",
   "tests/single/control/test_admission_refusals.py", "tests/single/control/test_admission_plan.py",
   "tests/single/spine/test_w_a1.py",
+  "trestle/server/main.py",
 ]
 
 [[lane]]                     # the checkpoint merge only (CM-5, DM-76)
@@ -74,6 +75,9 @@ globs = [
   "tests/fixtures/workflows/probe_choice_root.py",
   # A-1's pins of the composite raise (TM-B2-6), inverted by L.TR-3.2
   "tests/single/workflow/test_loop.py",
+  # L.TR-L.9: the MCP `await_runs` tool passes the caller session, so a child view is scoped over MCP
+  # (a lane `tree` glob too, above): the one-line wiring A-2 (L.TR-2.4) could not make from its own lane
+  "trestle/server/main.py",
 ]
 
 [[gate]]

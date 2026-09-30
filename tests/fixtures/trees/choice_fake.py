@@ -1,8 +1,8 @@
 """A root that is a choice between two fake realizations (L.TR-0.1; MC-B3-01; WR-UNIT-8, TR-5).
 
 `pick` chooses `fake_a` or `fake_b`; the shared readiness check is `fake_ready`. Three vertices
-(the alternatives count), depth 2. A `ChoiceNode` root: the temporary refusal keeps it until
-L.TR-5.3."""
+(the alternatives count), depth 2. A `ChoiceNode` root, admitted since L.TR-5.3 removed the
+temporary refusal."""
 
 from __future__ import annotations
 

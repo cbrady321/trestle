@@ -13,3 +13,10 @@ reader = "wr-ckpt/core"
 states = ["single/inflight-plan-bearing"]
 declared_by = "L.SV-3.8"
 note = "drain rule: readers before SV-3 do not fold or sweep a non-terminal plan-bearing root"
+
+[[exception]]
+id = "E-TR-1"
+reader = "wr-ckpt/single"
+states = ["*/trl-views-*", "*/tr5-views-*"]
+declared_by = "L.TR-L.11"
+note = "readers before TR-2 serve no child views"

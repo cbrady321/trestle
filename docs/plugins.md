@@ -213,6 +213,161 @@ After publish: `list_plugins` → optional `describe_plugin` → `run(plugin=…
 
 Plugin JSON schemas are **not** on `tools/list`. Empty catalog → `admission.plugin_not_found`; run `trestle init` or publish a plugin.
 
+## Composite workflows
+
+A workflow plugin can declare a tree instead of one leaf: an `AllDeclaration` root whose children
+(`ChildBinding`s, each naming a unit and the siblings it `needs`) are leaves or further composites.
+The declaration is read at publication, and the whole tree is admitted
+as one run. Publication refuses a tree the declaration alone shows to be defective, with a code of
+its own and no snapshot: `publication.unit_unresolved` (a child or `needs` entry names a unit the
+plugin does not declare), `publication.dependency_cycle`, `publication.declaration_conflict` and
+`publication.plan_precondition_uncovered`; the codes are listed in
+[`agents.md`](agents.md#composite-workflows-trees).
+
+The example below runs three steps over the fake marker of `trestle_packs.fakes`: `build` and
+`lint` start together, `package` needs both. It is a complete plugin: publish it as it stands.
+A plugin that imports the port module must name its environment argument (`env_arg`), which is
+also the root's lease key (`env_key_field`); a request must give that argument a value
+(`args={"env": "dev"}`), because a default is not read at admission
+(`admission.lease_set_undecidable` otherwise).
+
+<!-- tree-example -->
+```python
+from datetime import timedelta
+from typing import Any
+
+from trestle_packs.fakes import FakeMarker
+
+from trestle.plugin import Context, trestle
+from trestle.workflow import (
+    AllDeclaration,
+    ChildBinding,
+    CompletionSource,
+    Compose,
+    EffectDeclaration,
+    EffectFacetClass,
+    LeafDeclaration,
+    Lifetime,
+    LoopFlags,
+    RealizationKind,
+    Repeat,
+    WaitPolicy,
+    WorkflowEntry,
+)
+from trestle.workflow.loop import run_tree
+from trestle.workflow.ports import ResourceCreate, ResourceOwned, ResourceReads, ResourceSpec
+from trestle.workflow.units import Acted
+from trestle.workflow.values import CheckResult, FoundRef, Observation
+
+
+class Step:
+    """One leaf: create a marker, wait until it is ready, release it on the way out."""
+
+    def __init__(self, unit: str) -> None:
+        self.unit = unit
+        self.spec = ResourceSpec(unit, RealizationKind.AGENT_LAUNCHED_PROJECT, "demo", None)
+
+    def declare(self) -> LeafDeclaration:
+        return LeafDeclaration(
+            unit=self.unit,
+            flags=LoopFlags(Compose.LEAF, CompletionSource.OBSERVED, Repeat.SAFE),
+            preconditions=(),
+            postcondition="ready",
+            wait=WaitPolicy(timedelta(seconds=0.2), 1.0, timedelta(seconds=6)),
+            resource_kind="marker",
+            may_touch=frozenset({"marker"}),
+            effects=(
+                EffectDeclaration(
+                    "up",
+                    EffectFacetClass.CREATE,
+                    "",
+                    Lifetime.RUN,
+                    frozenset(),
+                    timedelta(seconds=2),
+                ),
+                EffectDeclaration(
+                    "stop",
+                    EffectFacetClass.OWNED,
+                    "",
+                    Lifetime.RUN,
+                    frozenset(),
+                    timedelta(seconds=2),
+                    is_release=True,
+                ),
+            ),
+            retryable=frozenset(),
+            remedies=(),
+            budget=timedelta(seconds=10),
+            max_attempts=2,
+        )
+
+    def observe(self, params: Any, reads: Any, ctx: Any) -> Observation:
+        resource = reads.read(ResourceReads)
+        seen = resource.observe(self.spec, ctx.lineage, "up")
+        target = seen.selector_ref
+        checked = resource.check("ready", target) if target is not None else None
+        ready = checked is not None and checked.satisfied
+        return Observation(
+            present=seen.selector_present,
+            selector_present=seen.selector_present,
+            identity_proven=seen.identity_proven,
+            configuration_compatible=seen.configuration_compatible,
+            postcondition=CheckResult(ready, None, ""),
+            preconditions=(),
+            currency=(),
+            found=tuple(FoundRef(f.resource_kind, f.selector, f.observed_at) for f in seen.found),
+            code=seen.code,
+            payload=None,
+        )
+
+    def advance(self, params: Any, state: Any, effects: Any, ctx: Any) -> Acted:
+        effects.create(ResourceCreate).create(self.spec, "up")
+        return Acted()
+
+    def release(self, params: Any, handle: Any, effects: Any, ctx: Any) -> Acted:
+        effects.owned(ResourceOwned).stop(handle, "stop")
+        return Acted()
+
+
+ENTRY = WorkflowEntry(
+    root="release",
+    units={
+        "release": AllDeclaration(
+            unit="release",
+            flags=LoopFlags(Compose.ALL, CompletionSource.OBSERVED, Repeat.SAFE),
+            children=(
+                ChildBinding(unit="build", params={}, needs=()),
+                ChildBinding(unit="lint", params={}, needs=()),
+                ChildBinding(unit="package", params={}, needs=("build", "lint")),
+            ),
+            concurrency=2,
+            budget=timedelta(seconds=30),
+            identifier_sets={},
+            arg_bindings=(),
+            env_key_field="env",
+        ),
+        "build": Step("build"),
+        "lint": Step("lint"),
+        "package": Step("package"),
+    },
+    deadline=timedelta(seconds=60),
+)
+
+
+@trestle(deadline=60, env_arg="env")
+def release(ctx: Context, env: str = "dev") -> dict[str, str]:
+    marker = FakeMarker(ctx.tmp / "markers", "run")
+    ports = {ResourceReads: marker, ResourceCreate: marker, ResourceOwned: marker}
+    run_tree(ctx, ENTRY, {"env": env}, ports=ports)
+    return {"env": env}
+```
+<!-- /tree-example -->
+
+An `AllDeclaration` root and a `ChoiceNode` root are both admitted (the loop selects one alternative
+of a `ChoiceNode` from what it observes before the first effect). The wire code
+`admission.plan_multi_vertex_unsupported` stays defined but is retired: nothing produces it. The agent-facing behaviour (one
+answer, child views, cancel addressed to the root) is in [`agents.md`](agents.md#composite-workflows-trees).
+
 ## Workflow packs
 
 Pre-built Docker / pytest / migration plugins live under `examples/packs/`. Install `pip install -e ".[packs]"` and point `--plugin-dir` at that folder. Guide: [`packs.md`](packs.md).

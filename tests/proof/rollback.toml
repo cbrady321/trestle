@@ -17,3 +17,15 @@ merge = "SV-3"
 class = "drain"
 evidence = "tests/single/control/test_drain_check.py::test_drain_check_counts_nonterminal_plan_bearing_roots"
 authorized_by = "root '## Rollback posture': SV-3 (first plan-bearing version - drain first)"
+
+[[boundary]]
+merge = "TR-L"
+class = "transparent"
+evidence = "tests/tree/joins/test_j_trl.py::test_trl_rollback_class_consistent"
+authorized_by = "L.TR-L.11: every recorded TR-L d2 run (readers J-SINGLE head and the J-CORE merge base) exits 0 over the tree-trl fossils, so rollback past the lift needs no drain (tests/tree/joins/d2_outcomes.toml)"
+
+[[boundary]]
+merge = "TR-5"
+class = "transparent"
+evidence = "tests/tree/joins/test_j_trl.py::test_tr5_rollback_class_consistent"
+authorized_by = "L.TR-5.4: every recorded TR-5 d2 run (readers J-SINGLE head and the J-CORE merge base) exits 0 over the tree-tr5 fossils, so rollback past the ChoiceNode lift needs no drain (tests/tree/joins/d2_outcomes.toml)"

@@ -268,7 +268,12 @@ def test_scale_only_reduces_by_sibling_count() -> None:
 # `lease_pair` and `slice_coop`, whose roots name the environment argument (a root that names one
 # needs a value; `slice_coop` names it because it reaches a port, WR-OWN-8).
 COMPILE_REQUESTS: dict[str, dict[str, Any]] = {
+    "three_step_live": {"env": "dev"},
+    "lease_direct_child": {"env": "dev"},
+    "lease_root_child": {"env": "dev"},
     "lease_pair": {"env": "dev", "env_b": "dev"},
+    "barrier_run": {"env": "dev"},
+    "upstream_covered": {"env": "dev"},
     "slice_coop": {"env": "dev"},
     "failure_dependents": {"env": "dev"},
     "exception_branch": {"env": "dev"},
@@ -276,6 +281,7 @@ COMPILE_REQUESTS: dict[str, dict[str, Any]] = {
     "depth2_conditions": {"env": "dev"},
     "creator_pk": {"env": "dev"},
     "live_state": {"env": "dev"},
+    "choice_long_running": {"env": "dev"},
 }
 
 # What MC-23 says of each ground: a refusal code, or None when the declaration alone compiles

@@ -118,21 +118,16 @@ def test_all_root_admitted_run_id_minted(tmp_path: Path) -> None:
     assert _descendants() == before
 
 
-def test_choice_root_still_refused_temp_code(tmp_path: Path) -> None:
-    """A `ChoiceNode` root keeps the temporary code (until L.TR-5.3) with no run id or effect,
-    while an `AllDeclaration` root beside it is admitted."""
-    kernel = support.make_kernel(
-        tmp_path,
-        {
-            "two_branch_barrier": _tree_fixture("two_branch_barrier"),
-            "probe_choice_root": _fixture("probe_choice_root"),
-        },
-    )
-    choice = _refused(kernel, "probe_choice_root")
-    assert choice.code == codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED
-    assert choice.code == "admission.plan_multi_vertex_unsupported"
-    assert "probe_choice_root" in choice.message
-    assert isinstance(_admit_result(kernel, "two_branch_barrier"), AdmitResultAdmitted)
+def test_choice_root_admitted_run_id_minted(tmp_path: Path) -> None:
+    """L.TR-5.3 removed the last temporary refusal (TM-B2-1): a `ChoiceNode` root (the MC-B3-01
+    fixture `choice_fake`) is admitted, a run id is minted and its run directory written, and
+    admission spawns no process (MC-13); the retired code is not produced."""
+    kernel = support.make_kernel(tmp_path, {"choice_fake": _tree_fixture("choice_fake")})
+    before = _descendants()
+    result = _admit_result(kernel, "choice_fake")
+    assert isinstance(result, AdmitResultAdmitted), result
+    assert [p.name for p in _run_dirs(kernel)] == [result.run_id]
+    assert _descendants() == before
 
 
 def test_one_vertex_roots_are_not_refused_for_shape(tmp_path: Path) -> None:
@@ -285,13 +280,13 @@ def _probe(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_probe_reports_phase_choice_only_by_exit_status(tmp_path: Path) -> None:
-    """TM-B2-1's probe at L.TR-L.1: exit 0 for phase `choice-only` (the ChoiceNode root is refused,
-    the AllDeclaration root is not) and for the entry; exit 1 for `full` (which needed the
-    AllDeclaration root refused too); nothing is written."""
+def test_probe_reports_absent_by_exit_status(tmp_path: Path) -> None:
+    """TM-B2-1's probe at L.TR-5.3: exit 1 (absent) for the entry and for both phases, since
+    neither the `AllDeclaration` root nor the `ChoiceNode` root is refused; a usage error is 2;
+    nothing is written."""
     home_before = sorted(p.name for p in REPO.glob("*"))
-    assert _probe("--phase", "choice-only").returncode == 0
-    assert _probe().returncode == 0
+    assert _probe("--phase", "choice-only").returncode == 1
+    assert _probe().returncode == 1
     assert _probe("--phase", "full").returncode == 1
     assert _probe("--phase", "nonsense").returncode == 2
     assert sorted(p.name for p in REPO.glob("*")) == home_before
