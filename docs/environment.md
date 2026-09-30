@@ -95,6 +95,12 @@ before the task starts. If the pin cannot be resolved the node ends `blocked` wi
 `execution.toolchain_missing`, naming the tool, before any task-start record or process exists;
 Trestle installs, refreshes and downloads nothing.
 
+A catalog test marked `provision` needs the environment's fixture record: a `provision.postgres`
+node (after `backend.postgres`) submits it to the Postgres store exactly once and the test starts
+only after it. The submit is not safe to resubmit: a store whose read lags an accepted submit is
+polled, never written twice, and an accepted submit is not reported as the record being there. The
+record is durable; no run removes it, and a second equivalent run finds it and submits nothing.
+
 A test node starts only after EVERY readiness pass: it needs both backends (`backend.http_support`
 and `backend.postgres`, which are independent of each other), so a test never runs against a service
 that is not ready. A catalog task marked `reports_tests` is a pytest selector: its counts come from

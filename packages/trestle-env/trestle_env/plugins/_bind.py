@@ -41,8 +41,11 @@ from types import ModuleType
 from typing import Any, Final
 
 from trestle.workflow import ports
-from trestle_packs.container import ContainerDefinition, ExecCheck, bind
+from trestle.workflow.values import Lineage, NodePath
+from trestle_packs.container import ContainerDefinition, DockerCli, ExecCheck, bind
+from trestle_packs.container.reads import selector_name
 from trestle_packs.process.command import CommandPort
+from trestle_packs.provision import ProvisionPort, RecordStore
 from trestle_packs.testrun import PytestJunitRunner
 from trestle_packs.toolchain import MiseToolchainResolver
 from trestle_packs.toolchain.tasks import ProjectTasks, TaskDeclaration, TaskRunner
@@ -50,6 +53,7 @@ from trestle_packs.toolchain.tasks import ProjectTasks, TaskDeclaration, TaskRun
 from trestle_env import tree
 from trestle_env.closure import ClosurePlan, Refused, closure
 from trestle_env.plugins._http import HttpReadinessReads
+from trestle_env.plugins._route import RealizationRouter
 from trestle_env.plugins._tasks import TaskExecution
 from trestle_env.stages import closure_failure
 
@@ -173,8 +177,13 @@ def reference_ports(
     resolver, tasks = toolchain_ports(env, runner, artifacts=artifacts)
     if resolver is not None:
         mapping[ports.ToolchainResolver] = resolver
+    routed: Any = bound.containers
+    if tree.PROVISION_UNIT in tree.ENTRY.units:
+        # the tree provisions a fixture record: its `PROVISIONED` resource goes to the record store
+        routed = RealizationRouter(bound.containers, provision_port(env, runner))
+        mapping[ports.ResourceCreate] = routed
     # the HTTP readiness contracts the tree declares are answered by a decorator over the reads
-    mapping[ports.ResourceReads] = HttpReadinessReads(bound.containers, tree.HTTP_READINESS)
+    mapping[ports.ResourceReads] = HttpReadinessReads(routed, tree.HTTP_READINESS)
     if not compose:
         del mapping[ports.ComposeResolver]  # no definition to derive a closure from: none bound
     mapping[ports.ExecutionPort] = TaskExecution(runner, tasks)
@@ -232,6 +241,30 @@ def toolchain_ports(
         project_tasks(projects_dir, distribution_store=env.get(DISTRIBUTIONS_ENV) or None),
     )
     return resolver, runner
+
+
+def provision_port(env: Mapping[str, str], execution: ports.ExecutionPort) -> ProvisionPort:
+    """The provisioning adapter over the reference Postgres: every statement is an authenticated
+    `psql` inside the container of the run's `backend.postgres` node (the run-scoped selector)."""
+    lineage_of = _postgres_lineage
+
+    def container(lineage: Lineage) -> str:
+        return selector_name(lineage_of(lineage))
+
+    store = RecordStore(
+        container=container,
+        role=tree.POSTGRES_USER,
+        database=tree.POSTGRES_DATABASE,
+        password=tree.POSTGRES_FIXTURE_PASSWORD,
+        payloads={tree.PROVISION_ENTRY: tree.PROVISION_PAYLOAD},
+    )
+    docker = DockerCli(docker_path(env), env.get(ENDPOINT_ENV) or None, execution)
+    return ProvisionPort(docker, store)
+
+
+def _postgres_lineage(lineage: Lineage) -> Lineage:
+    """The lineage of the Postgres node of the run `lineage` belongs to."""
+    return Lineage(lineage.root_run_id, NodePath((tree.POSTGRES_UNIT,)))
 
 
 def bind_evidence(bound: Mapping[type, object], sink: Any) -> None:

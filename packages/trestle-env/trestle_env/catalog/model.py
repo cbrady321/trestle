@@ -171,6 +171,7 @@ class TestSpec:
     id: TestId
     project: ProjectId
     task: TaskId
+    provision: bool = False  # the test needs the provisioned fixture record before it runs
 
 
 @dataclass(frozen=True)
@@ -188,7 +189,8 @@ _SERVICE = ("id", "selector")
 _PROJECT = ("id", "pin", "tasks")
 _TASK = ("id", "argv", "reports_tests")
 _TASK_OPTIONAL = ("reports_tests",)
-_TEST = ("id", "project", "task")
+_TEST = ("id", "project", "task", "provision")
+_TEST_OPTIONAL = ("provision",)
 _OVERRIDE = ("id", "service", "project", "task")
 
 
@@ -211,6 +213,13 @@ def _keys(obj: object, allowed: tuple[str, ...], where: str, optional: tuple[str
         if key not in obj and key not in optional:
             raise CatalogError("missing_key", key, f"required in {where}")
     return obj
+
+
+def _flag(test: Mapping[str, Any]) -> bool:
+    flag = test.get("provision", False)
+    if not isinstance(flag, bool):
+        raise CatalogError("invalid", str(test["id"])[:ID_MAX], "provision is a boolean")
+    return flag
 
 
 def _items(obj: object, where: str) -> list[Any]:
@@ -314,8 +323,11 @@ class Catalog:
             for o in _items(top.get("projects", []), "projects")
         )
         tests = tuple(
-            TestSpec(TestId(o["id"]), ProjectId(o["project"]), TaskId(o["task"]))
-            for o in (_keys(o, _TEST, "a test") for o in _items(top.get("tests", []), "tests"))
+            TestSpec(TestId(o["id"]), ProjectId(o["project"]), TaskId(o["task"]), _flag(o))
+            for o in (
+                _keys(o, _TEST, "a test", optional=_TEST_OPTIONAL)
+                for o in _items(top.get("tests", []), "tests")
+            )
         )
         overrides = tuple(
             Override(
