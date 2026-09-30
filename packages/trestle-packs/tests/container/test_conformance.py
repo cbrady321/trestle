@@ -556,11 +556,10 @@ def fake_compose(base: Path) -> core.Implementation:
 
 class StubComposeExecution:
     """An `ExecutionPort` that renders a compose definition as `docker compose config --format
-    json` does (`-f FILE`: the JSON-syntax fixture, every `depends_on` in mapping form, the rest of
-    each service kept), in the excerpt, WITHOUT the real port's 512-byte tail cap. It is the
-    suite's stand-in for the operator's docker, so the real resolver's parsing and refusals run
-    the unmodified family in CI; `test_compose_resolver.py` pins what the real port does to a
-    definition that outgrows the cap."""
+    json --output OUT` does (`-f FILE`: the JSON-syntax fixture, every `depends_on` in mapping
+    form, the rest of each service kept, saved to OUT). It is the suite's stand-in for the
+    operator's docker, so the real resolver's parsing and refusals run the unmodified family in
+    CI."""
 
     def policy(self, command: Any) -> Any:  # never asked: the resolver only calls `run`
         raise NotImplementedError
@@ -580,7 +579,10 @@ class StubComposeExecution:
                     service["depends_on"] = {
                         n: {"condition": "service_started", "required": True} for n in raw
                     }
-            out, status = json.dumps(document, indent=2), 0
+            Path(argv[argv.index("--output") + 1]).write_text(
+                json.dumps(document, indent=2), encoding="utf-8"
+            )
+            out, status = "", 0
         except (OSError, ValueError, KeyError, AttributeError) as exc:
             out, status = f"invalid compose project: {exc}", 1
         klass = ExecutionClass.PASSED if status == 0 else ExecutionClass.FAILED

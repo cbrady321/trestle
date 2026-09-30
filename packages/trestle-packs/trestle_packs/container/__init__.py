@@ -68,18 +68,20 @@ def bind(
     definitions: Mapping[CatalogEntry, ContainerDefinition] | None = None,
     checks: Mapping[CheckRef, ExecCheck] | None = None,
     compose_projects: Mapping[CatalogEntry, str | os.PathLike[str]] | None = None,
+    compose_artifacts: str | os.PathLike[str] | None = None,
     cancel: CancelSignal | None = None,
 ) -> PortSet:
     """Bind the container adapter to an absolute docker path, an endpoint (`--host`, I-4; `None`
     binds none) and the injected execution port. `definitions` maps a catalog entry to what it
     runs, `checks` a declared check id to its `docker exec` command, `compose_projects` a
     catalog project to the absolute path of its Compose definition (a project without one is
-    refused by the resolver as an invalid definition), `cancel` the root's signal (default: never
-    requested)."""
+    refused by the resolver as an invalid definition), `compose_artifacts` the absolute directory
+    the resolver writes and reads its rendered definition in (default: a fresh temporary directory
+    per read), `cancel` the root's signal (default: never requested)."""
     docker = DockerCli(docker_path, endpoint, execution, cancel)
     return PortSet(
         ContainerPort(docker, definitions, checks),
-        RealComposeResolver(docker, compose_projects or {}),
+        RealComposeResolver(docker, compose_projects or {}, compose_artifacts),
     )
 
 

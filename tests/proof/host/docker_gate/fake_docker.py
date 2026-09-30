@@ -27,10 +27,10 @@ creates a running container (exit 125 when the image is not in `images` or the n
 optional `exec_exit` is the exit status of every exec; default 0), `rm` (a running container needs
 `-f`, as in docker), and `ps` lists a running container only unless `-a` is given; `create` makes
 a stopped one and `volume create NAME` a volume. `compose -f FILE config --format json
-[--no-interpolate]` (L.NW-2.7) answers without an engine, as the real one does: it prints the
-JSON-syntax definition FILE as compact JSON with every `depends_on` in the mapping form `config`
-prints and nothing else per service (so a five-service definition fits the execution port's
-512-byte console excerpt); exit 1 when FILE is missing or not JSON. A container row may carry
+[--no-interpolate] [--output OUT]` (L.NW-2.7) answers without an engine, as the real one does: it
+renders the JSON-syntax definition FILE as compact JSON with every `depends_on` in the mapping
+form `config` prints and nothing else per service, printed, or saved to OUT when `--output` is
+given (L.NW-2.7.fix1); exit 1 when FILE is missing or not JSON. A container row may carry
 `ports: [{"private": 8080, "host": 32768}]`.
 
 `$FAKE_DOCKER_MODE`: unset/`normal`; `stdin-read` (read stdin to EOF and log the bytes, for the
@@ -429,7 +429,12 @@ def _cmd_compose(args: list[str]) -> int:
     except (OSError, ValueError, KeyError, AttributeError, TypeError) as exc:
         sys.stderr.write(f"fake_docker: compose config: {definition}: {exc}\n")
         return 1
-    print(json.dumps({"services": services}, separators=(",", ":"), sort_keys=True))
+    rendered = json.dumps({"services": services}, separators=(",", ":"), sort_keys=True)
+    output = _opt(args, "--output") or _opt(args, "-o")
+    if output is not None:  # `--output FILE` saves the document instead of printing it
+        Path(output).write_text(rendered + "\n", encoding="utf-8")
+    else:
+        print(rendered)
     return 0
 
 
