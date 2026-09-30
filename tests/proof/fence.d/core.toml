@@ -93,7 +93,7 @@ globs         = ["tests/fixtures/fossils/core/**", "tests/proof/reviews/*-core.t
 [[lane]]
 name          = "core-bundle"
 branch_prefix = "wr/core-bundle/"
-globs         = ["trestle/common/fsutil.py", "trestle/common/outcome.py", "trestle/common/errtext.py", "trestle/common/clock.py",
+globs         = ["tests/core/docs/test_cl_d1_disclosures.py", "trestle/common/fsutil.py", "trestle/common/outcome.py", "trestle/common/errtext.py", "trestle/common/clock.py",
                  "trestle/common/types.py", "trestle/common/codes.py", "trestle/server/procident.py", "trestle/server/conductor.py",
                  "trestle/server/runs.py", "trestle/server/recovery.py", "trestle/server/project.py", "trestle/server/scheduler.py",
                  "trestle/server/main.py", "trestle/server/control.py", "trestle/wrapper/main.py", "trestle/wrapper/spawn.py",
