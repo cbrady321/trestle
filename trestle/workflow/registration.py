@@ -10,8 +10,8 @@ and never mutates its argument. An element counts as *missing* when the value th
 absent or unusable (`None`, the wrong type, an empty name, a non-positive duration): the frozen
 declaration types do not validate, so a plugin can bind any of these.
 
-Later leaves add rules to this one function (L.SL-2.1 stage budgets, L.SL-6.2 the remedy
-ownership boundary); each appends to the returned tuple in a fixed order, so the first refusal
+L.SL-2.1 adds the in-node stage budgets (`_budget_refusals`); L.SL-6.2 later adds the remedy
+ownership boundary; each appends to the returned tuple in a fixed order, so the first refusal
 is deterministic.
 """
 
@@ -193,6 +193,58 @@ def _effect_refusals(decl: LeafDeclaration) -> list[RegistrationRefusal]:
     return out
 
 
+def _seconds(value: object) -> float | None:
+    """A usable duration in seconds, else None (a missing element is `_six_elements`' refusal)."""
+    return value.total_seconds() if isinstance(value, timedelta) else None
+
+
+def stage_budget_s(decl: LeafDeclaration) -> float | None:
+    """What a leaf's own stages can take inside its budget, in seconds (B2-C5, L.SL-2.1): the
+    wait (`wait.max_wait`) plus every remedy's `total` plus the longest release timeout of the
+    CREATE + RUN effects it declares (the same effects and timeouts `carving.margin_needed`
+    reads). None when a stage value is unusable: that is another refusal's ground."""
+    wait = decl.wait
+    waited = _seconds(wait.max_wait) if isinstance(wait, WaitPolicy) else None
+    if waited is None:
+        return None
+    remedies = decl.remedies if isinstance(decl.remedies, (tuple, list)) else ()
+    remedy_total = 0.0
+    for remedy in remedies:
+        total = _seconds(getattr(remedy, "total", None))
+        if total is None:
+            return None
+        remedy_total += total
+    effects = decl.effects if isinstance(decl.effects, (tuple, list)) else ()
+    release = 0.0
+    for eff in effects:
+        if (
+            isinstance(eff, EffectDeclaration)
+            and eff.facet == EffectFacetClass.CREATE
+            and eff.lifetime == Lifetime.RUN
+        ):
+            timeout = _seconds(eff.release_timeout)
+            if timeout is not None:  # a missing one is RELEASE_TIMEOUT_MISSING
+                release = max(release, timeout)
+    return waited + remedy_total + release
+
+
+def _budget_refusals(decl: LeafDeclaration) -> list[RegistrationRefusal]:
+    """B2-C5 in the leaf: the stages it declares must fit the budget it declares, so an
+    over-budget leaf never reaches a run (publication.budget_exceeds_leaf)."""
+    budget = _seconds(decl.budget)
+    needed = stage_budget_s(decl)
+    if budget is None or needed is None or needed <= budget:
+        return []
+    return [
+        RegistrationRefusal(
+            vocab.BUDGET_EXCEEDS_LEAF,
+            "budget",
+            f"budget: wait + remedies + release timeout need {needed:g}s, over the leaf's "
+            f"{budget:g}s budget",
+        )
+    ]
+
+
 def _leaf_refusals(decl: LeafDeclaration) -> list[RegistrationRefusal]:
     out = _six_elements(decl)
     out += _effect_refusals(decl)
@@ -216,12 +268,13 @@ def _leaf_refusals(decl: LeafDeclaration) -> list[RegistrationRefusal]:
                 "remedies: a recorded leaf cannot declare remedies",
             )
         )
+    out += _budget_refusals(decl)
     return out
 
 
 def check_declaration(decl: Declaration) -> tuple[RegistrationRefusal, ...]:
     """Every registration refusal for `decl`, in a fixed order (flags, the six elements, effects,
-    attempts, recorded-with-remedies). Empty means the declaration may be registered."""
+    attempts, recorded-with-remedies, stage budgets). Empty means it may be registered."""
     if not isinstance(decl, (LeafDeclaration, AllDeclaration, ChoiceNode)):
         return ()  # not a declaration: extraction refuses it as such
     out = _flag_refusals(decl)
