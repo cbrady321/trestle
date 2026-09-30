@@ -132,6 +132,7 @@ def _assert_created_marker_released(run_dir: Path) -> None:
 # ---- one call, passed -----------------------------------------------------------------------
 
 
+@pytest.mark.proves("WR-TERM-1", "A1.1:single", "A", "single", "MCP", "CI")
 def test_one_call_passed(tmp_path: Path) -> None:
     with _host(tmp_path) as host:
         answer = _terminal(host, "advance")
@@ -148,6 +149,7 @@ def test_one_call_passed(tmp_path: Path) -> None:
 # ---- skip -----------------------------------------------------------------------------------
 
 
+@pytest.mark.proves("WR-IDEM-4", "A3.3", "A", "single", "MCP", "CI")
 def test_skip(tmp_path: Path) -> None:
     """The postcondition already holds (a found instance): no claim, no effect, no release."""
     with _host(tmp_path) as host:
@@ -164,6 +166,7 @@ def test_skip(tmp_path: Path) -> None:
 # ---- advance and poll -----------------------------------------------------------------------
 
 
+@pytest.mark.proves("WR-VERIFY-1", "A4.1", "A", "single", "MCP", "CI")
 def test_advance_and_poll(tmp_path: Path) -> None:
     with _host(tmp_path) as host:
         answer = _terminal(host, "advance")

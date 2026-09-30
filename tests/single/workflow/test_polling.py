@@ -89,6 +89,7 @@ def _seconds(rig: Rig) -> list[float]:
 @pytest.mark.proves(
     "WR-VERIFY-1", "WR-VERIFY-1:postcondition-after-last-action", "A", "single", "LOGIC+PROC", "CI"
 )
+@pytest.mark.proves("WR-VERIFY-7", "A4.3", "A", "single", "LOGIC+PROC", "CI")
 def test_polled_not_reinvoked(tmp_path: Path) -> None:
     rig, unit, _ = _slow_rig(tmp_path, lag=4, backoff=1.0)
     rig.run()
@@ -100,6 +101,7 @@ def test_polled_not_reinvoked(tmp_path: Path) -> None:
     assert (end["condition"], end["provenance"]) == ("satisfied", "created")
 
 
+@pytest.mark.proves("WR-VERIFY-7", "A4.3", "A", "single", "LOGIC+PROC", "CI")
 def test_intervals_follow_wait_policy_backoff(tmp_path: Path) -> None:
     rig, _, _ = _slow_rig(tmp_path, lag=4, poll_every_s=1.0, backoff=2.0)
     rig.run()
@@ -121,6 +123,7 @@ def test_interval_never_passes_the_slice_end(tmp_path: Path) -> None:
     assert unit.advances == 1
 
 
+@pytest.mark.proves("WR-VERIFY-7", "A4.3", "A", "single", "LOGIC+PROC", "CI")
 def test_elapsed_max_wait_is_postcondition_timeout(tmp_path: Path) -> None:
     rig, unit, _ = _slow_rig(tmp_path, never=True, poll_every_s=1.0, backoff=2.0, max_wait_s=5.0)
     rig.run()
