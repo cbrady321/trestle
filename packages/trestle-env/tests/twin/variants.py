@@ -66,6 +66,7 @@ def run_terminal(host: mcp_host.McpHost, env: str, mode: str) -> dict[str, Any]:
     )
     assert host.request_count() == sent + 1, "one request, counted once by the MCP host"
     assert isinstance(answer, dict), answer
+    harness.note_passed(answer)
     return answer
 
 
