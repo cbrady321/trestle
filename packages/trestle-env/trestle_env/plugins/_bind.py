@@ -13,9 +13,10 @@ comes from the operator's environment, never from a request:
   `docker_gate run`; an image is named by role and never pulled;
 * `TRESTLE_ENV_COMPOSE_FILE` - the absolute path of the reference Compose definition the closure
   is derived from (optional until a leaf reads a closure);
-* `TRESTLE_ENV_PORTS` - `module:callable`, a binding seam for proof harnesses: when set, the named
-  callable is given the environment and returns the port map INSTEAD of this module's own binding
-  (how a stub twin runs the same tree on a fake engine without a second plugin).
+* `TRESTLE_ENV_PORTS` - `module:callable` (or `/abs/file.py:callable`), a binding seam for proof
+  harnesses: when set, the named callable is given the environment and returns the port map
+  INSTEAD of this module's own binding (how a stub twin runs the same tree on a fake engine
+  without a second plugin, or a host case plants a wrong readiness password on the real one).
 
 The definitions here only join the tree's declared data (`trestle_env.tree`) to the adapters'
 types; they hold no behaviour of their own.
@@ -24,9 +25,12 @@ types; they hold no behaviour of their own.
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import os
 import shutil
+import sys
 from collections.abc import Callable, Iterable, Mapping
+from types import ModuleType
 from typing import Final
 
 from trestle.workflow import ports
@@ -36,6 +40,7 @@ from trestle_packs.process.command import CommandPort
 from trestle_env import tree
 from trestle_env.closure import ClosurePlan, Refused, closure
 from trestle_env.plugins._http import HttpReadinessReads
+from trestle_env.stages import closure_failure
 
 DOCKER_PATH_ENV: Final = "TRESTLE_DOCKER_PATH"
 ENDPOINT_ENV: Final = "TRESTLE_DOCKER_ENDPOINT"
@@ -124,11 +129,14 @@ def reference_ports(
     *,
     execution: ports.ExecutionPort | None = None,
     readiness_environment: Mapping[str, str] | None = None,
+    use_seam: bool = True,
 ) -> Mapping[type, object]:
     """The port map for `run_tree(..., ports=...)`: the container ports, the compose resolver and
-    the execution port (`execution` defaults to `CommandPort`)."""
+    the execution port (`execution` defaults to `CommandPort`). `use_seam` False binds this
+    module's own ports even when `TRESTLE_ENV_PORTS` names a factory (the factory itself calls it
+    that way to wrap the real binding)."""
     env = os.environ if environ is None else environ
-    seam = env.get(PORTS_ENV)
+    seam = env.get(PORTS_ENV) if use_seam else None
     if seam:
         return _seam(seam)(env)
     runner: ports.ExecutionPort = CommandPort() if execution is None else execution
@@ -155,7 +163,8 @@ class ClosureRefusedError(RuntimeError):
     does not hold. `code` is the V-11 code exactly as the resolver or `closure()` gave it."""
 
     def __init__(self, code: str, identifier: str) -> None:
-        super().__init__(f"{code}: {identifier}")
+        self.failure = closure_failure(code, identifier)
+        super().__init__(self.failure.text())  # names the stage (closure) and the service
         self.code = code
         self.identifier = identifier
 
@@ -188,10 +197,25 @@ def derive_closure(
 
 
 def _seam(spec: str) -> Callable[[Mapping[str, str]], Mapping[type, object]]:
-    module, _, attr = spec.partition(":")
+    module, _, attr = spec.rpartition(":")
     if not module or not attr:
-        raise BindingError(f"{PORTS_ENV} must be module:callable, got {spec!r}")
-    factory: Callable[[Mapping[str, str]], Mapping[type, object]] = getattr(
-        importlib.import_module(module), attr
-    )
+        raise BindingError(f"{PORTS_ENV} must be module:callable or /path/file.py:callable")
+    if module.endswith(".py"):  # a file the harness ships beside its tests: importable nowhere else
+        loaded = _load_file(module)
+    else:
+        loaded = importlib.import_module(module)
+    factory: Callable[[Mapping[str, str]], Mapping[type, object]] = getattr(loaded, attr)
     return factory
+
+
+def _load_file(path: str) -> ModuleType:
+    if not os.path.isabs(path) or not os.path.isfile(path):
+        raise BindingError(f"{PORTS_ENV}: {path!r} is not an absolute file path")
+    name = f"trestle_env_ports_seam_{abs(hash(path))}"
+    found = importlib.util.spec_from_file_location(name, path)
+    if found is None or found.loader is None:
+        raise BindingError(f"{PORTS_ENV}: cannot load {path!r}")
+    module = importlib.util.module_from_spec(found)
+    sys.modules[name] = module  # a dataclass resolves its module through sys.modules
+    found.loader.exec_module(module)
+    return module
