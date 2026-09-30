@@ -44,7 +44,6 @@ CM9_ALL_KEYS = CM9_REQUIRED_KEYS | CM9_OPTIONAL_KEYS
 # argument today (there is no `differ.py cz4` subcommand to close).
 UNBUILT_MODES = {
     "d3": "L.CS-2.4",
-    "d6": "L.TR-6.1",
 }
 
 
@@ -514,6 +513,9 @@ def build_parser() -> argparse.ArgumentParser:
     d5 = sub.add_parser("d5")
     d5.add_argument("--fossils", default=None)
 
+    d6 = sub.add_parser("d6")
+    d6.add_argument("--pairs", default=None)
+
     d7 = sub.add_parser("d7")
     d7.add_argument("--answers", default=None)
 
@@ -541,6 +543,10 @@ def main(argv: list[str] | None = None) -> int:
         from tests.proof.differ_modes import d5_one_key
 
         return d5_one_key.main(args)
+    if args.mode == "d6":
+        from tests.proof.differ_modes import d6_direct_child
+
+        return d6_direct_child.main(args)
     if args.mode == "d7":
         from tests.proof.differ_modes import d7_permutation_depth
 
