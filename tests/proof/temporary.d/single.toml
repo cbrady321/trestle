@@ -49,3 +49,13 @@ probe             = "grep -q 'walk_children: tree band' trestle/workflow/loop.py
 removal_condition = "the in-library AllDeclaration walk lands"
 removed_by        = "L.TR-3.2"
 permanent         = false
+
+[[entry]]
+id                = "one-vertex-spine-fixture"      # plan id TM-B2-3
+mechanism         = "tests/fixtures/workflows/spine_leaf.py is the only Slice A fixture the spine gate is parametrized on"
+introduced_by     = "L.SV-5.9"
+serves            = []
+probe             = "python -m tests.proof.probes.single one-vertex-spine-fixture"   # exit 0 iff the spine gate parametrization == {spine_leaf}
+removal_condition = "spine gate green on the Slice A fake tree and the three-level tree (SA-09 retires)"
+removed_by        = "L.TR-6.6"
+permanent         = false

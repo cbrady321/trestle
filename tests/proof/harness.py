@@ -2,21 +2,40 @@
 
 Drives runs through the same seam an MCP client would (`ControlSurface`),
 never around admission/conductor/project — a proof test that plants a
-defect must see it the way a real client would.
+defect must see it the way a real client would. The one exception is
+`run_tree` (L.SV-5.10, MC-26 full): it compiles a workflow fixture and admits
+it through `write_admitted_run` (MC-B2-08), the post-refusal half of
+admission, so it bypasses only the temporary multi-vertex refusal (DM-07,
+`Admission.admit` is that refusal's one home); everything after admission is
+the product's own conductor and child.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import shutil
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from trestle.common.types import RequestOutcome, RunView
+from trestle.common.types import (
+    AdmitRequest,
+    AdmitResultRefused,
+    RequestOutcome,
+    RunView,
+    WorkOrder,
+)
+from trestle.server.admission import plan_for_admission, write_admitted_run
 from trestle.server.ledger import run_dir_for
 from trestle.server.main import Kernel, create_kernel
+from trestle.server.plugin_schema import validate_args
+from trestle.server.snapshots import (
+    deadline_of,
+    discover_plugin_name,
+    load_snapshot_schema,
+)
 
 DEFAULT_PLUGIN_DIR = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "plugins"
 
@@ -75,3 +94,89 @@ def run_to_dir(
         raise RuntimeError(f"run refused: {result.code} {result.message}")
     assert isinstance(result, RunView)
     return run_dir_for(kernel.home, result.run_id)
+
+
+@dataclasses.dataclass(frozen=True)
+class AdmittedTree:
+    """A workflow run admitted by `admit_tree` and not yet driven: its kernel, its run directory
+    and the work order the conductor takes. A caller that plants a defect in the run directory
+    (a stale digest, a foreign lane entry) does it between `admit_tree` and `drive_tree`."""
+
+    kernel: Kernel
+    plugin: str
+    run_id: str
+    run_dir: Path
+    order: WorkOrder
+
+
+def admit_tree(
+    fixture: Path,
+    request: Mapping[str, Any] | None = None,
+    *,
+    kernel: Kernel | None = None,
+    plugin_dirs: Sequence[Path] = (),
+) -> AdmittedTree:
+    """Compile the workflow plugin `fixture` (a plugin source file) and admit a run of it through
+    `write_admitted_run` (MC-23, MC-B2-08), refusing nothing the temporary multi-vertex refusal
+    (DM-07) would: a compiled multi-vertex plan is admitted here and run in-library.
+
+    `request` is the run's arguments. The fixture's plugin directory is a throwaway copy, listed
+    before `plugin_dirs` (a catalog-order knob for the A2.1 node); a `kernel` the caller built
+    already knows the plugin and `fixture` only names it. Raises if the request is invalid or the
+    plan is refused (a refusal is not a run)."""
+    plugin = discover_plugin_name(fixture)
+    if plugin is None:
+        raise ValueError(f"{fixture} holds no single @trestle entry point")
+    if kernel is None:
+        plugin_dir = Path(tempfile.mkdtemp(prefix="trestle-proof-plugins-"))
+        shutil.copy(fixture, plugin_dir / fixture.name)
+        kernel = fresh_kernel([plugin_dir, *plugin_dirs])
+    kernel.registry.maybe_refresh()
+    snap = kernel.registry.get(plugin)
+    if snap is None:
+        raise KeyError(f"plugin {plugin!r} is not published by {fixture}")
+    req = AdmitRequest(plugin=plugin, args=dict(request or {}))
+    validate_args(req.args, load_snapshot_schema(snap))
+    deadline_s, _ = deadline_of(snap)
+    planned = plan_for_admission(snap, req, deadline_s)
+    if isinstance(planned, AdmitResultRefused):
+        outcome = planned.outcome
+        raise RuntimeError(f"plan refused: {outcome.code} {outcome.message}")
+    admission = kernel.control.admission
+    admitted = write_admitted_run(
+        kernel.home, snap, req, planned, service_epoch=admission.service_epoch
+    )
+    admission.scheduler.mint(admitted.run_id, snap.snapshot_id, admitted.spec_hash)
+    order = WorkOrder(
+        run_id=admitted.run_id,
+        snapshot_id=snap.snapshot_id,
+        spec_hash=admitted.spec_hash,
+        secrets=admitted.secrets,
+    )
+    return AdmittedTree(
+        kernel, plugin, admitted.run_id, run_dir_for(kernel.home, admitted.run_id), order
+    )
+
+
+def drive_tree(admitted: AdmittedTree) -> RunView:
+    """Hand an admitted run to the conductor and wait for its terminal answer (the finalized
+    terminal row, never a running frame)."""
+    control = admitted.kernel.control
+    control._drive_background(admitted.order)  # the dispatcher: the run starts as in `run`
+    view = control.project.await_terminal(admitted.run_id)
+    if isinstance(view, RequestOutcome):
+        raise RuntimeError(f"run did not finish: {view.code} {view.message}")
+    return view
+
+
+def run_tree(
+    fixture: Path,
+    request: Mapping[str, Any] | None = None,
+    *,
+    kernel: Kernel | None = None,
+    plugin_dirs: Sequence[Path] = (),
+) -> Path:
+    """MC-26 full: `admit_tree`, then run to terminal; returns the run directory."""
+    admitted = admit_tree(fixture, request, kernel=kernel, plugin_dirs=plugin_dirs)
+    drive_tree(admitted)
+    return admitted.run_dir

@@ -125,6 +125,13 @@ def test_declaration_edit_changes_identity(tmp_path: Path) -> None:
         "from trestle.workflow.declarations import LeafDeclaration",
         "import trestle.workflow",
         "import trestle.workflow.declarations as decl",
+        # the unit-author surface, public from L.SV-5.9 (PUBLIC_MODULES)
+        "from trestle.workflow.loop import run_tree",
+        "from trestle.workflow import loop",
+        "from trestle.workflow.units import Acted, NoAction",
+        "from trestle.workflow.values import Observation",
+        "from trestle.workflow import ports",
+        "from trestle.workflow.ports import ResourceReads",
     ],
 )
 def test_allowlist_admits_public_workflow_names(line: str) -> None:
@@ -140,8 +147,10 @@ def test_allowlist_admits_public_workflow_names(line: str) -> None:
         "from trestle.workflow import _x as x, LeafDeclaration",
         "import trestle.workflow.extract",
         "from trestle.workflow import extract",
-        "from trestle.workflow import loop",
-        "from trestle.workflow.loop import run_tree",
+        "from trestle.workflow import facets",
+        "from trestle.workflow.services import RunServices",
+        "from trestle.workflow.join import join",
+        "from trestle.workflow.decide import decide",
         "import trestle.common.plan",
     ],
 )

@@ -1,6 +1,7 @@
 """Presence probes of the SINGLE phase's temporary mechanisms (CSC-5; CM-7 probe form).
 
     python -m tests.proof.probes.single multi-vertex-refusal [--phase full | choice-only]
+    python -m tests.proof.probes.single one-vertex-spine-fixture
 
 Exit 0 = present (in the named phase), exit 1 = absent, exit 2 = a usage error. A probe decides
 presence by exit status alone: it is side-effect free (a throwaway home under a temporary
@@ -16,6 +17,10 @@ fixtures (`probe_all_root`, an `AllDeclaration` root; `probe_choice_root`, a `Ch
 * no phase: the refusal is present in some phase, i.e. the `ChoiceNode` root is refused (until
   L.TR-5.3 removes the entry).
 
+`one-vertex-spine-fixture` (TM-B2-3, L.SV-5.9) is present iff the spine gate's parametrization
+(`SPINE_FIXTURES` in `tests/single/spine/test_w_a1.py`, read as a literal: no import, nothing run)
+is exactly `{spine_leaf}` and that fixture file exists.
+
 A fixture that cannot be admitted for another reason is not "refused for shape": the probe counts
 only the temporary code.
 """
@@ -23,6 +28,7 @@ only the temporary code.
 from __future__ import annotations
 
 import argparse
+import ast
 import os
 import shutil
 import sys
@@ -34,6 +40,8 @@ FIXTURES = REPO / "tests" / "fixtures" / "workflows"
 ALL_ROOT = "probe_all_root"
 CHOICE_ROOT = "probe_choice_root"
 PHASES = ("full", "choice-only")
+SPINE_GATE = REPO / "tests" / "single" / "spine" / "test_w_a1.py"
+SPINE_FIXTURE = "spine_leaf"
 
 
 def refused_for_shape(plugin_sources: dict[str, str]) -> dict[str, bool]:
@@ -80,7 +88,36 @@ def multi_vertex_refusal(phase: str | None) -> bool:
     return refused[CHOICE_ROOT]
 
 
-PROBES = {"multi-vertex-refusal": multi_vertex_refusal}
+def spine_parametrization() -> set[str] | None:
+    """The literal `SPINE_FIXTURES` tuple of the spine gate module, or None when it is absent or
+    not a tuple of string literals."""
+    try:
+        tree = ast.parse(SPINE_GATE.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return None
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "SPINE_FIXTURES" for t in node.targets
+        ):
+            try:
+                value = ast.literal_eval(node.value)
+            except ValueError:
+                return None
+            if isinstance(value, tuple) and all(isinstance(v, str) for v in value):
+                return set(value)
+    return None
+
+
+def one_vertex_spine_fixture(phase: str | None) -> bool:
+    return (
+        spine_parametrization() == {SPINE_FIXTURE} and (FIXTURES / f"{SPINE_FIXTURE}.py").is_file()
+    )
+
+
+PROBES = {
+    "multi-vertex-refusal": multi_vertex_refusal,
+    "one-vertex-spine-fixture": one_vertex_spine_fixture,
+}
 
 
 def main(argv: list[str] | None = None) -> int:
