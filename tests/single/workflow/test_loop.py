@@ -373,7 +373,7 @@ def test_ticketless_readvance_under_a_granted_remedy_is_unit_raised(tmp_path: Pa
         effects=(*MARKER_EFFECTS, effect("restart", EffectFacetClass.OWNED)),
         remedies=(
             RemedyDeclaration(
-                codes.POSTCONDITION_TIMEOUT, "restart", 2, timedelta(seconds=300), timedelta(0)
+                codes.POSTCONDITION_TIMEOUT, "restart", 2, timedelta(seconds=30), timedelta(0)
             ),
         ),
         max_attempts=1,

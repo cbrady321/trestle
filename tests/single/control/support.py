@@ -41,7 +41,7 @@ class Unit:
             flags=LoopFlags(Compose.LEAF, CompletionSource.OBSERVED, Repeat.SAFE),
             preconditions=(),
             postcondition="ready",
-            wait=WaitPolicy(timedelta(seconds=1), 1.0, timedelta(seconds=30)),
+            wait=WaitPolicy(timedelta(seconds=1), 1.0, timedelta(seconds=20)),
             resource_kind="marker",
             may_touch=frozenset({"marker"}),
             effects=EFFECTS,
