@@ -281,6 +281,7 @@ COMPILE_REQUESTS: dict[str, dict[str, Any]] = {
     "depth2_conditions": {"env": "dev"},
     "creator_pk": {"env": "dev"},
     "live_state": {"env": "dev"},
+    "choice_long_running": {"env": "dev"},
 }
 
 # What MC-23 says of each ground: a refusal code, or None when the declaration alone compiles
