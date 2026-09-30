@@ -641,6 +641,45 @@ def _reads_straddle(func: ast.AST) -> bool:
     return False
 
 
+def gap_entry_node_ids(entry: str, collected: list[str]) -> list[str]:
+    """The collected node ids that stand for a gap's `entry` (gaps.toml, "module:function"):
+    the test itself, or, when the entry is a helper its module's tests call (lane C, e.g.
+    `test_g_c1:wait_at_budget`), every collected test of that module. A helper is no node id,
+    and one unknown id makes pytest refuse the whole run, so only collected ids are returned."""
+    module, _, func = entry.partition(":")
+    path = f"{module.replace('.', '/')}.py"
+    nodeid = f"{path}::{func}"
+    if nodeid in collected or any(n.startswith(f"{nodeid}[") for n in collected):
+        return [n for n in collected if n == nodeid or n.startswith(f"{nodeid}[")]
+    return [n for n in collected if n.startswith(f"{path}::")]
+
+
+def gap_entry_outcomes(
+    gaps: list[dict[str, Any]],
+    collected: list[str],
+    audit: Callable[[list[str]], dict[str, Any]],
+) -> dict[str, str]:
+    """(d): each core gap's entry outcome under `--runxfail`: `passed` only when every node
+    that stands for its entry passed; `no result` when none was collected."""
+    targets: dict[str, list[str]] = {}
+    for gap in gaps:
+        entry = str(gap.get("entry", "pending"))
+        if gap["id"] in CORE_GAPS and ":" in entry:
+            targets[gap["id"]] = gap_entry_node_ids(entry, collected)
+    run = sorted({n for ids in targets.values() for n in ids})
+    outcomes = audit(["--runxfail", *run]).get("outcomes", {}) if run else {}
+    result: dict[str, str] = {}
+    for gap, ids in targets.items():
+        got = [str(outcomes.get(n, {}).get("outcome", "no result")) for n in ids]
+        if not got:
+            result[gap] = "no result"
+        elif all(g == "passed" for g in got):
+            result[gap] = "passed"
+        else:
+            result[gap] = next(g for g in got if g != "passed")
+    return result
+
+
 class LiveWorld:
     """The same attributes as `World`, each read from the checkout the first time it is used."""
 
@@ -708,19 +747,8 @@ class LiveWorld:
     def _load_gap_entries(self) -> dict[str, str]:
         from tests.proof import meta as meta_mod
 
-        ids: dict[str, str] = {}
-        for gap in meta_mod._load_inventories()[0]:  # noqa: SLF001
-            entry = str(gap.get("entry", "pending"))
-            if gap["id"] in CORE_GAPS and ":" in entry:
-                module, _, func = entry.partition(":")
-                ids[gap["id"]] = f"{module.replace('.', '/')}.py::{func}"
-        if not ids:
-            return {}
-        audit = _audit(["--runxfail", *ids.values()])
-        outcomes = audit.get("outcomes", {})
-        return {
-            gap: outcomes.get(nodeid, {}).get("outcome", "no result") for gap, nodeid in ids.items()
-        }
+        gaps = meta_mod._load_inventories()[0]  # noqa: SLF001
+        return gap_entry_outcomes(gaps, [n["nodeid"] for n in self.nodes], _audit)
 
     def _load_nodes(self) -> list[dict[str, Any]]:
         return list(_audit(["--collect-only"]).get("nodes", []))
