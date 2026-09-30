@@ -3,7 +3,6 @@ format version (MC-20, MC-22's ordinal property; L.SV-3.3): shape evidence only.
 
 from __future__ import annotations
 
-import copy
 import json
 import random
 from typing import Any
@@ -95,52 +94,13 @@ def test_descendant_before_composite() -> None:
     assert checked > 100
 
 
-def _wrap(declared: DeclaredTree, target: str) -> tuple[DeclaredTree, dict[str, str]] | None:
-    """Wrap the node at `target` in a new composite that takes its declaration position, name and
-    edges; the node moves one level down. Returns the tree and the old-path -> new-path map."""
-    nodes = copy.deepcopy(dict(declared.nodes))
-    holders = [
-        (path, ref)
-        for path, node in nodes.items()
-        if node["compose"] == "all"
-        for ref in node["children"]
-        if ref["path"] == target
-    ]
-    if not holders or target == ROOT_PATH:
-        return None
-    inner = f"{target}/wrapped"
-
-    def moved(path: str) -> str:
-        if path == target or path.startswith(f"{target}/"):
-            return inner + path[len(target) :]
-        return path
-
-    mapping = {p: moved(p) for p in nodes}
-    remapped: dict[str, Any] = {}
-    for path, node in nodes.items():
-        for ref in node.get("children", ()):
-            if ref["path"] is not None:
-                ref["path"] = moved(ref["path"])
-        for alt in node.get("choice", {}).get("alternatives", ()):
-            if alt["path"] is not None:
-                alt["path"] = moved(alt["path"])
-        remapped[moved(path)] = node
-    first_ref = holders[0][1]
-    wrapper_ref = child_ref(first_ref["name"], inner, unit=first_ref["binding"]["unit"])
-    remapped[target] = all_node("wrap", [wrapper_ref])
-    for _, ref in holders:
-        ref["path"] = target  # every reference to the node now reaches the wrapper
-    # the wrapper's own ref carries no needs; the outer refs keep theirs
-    return DeclaredTree.build(declared.root, remapped), mapping
-
-
 def test_wrapping_preserves_relative_order() -> None:
     checked = 0
     for label, declared, plan in _plans():
         if "share" in label:
             continue
         for target in plan.paths:
-            wrapped = _wrap(declared, target)
+            wrapped = trees.wrap_node(declared, target)
             if wrapped is None:
                 continue
             new_tree, mapping = wrapped

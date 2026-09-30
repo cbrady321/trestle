@@ -437,11 +437,12 @@ def disposition_from_ledger(
 ) -> CleanupDisposition:
     """The run's cleanup disposition rebuilt from its durable rows (the `sweep_disposition` rows
     and the group stop), for the answer's recomputation at read time (B4-C1)."""
+    records_list = list(records)
     released: list[SweepTarget] = []
     nothing_created: list[SweepTarget] = []
     unknown: list[SweepTarget] = []
     left_durable: list[tuple[SweepTarget, str]] = []
-    for record in records:
+    for record in records_list:
         if record.get("kind") != SWEEP_DISPOSITION_KIND:
             continue
         raw = record.get("target")
@@ -457,9 +458,10 @@ def disposition_from_ledger(
             left_durable.append((target, str(record.get("owner", ""))))
         else:
             unknown.append(target)
-    if group_disposition(folded.entries, group) == RELEASED:
+    skipped = any(r.get("kind") == SWEEP_SKIPPED_KIND for r in records_list)
+    if not skipped and group_disposition(folded.entries, group) == RELEASED:
         released.append(GROUP_TARGET)
-    else:
+    else:  # a sweep recovery declined (unknown plan format) leaves the cleanup unknown
         unknown.append(GROUP_TARGET)
     return CleanupDisposition(
         tuple(released), tuple(nothing_created), tuple(unknown), tuple(left_durable)

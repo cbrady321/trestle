@@ -269,6 +269,13 @@ def fold_into_ledger(
     return folded
 
 
+def walked_paths(folded: FoldedRecord, accepted: AcceptedPlan | None) -> frozenset[tuple[str, ...]]:
+    """The run's walked set `V_run` (V-4.8): the plan's scope less every alternative the recorded
+    selection did not select. The answer reads it through here (it imports no lane codec)."""
+    selection = folded.plan.selection if folded.plan is not None else {}
+    return lf.walked_set(_scope(accepted), selection)
+
+
 def cleanup_is_unknown(folded: FoldedRecord) -> bool:
     """B2-C9's lane inputs to cleanup: an overflowed lane, or an entry outside the admitted plan,
     makes cleanup `unknown`, never clean. A full lane (`refused_full`) alone changes nothing."""

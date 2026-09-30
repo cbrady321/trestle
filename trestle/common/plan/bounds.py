@@ -23,6 +23,18 @@ LANE_ENTRY_MAX: int = 8 * 1024  # every written lane entry except the plan entry
 LANE_BASE_ENTRIES: int = 4096  # LANE_ENTRIES = LANE_BASE_ENTRIES + |selected_scope| + 2
 VERTEX_MAX: int = 1024  # PlanAccepted.selected_scope (AM-6: one definition, here)
 OBSERVE_STDOUT_MAX: int = 4096  # stdout the sweep reads from `observe_argv` (V-10.4)
+ANSWER_FIXED: int = 1024  # the terminal answer's keys, enums, booleans, counts and nulls (V-13)
+# The decisive fields of any answer: ANSWER_FIXED + the primary's path, code, human action, the
+# `detail` handle, and either `error` or the timed-out stage (never both); V-13 derives 3968.
+PRIMARY_MAX: int = (
+    ANSWER_FIXED
+    + PATH_MAX
+    + CODE_MAX
+    + HUMAN_ACTION_MAX
+    + TOKEN_MAX
+    + max(PATH_MAX + CODE_MAX + TEXT_MAX, PATH_MAX)
+)
+SUMMARY_BUDGET_DEFAULT: int = 4096  # a snapshot's `summary_budget` default; floor PRIMARY_MAX
 
 
 def text_bytes(value: str) -> int:
