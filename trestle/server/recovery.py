@@ -198,10 +198,11 @@ def append_recovery_suffix(
     if ledger.terminal_state() is None:
         # B4 Ordering (B2-C11): the answer is projected from the durable inputs, `recovered`,
         # before the terminal row
+        spec = _read_spec(run_dir)
         answer.write_finalized(
-            run_dir,
-            answer.answer_for_run(run_dir, ledger.records, "interrupted", _read_spec(run_dir)),
+            run_dir, answer.answer_for_run(run_dir, ledger.records, "interrupted", spec)
         )
+        answer.write_child_views(run_dir, spec)  # V-1.3: each child view, terminal form
         ledger.append("interrupted", run_id=run_id)
 
     fsync_dir(evidence_dir(run_dir))

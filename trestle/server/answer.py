@@ -17,6 +17,7 @@ persisted at finalization (`evidence/answer.json`, the full unbudgeted encoding 
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -48,6 +49,11 @@ Path = tuple[str, ...]
 
 ROOT: Path = ()
 ANSWER_FILE = "answer.json"
+CHILD_VIEWS_FILE = "child_views.json"
+# A `ChildRunId` (V-1.1) is `<root run id>~<digest>`: derived only from the root's run id and the
+# vertex's canonical path, so it is fixed at admission and no caller can construct one the host
+# will honour (a forged path or root fails the derivation). `~` is in no run id.
+CHILD_SEP = "~"
 
 
 # ---- B4's answer types
@@ -676,6 +682,75 @@ def to_wire_full(answer: TerminalAnswer) -> dict[str, Any]:
     return body
 
 
+# ---- child views (L.TR-2.2; B4-C8, V-1.3, MC-B3-08)
+
+
+def child_handle(root_run_id: str, path: Path) -> str:
+    """The `ChildRunId` of the vertex at `path` of root `root_run_id` (V-1.1): derived from those
+    two values alone. The root itself (`ROOT`) has no child handle: its handle is the run id."""
+    if path == ROOT:
+        raise ValueError("the root is addressed by its run id, not by a child handle")
+    digest = hashlib.sha256(f"{root_run_id}\0{_spath(path)}".encode()).hexdigest()[:24]
+    return f"{root_run_id}{CHILD_SEP}{digest}"
+
+
+def root_run_id_of(handle: str) -> str | None:
+    """The root run id a child handle names, or None when `handle` is not shaped like one."""
+    root, sep, digest = handle.partition(CHILD_SEP)
+    return root if sep and root and digest else None
+
+
+def child_paths(root_run_id: str, plan: AdmittedPlan | None) -> dict[str, Path]:
+    """Every child handle of the root, mapped to its vertex path: one per non-root vertex of the
+    admitted scope (an unselected `CHOICE` alternative included, V-1.3)."""
+    if plan is None:
+        return {}
+    paths = (_path(v.path) for v in plan.vertices)
+    return {child_handle(root_run_id, p): p for p in paths if p != ROOT}
+
+
+def child_accounts(run_dir: FsPath, spec: Mapping[str, Any]) -> dict[Path, NodeAnswer]:
+    """The account of every non-root vertex of the admitted scope, from the durable inputs: what
+    the root answer says of that vertex (`_Run.node`, the one roll-up rule, B4-C8/B4-I4). Empty for
+    a root with no plan or one vertex."""
+    try:
+        admitted = fold.plan_of_spec(spec)
+    except ValueError:
+        return {}
+    if admitted is None or not admitted.declaration_digest:
+        return {}
+    run = _Run(fold.fold_lane(run_dir, admitted), admitted)
+    return {p: run.node(p) for p in child_paths(run_dir.name, admitted).values()}
+
+
+def write_child_views(run_dir: FsPath, spec: Mapping[str, Any]) -> None:
+    """Materialize the terminal form of every child view (V-1.3, B2-C10) as
+    `evidence/child_views.json` (path -> the vertex's `NodeAnswer`). Called at finalization and at
+    recovery, beside `write_finalized`; a root of one vertex has no child and writes nothing (so a
+    depth-1 run's evidence is byte-identical, SA-15)."""
+    accounts = child_accounts(run_dir, spec)
+    if not accounts:
+        return
+    views = {_spath(p): _node_wire(n) for p, n in accounts.items()}
+    atomic_write_json(run_dir / "evidence" / CHILD_VIEWS_FILE, {"views": views})
+
+
+def read_child_views(run_dir: FsPath) -> dict[str, dict[str, Any]] | None:
+    """The materialized child views (path -> wire `NodeAnswer`), or None when none were written."""
+    try:
+        loaded = json.loads((run_dir / "evidence" / CHILD_VIEWS_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    views = loaded.get("views") if isinstance(loaded, dict) else None
+    return views if isinstance(views, dict) else None
+
+
+def node_wire(node: NodeAnswer) -> dict[str, Any]:
+    """The wire form of one vertex's account (a root answer's `primary`/`listed` entry, and a
+    child view's `answer`)."""
+    return _node_wire(node)
+
+
 def account_of(answer: TerminalAnswer, path: Path) -> NodeAnswer | None:
     """The answer's account of a vertex: what a child view of `path` must equal (B4-C8)."""
     if answer.primary.path == path:
@@ -753,6 +828,8 @@ def write_finalized(run_dir: FsPath, answer: TerminalAnswer) -> None:
 
 __all__ = [
     "ANSWER_FILE",
+    "CHILD_SEP",
+    "CHILD_VIEWS_FILE",
     "GROUP_TARGET",
     "CleanupAnswer",
     "ExecutionErrorAnswer",
@@ -761,11 +838,18 @@ __all__ = [
     "UnconfirmedEffect",
     "account_of",
     "answer_for_run",
+    "child_accounts",
+    "child_handle",
+    "child_paths",
     "detail_handle",
     "execution_error",
+    "node_wire",
     "project",
+    "read_child_views",
+    "root_run_id_of",
     "to_wire",
     "summary_budget_of",
     "to_wire_full",
+    "write_child_views",
     "write_finalized",
 ]
