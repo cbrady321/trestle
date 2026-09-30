@@ -1,0 +1,32 @@
+# K-6 on real Docker, the F-13(d) wider-reading fixture (L.RB-3.3; MC-B-10, MC-B-11, CSC-10).
+# The legacy entry points bring this stack up under their own Compose project and tear it down per
+# the declared value; the named volume `k6data` is seeded by `keeper` and must survive every
+# registered teardown. `broken` names an image digest that is never cached (`pull_policy: never`
+# refuses to pull it), so a wave naming it fails. Images are named by role only (exported by
+# `docker_gate run` from images.toml) or by the test; every service, network and volume carries
+# the fixture label, so what `stop`, `none` or a failed `up` leaves by design is attributable.
+services:
+  keeper:
+    image: ${TRESTLE_IMAGE_ALPINE}
+    pull_policy: never
+    command: ["sh", "-c", "echo seeded > /data/seed && trap 'exit 0' TERM; while :; do sleep 1; done"]
+    volumes:
+      - k6data:/data
+    labels:
+      trestle.proof.fixture: k6
+
+  broken:
+    image: ${TRESTLE_K6_BROKEN_IMAGE}
+    pull_policy: never
+    labels:
+      trestle.proof.fixture: k6
+
+volumes:
+  k6data:
+    labels:
+      trestle.proof.fixture: k6
+
+networks:
+  default:
+    labels:
+      trestle.proof.fixture: k6
