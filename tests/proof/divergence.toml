@@ -1433,3 +1433,20 @@ docs = []
 due_checkpoint = "TR-0 (leaf L.TR-0.4)"
 direction = "additive"
 authorized_by = "plans/a2-tree.md L.TR-0.4 (OQ-31 refuse_at_publication variant) and L.TR-1.5 (cross-node coverage) (DM-16, F-3, AM-15)"
+
+# L.TR-2.2 (MC-B3-08): a child view is a RunView with three more fields, emitted on child views only
+# (a root view's bytes are unchanged).
+# runview_shape: $.fields gains root_run_id, path, disposition.
+[[entry]]
+id = "ADD-runview-child-fields"
+facet = "runview_shape"
+row_or_k = "MC-B3-08"
+docs = []
+due_checkpoint = "TR-2 (leaf L.TR-2.2)"
+direction = "additive"
+items = [
+  { path = "$.fields", value = ["root_run_id", "str | None"] },
+  { path = "$.fields", value = ["path", "str | None"] },
+  { path = "$.fields", value = ["disposition", "str | None"] },
+]
+authorized_by = "plans/a2-tree.md L.TR-2.2 (V-1.3 child run view: root_run_id, path, disposition; MC-B3-08), MC-06 seed"

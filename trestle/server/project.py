@@ -26,6 +26,7 @@ from trestle.common.types import (
 )
 from trestle.query.fs import FilesystemQueryBackend
 from trestle.server import answer as answer_mod
+from trestle.server import fold
 from trestle.server.ledger import (
     TERMINAL_KINDS,
     RunLedger,
@@ -62,6 +63,9 @@ class Project:
         with self._status_lock:
             ledger = self._ledger_for(run_id)
             if ledger is None:
+                child = self._child_view(run_id)
+                if child is not None:
+                    return child
                 return RequestOutcome(
                     code=codes.INVALID_HANDLE,
                     message=f"unknown run: {run_id}",
@@ -336,6 +340,43 @@ class Project:
                 return run_dir
         return None
 
+    def _child_view(self, handle: Handle) -> RunView | None:
+        """The view of a child handle (V-1.1, V-1.3; MC-B3-08), or None when `handle` is not a
+        child handle of an admitted root: a root that does not exist, one whose plan has no such
+        vertex, or a handle that does not derive from (root run id, path) all read as unknown.
+        `state` is the root's run state, so a child is non-terminal while its root is live; once the
+        root is finalized the vertex's B4-C8 account is the materialized one (finalization and
+        recovery wrote it), or, for a run finalized before it existed, recomputed from the same
+        durable inputs."""
+        root_id = answer_mod.root_run_id_of(handle)
+        if root_id is None:
+            return None
+        ledger = self._ledger_for(root_id)
+        run_dir = self._run_dir_for(root_id)
+        if ledger is None or run_dir is None:
+            return None
+        spec = _read_spec(evidence_dir(run_dir)) or {}
+        try:
+            plan = fold.plan_of_spec(spec)
+        except ValueError:
+            return None
+        path = answer_mod.child_paths(root_id, plan).get(handle)
+        if path is None:
+            return None
+        state = ledger.projected_state()
+        view = RunView(run_id=handle, state=state, root_run_id=root_id, path="/".join(path))
+        if state in _NON_TERMINAL_STATES:
+            return view
+        key = "/".join(path)
+        wire = (answer_mod.read_child_views(run_dir) or {}).get(key)
+        if wire is None:
+            account = answer_mod.child_accounts(run_dir, spec).get(path)
+            wire = answer_mod.node_wire(account) if account is not None else None
+        view.answer = wire
+        listing = wire.get("listing") if wire is not None else None
+        view.disposition = listing if listing in _DISPOSITIONS else None
+        return view
+
     def _run_view(self, ledger: RunLedger, run_id: Handle) -> RunView:
         state = ledger.projected_state()
 
@@ -563,6 +604,10 @@ def _cleanup_view(ledger: RunLedger, state: str) -> CleanupView | None:
 
 _NON_TERMINAL_STATES = frozenset({"queued", "running"})
 _FAILURE_TERMINAL_STATES = TERMINAL_KINDS - frozenset({"succeeded"})
+
+
+# B4 `Listing` values a child view reports as its `disposition` (MC-B3-08)
+_DISPOSITIONS = frozenset({"not_started", "stopped", "unended"})
 
 
 def _is_non_terminal(state: str) -> bool:
