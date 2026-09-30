@@ -14,6 +14,8 @@ and the implementation factory's `Implementation.extras`, its fixture contract:
   sweep does (the engine the implementation is bound to);
 - `unreachable()` and `missing_cli()`: an `Implementation` bound to an engine that does not answer,
   and to a docker executable that does not exist, each with its own `run_argv` extra;
+- `cancel_root()`: the root's cancel signal goes up on the implementation (WR-CANCEL-5's adapter
+  half: a docker call the adapter starts ends on a root cancel and changes nothing);
 - the implementation's `reach.engine_inventory`: containers, images, volumes and networks by name
   (B3-C17 (3)), which the read-facet watcher compares around every read.
 
@@ -48,6 +50,7 @@ FAMILY = "container"
 ROOT_RUN = "r_suite_0001"
 DOCKER_CLI_MISSING = "adapter.docker_cli_missing"
 DOCKER_ENGINE_UNREACHABLE = "adapter.docker_engine_unreachable"
+EXECUTION_CANCELLED = "execution.cancelled"
 ROUTE_UNSUPPORTED = "admission.route_unsupported"
 VOLUME = "suite-seeded-volume"
 FORBIDDEN_FLAGS = frozenset({"-v", "--volumes", "-f", "--force", "--volumes-from"})
@@ -342,6 +345,27 @@ def reads_against_an_unreachable_engine_could_not_observe(built: core.Implementa
                 down.close()
 
 
+def a_root_cancel_ends_every_call_and_changes_nothing(built: core.Implementation) -> None:
+    """WR-CANCEL-5, the adapter contract-suite half: docker runs through the injected execution
+    port with the root's cancel signal, so once the root is cancelled every call the adapter makes
+    ends at once (the port returns its INTERRUPTED code) and the adapter reports it as such: a
+    read is could-not-observe with that code, never a partial or an absent result, and a create
+    is `NOT_APPLIED` with that code, having changed nothing."""
+    lin = lineage("one")
+    before = _inventory(built)
+    built.extras["cancel_root"]()
+    seen = built.impl.observe(built.extras["spec"], lin, "up")
+    assert seen.code == EXECUTION_CANCELLED
+    assert seen.selector_present is False and seen.selector_ref is None and tuple(seen.found) == ()
+    target = FoundRef("docker_container", selector_of(lin), datetime.now(UTC))
+    checked = built.impl.check("running", target)
+    assert checked.satisfied is False and checked.code == EXECUTION_CANCELLED
+    made = _create(built, lin)
+    assert status(made) is ConfirmationStatus.NOT_APPLIED and made.code == EXECUTION_CANCELLED
+    assert made.identity is None
+    assert _inventory(built) == before  # a cancelled root leaves the engine as it found it
+
+
 def repair_keeps_one_target(built: core.Implementation) -> None:
     lin = lineage("one")
     handle = _owned(built, lin)
@@ -449,6 +473,10 @@ CASES: Sequence[core.Case] = (
     core.Case(
         "reads_against_an_unreachable_engine_could_not_observe",
         reads_against_an_unreachable_engine_could_not_observe,
+    ),
+    core.Case(
+        "a_root_cancel_ends_every_call_and_changes_nothing",
+        a_root_cancel_ends_every_call_and_changes_nothing,
     ),
     core.Case("repair_keeps_one_target", repair_keeps_one_target),
     core.Case(

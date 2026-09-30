@@ -47,6 +47,7 @@ from trestle_packs.fakes.marker import (
 
 DOCKER_CLI_MISSING = "adapter.docker_cli_missing"
 DOCKER_ENGINE_UNREACHABLE = "adapter.docker_engine_unreachable"
+EXECUTION_CANCELLED = "execution.cancelled"  # the code a call ended by the root's cancel carries
 DOCKER_KIND = "docker_container"  # the FoundRef resource kind of a container
 ENGINE_KIND = "docker_engine"  # a found shared engine (start's HOST case)
 SELECTOR_PREFIX = "trwr-"
@@ -134,6 +135,7 @@ class FakeContainerEngine:
         self._images: set[str] = {"alpine"}
         self._networks: set[str] = {"bridge"}
         self._created: set[str] = set()  # selectors this adapter made (recreate's proof)
+        self._cancelled = False
 
     # ------------------------------------------------------------------ the fake's own surface
 
@@ -159,8 +161,16 @@ class FakeContainerEngine:
     def seed_volume(self, name: str) -> None:
         self._volumes.add(name)
 
+    def cancel_root(self) -> None:
+        """The root's cancel signal goes up: every call the adapter makes from now on ends at once
+        (the execution port returns INTERRUPTED with `execution.cancelled`), changing nothing."""
+        self._cancelled = True
+
     def _down(self) -> str | None:
-        """The could-not-observe code when the CLI is missing or the engine does not answer."""
+        """The could-not-observe code when the root is cancelled, the CLI is missing or the
+        engine does not answer."""
+        if self._cancelled:
+            return EXECUTION_CANCELLED
         if not self.cli_present:
             return DOCKER_CLI_MISSING
         return None if self.reachable else DOCKER_ENGINE_UNREACHABLE

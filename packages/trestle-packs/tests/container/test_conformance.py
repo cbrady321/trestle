@@ -22,6 +22,7 @@ from tests.proof.host.docker_gate import fake_docker, inventory
 from tests.proof.suites.ports import core
 from trestle.workflow import ports
 from trestle.workflow.declarations import RealizationKind
+from trestle.workflow.values import StopCause
 
 from trestle_packs.container import ContainerDefinition, bind
 from trestle_packs.fakes.compose import FakeComposeResolver
@@ -62,6 +63,7 @@ def fake_container(
                 "plant_found": engine.plant_found,
                 "seed_volume": engine.seed_volume,
                 "run_argv": engine.run_argv,
+                "cancel_root": engine.cancel_root,
                 "unreachable": lambda: _down(reachable=False),
                 "missing_cli": lambda: _down(cli_present=False),
             },
@@ -83,6 +85,26 @@ def fake_container(
 FIXTURE_LABEL = "trestle.proof.fixture=container-suite"
 KEEP_RUNNING = ("sh", "-c", "trap 'exit 0' TERM; while :; do sleep 1; done")
 SELECTOR_ROOT = "^/trwr-" + container_cases.ROOT_RUN + "-"
+
+
+class RootSignal:
+    """The root's cancel signal (V-2): never requested until `cancel()`."""
+
+    def __init__(self) -> None:
+        self._cause: StopCause | None = None
+
+    @property
+    def requested(self) -> bool:
+        return self._cause is not None
+
+    def cause(self) -> StopCause | None:
+        return self._cause
+
+    def wait(self, timeout: Any) -> bool:
+        return self.requested
+
+    def cancel(self) -> None:
+        self._cause = StopCause.CANCEL
 
 
 class RealEngine:
@@ -157,7 +179,10 @@ def real_container(
 
     def build() -> core.Implementation:
         engine = RealEngine(cli, endpoint, image)
-        port = bind(cli, endpoint, CommandPort(), definitions=_real_definitions(image)).containers
+        root = RootSignal()
+        port = bind(
+            cli, endpoint, CommandPort(), definitions=_real_definitions(image), cancel=root
+        ).containers
 
         def unreachable() -> core.Implementation:
             down_cli, down_endpoint = down_of()
@@ -189,6 +214,7 @@ def real_container(
                 "plant_found": engine.plant_found,
                 "seed_volume": engine.seed_volume,
                 "run_argv": engine.run_argv,
+                "cancel_root": root.cancel,
                 "unreachable": unreachable,
                 "missing_cli": missing_cli,
             },
