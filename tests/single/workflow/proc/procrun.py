@@ -10,7 +10,6 @@ a failing test leaves behind (`tests.core.spine.support.reaping`).
 from __future__ import annotations
 
 import importlib.util
-import shutil
 import subprocess
 import sys
 import uuid
@@ -50,15 +49,28 @@ def short_stop(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(clock, "kill", support.TEST_KILL_S)
 
 
-def plugin_dir(base: Path) -> Path:
+def plugin_dir(base: Path, *, budget_s: int | None = None, deadline_s: int | None = None) -> Path:
+    """A plugin directory holding the fixture; `budget_s` / `deadline_s` publish a copy with its
+    declared budget and deadline rewritten (its three literals, each checked to be there)."""
     directory = base / "plugins"
     directory.mkdir(parents=True, exist_ok=True)
-    shutil.copy(FIXTURE, directory / "proc_leaf.py")
+    source = FIXTURE.read_text(encoding="utf-8")
+    for literal, value in (("BUDGET_S = 100", budget_s), ("DEADLINE_S = 120", deadline_s)):
+        if value is not None:
+            assert literal in source
+            source = source.replace(literal, f"{literal.split(' = ')[0]} = {value}")
+    if deadline_s is not None:
+        assert "@trestle(deadline=120," in source
+        source = source.replace("@trestle(deadline=120,", f"@trestle(deadline={deadline_s},")
+    (directory / "proc_leaf.py").write_text(source, encoding="utf-8")
     return directory
 
 
-def kernel_over_fixture(base: Path) -> Kernel:
-    return harness.fresh_kernel(plugin_dirs=[plugin_dir(base)], home=base / "home")
+def kernel_over_fixture(
+    base: Path, *, budget_s: int | None = None, deadline_s: int | None = None
+) -> Kernel:
+    directory = plugin_dir(base, budget_s=budget_s, deadline_s=deadline_s)
+    return harness.fresh_kernel(plugin_dirs=[directory], home=base / "home")
 
 
 def tag_for(base: Path, test_name: str) -> str:
@@ -69,11 +81,17 @@ def tag_for(base: Path, test_name: str) -> str:
 
 
 @contextmanager
-def started(kernel: Kernel, tag: str, **args: Any) -> Iterator[tuple[Any, Path, Any]]:
-    """Admit and drive one `proc_leaf` run in a thread; leave no process of `tag` behind."""
+def started(
+    kernel: Kernel, tag: str, *, reap: bool = True, **args: Any
+) -> Iterator[tuple[Any, Path, Any]]:
+    """Admit and drive one `proc_leaf` run in a thread. On exit every process of `tag` is killed
+    unless `reap` is false (the caller reaps: a found process carries the tag too)."""
     order = support.admit_order(kernel, "proc_leaf", {"env": "e", "tag": tag, **args})
     run_dir = support.run_dir_of(kernel, order.run_id)
     thread = support.drive_in_thread(kernel, order)
+    if not reap:
+        yield order, run_dir, thread
+        return
     with support.reaping(tag):
         yield order, run_dir, thread
 

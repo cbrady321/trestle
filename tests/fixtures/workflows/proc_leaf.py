@@ -7,8 +7,10 @@ kind A6.1:single asks about. Two modes, chosen by the `mode` argument:
   waits; nothing in it consults the run's cancel signal. Every process carries `tag` in its argv.
 - `resource`: the leaf creates one local process through `ResourceCreate` (run lifetime) and polls
   for a postcondition that never holds, so the run is still converging when a cancel arrives;
-  the release pass stops the created process through `ResourceOwned`. A process that already runs
-  the same command line is a FOUND instance and is never touched. `outcome` = `fail` / `block`
+  the release pass stops the created process through `ResourceOwned`. It observes only its own
+  instance, so a process that already runs the same command line does not stop it from creating
+  one, and must survive every cleanup the run does (a cleanup that matched by command line would
+  reach it). `outcome` = `fail` / `block`
   makes `advance` return `Failed` / `Blocked` right after the create (a unit-authored end).
 - `found` (L.SL-3.5): the leaf observes before it acts. A found holder (same command line, proven
   identity) that is ready (and, with `health_file`, healthy) is reused: no ticket. An unready one is
@@ -82,18 +84,21 @@ _COMMAND = (
 )
 # The holder a `resource` / `found` leaf creates: one process that waits for a signal, `tag` in its
 # argv. A catchable stop signal is logged to `<tag>.<pid>.sig` (so the tag is a path a test owns),
-# then it exits.
+# then it exits. One line: `ps` shows a multi-line argument with its newlines escaped, and the
+# port matches a found process by comparing command lines.
 HOLDER = (
-    "import os, signal, sys  # trestle proc_leaf holder\n"
-    "log = f'{sys.argv[1]}.{os.getpid()}.sig'\n"
-    "def on_signal(signum, frame):\n"
-    "    open(log, 'a').write(f'{signum}\\n')\n"
-    "    os._exit(0)\n"
-    "for name in ('SIGTERM', 'SIGINT', 'SIGHUP', 'SIGUSR1', 'SIGUSR2'):\n"
-    "    signal.signal(getattr(signal, name), on_signal)\n"
-    "while True:\n"
-    "    signal.pause()\n"
+    "import os, signal, sys; log = f'{sys.argv[1]}.{os.getpid()}.sig'; "
+    "[signal.signal(getattr(signal, n), "
+    "lambda s, f: (open(log, 'a').write(f'{s}\\n'), os._exit(0))) "
+    "for n in ('SIGTERM', 'SIGINT', 'SIGHUP', 'SIGUSR1', 'SIGUSR2')]; "
+    "[signal.pause() for _ in iter(int, 1)]  # trestle proc_leaf holder"
 )
+
+# The declared budget and deadline, in seconds. A test that needs a run to end at its deadline
+# publishes a copy with these three literals rewritten (`procrun.plugin_dir(..., deadline_s=...)`):
+# `declare()` must stay pure, so they are never read from the environment.
+BUDGET_S = 100
+DEADLINE_S = 120
 
 RUN = "run"
 UP = "up"
@@ -127,7 +132,7 @@ def _decl() -> LeafDeclaration:
         ),
         retryable=frozenset(),
         remedies=(),
-        budget=timedelta(seconds=100),
+        budget=timedelta(seconds=BUDGET_S),
         max_attempts=1,
         env_key_field="env",
     )
@@ -167,11 +172,14 @@ class Unit:
         if mode != "command":
             resource = reads.read(_ports.ResourceReads)
             seen = resource.observe(_spec(params), ctx.lineage, UP)
-            selector_present, found = seen.selector_present, tuple(seen.found)
+            selector_present = seen.selector_present
             proven = seen.identity_proven
-            target = seen.selector_ref if seen.selector_present else (found[0] if found else None)
-            present = selector_present or bool(found)
-            if mode == "found":
+            present = selector_present
+            target = seen.selector_ref
+            if mode == "found":  # only this mode looks at what else is there
+                found = tuple(seen.found)
+                target = seen.selector_ref if selector_present else (found[0] if found else None)
+                present = selector_present or bool(found)
                 occupied = params["port"] > 0 and _listening(params["port"])
                 present = present or occupied  # occupancy is presence, never identity
                 ready = target is not None and resource.check("ready", target).satisfied
@@ -218,7 +226,7 @@ def _listening(port: int) -> bool:
         return probe.connect_ex(("127.0.0.1", port)) == 0
 
 
-ENTRY = WorkflowEntry(root="unit", units={"unit": Unit()}, deadline=timedelta(seconds=120))
+ENTRY = WorkflowEntry(root="unit", units={"unit": Unit()}, deadline=timedelta(seconds=DEADLINE_S))
 
 
 @trestle(deadline=120, env_arg="env")
