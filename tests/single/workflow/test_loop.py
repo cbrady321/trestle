@@ -437,9 +437,11 @@ def test_uncaught_raise_out_of_advance_flips_then_records_unit_raised(tmp_path: 
 
 
 def test_malformed_observation_is_unit_raised(tmp_path: Path) -> None:
+    # a declared precondition with no check at all is L.SL-7.2's uncovered stop (see
+    # registration/test_precondition_coverage.py); a check the declaration never listed is malformed
     unit = Unit(
         declaration(preconditions=("pre0",)),
-        lambda u, p, reads, ctx: observation(pre=()),  # the declaration lists pre0
+        lambda u, p, reads, ctx: observation(pre=(True, True), preconditions=("pre0", "extra")),
     )
     rig = kit.build(tmp_path, unit)
     walk(rig)

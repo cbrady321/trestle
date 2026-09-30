@@ -205,5 +205,5 @@ def extract_root(
 
 
 def extract_declared_tree(entry: WorkflowEntry) -> DeclaredTree:
-    """Extract `entry`'s declared tree, or raise `ExtractionRefused`."""
+    """Extract `entry`'s declared tree, or raise `ExtractionRefused` (through `extract_root`)."""
     return extract_root(entry)[1]
