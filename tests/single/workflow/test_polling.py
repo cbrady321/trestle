@@ -56,7 +56,7 @@ def _slow_rig(
     never: bool = False,
     poll_every_s: float = 1.0,
     backoff: float = 2.0,
-    max_wait_s: float = 60.0,
+    max_wait_s: float = 30.0,  # wait + release timeout must fit the leaf's budget (L.SL-2.1)
     slice_end_s: float | None = None,
 ) -> tuple[Rig, Any, FakeMarker]:
     fixture = _fixture()
@@ -112,7 +112,7 @@ def test_intervals_follow_wait_policy_backoff(tmp_path: Path) -> None:
 
 def test_interval_never_passes_the_slice_end(tmp_path: Path) -> None:
     rig, unit, _ = _slow_rig(
-        tmp_path, never=True, poll_every_s=1.0, backoff=4.0, max_wait_s=100.0, slice_end_s=6.0
+        tmp_path, never=True, poll_every_s=1.0, backoff=4.0, max_wait_s=40.0, slice_end_s=6.0
     )
     rig.run()
     assert _seconds(rig) == [1.0, 4.0, 1.0], "the third wait is cut to the 1 s the slice has left"
