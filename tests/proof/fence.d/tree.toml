@@ -1,0 +1,115 @@
+# tests/proof/fence.d/tree.toml -- phase TREE (plans/a2-tree.md, L.TR-0.5). Schema CM-2 (MC-08), closed: no other key.
+# BUNDLE FORM (deviation from the plan's literal, recorded in A2-TR0-RETURN.md): the plan gives one branch per
+# merge (`wr/tree/TR-<n>`); the eight product gates below share ONE branch `wr/tree-bundle/tree`, so R4 judges
+# every chunk against the `tree-bundle` lane and `match_gates` lands them in requires_merge order (the table
+# order below is the landing order: TR-0, TR-1, TR-2, TR-3, TR-4, TR-L, TR-5, TR-6). J-SLICE-A stays alone on its
+# checkpoint branch (a checkpoint id is never bundled). Lane `tree` is kept verbatim from the plan for the lane
+# branches' own local checks; every glob it gains must also be added to the bundle lane.
+phase        = "tree"
+
+[[lane]]
+name          = "tree"
+branch_prefix = "wr/tree/"
+globs = [
+  "trestle/child/validate.py", "trestle/child/attempt_lane.py", "trestle/child/run_services.py",
+  "trestle/server/plugin_validate.py", "trestle/server/snapshots.py", "trestle/server/registry.py",
+  "trestle/server/lease.py", "trestle/server/fold.py", "trestle/server/sweep.py", "trestle/server/answer.py",
+  "trestle/server/config.py", "trestle/common/plan/__init__.py", "trestle/common/plan/declared.py",
+  "trestle/common/plan/compiler.py", "trestle/common/plan/carving.py", "trestle/common/plan/ordinal.py",
+  "trestle/common/plan/formats.py", "trestle/workflow/**",
+  "tests/tree/**", "tests/fixtures/trees/**", "tests/fixtures/fossils/tree-trl/**", "tests/fixtures/fossils/tree-tr5/**",
+  "tests/proof/drift/tree/**", "tests/proof/differ_modes/d6_*.py", "tests/proof/differ_modes/d7_*.py",
+  "tests/proof/ckpt/slice_a.py",
+  "tests/proof/fence.d/tree.toml", "tests/proof/labels.d/tree.toml",
+  "trestle/common/codes.py", "trestle/common/types.py", "trestle/server/admission.py", "trestle/server/project.py",
+  "trestle/server/control.py", "trestle/server/conductor.py", "trestle/server/recovery.py",
+  "trestle/child/context.py", "trestle/child/main.py", "docs/agents.md", "docs/plugins.md",
+  "trestle/common/plan/vocabulary.py",
+  "tests/proof/rollback.toml", "tests/proof/d2_exceptions.toml",
+  "tests/proof/suites/workflows.py",
+  "tests/single/control/test_admission_refusals.py", "tests/single/control/test_admission_plan.py",
+  "tests/single/spine/test_w_a1.py",
+]
+
+[[lane]]                     # the checkpoint merge only (CM-5, DM-76)
+name          = "tree-ckpt"
+branch_prefix = "wr/tree-ckpt/"
+globs         = ["tests/fixtures/fossils/slice-a/**", "tests/proof/reviews/*-slice-a.toml"]
+
+# The tree product bundle (one PR, CM-2 bundle): the globs of lane `tree` (verbatim) plus what the leaves need and
+# the plan's lane misses: tests/proof/divergence.toml (one named ADD-code-* entry per new wire code, F-2/AM-15),
+# tests/proof/differ.py and tests/proof/differ_modes/__init__.py (the d6/d7 builders delete their UNBUILT_MODES
+# keys and register their dispatch, F-2), and core's deferral test (it asserted that no deferral label is declared
+# `claim` except the single phase's; the tree fragment declares the deferred core label WR-TERM-5:tree-size it
+# claims at TR-6, exactly as the single fragment declares its two).
+[[lane]]
+name          = "tree-bundle"
+branch_prefix = "wr/tree-bundle/"
+globs = [
+  "trestle/child/validate.py", "trestle/child/attempt_lane.py", "trestle/child/run_services.py",
+  "trestle/server/plugin_validate.py", "trestle/server/snapshots.py", "trestle/server/registry.py",
+  "trestle/server/lease.py", "trestle/server/fold.py", "trestle/server/sweep.py", "trestle/server/answer.py",
+  "trestle/server/config.py", "trestle/common/plan/__init__.py", "trestle/common/plan/declared.py",
+  "trestle/common/plan/compiler.py", "trestle/common/plan/carving.py", "trestle/common/plan/ordinal.py",
+  "trestle/common/plan/formats.py", "trestle/workflow/**",
+  "tests/tree/**", "tests/fixtures/trees/**", "tests/fixtures/fossils/tree-trl/**", "tests/fixtures/fossils/tree-tr5/**",
+  "tests/proof/drift/tree/**", "tests/proof/differ_modes/d6_*.py", "tests/proof/differ_modes/d7_*.py",
+  "tests/proof/ckpt/slice_a.py",
+  "tests/proof/fence.d/tree.toml", "tests/proof/labels.d/tree.toml",
+  "trestle/common/codes.py", "trestle/common/types.py", "trestle/server/admission.py", "trestle/server/project.py",
+  "trestle/server/control.py", "trestle/server/conductor.py", "trestle/server/recovery.py",
+  "trestle/child/context.py", "trestle/child/main.py", "docs/agents.md", "docs/plugins.md",
+  "trestle/common/plan/vocabulary.py",
+  "tests/proof/rollback.toml", "tests/proof/d2_exceptions.toml",
+  "tests/proof/suites/workflows.py",
+  "tests/single/control/test_admission_refusals.py", "tests/single/control/test_admission_plan.py",
+  "tests/single/spine/test_w_a1.py",
+  # additions the plan's lane misses (DAG F-2, AM-15) and the deferral test (see the header)
+  "tests/proof/divergence.toml", "tests/proof/differ.py", "tests/proof/differ_modes/__init__.py",
+  "tests/core/docs/test_cl_d1_deferrals.py",
+]
+
+[[gate]]
+branch         = "wr/tree-bundle/tree"
+merge          = "TR-0"
+requires_merge = ["J-SINGLE"]
+
+[[gate]]
+branch         = "wr/tree-bundle/tree"
+merge          = "TR-1"
+requires_merge = ["TR-0"]
+
+[[gate]]
+branch         = "wr/tree-bundle/tree"
+merge          = "TR-2"
+requires_merge = ["TR-1"]
+
+[[gate]]
+branch         = "wr/tree-bundle/tree"
+merge          = "TR-3"
+requires_merge = ["TR-2"]
+
+[[gate]]
+branch         = "wr/tree-bundle/tree"
+merge          = "TR-4"
+requires_merge = ["TR-3"]
+
+[[gate]]
+branch         = "wr/tree-bundle/tree"
+merge          = "TR-L"
+requires_merge = ["TR-4"]
+
+[[gate]]
+branch         = "wr/tree-bundle/tree"
+merge          = "TR-5"
+requires_merge = ["TR-L"]
+
+[[gate]]
+branch         = "wr/tree-bundle/tree"
+merge          = "TR-6"
+requires_merge = ["TR-5"]
+
+[[gate]]                     # never bundled (a checkpoint id: match_gates refuses it in a bundle)
+branch         = "wr/tree-ckpt/j-slice-a"
+merge          = "J-SLICE-A"
+requires_merge = ["TR-6"]
