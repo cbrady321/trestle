@@ -14,8 +14,14 @@ e.g. `RV-5-j0.toml`), written by the stage critic from the main checkout:
     owner = "pass"
     k_docs = "pass"
 
-The key sets are closed. An `outcome = "pass"` record must have every
-criterion `pass`. `load_valid` skips a malformed record (the ledger shows
+Each review names its own criteria (C.4) and its paired automated check:
+`CRITERIA` holds, per RV id, the exact criterion keys and the one log key the
+record carries. RV-5 (transcription) keeps the four criteria above and
+`transcribe_log`; RV-1, RV-3 and RV-4 (J-CORE, L.J-CORE.1) carry
+`paired_check_log`, the output of their automated presence check. The key sets
+are closed: an RV id with no `CRITERIA` entry, an unknown or missing key, or
+another review's criteria is a schema error. An `outcome = "pass"` record must
+have every criterion `pass`. `load_valid` skips a malformed record (the ledger shows
 `review:<id>` only for a valid passing one); `load` raises on it.
 """
 
@@ -28,8 +34,46 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 REVIEWS_DIR = ROOT / "tests" / "proof" / "reviews"
 
-RECORD_KEYS = {"id", "mode", "criteria", "outcome", "sha", "transcribe_log"}
-CRITERIA_KEYS = ("verbatim_fragments", "row_set", "owner", "k_docs")
+BASE_KEYS = {"id", "mode", "criteria", "outcome", "sha"}
+CRITERIA_KEYS = ("verbatim_fragments", "row_set", "owner", "k_docs")  # RV-5
+PAIRED_LOG = "paired_check_log"
+# RV id -> (its exact criterion keys, its log key). The criteria are the ones each
+# review's verdict names (plan-workflow-runtime.md C.4; plans/core.md L.J-CORE.1).
+CRITERIA: dict[str, tuple[tuple[str, ...], str]] = {
+    # WR-CANCEL-6 boundaries and the K-19 disclosure (paired: test_cl_d1_disclosures.py)
+    "RV-1": (
+        (
+            "agents_md_attributable_scope",
+            "plugins_md_double_fork",
+            "security_md_pre_identity_run",
+            "no_universal_claim",
+        ),
+        PAIRED_LOG,
+    ),
+    # WR-AUTH-5 "not a sandbox" and the closed policy sets (paired: test_cl_a2_profile.py)
+    "RV-3": (
+        (
+            "no_sandbox_claim",
+            "full_profile_ten_tools",
+            "closed_sets_no_destructive",
+            "no_foreign_cleanup",
+            "profile_operator_only",
+        ),
+        PAIRED_LOG,
+    ),
+    # R-J (packages recorded, not snapshotted) and K-2/K-5/K-9 docs (paired: test_cl_c1_docs.py)
+    "RV-4": (
+        (
+            "rj_statement_present",
+            "rj_matches_code",
+            "k2_k5_k9_docs_accurate",
+            "captured_vs_not_stated",
+        ),
+        PAIRED_LOG,
+    ),
+    # matrix-map and row-owner transcription (paired: transcribe --check all)
+    "RV-5": (CRITERIA_KEYS, "transcribe_log"),
+}
 MODE = "stage-critic review"
 VERDICTS = ("pass", "fail")
 
@@ -43,17 +87,22 @@ class ReviewSchemaError(ValueError):
 
 
 def validate(record: dict, filename: str | None = None) -> None:
-    extra = set(record) - RECORD_KEYS
-    missing = RECORD_KEYS - set(record)
+    rid = record.get("id")
+    if not isinstance(rid, str) or not _ID_RE.match(rid):
+        raise ReviewSchemaError(f"id {rid!r} is not RV-<n>")
+    if rid not in CRITERIA:
+        raise ReviewSchemaError(f"no criteria are defined for {rid} (reviews.CRITERIA)")
+    criteria_keys, log_key = CRITERIA[rid]
+    keys = BASE_KEYS | {log_key}
+    extra = set(record) - keys
+    missing = keys - set(record)
     if extra or missing:
         raise ReviewSchemaError(f"bad review schema (extra={extra}, missing={missing})")
-    if not isinstance(record["id"], str) or not _ID_RE.match(record["id"]):
-        raise ReviewSchemaError(f"id {record['id']!r} is not RV-<n>")
     if record["mode"] != MODE:
         raise ReviewSchemaError(f"mode must be {MODE!r}")
     criteria = record["criteria"]
-    if not isinstance(criteria, dict) or set(criteria) != set(CRITERIA_KEYS):
-        raise ReviewSchemaError(f"criteria keys must be exactly {CRITERIA_KEYS}")
+    if not isinstance(criteria, dict) or set(criteria) != set(criteria_keys):
+        raise ReviewSchemaError(f"{rid} criteria keys must be exactly {criteria_keys}")
     for name, verdict in criteria.items():
         if verdict not in VERDICTS:
             raise ReviewSchemaError(f"criterion {name!r} must be one of {VERDICTS}")
@@ -63,13 +112,13 @@ def validate(record: dict, filename: str | None = None) -> None:
         raise ReviewSchemaError("outcome pass with a failing criterion")
     if not isinstance(record["sha"], str) or not _SHA_RE.match(record["sha"]):
         raise ReviewSchemaError("sha must be a 7-40 char lowercase hex commit id")
-    log = record["transcribe_log"]
+    log = record[log_key]
     if not isinstance(log, str) or not log.strip():
-        raise ReviewSchemaError("transcribe_log must be a non-empty string")
+        raise ReviewSchemaError(f"{log_key} must be a non-empty string")
     if filename is not None:
         match = _NAME_RE.match(filename)
-        if not match or match.group(1) != record["id"]:
-            raise ReviewSchemaError(f"file name {filename!r} does not match id {record['id']!r}")
+        if not match or match.group(1) != rid:
+            raise ReviewSchemaError(f"file name {filename!r} does not match id {rid!r}")
 
 
 def load(path: Path) -> dict:
