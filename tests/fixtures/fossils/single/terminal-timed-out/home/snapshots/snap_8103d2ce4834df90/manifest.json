@@ -1,0 +1,16 @@
+{
+  "plugin": "hold_leaf",
+  "version": "0.1.0",
+  "source_sha256": "ab94c54169cf5ecdf00e2f62282d1ecfb89c4d5b91dfdddb6b3d7cb191aff990",
+  "schema_sha256": "d4f993f01a5e9c4307d64e543088026d7084e42fe289126339165050ef2695c1",
+  "declared": {
+    "deadline_s": 24,
+    "summary_fields": [],
+    "packages": [],
+    "env_arg": "env",
+    "secrets": [],
+    "package_digests": {}
+  },
+  "entry": "hold_leaf",
+  "declaration_digest": "794d2851eebc01fd64f81883d283431989f02fbf2e14c39b48c83e03177a4f4a"
+}
