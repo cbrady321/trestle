@@ -93,7 +93,8 @@ def _progress_source() -> str:
 
 @contextmanager
 def _host(tmp_path: Path) -> Iterator[RecordingHost]:
-    with RecordingHost(tmp_path / "host-home", timeout_s=tolerances.JOIN_WAIT_S * 3) as host:
+    host = RecordingHost(tmp_path / "host-home", timeout_s=tolerances.JOIN_WAIT_S * 3)
+    with host:
         (host.home / "plugins" / "spine_leaf.py").write_text(_progress_source(), encoding="utf-8")
         yield host
 
