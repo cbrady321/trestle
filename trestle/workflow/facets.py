@@ -260,7 +260,8 @@ class Ticketed[P]:
             ctx.lane.confirm(
                 ticket, Confirmation(ConfirmationStatus.NOT_APPLIED, codes.STOP_SEEN, None)
             )
-            ctx.flip_goal()
+            if ctx.cancellation.requested:  # a stop of the whole root; a subtree's goal is its own
+                ctx.flip_goal()
             raise EffectRefused(TicketRefusal.RELEASE_POINT_PASSED)
 
         # (4) the port call

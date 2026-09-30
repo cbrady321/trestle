@@ -44,13 +44,14 @@ needs beyond B2's surface come through `services.FinalizationBounds`.
 from __future__ import annotations
 
 import hashlib
+import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 
-from trestle.common.plan import bounds, carving, formats
+from trestle.common.plan import bounds, carving, compiler, formats
 from trestle.common.plan.declared import DeclaredTree, canonical_json
 from trestle.workflow import codes, human_actions
 from trestle.workflow import services as svc
@@ -63,7 +64,7 @@ from trestle.workflow.declarations import (
     StableCode,
     WorkflowEntry,
 )
-from trestle.workflow.extract import ExtractionRefused, extract_root
+from trestle.workflow.extract import ExtractionRefused, extract_root, resolve_unit
 from trestle.workflow.facets import (
     EffectBinder,
     FacetContext,
@@ -105,6 +106,10 @@ from trestle.workflow.values import (
 
 ROOT = NodePath(())
 
+# How long a tree walk waits for a leaf to finish before it looks at the clock again: the latency
+# with which a composite whose slice ended (B1-O8) is noticed while a leaf below it is blocked.
+WATCH_INTERVAL_S = 0.05
+
 # B1-C7 receipt-check spellings, kept beside the bounds they measure (V-13).
 _EVIDENCE_STEP = "loop_step_evidence"
 _EVIDENCE_UNIT_RAISED = "loop_unit_raised"
@@ -130,8 +135,8 @@ _NO_OBSERVATIONS = "[]"
 
 
 class TreeBandError(NotImplementedError):
-    """A composite vertex reached the loop: the in-library walk is tree-band work (TM-B2-6, OQ-28).
-    Unreachable through admission, which refuses more than one vertex (L.SV-3.5)."""
+    """A vertex the loop cannot walk yet reached it: a CHOICE vertex, whose `select` path is
+    L.TR-5.1's. Unreachable through admission, which refuses a choice tree until L.TR-5.3."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +149,11 @@ class Stop:
 
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def plan_path(text: str) -> NodePath:
+    """A plan vertex's canonical path text (`""` the root, else `/`-separated) as a `NodePath`."""
+    return NodePath(tuple(text.split("/")) if text else ())
 
 
 def _path_text(path: NodePath) -> str:
@@ -311,8 +321,10 @@ class LeafWalk:
         unit: Any,
         declaration: LeafDeclaration,
         params: Mapping[str, JsonValue],
+        subtree_stopped: Callable[[], bool] = lambda: False,
     ) -> None:
         self._loop = loop
+        self._subtree_stopped = subtree_stopped  # a composite above this leaf timed out (B1-O8)
         self.path = path
         self._unit = unit
         self._decl = declaration
@@ -324,6 +336,7 @@ class LeafWalk:
         self._polls = 0  # CONVERGE polls since the last ADVANCE: the backoff exponent (V-14)
         self.verdict: Verdict | None = None
         self._reached = False  # the walk ended at a condition the node reached itself
+        self.cut: svc.Cut | None = None  # set by `end`: how the goal cut the walk short, or None
         self._terms = NodeTerms(
             flags=declaration.flags,
             retryable=declaration.retryable,
@@ -347,12 +360,20 @@ class LeafWalk:
         while self.step():
             pass
 
+    def goal(self) -> Goal:
+        """The goal this node sees: the root's, or RELEASE once a composite above it has timed
+        out (its slice ended, B1-O8): from that verdict the node records only release starts, and
+        that holds for a node shared by two parents when either parent's subtree timed out
+        (F-13(a)), whatever the other parent is doing."""
+        return Goal.RELEASE if self._subtree_stopped() else self._loop.goal
+
     def _stopped(self) -> bool:
         """A cancel or the release point (`CancelSignal.requested`, B2-C6) flips the goal to
-        RELEASE for every node at once; so has an uncaught raise or a facet's stop (B1-E6)."""
+        RELEASE for every node at once; so has an uncaught raise or a facet's stop (B1-E6). A
+        composite above this node that timed out stops this subtree alone."""
         if self._loop.goal is Goal.CONVERGE and self._loop.services.cancellation().requested:
             self._loop.flip_goal()
-        return self._loop.goal is not Goal.CONVERGE
+        return self.goal() is not Goal.CONVERGE
 
     def start(self) -> None:
         """B1-C2: observe once before the first join, then join. That first observation is also
@@ -380,7 +401,7 @@ class LeafWalk:
             if self._stopped():
                 break
         self._rejoin()
-        return self._loop.goal is Goal.CONVERGE
+        return self.goal() is Goal.CONVERGE
 
     def _slice_ended(self) -> bool:
         return self._loop.now() >= self._terms.slice_end
@@ -408,10 +429,12 @@ class LeafWalk:
         if own:
             cut = None
         elif not self._loop.lane.node_record(self.path).tickets:
+            self.cut = svc.Cut.NOT_STARTED
             self._loop.end_vertex(self.path, condition=None, code=None, cut=svc.Cut.NOT_STARTED)
             return
         else:
             cut = svc.Cut.STOPPED
+        self.cut = cut
         assert verdict is not None
         self._loop.end_vertex(
             self.path,
@@ -421,6 +444,16 @@ class LeafWalk:
             resend=verdict.resend,
             provenance=verdict.provenance,
             cut=cut,
+        )
+
+    @property
+    def satisfied(self) -> bool:
+        """The walk reached its own postcondition-pass (a SATISFIED verdict, not a goal cut): the
+        record a `needs` dependent waits for (L.TR-3.2, WR-VERIFY-2)."""
+        return (
+            self._reached
+            and self.verdict is not None
+            and self.verdict.condition is Condition.SATISFIED
         )
 
     def _reached_stop(self, verdict: Verdict) -> bool:
@@ -480,7 +513,7 @@ class LeafWalk:
             declaration=self._decl,
             ports=loop.ports,
             cancellation=loop.services.cancellation(),
-            goal=lambda: loop.goal,
+            goal=self.goal,
             flip_goal=loop.flip_goal,
             hold=self._held.append,
             now=loop.now,
@@ -617,14 +650,14 @@ class LeafWalk:
             self._unit_raised(f"advance raised {type(exc).__name__}: {exc}")
             self._action_fact(before, verdict, "raised")
             return
-        if self._loop.goal is not Goal.CONVERGE:
+        if self.goal() is not Goal.CONVERGE:
             self._action_fact(before, verdict, returned)
             return  # a facet flipped the goal: the node is in the RELEASE walk (B1-E4)
         if returned is not _ESCAPED:
             issued = self._loop.lane.node_record(self.path).tickets[len(before.tickets) :]
             self._receive(returned, issued, verdict.remedy)
         self._action_fact(before, verdict, returned)
-        if self._loop.goal is Goal.CONVERGE and self._mark() == marked:
+        if self.goal() is Goal.CONVERGE and self._mark() == marked:
             # the loop-owned attempt measure: an ADVANCE that leaves the record as it was would
             # repeat the same join forever, so it ends the node instead
             self._unit_raised("an advance that recorded nothing and changed nothing")
@@ -844,7 +877,9 @@ class Loop:
             self._end_root_stop(stop)
             return
         if not isinstance(declaration, LeafDeclaration):
-            raise TreeBandError("walk_children: tree band")
+            assert tree is not None
+            TreeWalk(self, tree).run()
+            return
         unit = self.entry.units[self.entry.root]
         walk = LeafWalk(self, ROOT, unit, declaration, self.intent)
         walk.converge()
@@ -908,6 +943,17 @@ class Loop:
             human_action=human_action,
             resend=resend,
         )
+        self.end_unstarted_but(ROOT)
+
+    def end_unstarted_but(self, *ended: NodePath) -> None:
+        """Every vertex of `V_run` that has no `NodeEnd` yet is written `cut=NOT_STARTED` with no
+        condition (B1-C11, B1-O7): a stop before the walk (B1-E7) started nothing, so each vertex
+        below the root is one. `ended` are the paths already written. Plan order, root first."""
+        done = set(ended)
+        for vertex in self.services.admitted().accepted.vertices:
+            path = plan_path(vertex.path)
+            if path not in done:
+                self.end_vertex(path, condition=None, code=None, cut=svc.Cut.NOT_STARTED)
 
     # ------------------------------------------------------------------ B1-C11
 
@@ -939,6 +985,274 @@ class Loop:
         )
         if refused is not None and refused is not svc.LaneRefusal.UNAVAILABLE:
             raise RuntimeError(f"the lane refused a NodeEnd: {refused.value}")
+
+
+class TreeWalk:
+    """One root's walk over a composite declaration (L.TR-3.2; B1-O5 for an `AllDeclaration`).
+
+    The plan's vertices are the schedule: every leaf vertex gets its own `LeafWalk` on its own
+    thread, started only when (1) every `needs` prerequisite of the leaf and of each of its
+    ancestors has ended and reached its postcondition-pass (a prerequisite's whole subtree, V-4.4:
+    an edge between siblings applies to every vertex of both subtrees), and (2) for the root and
+    every ancestor composite, fewer of that composite's leaves are running than its declared
+    `concurrency`. A leaf whose prerequisite ended without a pass can never start: it is written
+    `cut=NOT_STARTED` (B1-O7, OQ-33: an ordinary failure cuts only dependents, never siblings).
+    The leaf's `NodeEnd` is written by its own walk before it is reported finished, so a dependent's
+    first record always follows the prerequisite's postcondition-pass record.
+
+    The lane is the one serialized appender (B2-C7); nothing here reads the clock to order two
+    nodes. Once every leaf has ended, each composite is ended (`condition` None: it ended normally
+    and the host rolls the outcome up, B4-C4; `cut` only when the whole-root stop cut a
+    descendant), and only then does the release pass run, in descending release rank (V-4.4).
+    `decide` stays the only per-node branch: a composite is scheduling, never a command."""
+
+    def __init__(self, loop: Loop, tree: DeclaredTree) -> None:
+        self._loop = loop
+        plan = loop.services.admitted().accepted
+        self._order = [v.path for v in plan.vertices]
+        self._vertex = {v.path: v for v in plan.vertices}
+        self._rank = plan.release_rank
+        if any(v.compose == "choice" for v in plan.vertices):
+            raise TreeBandError("select: choice vertices are L.TR-5.1's")
+        self._leaves = [p for p in self._order if self._vertex[p].compose == "leaf"]
+        self._under: dict[str, frozenset[str]] = {}
+        for path in reversed(self._order):
+            self._under_of(path)
+        self._params = self._bound_params(tree)
+        self._pending = list(self._leaves)
+        self._running: set[str] = set()
+        self._walks: dict[str, LeafWalk] = {}
+        self._ended: dict[str, bool] = {}  # leaf path -> reached its postcondition-pass
+        self._cut: set[str] = set()  # leaves a stop cut (the whole root's or a timed-out subtree's)
+        self._timed_out: set[str] = set()  # composites whose slice ended with leaves still open
+        self._verdicts: set[str] = set()  # composites whose `NodeEnd` was written already
+        self._threads: list[threading.Thread] = []
+        self._failure: BaseException | None = None
+        self._changed = threading.Condition()
+
+    # ------------------------------------------------------------------ the plan
+
+    def _under_of(self, path: str) -> frozenset[str]:
+        """The leaves at or below `path`, through every child reference (a shared node is under
+        each parent that names it)."""
+        if path not in self._under:
+            vertex = self._vertex[path]
+            if vertex.compose == "leaf":
+                self._under[path] = frozenset({path})
+            else:
+                below: set[str] = set()
+                for child in vertex.children:
+                    below |= self._under_of(child)
+                self._under[path] = frozenset(below)
+        return self._under[path]
+
+    def _bound_params(self, tree: DeclaredTree) -> dict[str, Mapping[str, JsonValue]]:
+        """Each child's parameters: its binding's, argument references replaced by the request's
+        values (the first reference to a shared node, which the plan compiled equal to the rest)."""
+        params: dict[str, Mapping[str, JsonValue]] = {}
+        for node in tree.nodes.values():
+            for child in node.get("children", ()):
+                path = child["path"]
+                if path is not None and path not in params:
+                    params[path] = compiler.resolve_params(
+                        child["binding"].get("params", {}), self._loop.intent
+                    )
+        return params
+
+    @staticmethod
+    def _ancestors(path: str) -> list[str]:
+        """The proper ancestors of `path`, the root first (`""`)."""
+        parts = path.split("/") if path else []
+        return [""] + ["/".join(parts[:i]) for i in range(1, len(parts))]
+
+    # ------------------------------------------------------------------ the walk
+
+    def run(self) -> None:
+        with self._changed:
+            while True:
+                self._time_out_expired()
+                self._schedule()
+                if not self._running:
+                    if self._pending:
+                        raise RuntimeError("the walk is stuck: no leaf runs and none may start")
+                    break
+                self._changed.wait(WATCH_INTERVAL_S)
+        for thread in self._threads:
+            thread.join()
+        if self._failure is not None:
+            raise self._failure
+        self._end_composites()
+        self._release()
+
+    def _subtree_timed_out(self, leaf: str) -> bool:
+        """A composite that timed out has `leaf` below it, through any parent that names it."""
+        return any(leaf in self._under[composite] for composite in tuple(self._timed_out))
+
+    def _time_out_expired(self) -> None:
+        """B1-O8 for a composite: its own slice ended while a leaf below it is still open (a leaf
+        that cooperates ends itself at its own, earlier, slice; this is the composite over one
+        that does not, or over leaves that never got to start). The verdict is the composite's
+        `NodeEnd(FAILED, CARVE_EXCEEDED)`; from it every leaf below it is stopped (goal RELEASE
+        for that subtree: release starts only), a leaf not yet started is `NOT_STARTED`, and the
+        composite's dependents wait for nothing (`needs` covers its whole subtree, which never
+        passes). The root's slice is the release point, which is the whole-root stop."""
+        now = self._loop.now()
+        for path in self._order:
+            if path == "" or path in self._timed_out or self._vertex[path].compose == "leaf":
+                continue
+            below = self._under[path]
+            if not (below - self._ended.keys()):
+                continue  # every leaf below it has ended: it ends normally (`_end_composites`)
+            if now < self._loop.services.slice_end(plan_path(path)):
+                continue
+            self._timed_out.add(path)
+            self._loop.end_vertex(
+                plan_path(path),
+                condition=Condition.FAILED,
+                code=codes.CARVE_EXCEEDED,
+                human_action=None,
+                resend=None,
+            )
+            self._verdicts.add(path)
+            for leaf in [p for p in self._pending if p in below]:
+                self._pending.remove(leaf)
+                self._cut.add(leaf)
+                self._end_unstarted(leaf)
+
+    def _schedule(self) -> None:
+        """Start every leaf that may start, in plan order, and cut every leaf that can never
+        start; repeated until nothing changes (a cut can cut its own dependents)."""
+        progressed = True
+        while progressed and self._pending:
+            progressed = False
+            stopped = self._stopped()
+            for path in list(self._pending):
+                if stopped:
+                    self._pending.remove(path)
+                    self._cut.add(path)
+                    self._end_unstarted(path)
+                    progressed = True
+                    continue
+                state = self._readiness(path)
+                if state is None:
+                    continue
+                self._pending.remove(path)
+                progressed = True
+                if state:
+                    self._start(path)
+                else:
+                    self._end_unstarted(path)
+
+    def _stopped(self) -> bool:
+        """The whole-root stop: a cancel, the release point or a raise flipped the goal (B1-E6)."""
+        if self._loop.goal is Goal.CONVERGE and self._loop.services.cancellation().requested:
+            self._loop.flip_goal()
+        return self._loop.goal is not Goal.CONVERGE
+
+    def _readiness(self, path: str) -> bool | None:
+        """True: start `path` now. False: it can never start (a prerequisite ended without a
+        pass). None: not yet (a prerequisite still open, or a concurrency bound is full)."""
+        prerequisites: set[str] = set()
+        for owner in [*self._ancestors(path), path]:
+            for need in self._vertex[owner].needs:
+                prerequisites |= self._under_of(need)
+        waiting = False
+        for leaf in prerequisites:
+            if leaf not in self._ended:
+                waiting = True
+            elif not self._ended[leaf]:
+                return False
+        if waiting:
+            return None
+        for owner in self._ancestors(path):
+            bound = self._vertex[owner].concurrency
+            if len(self._running & self._under[owner]) >= bound:
+                return None
+        return True
+
+    def _start(self, path: str) -> None:
+        vertex = self._vertex[path]
+        walk = LeafWalk(
+            self._loop,
+            plan_path(path),
+            self._loop.entry.units[vertex.unit],
+            _leaf_declaration(self._loop.entry, vertex.unit),
+            self._params[path],
+            lambda: self._subtree_timed_out(path),
+        )
+        self._walks[path] = walk
+        self._running.add(path)
+        thread = threading.Thread(target=self._work, args=(path, walk), name=f"walk:{path}")
+        self._threads.append(thread)
+        thread.start()
+
+    def _work(self, path: str, walk: LeafWalk) -> None:
+        """One leaf: converge, then its `NodeEnd` (B1-C11); only then is it reported finished."""
+        passed = False
+        try:
+            walk.converge()
+            walk.end()
+            passed = walk.satisfied
+        except BaseException as exc:  # noqa: BLE001 (a defect: the root stops, then it is raised)
+            self._loop.flip_goal()
+            with self._changed:
+                self._failure = self._failure or exc
+        finally:
+            with self._changed:
+                self._running.discard(path)
+                self._ended[path] = passed
+                if walk.cut is not None:
+                    self._cut.add(path)
+                self._changed.notify_all()
+
+    def _end_unstarted(self, path: str) -> None:
+        self._ended[path] = False
+        self._loop.end_vertex(plan_path(path), condition=None, code=None, cut=svc.Cut.NOT_STARTED)
+
+    # ------------------------------------------------------------------ the composites
+
+    def _end_composites(self) -> None:
+        """Every composite's `NodeEnd` not yet written, children before parents: `condition` None
+        (it ended normally, B1-C11) and `cut` only as `_composite_cut` says."""
+        for path in reversed(self._order):
+            if self._vertex[path].compose == "leaf" or path in self._verdicts:
+                continue
+            cut = self._composite_cut(path)
+            self._loop.end_vertex(plan_path(path), condition=None, code=None, cut=cut)
+
+    def _composite_cut(self, path: str) -> svc.Cut | None:
+        """How a stop cut the composite `path`, or None when it ended normally. A stop cuts it
+        when a leaf below it was cut by the whole-root stop, or when it lies inside a composite
+        that timed out and a leaf below it was cut; the composite above a timed-out one is not
+        cut (a child that failed does not stop its parent). STOPPED if any leaf below it started,
+        else NOT_STARTED."""
+        below = self._under[path]
+        cut_below = below & self._cut
+        if not cut_below:
+            return None
+        inside = any(path.startswith(f"{timed_out}/") for timed_out in self._timed_out)
+        whole_root = any(not self._subtree_timed_out(leaf) for leaf in cut_below)
+        if not (inside or whole_root):
+            return None
+        started = any(
+            leaf in self._walks and self._walks[leaf].cut is not svc.Cut.NOT_STARTED
+            for leaf in below
+        )
+        return svc.Cut.STOPPED if started else svc.Cut.NOT_STARTED
+
+    def _release(self) -> None:
+        """The release pass, after every vertex has its end (B1-C9): descending release rank, and
+        within a rank the reverse of plan order."""
+        self._loop.flip_goal()
+        index = {path: n for n, path in enumerate(self._order)}
+        for path in sorted(self._walks, key=lambda p: (-self._rank[p], -index[p])):
+            self._walks[path].release_all()
+
+
+def _leaf_declaration(entry: WorkflowEntry, unit: str) -> LeafDeclaration:
+    declared = resolve_unit(entry, unit)
+    assert isinstance(declared, LeafDeclaration)
+    return declared
 
 
 def run_tree(
