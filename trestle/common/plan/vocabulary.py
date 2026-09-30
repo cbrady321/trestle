@@ -151,6 +151,10 @@ GRANT_ISSUER_UNREACHABLE = "adapter.grant_issuer_unreachable"
 # container, a failed psql): the provisioning probe could not observe, so nothing is claimed
 # absent (V-3.8). It is neither an unreachable engine nor an output outside the pinned shape.
 PROVISION_STORE_UNREADABLE = "adapter.provision_store_unreadable"
+# L.RB-9.3.fix1 (ADD-code-host-scope-unreadable): V-11's `HOST_SCOPE_UNREADABLE` (B3-C18,
+# `HostScopeUnreadable.code`): a host-scoped subject's current generation (the demo credential's, or
+# the toolchain adoption fingerprint's) could not be read, so the subject has no reading (V-9.7).
+HOST_SCOPE_UNREADABLE = "adapter.host_scope_unreadable"
 
 ADAPTER_CODES: frozenset[str] = frozenset(
     {
@@ -162,6 +166,7 @@ ADAPTER_CODES: frozenset[str] = frozenset(
         CREDENTIAL_INTERACTIVE,
         GRANT_ISSUER_UNREACHABLE,
         PROVISION_STORE_UNREADABLE,
+        HOST_SCOPE_UNREADABLE,
     }
 )
 
