@@ -91,11 +91,17 @@ class NotAllowlisted(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class TaskDeclaration:
-    """One allowlisted task: `argv[0]` a bare tool name, the rest literals (`./x`: project path)."""
+    """One allowlisted task: `argv[0]` a bare tool name, the rest literals (`./x`: project path).
+
+    `helper_disclosure` (empty: none) declares that the task starts a helper outside the build
+    tool's own daemon machinery, one the declared configuration cannot prevent and no run group
+    reaches (a tool's language server, a detached job): the task's policy is then `DISCLOSED` with
+    this text, and its release descriptor says so (B3-C3, CG-1c)."""
 
     id: str
     argv: tuple[str, ...]
     reports_tests: bool = False
+    helper_disclosure: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,15 +211,29 @@ class TaskRunner:
 
     def policy(self, command: BoundCommand) -> ExecutionPolicy:
         """Pure. A Gradle-shaped command is `DISABLED_BY_CONFIGURATION` + `PREVENTED` when its argv
-        turns the daemon and the toolchain auto-download off, `BLOCKS` otherwise; any other command
-        is the execution port's own policy."""
+        turns the daemon and the toolchain auto-download off, `BLOCKS` otherwise (the daemon is
+        `PREVENTED` by that configuration alone); a task that declares a helper outside Gradle's
+        daemon machinery is `DISCLOSED` with its text instead (L.RB-10.2, WR-CANCEL-7); any other
+        command is the execution port's own policy."""
         if not is_gradle_shaped(command.argv):
             return self.execution.policy(command)
         if NO_DAEMON in command.argv and AUTO_DOWNLOAD_OFF in command.argv:
+            disclosure = self._disclosure(command)
+            if disclosure:
+                return ExecutionPolicy(
+                    SelfProvisioning.DISABLED_BY_CONFIGURATION, Helpers.DISCLOSED, disclosure
+                )
             return ExecutionPolicy(
                 SelfProvisioning.DISABLED_BY_CONFIGURATION, Helpers.PREVENTED, None
             )
         return ExecutionPolicy(SelfProvisioning.BLOCKS, Helpers.PREVENTED, None)
+
+    def _disclosure(self, command: BoundCommand) -> str:
+        """The declared helper disclosure of the task a command was bound for ("" when none)."""
+        project, _, task = command.task.partition("/")
+        declared = self.projects.get(project)
+        entry = None if declared is None else declared.tasks.get(task)
+        return "" if entry is None else entry.helper_disclosure
 
     # -- run
 
