@@ -346,10 +346,11 @@ class Conductor:
     def _finalize_answer(self, run_dir: Path, ledger: RunLedger, terminal_kind: str) -> None:
         """Persist the answer handed over at finalization (`evidence/answer.json`, what `detail`
         resolves to): the run view recomputes it from the same durable inputs (B4-C1)."""
+        spec = self._read_spec(run_dir)
         answer.write_finalized(
-            run_dir,
-            answer.answer_for_run(run_dir, ledger.records, terminal_kind, self._read_spec(run_dir)),
+            run_dir, answer.answer_for_run(run_dir, ledger.records, terminal_kind, spec)
         )
+        answer.write_child_views(run_dir, spec)  # V-1.3: each child view, terminal form
 
     async def drive_async(self, order: WorkOrder) -> str:
         """Async entry — runs sync drive on a worker thread (wrapper stays sync)."""
