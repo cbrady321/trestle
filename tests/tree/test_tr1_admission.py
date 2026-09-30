@@ -2,10 +2,10 @@
 
 `Admission.admit` loads the snapshot's declared tree (MC-34) and runs the plan compiler (MC-23)
 in B2-C2's check order, so a tree defective in a way the declaration alone shows is refused with
-its own code naming the identifier, before any run id, and a valid `AllDeclaration` or
-`ChoiceNode` tree still gets `admission.plan_multi_vertex_unsupported` (MC-B3-03 order). The
-defective trees are planted below publication (`tests/tree/planting.py`; L.TR-0.4 refuses them
-at publication)."""
+its own code naming the identifier, before any run id, and a valid `ChoiceNode` tree still gets
+`admission.plan_multi_vertex_unsupported` (MC-B3-03 order; a valid `AllDeclaration` tree is
+admitted since L.TR-L.1). The defective trees are planted below publication
+(`tests/tree/planting.py`; L.TR-0.4 refuses them at publication)."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ import pytest
 from tests.proof import ancestry
 from tests.tree import planting
 from trestle.common import codes
-from trestle.common.types import PublishView, RequestOutcome
+from trestle.common.types import AdmitRequest, AdmitResultAdmitted, PublishView, RequestOutcome
 from trestle.server.idempotency import IdempotencyStore
 from trestle.server.main import Kernel
 
@@ -70,6 +70,20 @@ def refused(kernel: Kernel, plugin: str, args: dict[str, object] | None = None) 
     assert IdempotencyStore.open(kernel.home).lookup(KEY) is None
     assert descendants() == before
     return outcome
+
+
+def admitted(
+    kernel: Kernel, plugin: str, args: dict[str, object] | None = None
+) -> AdmitResultAdmitted:
+    """A valid `AllDeclaration` tree through admission alone (since L.TR-L.1): a run id is minted
+    and its run directory written, and admission itself spawns no process (MC-13)."""
+    before = descendants()
+    result = kernel.control.admission.admit(AdmitRequest(plugin=plugin, args=args or {}))
+    assert isinstance(result, AdmitResultAdmitted), result
+    assert result.run_id.startswith("r_")
+    assert [d.name for d in run_dirs(kernel)][-1:] == [result.run_id]
+    assert descendants() == before
+    return result
 
 
 CYCLE_FIXED = (
@@ -137,10 +151,16 @@ def test_invalid_tree_gets_specific_code_not_temp(
     assert identifier in outcome.message, outcome.message
 
 
-@pytest.mark.parametrize("fixture", ["shared_diamond", "choice_fake"], ids=["all", "choice"])
-def test_valid_tree_gets_temp_code_until_lift(tree_kernel: Kernel, fixture: str) -> None:
-    """A valid `AllDeclaration` or `ChoiceNode` tree compiles and then gets the temporary code
-    (MC-B3-03 order). L.TR-L.1 lifts the refusal for `all` and L.TR-5.3 for `choice`."""
-    name = publish(tree_kernel, source(fixture))
+def test_valid_all_tree_admitted(tree_kernel: Kernel) -> None:
+    """A valid `AllDeclaration` tree compiles and is admitted (L.TR-L.1 lifted the temporary
+    refusal for it, MC-B3-03 order): a run id is minted."""
+    name = publish(tree_kernel, source("shared_diamond"))
+    admitted(tree_kernel, name)
+
+
+def test_valid_choice_tree_gets_temp_code_until_lift(tree_kernel: Kernel) -> None:
+    """A valid `ChoiceNode` tree compiles and then gets the temporary code (MC-B3-03 order)
+    until L.TR-5.3 removes the refusal."""
+    name = publish(tree_kernel, source("choice_fake"))
     outcome = refused(tree_kernel, name)
     assert outcome.code == codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED
