@@ -49,13 +49,26 @@ def short_stop(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(clock, "kill", support.TEST_KILL_S)
 
 
-def plugin_dir(base: Path, *, budget_s: int | None = None, deadline_s: int | None = None) -> Path:
-    """A plugin directory holding the fixture; `budget_s` / `deadline_s` publish a copy with its
-    declared budget and deadline rewritten (its three literals, each checked to be there)."""
+def plugin_dir(
+    base: Path,
+    *,
+    budget_s: int | None = None,
+    deadline_s: int | None = None,
+    max_wait_s: int | None = None,
+    release_s: int | None = None,
+) -> Path:
+    """A plugin directory holding the fixture; `budget_s` / `deadline_s` / `max_wait_s` /
+    `release_s` publish a copy with its declared budget, deadline, wait and release timeout
+    rewritten (its literals, each checked to be there)."""
     directory = base / "plugins"
     directory.mkdir(parents=True, exist_ok=True)
     source = FIXTURE.read_text(encoding="utf-8")
-    for literal, value in (("BUDGET_S = 100", budget_s), ("DEADLINE_S = 120", deadline_s)):
+    for literal, value in (
+        ("BUDGET_S = 100", budget_s),
+        ("DEADLINE_S = 120", deadline_s),
+        ("MAX_WAIT_S = 90", max_wait_s),
+        ("RELEASE_S = 4", release_s),
+    ):
         if value is not None:
             assert literal in source
             source = source.replace(literal, f"{literal.split(' = ')[0]} = {value}")
@@ -67,9 +80,20 @@ def plugin_dir(base: Path, *, budget_s: int | None = None, deadline_s: int | Non
 
 
 def kernel_over_fixture(
-    base: Path, *, budget_s: int | None = None, deadline_s: int | None = None
+    base: Path,
+    *,
+    budget_s: int | None = None,
+    deadline_s: int | None = None,
+    max_wait_s: int | None = None,
+    release_s: int | None = None,
 ) -> Kernel:
-    directory = plugin_dir(base, budget_s=budget_s, deadline_s=deadline_s)
+    directory = plugin_dir(
+        base,
+        budget_s=budget_s,
+        deadline_s=deadline_s,
+        max_wait_s=max_wait_s,
+        release_s=release_s,
+    )
     return harness.fresh_kernel(plugin_dirs=[directory], home=base / "home")
 
 

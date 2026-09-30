@@ -17,6 +17,9 @@ kind A6.1:single asks about. Two modes, chosen by the `mode` argument:
   `FOUND_UNHEALTHY`, an occupant of `port` with no proven identity is `FOUND_INCOMPATIBLE`; both are
   blocked and never touched. Only when nothing is there does `advance` create the holder.
 
+`stall` (seconds, default 0) makes the first observation sleep that long, so the leaf's wait (which
+fits its budget, L.SL-2.1) starts late and the run's release point comes first (the timed-out path).
+
 The holder program logs any catchable stop signal it receives to
 `<tag>.<pid>.sig` (the tag is a path) and exits, so a test can read whether a process was ever
 signalled.
@@ -31,6 +34,7 @@ from __future__ import annotations
 import importlib
 import socket
 import sys
+import time
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -94,11 +98,17 @@ HOLDER = (
     "[signal.pause() for _ in iter(int, 1)]  # trestle proc_leaf holder"
 )
 
-# The declared budget and deadline, in seconds. A test that needs a run to end at its deadline
-# publishes a copy with these three literals rewritten (`procrun.plugin_dir(..., deadline_s=...)`):
-# `declare()` must stay pure, so they are never read from the environment.
+# The declared budget, deadline, wait and release timeout, in seconds. A test that needs a run to
+# end at its deadline publishes a copy with these literals rewritten (`procrun.plugin_dir(...)`):
+# `declare()` must stay pure, so they are never read from the environment. Registration refuses a
+# leaf whose max_wait + release timeout exceeds its budget (L.SL-2.1), so the wait fits the budget
+# and a run can reach its release point only when its wait starts late (`stall`, below). The release
+# timeout stays at 4 s: at the published defaults B2-C2 (5) (grace + kill + 5 x release timeout <=
+# the 35 s finalization margin, L.SV-3.5) admits no more for one CREATE + RUN target.
 BUDGET_S = 100
 DEADLINE_S = 120
+MAX_WAIT_S = 90
+RELEASE_S = 4
 
 RUN = "run"
 UP = "up"
@@ -112,13 +122,18 @@ def _decl() -> LeafDeclaration:
         flags=LoopFlags(Compose.LEAF, CompletionSource.OBSERVED, Repeat.SAFE),
         preconditions=(),
         postcondition="done",
-        wait=WaitPolicy(timedelta(seconds=1), 1.0, timedelta(seconds=100)),
+        wait=WaitPolicy(timedelta(seconds=1), 1.0, timedelta(seconds=MAX_WAIT_S)),
         resource_kind="local_process",
         may_touch=frozenset({"local_process"}),
         effects=(
             EffectDeclaration(RUN, EffectFacetClass.EVENT, "run", Lifetime.RUN, frozenset(), None),
             EffectDeclaration(
-                UP, EffectFacetClass.CREATE, "up", Lifetime.RUN, frozenset(), timedelta(seconds=5)
+                UP,
+                EffectFacetClass.CREATE,
+                "up",
+                Lifetime.RUN,
+                frozenset(),
+                timedelta(seconds=RELEASE_S),
             ),
             EffectDeclaration(
                 STOP,
@@ -160,12 +175,18 @@ def _bound_command(params: dict[str, Any]) -> Any:
     return _ports.BoundCommand("tree", argv, {}, RESOLVED, False)
 
 
+_STALLED: list[bool] = []  # set once the stalled first observation has returned (one run per child)
+
+
 class Unit:
     def declare(self) -> LeafDeclaration:
         return _decl()
 
     def observe(self, params: dict[str, Any], reads: Any, ctx: Any) -> Any:
         mode = params["mode"]
+        if params["stall"] > 0 and not _STALLED:  # the first observation only: the wait starts late
+            _STALLED.append(True)
+            time.sleep(float(params["stall"]))
         present = selector_present = proven = False
         found: tuple[Any, ...] = ()
         ready = False
@@ -241,6 +262,7 @@ def proc_leaf(
     outcome: str = "",
     port: int = 0,
     health_file: str = "",
+    stall: float = 0.0,
 ) -> None:
     intent = {
         "env": env,
@@ -252,6 +274,7 @@ def proc_leaf(
         "outcome": outcome,
         "port": port,
         "health_file": health_file,
+        "stall": stall,
     }
     local = LocalProcessPort()
     _loop.run_tree(
