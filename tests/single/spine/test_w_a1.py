@@ -35,7 +35,11 @@ FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "workflows"
 # `python -m tests.proof.probes.single one-vertex-spine-fixture` by its literal value.
 SPINE_FIXTURES = ("spine_leaf",)
 FIXTURE = SPINE_FIXTURES[0]
-COMPOSITE_FIXTURES = ("probe_all_root", "probe_choice_root")
+TREES = Path(__file__).resolve().parents[2] / "fixtures" / "trees"
+# the composite roots of the tree lift (L.TR-L.1): an AllDeclaration tree is admitted (the MC-B3-01
+# fixture `two_branch_barrier`), a ChoiceNode root keeps the temporary refusal
+ALL_TREE = "two_branch_barrier"
+CHOICE_ROOT = "probe_choice_root"
 EVENT_KIND = "spine_observed"  # the fixture's evidence event, one per observation
 CREATE_EFFECT = "up"
 STOP_EFFECT = "stop"
@@ -301,27 +305,50 @@ def test_wait_ends_on_stop_read_from_the_record(tmp_path: Path) -> None:
             assert classes.index("end") < classes.index("released"), classes
 
 
-def test_composite_roots_refused_temp_code(tmp_path: Path) -> None:
-    """A-1 admits one vertex: a composite root is refused with the temporary code before any run
-    id, through the same one call (TM-B2-1, DM-07)."""
+def test_composite_roots_admit_all_refuse_choice(tmp_path: Path) -> None:
+    """An `AllDeclaration` root is admitted through the one call (L.TR-L.1: the MC-B3-01 fixture
+    `two_branch_barrier`, a run id minted and a terminal answer); a `ChoiceNode` root is still
+    refused with the temporary code before any run id (TM-B2-1, phase `choice-only`, DM-07)."""
     with mcp_host.McpHost(home=tmp_path / "host-home", timeout_s=HOST_TIMEOUT_S) as host:
-        for name in COMPOSITE_FIXTURES:
-            shutil.copy(FIXTURES / f"{name}.py", host.home / "plugins")
-            refused = host.call(
-                "run",
-                {
-                    "plugin": name,
-                    "wait_ms": tolerances.HARNESS_WAIT_MS,
-                    "completion": "terminal",
-                },
-            )
-            assert refused["code"] == codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED, refused
-        assert not list((host.home / "runs").glob("*/*")), "a refused root left a run directory"
+        shutil.copy(TREES / f"{ALL_TREE}.py", host.home / "plugins")
+        admitted = host.call(
+            "run",
+            {
+                "plugin": ALL_TREE,
+                "wait_ms": tolerances.HARNESS_WAIT_MS,
+                "completion": "terminal",
+            },
+        )
+        assert "code" not in admitted and admitted["run_id"].startswith("r_"), admitted
+        assert admitted["state"] in ("succeeded", "failed", "cancelled", "timed_out"), admitted
+        assert len(list((host.home / "runs").glob("*/*"))) == 1  # the admitted run's directory
+        shutil.copy(FIXTURES / f"{CHOICE_ROOT}.py", host.home / "plugins")
+        refused = host.call(
+            "run",
+            {
+                "plugin": CHOICE_ROOT,
+                "wait_ms": tolerances.HARNESS_WAIT_MS,
+                "completion": "terminal",
+            },
+        )
+        assert refused["code"] == codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED, refused
+        assert "run_id" not in refused, refused
+        assert len(list((host.home / "runs").glob("*/*"))) == 1, "a refused root left a run dir"
 
 
 def test_plan_vertex_count_is_one(tmp_path: Path) -> None:
+    """Plan-vertex count 1 for the admitted one-vertex fixture root `spine_leaf` (scoped to it since
+    L.TR-L.1: the composite case above now admits a multi-vertex root in the same session, in its
+    own host; each tree fixture's vertex count is asserted against its label by L.TR-6.6)."""
     with _host(tmp_path) as host:
         answer = _terminal(host, "skip")
+        # a multi-vertex root admitted in the same session must not change what is asserted here
+        shutil.copy(TREES / f"{ALL_TREE}.py", host.home / "plugins")
+        tree = host.call(
+            "run",
+            {"plugin": ALL_TREE, "wait_ms": tolerances.HARNESS_WAIT_MS, "completion": "terminal"},
+        )
+        assert tree["run_id"] != answer["run_id"] and "code" not in tree, tree
         run_dir = _run_dir(host, answer["run_id"])
         spec = json.loads((run_dir / "evidence" / "spec.json").read_text(encoding="utf-8"))
         vertices = spec["plan"]["vertices"]

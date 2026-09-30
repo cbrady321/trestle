@@ -1,0 +1,56 @@
+# tests/tree/joins/lift_set_trl.toml -- MC-B3-04 (L.TR-L.1): the J-TRL lift set. One key per clause the
+# temporary multi-vertex refusal (TM-B2-1, phase `full`) held, exactly A1.5, A2.6, A4.2, A5.4, A6.3, A6.4, A8.4,
+# A8.5; each value lists the HOST node ids (modules `tests/tree/host/test_trl_*.py`, written by L.TR-L.2 to
+# L.TR-L.10) that prove the clause through `ControlSurface.run` / the MCP `run` tool. `test_j_trl.py` freezes the
+# same literal (`test_lift_set_file_matches_frozen_set`); `lift_set_check.py` checks each listed node PASSED in an
+# explicit ledger (MJ.TR-L T1, J-SLICE-A S5). A clause's listed nodes are the verifier nodes of the TREE-L leaves
+# that declare it (a parametrized node is listed once per parameter value).
+
+"A1.5" = [
+  "tests/tree/host/test_trl_rollup.py::test_permutation_and_depth_same_class_primary",
+  "tests/tree/host/test_trl_rollup.py::test_two_trigger_race_lists_reached_conditions",
+  "tests/tree/host/test_trl_rollup.py::test_depth2_conditions_one_call",
+  "tests/tree/host/test_trl_rollup.py::test_root_stops_depth2_active",
+  "tests/tree/host/test_trl_rollup.py::test_root_stop_after_ordinary_failure[cancel]",
+  "tests/tree/host/test_trl_rollup.py::test_root_stop_after_ordinary_failure[deadline]",
+  "tests/tree/host/test_trl_rollup.py::test_child_view_class_equals_root_account",
+]
+"A2.6" = [
+  "tests/tree/host/test_trl_lineage.py::test_forge_request_fields_not_honoured",
+  "tests/tree/host/test_trl_lineage.py::test_unit_code_cannot_change_recorded_path",
+  "tests/tree/host/test_trl_lineage.py::test_every_child_view_resolves_names_root_path",
+  "tests/tree/host/test_trl_lineage.py::test_shared_node_one_start_one_disposition",
+  "tests/tree/host/test_trl_lineage.py::test_started_paths_within_declaration",
+]
+"A4.2" = [
+  "tests/tree/host/test_trl_barrier.py::test_host_barrier_order_and_bound",
+  "tests/tree/host/test_trl_barrier.py::test_host_upstream_covered_precondition_runs",
+]
+"A5.4" = [
+  "tests/tree/host/test_trl_slices.py::test_noncooperating_child_dead_by_root_deadline_margin_kill",
+  "tests/tree/host/test_trl_slices.py::test_cooperating_child_timed_out_names_path",
+]
+"A6.3" = [
+  "tests/tree/host/test_trl_cancel.py::test_root_cancel_readiness_wait_and_running_sibling",
+  "tests/tree/host/test_trl_cancel.py::test_root_deadline_same_clauses",
+  "tests/tree/host/test_trl_failure.py::test_exception_stops_siblings_listed_in_answer",
+  "tests/tree/host/test_trl_failure.py::test_restricted_owner_reads_child_view",
+  "tests/tree/host/test_trl_failure.py::test_child_addressed_cancel",
+]
+"A6.4" = [
+  "tests/tree/host/test_trl_failure.py::test_ordinary_failure_stops_only_dependents",
+]
+"A8.4" = [
+  "tests/tree/host/test_trl_ownership.py::test_unit5_host_variant[sibling_fail]",
+  "tests/tree/host/test_trl_ownership.py::test_unit5_host_variant[exception]",
+  "tests/tree/host/test_trl_ownership.py::test_unit5_host_variant[cancel]",
+  "tests/tree/host/test_trl_ownership.py::test_unit5_host_variant[deadline]",
+  "tests/tree/host/test_trl_ownership.py::test_unit5_host_variant[restart]",
+  "tests/tree/host/test_trl_ownership.py::test_host_claim_before_effect",
+  "tests/tree/host/test_trl_ownership.py::test_host_no_release_before_root_phase",
+]
+"A8.5" = [
+  "tests/tree/host/test_trl_lease.py::test_root_and_direct_child_never_overlap",
+  "tests/tree/host/test_trl_lease.py::test_child_never_queued_behind_root",
+  "tests/tree/host/test_trl_lease.py::test_direct_call_acquires_before_effect",
+]
