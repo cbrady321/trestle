@@ -22,6 +22,7 @@ ARGV_RELEASE_MAX: int = 4096  # an ArgvRelease encoded: executable + the three a
 LANE_ENTRY_MAX: int = 8 * 1024  # every written lane entry except the plan entry
 LANE_BASE_ENTRIES: int = 4096  # LANE_ENTRIES = LANE_BASE_ENTRIES + |selected_scope| + 2
 VERTEX_MAX: int = 1024  # PlanAccepted.selected_scope (AM-6: one definition, here)
+OBSERVE_STDOUT_MAX: int = 4096  # stdout the sweep reads from `observe_argv` (V-10.4)
 
 
 def text_bytes(value: str) -> int:

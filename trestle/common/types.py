@@ -83,6 +83,10 @@ class RunSpec:
     resolved_artifacts: dict[str, str] = field(default_factory=dict)
     deadline: str | None = None
     provenance: dict[str, Any] = field(default_factory=lambda: {"packages": {}})
+    # The admitted plan (MC-20, L.SV-3.4): B2's `PlanAccepted` plus format, vertices and edges, as
+    # `AdmittedPlan.to_json` encodes it. None for a spec written before plans (read as the
+    # implicit depth-1 plan, B2-C1).
+    plan: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -103,6 +107,8 @@ class RunSpec:
         }
         if self.deadline is not None:
             out["deadline"] = self.deadline
+        if self.plan is not None:
+            out["plan"] = self.plan
         return out
 
     @classmethod
@@ -123,6 +129,7 @@ class RunSpec:
             resolved_artifacts=dict(data.get("resolved_artifacts", {})),
             deadline=data.get("deadline"),
             provenance=_provenance(data.get("provenance")),
+            plan=dict(data["plan"]) if isinstance(data.get("plan"), dict) else None,
         )
 
 
