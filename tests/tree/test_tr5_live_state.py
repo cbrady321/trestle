@@ -10,8 +10,8 @@ real loop over the real lane (MC-26's rig, a manual clock) with the fixture's ow
   and the root stops `DECLARATION_STALE`, every vertex `NOT_STARTED`, no ticket anywhere;
 * a selected alternative that is not reachable from the dependent's vantage (V-7.3): the dependent
   is `BLOCKED` `ROUTE_UNSUPPORTED` with its human action before the first ticket in the root;
-* a toolchain that is missing (V-11.2, J-5a): the create is `NOT_APPLIED` `TOOLCHAIN_MISSING`, the
-  node `BLOCKED`, its dependent never started.
+* a toolchain that is missing (V-11.2, J-5a): the create is `NOT_APPLIED` `TOOLCHAIN_MISSING` and
+  the node `BLOCKED`, the tool named in its human action; nothing was started.
 
 For each: the vertex that carries the code ends with it, no vertex the condition stops has a ticket
 after it, and B4-T2 gives exactly one vertex a class other than `PASSED` (row 9 `BLOCKED` for an
@@ -134,16 +134,15 @@ def test_live_state_condition(case: str, tmp_path: Path, markers: FakeMarker) ->
         )  # the alternative the selection left out is not walked
         assert not_passed == {"gateway": "blocked"}  # row 9
     else:
-        carrier = ends["toolchain"]
+        carrier = ends["client"]
         assert (carrier["condition"], carrier["code"]) == ("blocked", "execution.toolchain_missing")
         assert live_state.TOOL in carrier["human_action"]  # the identifier the code names
-        (issue,) = _issues(rig, "toolchain")
+        (issue,) = _issues(rig, "client")
         confirmations = [r for r in rig.rows() if r["class"] == "confirmation"]
-        assert [c["status"] for c in confirmations if c["path"] == "toolchain"] == ["not_applied"]
+        assert [c["status"] for c in confirmations if c["path"] == "client"] == ["not_applied"]
         assert issue["effect"] == live_state.CREATE_EFFECT
-        assert (ends["client"]["condition"], ends["client"]["cut"]) == (None, "not_started")
-        assert not _issues(rig, "client")
-        assert not_passed == {"toolchain": "blocked"}  # row 9
+        assert carrier["cut"] is None and carrier["provenance"] == "absent"
+        assert not_passed == {"client": "blocked"}  # row 9
     # one condition, one class: no other vertex is stopped or failed
     assert len(not_passed) == 1
 

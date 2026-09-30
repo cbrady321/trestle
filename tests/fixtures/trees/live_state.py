@@ -1,11 +1,11 @@
 """A tree with one live-state condition per case (L.TR-5.2; MC-B3-01 behaviour fixture; consumed by
 L.TR-5.3's host case and enumerated by the termination suite as a ChoiceNode plan).
 
-`system` runs six children: `definition` (a gate: it only reads the platform's live definition),
-`toolchain` (creates a marker with a pinned tool), the choice `data` and its dependent `client`
-(needs `data` and `toolchain`), and the choice `edge` and its dependent `gateway` (needs `edge`,
-consumes it from a container). The `case` argument injects exactly one live-state condition; every
-other node converges (`healthy` injects none):
+`system` runs five children: `definition` (a gate: it only reads the platform's live definition),
+the choice `data` and its dependent `client` (needs `data`; creating it needs a pinned tool), and
+the choice `edge` and its dependent `gateway` (needs `edge`, consumes it from a container). The
+`case` argument injects exactly one live-state condition; every other node converges (`healthy`
+injects none):
 
 * `absent_em_instance`: no data instance is up, so the fallback `managed_data` (an externally
   managed realization) is selected and its `advance` can only ask for the human action, `Blocked`
@@ -15,10 +15,11 @@ other node converges (`healthy` injects none):
 * `infeasible_route`: an externally managed `edge` instance is up, so it is selected, but it does
   not declare the container vantage `gateway` consumes it from: `gateway` stops `BLOCKED`
   `ROUTE_UNSUPPORTED` before the first ticket in the root (V-7.3);
-* `missing_toolchain`: creating `toolchain` is `NOT_APPLIED` with `TOOLCHAIN_MISSING` (nothing is
-  installed; OPEN-MISE-HOST), so `toolchain` is `BLOCKED` and `client` never starts.
+* `missing_toolchain`: creating `client` is `NOT_APPLIED` with `TOOLCHAIN_MISSING` (the pinned tool
+  is not installed and Trestle installs none; OPEN-MISE-HOST), so `client` is `BLOCKED` with the
+  tool named, before any effect.
 
-Eleven vertices (the alternatives count), depth 3. The behaviours use `trestle_packs.fakes`'s marker
+Ten vertices (the alternatives count), depth 3. The behaviours use `trestle_packs.fakes`'s marker
 (one logical system per node, so a marker another node made is not this node's to find)."""
 
 from __future__ import annotations
@@ -75,7 +76,7 @@ from trestle.workflow.values import (
 # alternative of a choice and an unresolvable reference each count once); `depth` is the
 # longest containment chain, a leaf being depth 1; `shared` names the node two parents
 # reference, or None; `expect` is "valid" or the ground the tree is defective in.
-LABEL = {"vertices": 11, "depth": 3, "shared": None, "expect": "valid"}
+LABEL = {"vertices": 10, "depth": 3, "shared": None, "expect": "valid"}
 
 CASES = (
     "healthy",
@@ -87,7 +88,7 @@ CASES = (
 
 CREATE_EFFECT = "up"
 STOP_EFFECT = "stop"
-TOOL = "python 3.12 (pinned)"  # what `toolchain` needs and the `missing_toolchain` case lacks
+TOOL = "python 3.12 (pinned)"  # what `client` needs and the `missing_toolchain` case lacks
 ABSENT_CODE = "execution.realization_absent"  # V-11 REALIZATION_ABSENT (a unit's Blocked, V-7.4)
 ABSENT_ACTION = "Start the managed data service, then re-send."
 
@@ -239,9 +240,8 @@ ENTRY = WorkflowEntry(
             flags=LoopFlags(Compose.ALL, CompletionSource.OBSERVED, Repeat.SAFE),
             children=(
                 ChildBinding(unit="definition", params={"case": "case"}, needs=()),
-                ChildBinding(unit="toolchain", params={}, needs=()),
                 ChildBinding(unit="data", params={}, needs=()),
-                ChildBinding(unit="client", params={}, needs=("data", "toolchain")),
+                ChildBinding(unit="client", params={}, needs=("data",)),
                 ChildBinding(unit="edge", params={}, needs=()),
                 ChildBinding(unit="gateway", params={}, needs=("edge",), vantage=Vantage.CONTAINER),
             ),
@@ -253,7 +253,6 @@ ENTRY = WorkflowEntry(
             gates=("definition",),
         ),
         "definition": Node("definition", "gate"),
-        "toolchain": Node("toolchain", "worker"),
         "data": _choice(
             "data",
             "managed_data",
@@ -311,7 +310,7 @@ def prepare(marker: FakeMarker, case: str) -> dict[type, object]:
         marker.plant_found("managed_data", "managed-data")
     if case == "infeasible_route":
         marker.plant_found("managed_edge", "managed-edge")
-    create = ToolchainCreate(marker, "toolchain" if case == "missing_toolchain" else None)
+    create = ToolchainCreate(marker, "client" if case == "missing_toolchain" else None)
     return {ResourceReads: marker, ResourceCreate: create, ResourceOwned: marker}
 
 
