@@ -47,9 +47,10 @@ FIXTURE = REPO / "tests" / "fixtures" / "workflows" / "spine_leaf.py"
 # the fixture's declared deadline (decorator and entry) and the shorter one that lets the deadline
 # end the wait: the root budget plus the release slice must fit it (the same as the W-A1 variant)
 DECLARED_DEADLINE_S = 120
-SHORT_DEADLINE_S = 24
+SHORT_DEADLINE_S = 20
 CLASS_OF_CAUSE = {"cancel": "cancelled", "release_point": "timed_out"}
 HANG = {"env": "dev", "mode": "hang"}
+STALL = {"env": "dev", "mode": "stall"}  # hang, whose wait starts late: the deadline ends it
 
 
 # ---- the facts --------------------------------------------------------------------------------
@@ -193,7 +194,7 @@ def run_deadline(directory: Path) -> Stopped:
     directory.mkdir(parents=True, exist_ok=True)
     fixture = directory / FIXTURE.name
     fixture.write_text(source, encoding="utf-8")
-    admitted = harness.admit_tree(fixture, HANG)
+    admitted = harness.admit_tree(fixture, STALL)
     with support.reaping(admitted.run_id):
         view = harness.drive_tree(admitted)
     outcome, answer = _answered(view)
