@@ -8,9 +8,9 @@ cause `cancel` appears in any sever mode.
 
 The run is `spine_leaf` in `stall` mode (its marker never turns ready and its first observation
 takes `STALL_S`, so the wait, which fits the leaf's budget (L.SL-2.1), starts late and only the
-deadline ends it), with the deadline shortened to `SHORT_DEADLINE_S`. Each sever mode of the host is exercised:
-`cancel_notification` (the JSON-RPC notice; the server stays up), `stdin_close` (EOF on the
-server's read loop) and `sigkill` (the server is gone). Where the server is gone, the run's own
+deadline ends it), with the deadline shortened to `SHORT_DEADLINE_S`. Each sever mode of the host is
+exercised: `cancel_notification` (the JSON-RPC notice; the server stays up), `stdin_close` (EOF on
+the server's read loop) and `sigkill` (the server is gone). Where the server is gone, the run's own
 process tree ends by itself at the release point (the loop releases its marker) and the next server
 on the same home recovers the run to a terminal row. The lane is read through the proof court's
 oracle (`tests.proof.records`); every bound comes from `tests.proof.tolerances` or
