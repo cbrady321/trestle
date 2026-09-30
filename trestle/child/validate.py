@@ -15,8 +15,13 @@ from types import ModuleType
 from typing import cast
 
 import trestle.plugin as _plugin_package
+import trestle.workflow as _workflow_package
+from trestle.common import codes
 from trestle.common.fsutil import sha256_file
+from trestle.common.plan.declared import DeclaredTree
 from trestle.plugin.surface import is_trestle_plugin
+from trestle.workflow.declarations import WorkflowEntry
+from trestle.workflow.extract import ExtractionRefused, extract_declared_tree
 
 FORBIDDEN_PREFIXES = (
     "trestle.server",
@@ -30,9 +35,18 @@ FORBIDDEN_PREFIXES = (
 )
 # Exact module names, not prefixes: the codec (trestle.plugin._codec) lives under
 # trestle.plugin and must stay unimportable by plugins (MC-CORE-08).
-ALLOWED_TRESTLE_PREFIXES = ("trestle.plugin", "trestle.plugin.surface")
+# The public names of `trestle.workflow` (the declaration data types; L.SV-2.3) are admitted the
+# same way: the package, and the submodules it lists as public. Never `trestle.workflow._*`.
+ALLOWED_TRESTLE_PREFIXES = (
+    "trestle.plugin",
+    "trestle.plugin.surface",
+    "trestle.workflow",
+    *(f"trestle.workflow.{name}" for name in _workflow_package.PUBLIC_MODULES),
+)
 # `from trestle.plugin import X` may name only the package's exports and `surface`.
 _PLUGIN_PACKAGE_NAMES = frozenset({*_plugin_package.__all__, "surface"})
+# `from trestle.workflow import X` may name only its exports and its public submodules.
+_WORKFLOW_PACKAGE_NAMES = frozenset({*_workflow_package.__all__, *_workflow_package.PUBLIC_MODULES})
 
 
 def forbidden_import_error(source: str) -> str | None:
@@ -49,6 +63,12 @@ def forbidden_import_error(source: str) -> str | None:
                     for alias in node.names
                     if alias.name not in _PLUGIN_PACKAGE_NAMES
                 )
+            elif node.module == "trestle.workflow":
+                names.extend(
+                    f"trestle.workflow.{alias.name}"
+                    for alias in node.names
+                    if alias.name not in _WORKFLOW_PACKAGE_NAMES
+                )
         for name in names:
             if _is_forbidden(name):
                 return (
@@ -62,6 +82,79 @@ def _is_forbidden(name: str) -> bool:
     if name == "trestle" or name.startswith("trestle."):
         return name not in ALLOWED_TRESTLE_PREFIXES
     return any(name == prefix or name.startswith(f"{prefix}.") for prefix in FORBIDDEN_PREFIXES)
+
+
+# Port modules a workflow plugin reaches the machine through (D-b, B1-E1): the workflow package's
+# own `ports` module and the packs' port packages. A plugin importing any of them acts on an
+# environment, so it must declare which argument names it (`@trestle(env_arg=...)`, WR-OWN-8).
+PORT_MODULES: tuple[str, ...] = (
+    "process",
+    "fakes",
+    "container",
+    "toolchain",
+    "grant",
+    "provision",
+    "testrun",
+)
+_PORT_PREFIXES: tuple[str, ...] = (
+    "trestle.workflow.ports",
+    *(f"trestle_packs.{name}" for name in PORT_MODULES),
+)
+
+
+def imported_port_modules(source: str) -> list[str]:
+    """The port modules `source` imports (sorted, unique), read from the AST alone: the plugin
+    is not imported. `from trestle_packs import process` counts as importing the port."""
+    found: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        names: list[str] = []
+        if isinstance(node, ast.Import):
+            names.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            names.append(node.module)
+            names.extend(f"{node.module}.{alias.name}" for alias in node.names)
+        for name in names:
+            if any(name == p or name.startswith(f"{p}.") for p in _PORT_PREFIXES):
+                found.add(name)
+    return sorted(found)
+
+
+def env_declaration_error(
+    ports: list[str], env_arg: str | None, tree: DeclaredTree | None
+) -> tuple[str, str] | None:
+    """The D-b publication rule (B1-E1, WR-OWN-8): `(wire code, message)` or None.
+
+    * A plugin importing a port module must declare `env_arg`.
+    * A plugin with a declared tree must agree with itself: the root declaration's
+      `env_key_field` equals the plugin's `env_arg` (both absent is fine).
+    """
+    if ports and env_arg is None:
+        return (
+            codes.PUBLICATION_ENV_ARG_MISSING,
+            f"plugin imports port module {ports[0]!r} but declares no env_arg; "
+            "declare @trestle(env_arg=...) naming the environment argument (WR-OWN-8)",
+        )
+    if tree is None:
+        return None
+    key = tree.nodes[""].get("env_key_field")
+    if key == env_arg:
+        return None
+    if key is None:
+        return (
+            codes.PUBLICATION_ENV_ARG_MISSING,
+            f"the root declaration names no env_key_field but the plugin declares env_arg "
+            f"{env_arg!r}; the two must be equal (WR-OWN-8)",
+        )
+    if env_arg is None:
+        return (
+            codes.PUBLICATION_ENV_ARG_MISSING,
+            f"the root declaration names env_key_field {key!r} but the plugin declares no "
+            "env_arg; declare @trestle(env_arg=...) (WR-OWN-8)",
+        )
+    return (
+        codes.PUBLICATION_DECLARATION_INVALID,
+        f"the root declaration's env_key_field {key!r} differs from env_arg {env_arg!r}",
+    )
 
 
 def select_entry(module: ModuleType, entry: str | None = None) -> Callable[..., object]:
@@ -181,7 +274,7 @@ def check_package_digests(expected: dict[str, str]) -> None:
             )
 
 
-def _load_plugin(path: Path, entry: str | None = None) -> None:
+def _load_plugin(path: Path, entry: str | None = None) -> ModuleType:
     source = path.read_text(encoding="utf-8")
     forbidden = forbidden_import_error(source)
     if forbidden is not None:
@@ -193,6 +286,24 @@ def _load_plugin(path: Path, entry: str | None = None) -> None:
     sys.modules["trestle_plugin_validate"] = module
     spec.loader.exec_module(module)
     select_entry(module, entry)
+    return module
+
+
+def declared_tree_of(module: ModuleType) -> DeclaredTree | None:
+    """The declared tree of a workflow plugin (MC-34), or None for a plain plugin.
+
+    A workflow plugin binds one module-level `WorkflowEntry` (B1-C8); the tree is extracted from
+    it here, in the throwaway validator, because this is the only place plugin code is imported at
+    publication. More than one entry, or an entry whose extraction fails, raises
+    `ExtractionRefused` (never a partial declaration)."""
+    entries = {id(v): v for v in vars(module).values() if isinstance(v, WorkflowEntry)}
+    if not entries:
+        return None
+    if len(entries) > 1:
+        raise ExtractionRefused(
+            module.__name__, f"{len(entries)} WorkflowEntry objects; expected one"
+        )
+    return extract_declared_tree(next(iter(entries.values())))
 
 
 class ValidationFailed(Exception):
@@ -204,14 +315,35 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--plugin", required=True)
     parser.add_argument("--entry")
     parser.add_argument("--package", action="append", default=[])
+    parser.add_argument("--env-arg")
     args = parser.parse_args(argv)
     path = Path(args.plugin)
     try:
         # the declared packages are digested first, before any plugin code is imported
         digests = package_digests(args.package)
-        _load_plugin(path, args.entry)
+        tree: DeclaredTree | None = None
+        ports = imported_port_modules(path.read_text(encoding="utf-8"))
+        # the D-b rule's static half needs no import of code that may not even load
+        refusal = env_declaration_error(ports, args.env_arg, None) if ports else None
+        if refusal is None:
+            module = _load_plugin(path, args.entry)
+            tree = declared_tree_of(module)
+            refusal = env_declaration_error(ports, args.env_arg, tree)
+        if refusal is not None:
+            code, message = refusal
+            print(json.dumps({"ok": False, "code": code, "error": message[:500]}), flush=True)
+            return 1
     except (ValidationFailed, ProvenanceMismatch) as exc:
         print(json.dumps({"ok": False, "error": str(exc)[:500]}), flush=True)
+        return 1
+    except ExtractionRefused as exc:
+        # extraction failed: publication is refused with its own stable code (no snapshot)
+        payload = {
+            "ok": False,
+            "error": str(exc)[:500],
+            "code": codes.PUBLICATION_DECLARATION_INVALID,
+        }
+        print(json.dumps(payload), flush=True)
         return 1
     except Exception as exc:
         print(
@@ -219,7 +351,10 @@ def main(argv: list[str] | None = None) -> int:
             flush=True,
         )
         return 1
-    print(json.dumps({"ok": True, "packages": digests}), flush=True)
+    result: dict[str, object] = {"ok": True, "packages": digests}
+    if tree is not None:
+        result["declaration"] = tree.to_json()
+    print(json.dumps(result), flush=True)
     return 0
 
 

@@ -28,6 +28,8 @@ PUBLICATION_NO_ENTRYPOINT = "publication.no_entrypoint"
 PUBLICATION_NAME_MISMATCH = "publication.name_mismatch"
 PUBLICATION_SOURCE_TOO_LARGE = "publication.source_too_large"
 PUBLICATION_VALIDATION_FAILED = "publication.validation_failed"
+PUBLICATION_DECLARATION_INVALID = "publication.declaration_invalid"
+PUBLICATION_ENV_ARG_MISSING = "publication.env_arg_missing"
 
 # MC-CORE-04: the execution-code vocabulary, additive only (DM-16). A run that started and ended
 # without an answer carries exactly one of these in its `error_record` (MC-15).
