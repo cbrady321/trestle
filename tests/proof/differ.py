@@ -44,7 +44,6 @@ CM9_ALL_KEYS = CM9_REQUIRED_KEYS | CM9_OPTIONAL_KEYS
 # argument today (there is no `differ.py cz4` subcommand to close).
 UNBUILT_MODES = {
     "d3": "L.CS-2.4",
-    "d4": "L.SV-3.4",
     "d5": "L.SV-4.2",
     "d6": "L.TR-6.1",
     "d7": "L.TR-4.7",
@@ -512,6 +511,9 @@ def build_parser() -> argparse.ArgumentParser:
     d2.add_argument("--reader", required=True)
     d2.add_argument("--fossils", default=None)
 
+    d4 = sub.add_parser("d4")
+    d4.add_argument("--fossils", default=None)
+
     for mode in UNBUILT_MODES:
         sub.add_parser(mode)
 
@@ -525,6 +527,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_d1(args)
     if args.mode == "d2":
         return cmd_d2(args)
+    if args.mode == "d4":
+        from tests.proof.differ_modes import d4_implicit_plan
+
+        return d4_implicit_plan.main(args)
     if args.mode in UNBUILT_MODES:
         print(f"differ {args.mode}: not built in P0; builder is {UNBUILT_MODES[args.mode]}")
         return 2

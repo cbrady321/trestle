@@ -1,5 +1,7 @@
 """Stable error codes."""
 
+from trestle.common.plan import vocabulary as _vocab
+
 SERVICE_DRAINING = "admission.service_draining"
 PLUGIN_NOT_FOUND = "admission.plugin_not_found"
 IMPORT_FAILED = "admission.import_failed"
@@ -8,6 +10,8 @@ QUEUE_FULL = "admission.queue_full"
 NOT_ALLOWLISTED = "admission.not_allowlisted"
 IDEMPOTENCY_KEY_CONFLICT = "admission.idempotency_key_conflict"
 BUDGET_DOES_NOT_FIT = "admission.budget_does_not_fit"
+# L.SV-3.5 (TM-B2-1): temporary, refused only in `Admission.admit` before any run id.
+ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED = "admission.plan_multi_vertex_unsupported"
 NOT_IMPLEMENTED = "projection.not_implemented"
 INVALID_HANDLE = "projection.invalid_handle"
 NOT_OWNER = "projection.not_owner"
@@ -42,6 +46,17 @@ EXECUTION_CANCELLED = "execution.cancelled"
 EXECUTION_DEADLINE_EXCEEDED = "execution.deadline_exceeded"
 EXECUTION_WORKER_EXIT = "execution.worker_exit"
 EXECUTION_INTERRUPTED = "execution.interrupted"
+
+
+# L.SV-3.5 (DM-16): the plan refusal codes of the vocabulary (V-11), re-exported beside core's own
+# `BUDGET_DOES_NOT_FIT` (the same string; V-11 gives it one spelling, AM-7).
+BOUND_EXCEEDED = _vocab.BOUND_EXCEEDED
+UNKNOWN_IDENTIFIER = _vocab.UNKNOWN_IDENTIFIER
+UNIT_UNRESOLVED = _vocab.UNIT_UNRESOLVED
+DEPENDENCY_CYCLE = _vocab.DEPENDENCY_CYCLE
+DECLARATION_CONFLICT = _vocab.DECLARATION_CONFLICT
+LEASE_SET_UNDECIDABLE = _vocab.LEASE_SET_UNDECIDABLE
+ROUTE_UNSUPPORTED = _vocab.ROUTE_UNSUPPORTED
 
 EXECUTION_CODES: frozenset[str] = frozenset(
     {

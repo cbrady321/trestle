@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import os
 import tomllib
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
+
+from trestle.common import clock
 
 _GB = 1024**3
 
@@ -48,6 +50,23 @@ class RetentionConfig:
 
 
 @dataclass(frozen=True)
+class OperatorLimits:
+    """B2's `OperatorLimits` (MC-B2-04): the bounds the host enforces and the sweep reads. Every
+    timing field defaults to `trestle/common/clock.py`'s one definition of it (MC-09, SA-05), read
+    when the config is built, so no timing literal lives here. `release_executables` is the
+    absolute paths the sweep may run for an `ArgvRelease` (V-10.1): empty by default, since its
+    owner and default are still open (design section 10 F-11(b), TM-B2-2)."""
+
+    deadline_ceiling: float = field(default_factory=lambda: clock.deadline_ceiling)
+    release_slice: float = field(default_factory=lambda: clock.release_slice)
+    grace: float = field(default_factory=lambda: clock.grace)
+    kill: float = field(default_factory=lambda: clock.kill)
+    finalization_margin: float = field(default_factory=lambda: clock.finalization_margin)
+    sweep_parallelism: int = field(default_factory=lambda: clock.sweep_parallelism)
+    release_executables: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True)
 class TrestleConfig:
     retention: RetentionConfig = RetentionConfig()
     idempotency_ttl_s: int = 3600
@@ -55,6 +74,7 @@ class TrestleConfig:
     max_running_runs: int = MAX_RUNNING_RUNS_DEFAULT
     queue_depth: int = QUEUE_DEPTH_DEFAULT
     profile: ProfileConfig = ProfileConfig()
+    operator_limits: OperatorLimits = field(default_factory=OperatorLimits)
 
     @classmethod
     def defaults(cls) -> TrestleConfig:
@@ -86,6 +106,7 @@ class TrestleConfig:
             max_running_runs=max(1, _env_int("TRESTLE_MAX_RUNNING_RUNS", self.max_running_runs)),
             queue_depth=max(0, _env_int("TRESTLE_QUEUE_DEPTH", self.queue_depth)),
             profile=self.profile,
+            operator_limits=self.operator_limits,
         )
 
 

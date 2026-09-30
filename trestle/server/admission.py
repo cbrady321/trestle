@@ -5,9 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import platform
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -15,12 +16,16 @@ from trestle.common import clock, codes
 from trestle.common.canonical import args_hash
 from trestle.common.fsutil import atomic_write_json, fsync_dir
 from trestle.common.ids import generate_run_id
+from trestle.common.plan import carving, compiler
+from trestle.common.plan.compiler import AdmittedPlan
+from trestle.common.plan.declared import ROOT_PATH
 from trestle.common.redact import redact_args, secret_values
 from trestle.common.types import (
     AdmitRequest,
     AdmitResult,
     AdmitResultAdmitted,
     AdmitResultRefused,
+    PluginSnapshot,
     RequestOutcome,
     RunSpec,
 )
@@ -33,7 +38,12 @@ from trestle.server.plugin_validate import validate_plugin_imports
 from trestle.server.recovery import find_run_dir
 from trestle.server.registry import Registry
 from trestle.server.scheduler import Scheduler
-from trestle.server.snapshots import deadline_of, load_declared, load_snapshot_schema
+from trestle.server.snapshots import (
+    deadline_of,
+    load_declared,
+    load_declared_tree,
+    load_snapshot_schema,
+)
 
 # K-1 (MC-CORE-12, OQ-1 recorded default): the same idempotency key joins the run it named even
 # after the plugin was republished, and the key's window covers the run's whole life. A join then
@@ -147,7 +157,6 @@ class Admission:
                 ),
             )
 
-        cfg = load_config(self.home)
         if req.idempotency_key is not None:
             store = IdempotencyStore.open(self.home)
             store.purge_expired()
@@ -174,81 +183,231 @@ class Admission:
                     ),
                 )
 
-        run_id = generate_run_id()
-        run_dir = run_dir_for(self.home, run_id)
-        month_dir = run_dir.parent
-        month_dir.mkdir(parents=True, exist_ok=True)
-        fsync_dir(month_dir)
-        run_dir.mkdir(parents=True, exist_ok=True)
-        fsync_dir(run_dir)
-        ev_dir = evidence_dir(run_dir)
-        w_dir = work_dir(run_dir)
-        ev_dir.mkdir(parents=True, exist_ok=True)
-        w_dir.mkdir(parents=True, exist_ok=True)
-        (w_dir / "tmp").mkdir(parents=True, exist_ok=True)
-        (w_dir / "outputs").mkdir(parents=True, exist_ok=True)
-        (w_dir / "artifact-staging").mkdir(parents=True, exist_ok=True)
-        fsync_dir(run_dir)
+        # TM-B2-1: A-1 admits one-vertex roots only; a composite root is refused whatever its other
+        # defects (the tree band's TR-L / TR-5 narrow and remove this call, register entry
+        # `multi-vertex-refusal`), still before any run id exists.
+        composite = multi_vertex_refusal(snap)
+        if composite is not None:
+            return composite
 
-        deadline = datetime.now(tz=UTC) + timedelta(seconds=deadline_s)
-        declared = load_declared(snap)
-        spec = RunSpec(
-            plugin=snap.plugin,
-            version=snap.version,
-            snapshot_id=snap.snapshot_id,
-            # declared secrets are redacted (MC-CORE-13); args_hash above is over the real intent
-            args=redact_args(req.args, declared.secrets),
-            args_hash=a_hash,
-            source_sha256=snap.source_sha256,
-            schema_sha256=snap.schema_sha256,
-            manifest_sha256=snap.manifest_sha256,
-            python_version=sys.version.split()[0],
-            platform=platform.platform(),
-            summary_budget=snap.summary_budget,
-            timeout_s=math.ceil(deadline_s),
-            deadline=deadline.isoformat(),
-            # what publication recorded for the declared packages; the child checks it first
-            provenance={"packages": dict(declared.package_digests)},
+        # B2-C2: every root is compiled and carved to a plan before any run id exists (a refusal
+        # is not a run); a plan-less root gets the implicit depth-1 plan (B2-C1).
+        planned = plan_for_admission(snap, req, deadline_s)
+        if isinstance(planned, AdmitResultRefused):
+            return planned
+        admitted = write_admitted_run(
+            self.home, snap, req, planned, service_epoch=self.service_epoch
         )
-        spec_dict = spec.to_dict()
-        atomic_write_json(ev_dir / "spec.json", spec_dict)
-        spec_hash = hashlib.sha256(
-            json.dumps(spec_dict, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()
-
-        ledger = RunLedger.open(ledger_path(run_dir))
-        created_fields: dict[str, object] = {
-            "run_id": run_id,
-            "spec_hash": spec_hash,
-            "service_epoch": self.service_epoch,
-            "plugin": snap.plugin,
-            "version": snap.version,
-            "snapshot_id": snap.snapshot_id,
-            "args_hash": a_hash,
-            "caller_session": req.caller_session,
-        }
-        if req.idempotency_key is not None:
-            created_fields["idempotency_key"] = req.idempotency_key
-        ledger.append("created", **created_fields)
-        fsync_dir(run_dir)
-
-        if req.idempotency_key is not None:
-            IdempotencyStore.open(self.home).remember(
-                req.idempotency_key,
-                run_id=run_id,
-                plugin=snap.plugin,
-                snapshot_id=snap.snapshot_id,
-                args_hash=a_hash,
-                ttl_s=cfg.idempotency_ttl_s
-                + (
-                    math.ceil(snap.timeout_s + clock.finalization_margin)
-                    if JOIN_ACROSS_REPUBLISH
-                    else 0
-                ),
-            )
-
-        self.scheduler.mint(run_id, snap.snapshot_id, spec_hash)
+        self.scheduler.mint(admitted.run_id, snap.snapshot_id, admitted.spec_hash)
         # the real values travel in memory to the run's WorkOrder and no further
-        return AdmitResultAdmitted(
-            tag="admitted", run_id=run_id, secrets=secret_values(req.args, declared.secrets)
+        return AdmitResultAdmitted(tag="admitted", run_id=admitted.run_id, secrets=admitted.secrets)
+
+
+def _plan_refusal(refusal: compiler.Refusal) -> AdmitResultRefused:
+    """A plan refusal as the request's outcome: the plan code, naming the identifier (and, for an
+    unknown identifier, where the valid ones are listed)."""
+    parts = [refusal.message or refusal.code, f"({refusal.identifier})"]
+    if refusal.valid_listed_at is not None:
+        parts.append(f"valid identifiers are listed at {refusal.valid_listed_at}")
+    return AdmitResultRefused(
+        tag="refused",
+        outcome=RequestOutcome(
+            code=refusal.code,
+            message=" ".join(parts)[: compiler.REFUSAL_TEXT_MAX],
+            retryable=False,
+            origin="admission",
+        ),
+    )
+
+
+def multi_vertex_refusal(snap: PluginSnapshot) -> AdmitResultRefused | None:
+    """TM-B2-1 (register entry `multi-vertex-refusal`, phase `full`), the one home of the
+    refusal (DM-07): a declared root with more than one vertex, an `AllDeclaration` with children
+    or a `ChoiceNode` with alternatives, is refused `admission.plan_multi_vertex_unsupported`.
+    Decided on the declaration alone (the tree's descendants are unresolved in A-1), so it
+    precedes every plan refusal; `plan_for_admission` and `write_admitted_run` (the harness's
+    path, MC-B2-08) never refuse a composite. A plain plugin and a leaf root are not refused."""
+    declared = load_declared_tree(snap)
+    if declared is None:
+        return None
+    root = declared.nodes[ROOT_PATH]
+    compose = root["compose"]
+    if compose == "all":
+        composite = bool(root["children"])
+    elif compose == "choice":
+        composite = bool(root["choice"]["alternatives"])
+    else:
+        composite = False
+    if not composite:
+        return None
+    return AdmitResultRefused(
+        tag="refused",
+        outcome=RequestOutcome(
+            code=codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED,
+            message=(
+                f"a workflow root with more than one vertex is not supported yet: {snap.plugin}"
+            ),
+            retryable=False,
+            origin="admission",
+        ),
+    )
+
+
+def plan_for_admission(
+    snap: PluginSnapshot, req: AdmitRequest, deadline_s: float
+) -> AdmittedPlan | AdmitResultRefused:
+    """Compile and carve this request's plan (B2-C2, MC-23): the declared tree of a workflow
+    snapshot (MC-34), or the implicit depth-1 plan of a plain plugin (B2-C1); the carve and this
+    root's release slice attached, `plan_digest` over all of it. Pure over the snapshot and the
+    request; a refusal names its node or identifier and no run id exists yet."""
+    declared = load_declared_tree(snap)
+    if declared is None:
+        plan = compiler.implicit_depth1_plan(snap.plugin)
+    else:
+        compiled = compiler.compile(declared, req.args)
+        if isinstance(compiled, compiler.Refusal):
+            return _plan_refusal(compiled)
+        plan = compiled
+    release_slice = carving.release_slice_for(plan, clock.release_slice)
+    slices = carving.carve(
+        plan,
+        deadline_s,
+        clock.FINALIZATION_RESERVE_S,
+        release_slice,
+        deadline_ceiling_s=clock.deadline_ceiling,
+    )
+    if isinstance(slices, compiler.Refusal):
+        return _plan_refusal(slices)
+    # B2-C2 (5): the finalization the host needs after the deadline must fit the margin
+    misfit = carving.margin_misfit(
+        plan,
+        carving.MarginLimits(
+            grace=clock.grace, kill=clock.kill, sweep_parallelism=clock.sweep_parallelism
+        ),
+        clock.finalization_margin,
+    )
+    if misfit is not None:
+        return _plan_refusal(misfit)
+    return carving.attach(plan, slices, release_slice)
+
+
+@dataclass(frozen=True)
+class AdmittedRun:
+    """What `write_admitted_run` minted: the run id, the hash of its spec (the run's identity,
+    which the plan digest is part of), and the real values of its declared secrets (in memory
+    only, MC-CORE-13)."""
+
+    run_id: str
+    spec_hash: str
+    secrets: dict[str, object] = field(default_factory=dict, repr=False, compare=False)
+
+
+def write_admitted_run(
+    home: Path,
+    snap: PluginSnapshot,
+    req: AdmitRequest,
+    plan: AdmittedPlan,
+    *,
+    service_epoch: str = "",
+) -> AdmittedRun:
+    """The post-refusal half of admission (MC-B2-08): mint the run id, write the run directory,
+    `spec.json` (with `plan`), the `created` row and the idempotency record. Every refusal has
+    already happened; the harness's `run_tree` (L.SV-5.7) admits through here too. When the
+    `TRESTLE_ADMISSION_AUDIT` environment variable names a file, one ndjson line
+    `{run_dir, vertex_count, plugin, pid, nodeid}` is appended to it (TM-B2-8, test
+    instrumentation for J-SINGLE (b): each admission is attributable to its suite through
+    `PYTEST_CURRENT_TEST`); unset, nothing is written."""
+    a_hash = args_hash(req.args)
+    deadline_s, _ = deadline_of(snap)
+    run_id = generate_run_id()
+    run_dir = run_dir_for(home, run_id)
+    month_dir = run_dir.parent
+    month_dir.mkdir(parents=True, exist_ok=True)
+    fsync_dir(month_dir)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    fsync_dir(run_dir)
+    ev_dir = evidence_dir(run_dir)
+    w_dir = work_dir(run_dir)
+    ev_dir.mkdir(parents=True, exist_ok=True)
+    w_dir.mkdir(parents=True, exist_ok=True)
+    (w_dir / "tmp").mkdir(parents=True, exist_ok=True)
+    (w_dir / "outputs").mkdir(parents=True, exist_ok=True)
+    (w_dir / "artifact-staging").mkdir(parents=True, exist_ok=True)
+    fsync_dir(run_dir)
+
+    deadline = datetime.now(tz=UTC) + timedelta(seconds=deadline_s)
+    declared = load_declared(snap)
+    spec = RunSpec(
+        plugin=snap.plugin,
+        version=snap.version,
+        snapshot_id=snap.snapshot_id,
+        # declared secrets are redacted (MC-CORE-13); args_hash above is over the real intent
+        args=redact_args(req.args, declared.secrets),
+        args_hash=a_hash,
+        source_sha256=snap.source_sha256,
+        schema_sha256=snap.schema_sha256,
+        manifest_sha256=snap.manifest_sha256,
+        python_version=sys.version.split()[0],
+        platform=platform.platform(),
+        summary_budget=snap.summary_budget,
+        timeout_s=math.ceil(deadline_s),
+        deadline=deadline.isoformat(),
+        # what publication recorded for the declared packages; the child checks it first
+        provenance={"packages": dict(declared.package_digests)},
+        plan=json.loads(plan.to_json()),
+    )
+    spec_dict = spec.to_dict()
+    atomic_write_json(ev_dir / "spec.json", spec_dict)
+    # the plan digest is inside the spec, so it is part of the run's identity (design S-8)
+    spec_hash = hashlib.sha256(
+        json.dumps(spec_dict, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+    ledger = RunLedger.open(ledger_path(run_dir))
+    created_fields: dict[str, object] = {
+        "run_id": run_id,
+        "spec_hash": spec_hash,
+        "service_epoch": service_epoch,
+        "plugin": snap.plugin,
+        "version": snap.version,
+        "snapshot_id": snap.snapshot_id,
+        "args_hash": a_hash,
+        "caller_session": req.caller_session,
+    }
+    if req.idempotency_key is not None:
+        created_fields["idempotency_key"] = req.idempotency_key
+    ledger.append("created", **created_fields)
+    fsync_dir(run_dir)
+
+    if req.idempotency_key is not None:
+        cfg = load_config(home)
+        IdempotencyStore.open(home).remember(
+            req.idempotency_key,
+            run_id=run_id,
+            plugin=snap.plugin,
+            snapshot_id=snap.snapshot_id,
+            args_hash=a_hash,
+            ttl_s=cfg.idempotency_ttl_s
+            + (
+                math.ceil(snap.timeout_s + clock.finalization_margin)
+                if JOIN_ACROSS_REPUBLISH
+                else 0
+            ),
         )
+
+    audit_path = os.environ.get("TRESTLE_ADMISSION_AUDIT")
+    if audit_path:
+        line = {
+            "run_dir": str(run_dir),
+            "vertex_count": len(plan.vertices),
+            "plugin": snap.plugin,
+            "pid": os.getpid(),
+            "nodeid": os.environ.get("PYTEST_CURRENT_TEST"),
+        }
+        with open(audit_path, "a", encoding="utf-8") as audit:
+            audit.write(json.dumps(line, sort_keys=True) + "\n")
+    return AdmittedRun(
+        run_id=run_id,
+        spec_hash=spec_hash,
+        secrets=secret_values(req.args, declared.secrets),
+    )

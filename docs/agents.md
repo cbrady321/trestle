@@ -264,13 +264,18 @@ SIGTERM to every process attributable to the run at once, waits at most `grace`,
 and waits at most `kill` for confirmation. Attributable means the run's process group, and every
 descendant by parent id of a process already attributable, whatever session or group it has moved
 to (a plugin's `setsid` child is still the run's). The run's class comes from whichever came first,
-the cancel or the deadline; if both hold at the first look, cancel.
+the cancel or the deadline; if both hold at the first look, cancel. Only the supervisor signals:
+a cancel request writes a flag, and the supervisor records the stop (cause and the lane's committed
+length) before it stops anything. The release slice and the finalization reserve (10 s each) are
+plan defaults disclosed for the maintainer to set, not requirements.
 
 | Published bound (`trestle.common.clock`) | Default | Meaning |
 |---|---|---|
 | `grace` (10 s) | `TRESTLE_CANCEL_GRACE_S` | SIGTERM to SIGKILL |
 | `kill` (5 s) | `TRESTLE_CANCEL_KILL_S` | SIGKILL to confirmed gone |
-| `stop_bound` (15 s, `grace` + `kill`) | derived | from the stop decision to the tree gone |
+| `release_slice` (10 s) | `TRESTLE_RELEASE_SLICE_S` | a workflow run's cooperative release, before the kill (0 for a plain plugin) |
+| `stop_bound` (25 s, `release_slice` + `grace` + `kill`) | derived | from the stop decision to the tree gone |
+| `finalization_margin` (35 s, `stop_bound` + 10 s reserve) | `TRESTLE_FINALIZATION_MARGIN_S` | how long after the deadline a call may still be answered |
 | `poll_interval` (0.05 s) | fixed | how often the supervisor looks for a cancel |
 
 A cancel is seen within one `poll_interval`, so a stop completes within `stop_bound` plus

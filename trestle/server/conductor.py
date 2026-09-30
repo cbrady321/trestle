@@ -13,16 +13,18 @@ from pathlib import Path
 
 from trestle.common import clock, codes, redact
 from trestle.common.errtext import sanitize
-from trestle.common.fsutil import atomic_write_json
+from trestle.common.fsutil import atomic_write, atomic_write_json
 from trestle.common.ids import generate_artifact_id
 from trestle.common.limits import capture_limits
+from trestle.common.plan.compiler import AdmittedPlan
 from trestle.common.pyenv import build_child_env, python_argv
 from trestle.common.types import WorkOrder
-from trestle.server import fold
+from trestle.server import fold, sweep
+from trestle.server.config import load_config
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, work_dir
 from trestle.server.procident import Attribution, GroupStop, Identity, ProcessSource, stop_group
 from trestle.server.projection import count_events
-from trestle.server.runs import RunRegistry, cancel_flag_path
+from trestle.server.runs import RunRegistry, cancel_flag_path, release_point_flag_path
 from trestle.server.scheduler import Scheduler
 
 # K-8 (OQ-5 recorded default; MC-CORE-12's switch): a run that ended succeeded has its attributable
@@ -41,6 +43,15 @@ class Conductor:
     # B2-C10's kill: the one stopper, at both call sites; a test injects its own
     stopper: Callable[[Attribution], GroupStop] = stop_group
 
+    def __post_init__(self) -> None:
+        # B2-C12: a cancel written for a run still waiting in the queue finalizes it there
+        self.run_registry.on_cancel_flag = self._cancel_flag_written
+
+    def _cancel_flag_written(self, run_id: str) -> None:
+        self.scheduler.cancel_waiting(
+            run_id, lambda order: self.finalize_queued(order, fold.CAUSE_CANCEL)
+        )
+
     def drive(self, order: WorkOrder) -> str:
         try:
             return self._drive(order)
@@ -54,17 +65,34 @@ class Conductor:
 
     def finalize_unspawned(self, order: WorkOrder) -> str:
         """End a run that reached its deadline while queued, without ever starting it (B2-C5,
-        B2-C12): `timed_out` with the deadline error and no `started`, `process_identity` or
-        `group_stop` row, since no process group exists to stop. The rows follow the same order as
-        a spawned run's: `error_record`, then `evidence_finalized`, then the terminal row."""
+        B2-C12): the scheduler's expiry callback."""
+        return self.finalize_queued(order, fold.CAUSE_RELEASE_POINT)
+
+    def finalize_queued(self, order: WorkOrder, cause: str) -> str:
+        """End a run that was stopped before any process was spawned (B2-C12): a cancel, or its
+        deadline passing, while it waited. U2 appends `StopRow(cause, lane_committed_length=0)`
+        and finalizes `cancelled` / `timed_out` with no process, lane, kill, fold or sweep; the
+        run has no `started`, `process_identity` or `group_stop` row, since no process group
+        exists to stop, and the answer reads it as an empty fold, an empty cleanup and a
+        confirmed-gone group (CB-6). The rows follow a spawned run's order after the stop row:
+        `error_record`, then `evidence_finalized`, then the terminal row."""
         run_dir = self._find_run_dir(order.run_id)
         ledger = RunLedger.open(ledger_path(run_dir))
-        classification = "timed_out"
-        error = _composed(
-            codes.EXECUTION_DEADLINE_EXCEEDED,
-            "queue",
-            "the run reached its deadline while queued and was never started",
-        )
+        fold.record_stop(run_dir, ledger, cause, queued=True)
+        if cause == fold.CAUSE_CANCEL:
+            classification = "cancelled"
+            error = _composed(
+                codes.EXECUTION_CANCELLED,
+                "queue",
+                "the run was cancelled while queued and was never started",
+            )
+        else:
+            classification = "timed_out"
+            error = _composed(
+                codes.EXECUTION_DEADLINE_EXCEEDED,
+                "queue",
+                "the run reached its deadline while queued and was never started",
+            )
         ledger.append("error_record", run_id=order.run_id, **error)
         atomic_write_json(
             evidence_dir(run_dir) / "meta.json",
@@ -98,11 +126,17 @@ class Conductor:
 
     def _drive(self, order: WorkOrder) -> str:
         run_dir = self._find_run_dir(order.run_id)
+        spec = self._read_spec(run_dir)
+        # a stop that came before the run was spawned (a cancel written between dispatch and here,
+        # or a deadline that fell while it waited) ends it as a queued run: nothing to stop
+        if cancel_flag_path(run_dir).exists():
+            return self.finalize_queued(order, fold.CAUSE_CANCEL)
+        if time.monotonic() >= _monotonic_deadline(spec):
+            return self.finalize_queued(order, fold.CAUSE_RELEASE_POINT)
+
         ledger = RunLedger.open(ledger_path(run_dir))
         ledger.append("admitted", run_id=order.run_id, snapshot_id=order.snapshot_id)
         ledger.append("started", run_id=order.run_id)
-
-        spec = self._read_spec(run_dir)
 
         wrapper_cmd = python_argv("-m", "trestle.wrapper.main", "--run-dir", str(run_dir))
         env = build_child_env(home=self.home)
@@ -131,25 +165,38 @@ class Conductor:
         self.run_registry.register(order.run_id, proc, attribution)
         cancel_flag = cancel_flag_path(run_dir)
         deadline = _monotonic_deadline(spec)
-        first_observed_cause: str | None = None
+        release_slice = _release_slice(spec)
+        release_point = deadline - release_slice
         stop: GroupStop | None = None
+        stop_row_at: float | None = None  # U2 recorded a stop (B2-C15) at this monotonic moment
+
+        def record_stop(cause: str) -> None:
+            nonlocal stop_row_at
+            fold.record_stop(run_dir, ledger, cause)
+            stop_row_at = time.monotonic()
+
         try:
             while proc.poll() is None:
                 attribution.observe()
-                if cancel_flag.exists():
-                    first_observed_cause = "cancel"
-                    stop = self.stopper(attribution)
-                    break
-                if time.monotonic() > deadline:
-                    first_observed_cause = "deadline"
+                now = time.monotonic()
+                if stop_row_at is None:
+                    # B2-C10: the cancel flag, or the release point (U2 writes its flag itself);
+                    # a cancel wins when both hold
+                    if cancel_flag.exists():
+                        record_stop(fold.CAUSE_CANCEL)
+                    elif now >= release_point:
+                        atomic_write(release_point_flag_path(run_dir), b"1")
+                        record_stop(fold.CAUSE_RELEASE_POINT)
+                if stop_row_at is not None and now >= stop_row_at + release_slice:
+                    # the release slice has elapsed with the root still live: kill (B2-C10)
                     stop = self.stopper(attribution)
                     break
                 time.sleep(clock.poll_interval)
-            if first_observed_cause is None:  # the exit was observed: check once more (B2-C10)
+            if stop_row_at is None:  # the exit was observed: check once more, cancel first
                 if cancel_flag.exists():
-                    first_observed_cause = "cancel"
-                elif time.monotonic() > deadline:
-                    first_observed_cause = "deadline"
+                    record_stop(fold.CAUSE_CANCEL)
+                elif time.monotonic() >= release_point:
+                    record_stop(fold.CAUSE_RELEASE_POINT)  # no process is left to read a flag
         finally:
             self.run_registry.unregister(order.run_id)
             # B2-C10: the kill runs on every terminal path, a normal exit included. A request-path
@@ -165,7 +212,7 @@ class Conductor:
                             succeeded = ended.get("classification") == "succeeded"
                         except (OSError, ValueError, AttributeError):
                             succeeded = False
-                        if succeeded and first_observed_cause is None:
+                        if succeeded and stop_row_at is None:
                             stop = GroupStop(
                                 confirmed_gone=not attribution.observe(), signalled=False
                             )
@@ -192,8 +239,16 @@ class Conductor:
 
         # B2-C7 (MC-19): the lane is folded, and its entries are in the ledger as `lane_folded`
         # rows, before the row that ends execution; a run with no lane writes none. `accepted` is
-        # spec.plan's PlanAccepted once L.SV-3.4 admits one (None: the implicit one-vertex plan).
-        folded = fold.fold_into_ledger(run_dir, ledger, None)
+        # spec.plan's admitted plan (None: the implicit one-vertex plan).
+        plan = _accepted_plan(spec)
+        folded = fold.fold_into_ledger(run_dir, ledger, plan)
+
+        # B2-C10: the sweep runs inside the finalization margin, after the fold and the kill; its
+        # rows are durable before the terminal row (B4-C7). A plain plugin has only the process
+        # group target, disposed from the group stop above, so it writes none.
+        limits = load_config(self.home).operator_limits
+        swept = sweep.sweep_detailed(folded, stop, sweep.budget_for(limits), limits, plan)
+        sweep.write_rows(ledger, order.run_id, swept)
 
         duration_ms = int((time.monotonic() - started) * 1000)
 
@@ -209,9 +264,10 @@ class Conductor:
         raw_limits = report.get("limits_exceeded", [])
         if isinstance(raw_limits, list):
             wrapper_limits = [item for item in raw_limits if isinstance(item, dict)]
-        if first_observed_cause == "cancel":
+        first_stop = folded.stop_rows[0].cause if folded.stop_rows else None
+        if first_stop == fold.CAUSE_CANCEL:  # the class is the first stop row's cause (B2-C15)
             classification = "cancelled"
-        elif first_observed_cause == "deadline":
+        elif first_stop == fold.CAUSE_RELEASE_POINT:
             classification = "timed_out"
         elif report:
             classification = str(report.get("classification", classification))
@@ -379,6 +435,23 @@ def _monotonic_deadline(spec: dict[str, object]) -> float:
                 fixed = fixed.replace(tzinfo=UTC)
             return time.monotonic() + (fixed - datetime.now(tz=UTC)).total_seconds()
     return time.monotonic() + _as_int(spec.get("timeout_s", 300), 300)
+
+
+def _accepted_plan(spec: dict[str, object]) -> AdmittedPlan | None:
+    """`spec.plan` as the admitted plan, or None (the implicit one-vertex plan) when the spec
+    carries none, or one this server cannot read (recovery classifies that, L.SV-3.8)."""
+    try:
+        return fold.plan_of_spec(spec)
+    except ValueError:
+        return None
+
+
+def _release_slice(spec: dict[str, object]) -> float:
+    """This root's release slice, fixed at admission (`spec.plan.release_slice`, B2-C2): 0 for a
+    spec with no plan or a plan that declares no release walk."""
+    plan = spec.get("plan")
+    raw = plan.get("release_slice") if isinstance(plan, dict) else None
+    return float(raw) if isinstance(raw, (int, float)) and not isinstance(raw, bool) else 0.0
 
 
 def _admitted_age_ms(spec: dict[str, object]) -> int:
