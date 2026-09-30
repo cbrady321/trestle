@@ -11,6 +11,7 @@ fake and the real bindings.
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,8 @@ from tests.proof import ancestry, mcp_host, tolerances
 from tests.proof.host.docker_gate import fake_docker
 
 PLUGIN = Path(__file__).resolve().parent / "plugins" / "docker_adapter_probe.py"
+REPO = Path(__file__).resolve().parents[4]
+PACKS = REPO / "packages" / "trestle-packs"
 ENDPOINT = "unix:///fake/desktop-linux.sock"
 
 
@@ -38,7 +41,15 @@ def _pids() -> set[int]:
 
 
 @pytest.mark.proves("WR-CANCEL-5", "WR-CANCEL-5:adapter-contract-suite", "core", "B", "STUB", "CI")
-def test_adapter_subprocess_no_transport_bytes_and_dies_on_cancel(tmp_path: Path) -> None:
+def test_adapter_subprocess_no_transport_bytes_and_dies_on_cancel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # the server and its plugin children import this checkout's `trestle` and `trestle_packs`, also
+    # when the session's own PYTHONPATH names only the packs directory (the scrubbed-env session)
+    inherited = os.environ.get("PYTHONPATH", "")
+    monkeypatch.setenv(
+        "PYTHONPATH", os.pathsep.join(p for p in (str(REPO), str(PACKS), inherited) if p)
+    )
     reader_shim, reader_log = _shim(tmp_path / "reader", "stdin-read")
     hanger_shim, hanger_log = _shim(tmp_path / "hanger", "hang")
     with support.reaping(reader_shim), support.reaping(hanger_shim):
