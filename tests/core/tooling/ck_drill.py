@@ -818,7 +818,18 @@ REG_NOT_RUN = ("tests/proof/selftest/test_baseline.py",)
 # records the node ids it selected (`pytest_collection_finish` below); REG fails unless those sets
 # are disjoint and their union is the serial collection exactly. Same tree, same nodes, same pass
 # rule (every process exits 0); only the order and the process boundaries differ.
-REG_WORKERS = 4
+REG_MAX_WORKERS = 4
+
+
+def _reg_workers() -> int:
+    """One core is left for what the workers' tests spawn (servers, wrappers, children): REG's
+    processes are never more than the cores minus one, at most REG_MAX_WORKERS (3 on CI's 4-vCPU
+    runner, where 4 starved the sibling threads the race-shaped nodes below rely on)."""
+    cores = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count()
+    return max(1, min(REG_MAX_WORKERS, (cores or 2) - 1))
+
+
+REG_WORKERS = _reg_workers()
 REG_CHUNKS_PER_WORKER = 6  # whole-file chunks per worker: enough to balance, few enough to start
 # Shared resources: the only writer into tests/fixtures/plugins, and the fixed port 18792 (its
 # client has no timeout, so two suites on one host hang each other).
@@ -834,6 +845,16 @@ REG_SERIAL_NODES = (
     "test_stop_seen_and_releases_past_the_offset_are_not_counted",
     "tests/proof/selftest/test_landing_loop.py::"
     "test_p1_new_land_starts_after_first_dies_without_reclaim",
+    # Race-shaped: a stop raised on one sibling thread's progress, then an assertion that another,
+    # concurrent, sibling had already got somewhere. Under 4-way load on CI's 4-vCPU runner the
+    # trigger came first (run 36866235573, CK-1 and CK-14): the stop at the supporting node's 2nd
+    # wait found Postgres not yet observed (`None == 'satisfied'`); the cancel on `independent`'s
+    # marker found `broken` not yet failed (`not_started`). Both pass serially.
+    "packages/trestle-env/tests/twin/test_reuse_twin.py::test_prestarted_postgres_reused_untouched",
+    "tests/tree/host/test_trl_rollup.py::test_root_stop_after_ordinary_failure",
+    # The same stop-at-the-n-th-wait shape over a real app on a free port, with a wall-clock bound.
+    "packages/trestle-env/tests/proc/test_readiness_cancel.py::"
+    "test_cancel_during_readiness_wait_prompt",
 )
 # Nodes that read the session's own proof results (`ledger.render()` over tests/proof/results):
 # in the serial step each sees exactly the records of the nodes before it. Each runs alone after
