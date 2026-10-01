@@ -118,7 +118,9 @@ globs         = ["packages/trestle-packs/trestle_packs/core/dag.py", "packages/t
                  # L.NW-2.8: the d8 container/compose fake-vs-real pairs and their tests
                  "tests/proof/differ_modes/d8_fake_real.py", "tests/proof/suites/ports/test_fake_real.py",
                  # L.RB-0.3.fix1: load_config reads the [operator] release_executables allowlist
-                 "trestle/server/config.py"]
+                 "trestle/server/config.py",
+                 # L.RB-12.7: B's fossil band MANIFEST (the b-ckpt lane's glob; the checkpoint fills the band)
+                 "tests/fixtures/fossils/slice-b/**"]
 
 [[gate]]
 branch         = "wr/slice-b-bundle/slice-b"
