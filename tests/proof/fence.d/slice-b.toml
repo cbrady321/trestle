@@ -114,7 +114,9 @@ globs         = ["packages/trestle-packs/trestle_packs/core/dag.py", "packages/t
                  "tests/proof/b/__init__.py", "tests/core/docs/test_cl_d1_deferrals.py",
                  "tests/proof/host/record.py", "tests/proof/host/record.schema.json",
                  "tests/proof/test_import_boundaries.py", "tests/proof/meta.py",
-                 "tests/proof/selftest/test_compat_map.py"]
+                 "tests/proof/selftest/test_compat_map.py",
+                 # L.NW-2.8: the d8 container/compose fake-vs-real pairs and their tests
+                 "tests/proof/differ_modes/d8_fake_real.py", "tests/proof/suites/ports/test_fake_real.py"]
 
 [[gate]]
 branch         = "wr/slice-b-bundle/slice-b"
