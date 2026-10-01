@@ -20,6 +20,10 @@ keeps its state in the JSON file `TRESTLE_ENV_FAKE_STATE` names: loaded when the
 (a test plants found containers there first) and rewritten after every call, with the call log a
 twin asserts on (the order of creates, checks and stops, and what exists after the answer).
 
+When the environment names a Compose definition (`TRESTLE_ENV_COMPOSE_FILE`, the variable the real
+binding reads), the fake `FakeComposeResolver` over it is bound too, so the plugin derives the
+closure of a twin's request exactly where it derives a HOST node's (L.RB-1.4).
+
 Nothing here starts a process or reaches an engine: the twin is STUB · CI.
 """
 
@@ -33,6 +37,7 @@ from pathlib import Path
 from typing import Any
 
 from trestle.workflow import ports
+from trestle_packs.fakes.compose import FakeComposeResolver
 from trestle_packs.fakes.container import FakeContainerEngine, _Container, _host_port
 
 from trestle_env import tree
@@ -187,12 +192,20 @@ def _ports(
 ) -> Mapping[type, object]:
     state = environ.get(STATE_ENV)
     engine = FakeReferenceEngine(Path(state) if state else None, _checks(readiness_environment))
-    return {
+    mapping: dict[type, object] = {
         ports.ResourceReads: engine,
         ports.ResourceCreate: engine,
         ports.ResourceOwned: engine,
         ports.ResourceSafeStart: engine,
     }
+    compose = environ.get(_bind.COMPOSE_ENV)
+    if compose:
+        # the same operator variable the real binding reads (L.RB-1.4): the closure is derived
+        # by the fake resolver over that definition (it must be written in JSON syntax)
+        mapping[ports.ComposeResolver] = FakeComposeResolver(
+            {_bind.REFERENCE_COMPOSE_PROJECT: compose}
+        )
+    return mapping
 
 
 def fake_ports(environ: Mapping[str, str]) -> Mapping[type, object]:

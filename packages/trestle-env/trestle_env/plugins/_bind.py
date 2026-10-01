@@ -26,7 +26,7 @@ from __future__ import annotations
 import importlib
 import os
 import shutil
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Final
 
 from trestle.workflow import ports
@@ -34,6 +34,7 @@ from trestle_packs.container import ContainerDefinition, ExecCheck, bind
 from trestle_packs.process.command import CommandPort
 
 from trestle_env import tree
+from trestle_env.closure import ClosurePlan, Refused, closure
 
 DOCKER_PATH_ENV: Final = "TRESTLE_DOCKER_PATH"
 ENDPOINT_ENV: Final = "TRESTLE_DOCKER_ENDPOINT"
@@ -123,8 +124,47 @@ def reference_ports(
         compose_projects={REFERENCE_COMPOSE_PROJECT: compose} if compose else None,
     )
     mapping = bound.as_map()
+    if not compose:
+        del mapping[ports.ComposeResolver]  # no definition to derive a closure from: none bound
     mapping[ports.ExecutionPort] = runner
     return mapping
+
+
+class ClosureRefusedError(RuntimeError):
+    """The Compose closure of the selection could not be derived or names a service the catalog
+    does not hold. `code` is the V-11 code exactly as the resolver or `closure()` gave it."""
+
+    def __init__(self, code: str, identifier: str) -> None:
+        super().__init__(f"{code}: {identifier}")
+        self.code = code
+        self.identifier = identifier
+
+
+def derive_closure(
+    bound: Mapping[type, object],
+    selected: Iterable[str] | None = None,
+    overrides: Iterable[str] = (),
+) -> ClosurePlan | None:
+    """Derive the Compose closure of the selection BEFORE any effect (WR-ENV-1, AMB-4).
+
+    With a Compose definition bound, the resolver's closure of `selected` (default: every catalog
+    service) goes through `closure()`: a service the catalog does not hold, a definition the
+    resolver refuses and a selection over the bound are refused here with their V-11 codes, so the
+    run ends with no container created. Returns the `ClosurePlan` (the services the selection
+    starts, with the realization each runs as), or None when no definition is bound."""
+    resolver = bound.get(ports.ComposeResolver)
+    if resolver is None:
+        return None
+    names = (
+        frozenset(str(s.id) for s in tree.CATALOG.services)
+        if selected is None
+        else frozenset(map(str, selected))
+    )
+    derived = resolver.closure(REFERENCE_COMPOSE_PROJECT, names)  # type: ignore[attr-defined]
+    plan = closure(tree.CATALOG, derived, names, overrides)
+    if isinstance(plan, Refused):
+        raise ClosureRefusedError(plan.code, plan.identifier)
+    return plan
 
 
 def _seam(spec: str) -> Callable[[Mapping[str, str]], Mapping[type, object]]:

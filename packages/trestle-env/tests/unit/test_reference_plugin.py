@@ -8,7 +8,7 @@ import pytest
 from trestle.server.main import create_kernel
 from trestle.server.registry import load_declared_tree
 
-from trestle_env import catalog_v0, schema, tree
+from trestle_env import schema, tree
 from trestle_env.plugins import reference_env
 
 PLUGINS = Path(reference_env.__file__).resolve().parent
@@ -31,14 +31,17 @@ def test_the_published_input_schema_names_only_the_closed_arguments(published) -
     described = published.control.describe_plugin("reference_env")
     assert isinstance(described, dict)
     schema_of = described["input_schema"]
-    assert set(schema_of["properties"]) == {schema.ENV_ARG, schema.SERVICES_ARG}
-    assert schema_of["required"] == [schema.ENV_ARG]
-    assert schema_of["properties"][schema.SERVICES_ARG] == {
-        "anyOf": [
-            {"type": "array", "items": {"enum": list(catalog_v0.CATALOG_V0)}},
-            {"type": "null"},
-        ]
+    assert set(schema_of["properties"]) == {
+        schema.ENV_ARG,
+        schema.SERVICES_ARG,
+        schema.TESTS_ARG,
+        schema.OVERRIDES_ARG,
     }
+    assert schema_of["required"] == [schema.ENV_ARG]
+    identifiers = {"type": "array", "items": {"type": "string"}, "uniqueItems": True}
+    for name in (schema.SERVICES_ARG, schema.TESTS_ARG, schema.OVERRIDES_ARG):
+        # a string bound to the tree's declared identifier set; no enum lists the catalog
+        assert schema_of["properties"][name] == {"anyOf": [identifiers, {"type": "null"}]}
     assert schema_of["properties"][schema.ENV_ARG] == {"type": "string"}
     assert schema_of["additionalProperties"] is False
 
