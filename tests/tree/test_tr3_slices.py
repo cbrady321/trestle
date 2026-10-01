@@ -110,18 +110,32 @@ def _nested(tmp_path: Path, gate: threading.Event, held: threading.Event) -> tk.
     return tk.tree_rig(tmp_path, app, units)
 
 
+def _wait_end(rig: tk.TreeRig, path: str) -> bool:
+    """Whether `path`'s `NodeEnd` is recorded within the join wait. Read mid-run: a torn last line
+    (an append in flight) is "not yet", never a failure."""
+
+    def ended() -> bool:
+        return any(r.cls == "end" and r.path == path for r in rig.rig.lane().rows)
+
+    deadline = time.monotonic() + tolerances.JOIN_WAIT_S
+    while not ended() and time.monotonic() < deadline:
+        time.sleep(tolerances.POLL_FINE_S)
+    return ended()
+
+
 def _run_to_verdict(rig: tk.TreeRig, gate: threading.Event, held: threading.Event) -> None:
-    """Run the tree; once `db` holds, move the clock past `data`'s slice, wait for the composite's
-    verdict record, then let `db` go."""
+    """Run the tree; once `db` holds and `web` has ended, move the clock past `data`'s slice, wait
+    for the composite's verdict record, then let `db` go. `web`'s carved slice ends with `data`'s,
+    so the move must come after `web` has run: on a loaded host `db` can hold before `web` has
+    created anything, and the move then cuts `web` at its own slice (`{'data/db'}` stopped)."""
     runner = threading.Thread(target=rig.run)
     runner.start()
     try:
         assert tk.wait_for(held)
+        assert _wait_end(rig, "web"), "web never ended before the clock moved"
         ended = rig.rig.services.slice_end(NodePath(("data",))) + timedelta(seconds=1)
         rig.rig.clock.now = ended
-        deadline = time.monotonic() + tolerances.JOIN_WAIT_S
-        while "data" not in rig.ends() and time.monotonic() < deadline:
-            time.sleep(tolerances.POLL_FINE_S)
+        _wait_end(rig, "data")
     finally:
         gate.set()
         runner.join(tolerances.JOIN_WAIT_S)

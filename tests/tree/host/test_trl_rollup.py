@@ -35,7 +35,7 @@ from typing import Any
 import pytest
 
 from tests.fixtures.trees import generators
-from tests.proof import mcp_host, tolerances
+from tests.proof import mcp_host, records, tolerances
 from tests.tree import d7_answers as d7a
 from tests.tree import hostpath
 from tests.tree.test_tr4_depth import EXPECTED
@@ -525,6 +525,16 @@ def run_dir_of_active(server: mcp_host.McpHost, unit: str, seen: set[str]) -> Pa
     raise AssertionError(f"{unit} never became active")
 
 
+def wait_end(run_dir: Path, path: str) -> bool:
+    """Whether the run's lane records `path`'s `NodeEnd` within the join wait."""
+    deadline = time.monotonic() + tolerances.JOIN_WAIT_S
+    while time.monotonic() < deadline:
+        if any(r.cls == "end" and r.path == path for r in records.lane_rows(run_dir).rows):
+            return True
+        time.sleep(tolerances.POLL_S)
+    return False
+
+
 def await_terminal(server: mcp_host.McpHost, run_id: str) -> dict[str, Any]:
     """The run view once the run is terminal (`await_runs`)."""
     wired = server.call("await_runs", {"run_ids": [run_id], "timeout_ms": STOP_WAIT_MS})
@@ -690,6 +700,9 @@ def test_root_stop_after_ordinary_failure(short_host: mcp_host.McpHost, stop: st
     req = start(short_host, name, source, f"{stop}env")
     if stop == "cancel":
         run_dir = run_dir_of_active(short_host, "independent", set())
+        # `independent` holding says nothing of its sibling: on a loaded host `broken` may not
+        # have started yet, and a cancel then lists it `not_started` (CK-8). Cancel once it ended.
+        assert wait_end(run_dir, "broken"), "broken never ended"
         cancelled = short_host.call("cancel", {"run_id": run_dir.name})
         assert cancelled["code"] == codes.CANCEL_ACCEPTED, cancelled
     view = short_host.join(req, timeout=STOP_WAIT_MS / 1000)

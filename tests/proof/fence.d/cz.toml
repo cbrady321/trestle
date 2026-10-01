@@ -32,6 +32,12 @@ globs         = ["tests/proof/meta.py", "tests/proof/ckpt/root.py", "tests/proof
                  # yields Any (no-any-return) and Popen's narrowed pipes made two casts redundant. Typing-only
                  # restructures, clean under both versions (plan departure, L.CZ.rv-fix5).
                  "trestle/server/ledger.py", "trestle/wrapper/reactor.py",
+                 # PR #49 CI flaked on three test races (tr3_slices, stop_offset in CK-14, trl_rollup in CK-8),
+                 # each an assertion made before a sibling's work that nothing waited for; tr4_depth and
+                 # landing_loop have the same shape. Each test now waits on the condition (test-only; plan
+                 # departure, L.CZ.rv-fix7). Their lanes (tree, p0-spine, sv-runtime, bundles) landed before CZ.
+                 "tests/tree/test_tr3_slices.py", "tests/tree/test_tr4_depth.py", "tests/tree/host/test_trl_rollup.py",
+                 "tests/proof/spine/test_stop_offset.py", "tests/proof/selftest/test_landing_loop.py",
                  "docs/*.md", ".github/workflows/ci.yml", ".cursor/skills/trestle/SKILL.md"]
 
 [[lane]]                     # the root checkpoint merge; diff limited to CM-5's checkpoint paths

@@ -259,7 +259,10 @@ def test_the_offset_separates_the_claim_from_the_release(
     which: str, request: pytest.FixtureRequest
 ) -> None:
     """Not a vacuous pass: the create was applied before the recorded offset, and the release
-    walk (the stop issue, its confirmation and `released`) lies past it, all allowed."""
+    walk (the stop issue, its confirmation and `released`) lies past it, all allowed. A `step`
+    may lie past it too: under the deadline the leaf's own slice ends at the release point, and
+    its `StepEntry(FAILED, CARVE_EXCEEDED)` can land after the stop row; a step is a record, not
+    an action start (it has no effect)."""
     run: Stopped = request.getfixturevalue(which)
     (stop,) = run.stops
     length = stop["lane_committed_length"]
@@ -268,7 +271,9 @@ def test_the_offset_separates_the_claim_from_the_release(
     assert create.entry["status"] == "applied" and create.end <= length
     past = [r for r in rows if r.offset >= length]
     assert [r.cls for r in past if r.cls in ("issue", "confirmation", "released")], past
-    assert all(r.cls in ("released", "end") or r.entry["effect"] == "stop" for r in past)
+    assert all(r.cls in ("released", "end", "step") or r.entry["effect"] == "stop" for r in past), (
+        past
+    )
 
 
 def test_request_path_emitted_no_signal(cancelled: Stopped) -> None:
