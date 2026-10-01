@@ -161,6 +161,50 @@ def test_planted_unproven_ci_clause_fails_scope_ci(monkeypatch: pytest.MonkeyPat
 
 
 @_proves()
+def test_shape_docker_host_and_docker_evidenced_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """L.CZ.1.fix2, from the first live run on master + J-SLICE-B: a `shape` label needs no result;
+    a HOST key registered only by a docker_host node reads the host-docker record; a
+    DOCKER_EVIDENCED key reads the host-docker record, never the CI ledger."""
+    shape = {"id": "WR-S-1:shape", "tier": "PROC", "venue": "CI", "posture": "shape"}
+    assert meta_mod.enforce_problems(meta_mod.EnforceWorld(scope="ci", labels=[shape])) == []
+
+    def rec(gate: str, labels: list[str], outcome: str = "PASSED") -> dict:
+        return {"sha": "a" * 40, "results": [{"nodeid": "t", "outcome": outcome, "labels": labels}]}
+
+    # B4.4's shape: marker PROC at HOST, node docker_host, so only the docker record names it
+    world = meta_mod.EnforceWorld(
+        scope="ci",
+        clauses=[{"id": "B9.8", "parts": []}],
+        markers={"B9.8": [("PROC", "HOST")]},
+        host_proc=rec("host-proc", []),
+        host_docker=rec("host-docker", ["B9.8"]),
+    )
+    assert meta_mod.enforce_problems(world) == []
+    world.host_docker = rec("host-docker", ["B9.8"], "FAILED")
+    assert any("B9.8 is not PASSED" in p for p in meta_mod.enforce_problems(world))
+    world.host_docker = rec("host-docker", [])
+    assert any("B9.8 is not PASSED" in p for p in meta_mod.enforce_problems(world))
+
+    from tests.proof.ckpt import slice_b as slice_b_mod
+
+    key = "WR-Z-9:docker-live"
+    monkeypatch.setattr(slice_b_mod, "DOCKER_EVIDENCED", {key: "t"})
+    label = {"id": key, "tier": "must", "venue": "CI", "posture": "claim"}
+    world = meta_mod.EnforceWorld(
+        scope="ci",
+        report={key: UNPROVEN},
+        labels=[label],
+        host_proc=rec("host-proc", []),
+        host_docker=rec("host-docker", [key]),
+    )
+    assert meta_mod.enforce_problems(world) == []  # the CI skip is no evidence either way
+    world.host_docker = rec("host-docker", [])
+    assert meta_mod.enforce_problems(world) == [
+        f"{key} is not PASSED in the host-docker record aaaaaaaaaaaa"
+    ]
+
+
+@_proves()
 def test_scope_ci_rerenders_host_clauses_from_committed_records_at_last_checkpoint_merge(
     tmp_path: Path,
 ) -> None:

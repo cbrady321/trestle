@@ -312,6 +312,10 @@ def key_problems(w: EnforceWorld, key: str, pairs: list[tuple[str, str]]) -> lis
             )
             continue
         hits = _record_hits(record, key)
+        if not hits and gate == "host-proc":
+            # a docker_host node runs only in the docker gate (MC-B-03), so its HOST result is in
+            # the paired host-docker record (as slice_b.py's clause_status reads it)
+            hits = _record_hits(w.host_docker, key)
         if not hits or any(r.get("outcome") != "PASSED" for r in hits):
             problems.append(f"{key} is not PASSED in the {gate} record {str(record['sha'])[:12]}")
     return problems
@@ -319,7 +323,8 @@ def key_problems(w: EnforceWorld, key: str, pairs: list[tuple[str, str]]) -> lis
 
 def label_problems(w: EnforceWorld, label: dict[str, Any]) -> list[str]:
     """A label is green when its tier and venue are proven as `key_problems` reads them, or is
-    declared: `gated_on` with an open question, `both_variant`, or `na` with a reason (C.9)."""
+    declared: `gated_on` with an open question, `both_variant`, or `na` with a reason (C.9). A
+    `shape` label is shape evidence and never a claim, so it needs no result (L.CZ.1.fix2)."""
     label_id = str(label["id"])
     posture = label.get("posture")
     if posture == "gated_on":
@@ -328,7 +333,19 @@ def label_problems(w: EnforceWorld, label: dict[str, Any]) -> list[str]:
         return []
     if posture == "na":
         return [] if str(label.get("reason", "")).strip() else [f"{label_id} is na with no reason"]
-    return key_problems(w, label_id, [(str(label.get("tier")), str(label.get("venue")))])
+    if posture == "shape":  # shape evidence never counts as a claim (MC-04, CSC-1)
+        return []
+    pairs = [(str(label.get("tier")), str(label.get("venue")))]
+    return key_problems(w, label_id, _docker_evidenced(label_id, pairs))
+
+
+def _docker_evidenced(key: str, pairs: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """A key the plan evidences only through the host-docker record (slice_b.py's
+    `DOCKER_EVIDENCED`: G-E2's `WR-PROOF-2:pack-docker-live`, whose CI skip renders UNPROVEN by
+    design) is read at the DOCKER tier, never from the CI ledger."""
+    from tests.proof.ckpt import slice_b as slice_b_mod
+
+    return [("DOCKER", "HOST")] if key in slice_b_mod.DOCKER_EVIDENCED else pairs
 
 
 def clause_problems(w: EnforceWorld, key: str) -> list[str]:
@@ -338,7 +355,7 @@ def clause_problems(w: EnforceWorld, key: str) -> list[str]:
         if key not in w.report:
             return [f"{key} has no registering node"]
         pairs = [("LOGIC", "CI")]
-    return key_problems(w, key, pairs)
+    return key_problems(w, key, _docker_evidenced(key, pairs))
 
 
 def enforce_problems(w: EnforceWorld) -> list[str]:
