@@ -29,6 +29,7 @@ STUB_LABEL = "WR-ENV-3:stubbed"
 GATED = {"OPEN-MISE-HOST": 1, "OQ-25": 1, "OQ-26": 2, "F-12": 1, "F-B3-2": 1, "F-13(d)": 1}
 HOST_NODE = "packages/trestle-env/tests/host/test_x.py::test_a"
 TWIN_NODE = "packages/trestle-env/tests/twin/test_x_twin.py::test_a"
+G_E2_LABEL = "WR-PROOF-2:pack-docker-live"
 ENV = {
     **os.environ,
     "GIT_AUTHOR_NAME": "t",
@@ -62,6 +63,7 @@ def green_world() -> slice_b.World:
         _label(STUB_LABEL, tier="STUB", posture="stub_proven"),
     ]
     labels += [_label(x, tier="LOGIC") for x in slice_b.DEFERRAL_LABELS]
+    labels.append(_label(G_E2_LABEL, tier="must", step="core", slice="core"))
     n = 0
     for oq, count in GATED.items():
         for _ in range(count):
@@ -88,13 +90,14 @@ def green_world() -> slice_b.World:
         key: {"status": "PROVEN"}
         for key in [*clause_ids, *(lb["id"] for lb in labels if lb["posture"] != "gated_on")]
     }
+    report[G_E2_LABEL] = {"status": "UNPROVEN"}  # the legacy node skips in CI (G-E2, by design)
     docker = {
         "sha": "a" * 40,
         "status": "PASSED",
         "diff": {"unattributed": [], "engine_state_changed": False},
         "results": [
             {"nodeid": HOST_NODE, "outcome": "PASSED", "labels": ["B1.1", DOCKER_LABEL]},
-            {"nodeid": slice_b.LEGACY_LIVE_NODE, "outcome": "PASSED", "labels": []},
+            {"nodeid": slice_b.LEGACY_LIVE_NODE, "outcome": "PASSED", "labels": [G_E2_LABEL]},
         ],
     }
     proc = {"sha": "a" * 40, "status": "PASSED", "results": []}
@@ -103,6 +106,7 @@ def green_world() -> slice_b.World:
         {"label": slice_b.DEFERRAL_LABELS[1], "closes_at": "RB-12", "citation": "c"},
         {"label": slice_b.DEFERRAL_LABELS[2], "closes_at": "RB-12", "citation": "c"},
         {"label": slice_b.DEFERRAL_LABELS[3], "closes_at": "RB-12", "citation": "c"},
+        {"label": G_E2_LABEL, "closes_at": "NW-2", "citation": "c"},
         {"label": "WR-OWN-8:environment-lease", "closes_at": "SL-8", "citation": "c"},  # not B4's
     ]
     stub = sl.StubLabels(
@@ -183,9 +187,15 @@ def test_conditions_fail_on_planted_defects(world):
     w.admissible = lambda record: (False, "not an ancestor")
     world["w"] = w
     got = failing()
-    # (a) and column B (i) read only admissible records: a DOCKER-tier label or clause resting on
-    # an inadmissible one fails there too
-    assert set(got) == {"J-SLICE-B-b", "J-SLICE-B-i", "J-SLICE-B-a:B1.1", "J-SLICE-B-a:labels"}
+    # (a), (f) and column B (i) read only admissible records: a DOCKER-tier label or clause, or
+    # G-E2's deferral label, resting on an inadmissible one fails there too
+    assert set(got) == {
+        "J-SLICE-B-b",
+        "J-SLICE-B-i",
+        "J-SLICE-B-a:B1.1",
+        "J-SLICE-B-a:labels",
+        "J-SLICE-B-f",
+    }
     assert "not admissible" in got["J-SLICE-B-b"]
     assert "not admissible for the anchor" in got["J-SLICE-B-a:B1.1"]
 
@@ -834,3 +844,52 @@ def test_collector_records_each_markers_tier_and_venue():
         "B4.1": [["PROC", "BOTH"]],
         "WR-ENV-1": [["LOGIC", "CI"]],
     }
+
+
+# ---- (f): G-E2's label is proven through the legacy live node in the host-docker record ---------
+
+
+def test_g_e2_deferral_is_proven_by_the_legacy_live_node_in_the_host_docker_record(world):
+    """`WR-PROOF-2:pack-docker-live` closes at NW-2 (B4), so (f) requires it. Its CI result is the
+    legacy live-compose node's skip, UNPROVEN by design (P0's G-E2 pin): the ledger never proves it,
+    and (f) reads the plan's evidence instead, that node PASSED with the label in the admissible
+    host-docker record. Nothing else stands in for it."""
+    assert slice_b.DOCKER_EVIDENCED == {G_E2_LABEL: slice_b.LEGACY_LIVE_NODE}
+    w = world["w"]
+    assert w.report[G_E2_LABEL]["status"] == "UNPROVEN"
+    assert failing() == {}
+    assert slice_b.render_status(w, G_E2_LABEL) == slice_b.PROVEN_HOST
+
+    def legacy(w):
+        return next(r for r in w.host_docker["results"] if r["nodeid"] == slice_b.LEGACY_LIVE_NODE)
+
+    # the ledger PROVEN does not stand in for the record ...
+    for plant, why in [
+        (lambda w: legacy(w).update(outcome="SKIPPED"), "not PASSED"),
+        (lambda w: legacy(w).update(labels=[]), "not PASSED"),
+        (
+            lambda w: (
+                legacy(w).update(labels=[]),
+                w.host_docker["results"].append(
+                    {"nodeid": "t::other", "outcome": "PASSED", "labels": [G_E2_LABEL]}
+                ),
+            ),
+            "not PASSED with the label",
+        ),
+        (lambda w: w.host_docker["results"].remove(legacy(w)), "not PASSED"),
+        (lambda w: setattr(w, "host_docker", None), "no admissible host-docker record"),
+        (lambda w: setattr(w, "admissible", lambda r: (False, "x")), "not admissible"),
+    ]:
+        w = green_world()
+        w.report[G_E2_LABEL] = {"status": "PROVEN"}
+        plant(w)
+        world["w"] = w
+        got = failing()
+        assert G_E2_LABEL in got["J-SLICE-B-f"] and why in got["J-SLICE-B-f"], (why, got)
+    # ... and another node naming the label must have PASSED too
+    w = green_world()
+    w.host_docker["results"].append(
+        {"nodeid": "t::other", "outcome": "FAILED", "labels": [G_E2_LABEL]}
+    )
+    world["w"] = w
+    assert G_E2_LABEL in failing()["J-SLICE-B-f"]

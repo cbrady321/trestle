@@ -38,7 +38,10 @@ and the column-B condition (i)):
   (d) every docker_host node has its twin (MC-B-03) and no twin registers a matrix clause
   (e) every label ending `stub_labels.toml`'s `twin_suffix` is declared `stub_proven`; every other
       `stub_proven` label has its MC-B-05 row; B4.5 and B9.1 carry no STUB label (DM-29)
-  (f) every deferral whose `closes_at` lies in B4 has its label PROVEN at the candidate (CM-8)
+  (f) every deferral whose `closes_at` lies in B4 has its label PROVEN at the candidate (CM-8);
+      G-E2's `WR-PROOF-2:pack-docker-live` (closes at NW-2) is proven where the plan puts its
+      evidence, the legacy live-compose node PASSED in the admissible host-docker record
+      (`DOCKER_EVIDENCED`), never the CI ledger, where that node's skip is UNPROVEN by design
   (g) `differ d8` shows no divergence
   (h) the gated registrations are present: OPEN-MISE-HOST, OQ-25, OQ-26 x2, F-12, F-B3-2, F-13(d)
   (i) column B of WR-PROOF-1, evaluated here over the MC-02 ledger and the admissible host records
@@ -94,6 +97,14 @@ DEFERRAL_LABELS = (
 LEGACY_LIVE_NODE = (
     "packages/trestle-packs/tests/test_docker_integration.py::test_stack_runner_live_compose"
 )
+# (f): a label the plan evidences only through one node of the host-docker record (G-E2; L.NW-2.8,
+# L.J-SLICE-B.2: "the results naming both are the evidence for WR-PROOF-2:pack-docker-live"). P0's
+# compat map registers the label on the unmarked legacy node; CI collects that node (it is not a
+# docker_host node, MC-B-03) and its skip there renders the label UNPROVEN by design (P0's G-E2
+# pin, `test_alpine_skip_renders_unproven`), so the CI ledger can never prove it. The docker gate
+# runs the node, where a skip is FAILED: the label is PROVEN@HOST when that node's result in the
+# admissible host-docker record PASSED and carries the label.
+DOCKER_EVIDENCED = {"WR-PROOF-2:pack-docker-live": LEGACY_LIVE_NODE}
 # (h): the gated registrations, each id with the number of step-B labels bound to it (`oq`)
 GATED_REGISTRATIONS = {
     "OPEN-MISE-HOST": 1,
@@ -234,10 +245,30 @@ def _evidence(
     return STUB_PROVEN if stub else PROVEN_CI
 
 
+def _docker_node_evidence(w: World, label_id: str, nodeid: str) -> str | None:
+    """`None` when `nodeid` PASSED, carrying `label_id`, in the admissible host-docker record and
+    every other result naming the label PASSED too, else the problem (`DOCKER_EVIDENCED`)."""
+    problem = _host_half(w, label_id, HOST_DOCKER)
+    if problem:
+        return problem
+    assert w.host_docker is not None  # `_host_half` found it
+    if not any(
+        r.get("nodeid") == nodeid
+        and r.get("outcome") == "PASSED"
+        and label_id in (r.get("labels") or [])
+        for r in w.host_docker.get("results", [])
+    ):
+        return f"{label_id}: {nodeid} is not PASSED with the label in the host-docker record"
+    return None
+
+
 def label_status(w: World, label: dict[str, Any]) -> tuple[str | None, str | None]:
     """(status, problem) of one declared label: exactly one of them is `None`."""
     label_id = str(label["id"])
     posture = label.get("posture")
+    if label_id in DOCKER_EVIDENCED and posture not in ("gated_on", "na"):
+        problem = _docker_node_evidence(w, label_id, DOCKER_EVIDENCED[label_id])
+        return (None, problem) if problem else (PROVEN_HOST, None)
     if posture == "gated_on":
         if not str(label.get("oq", "")).strip():
             return None, f"{label_id} is gated_on with no open question"
