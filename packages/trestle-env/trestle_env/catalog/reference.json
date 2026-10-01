@@ -45,5 +45,14 @@
     }
   ],
   "tests": [],
-  "overrides": []
+  "overrides": [],
+  "remediation": [
+    {
+      "code": "adapter.docker_engine_unreachable",
+      "effect": "start_engine",
+      "attempts": 2,
+      "total_s": 60,
+      "cooldown_s": 5
+    }
+  ]
 }

@@ -73,3 +73,17 @@ label    = "WR-ENV-15:workflow-blocked-before-task"
 group    = "B4.6"
 text     = "The reference workflow blocks with TOOLCHAIN_MISSING before any task start when the pin does not resolve: shown through one MCP call against the stub mise; the real tool is unverified."
 deferral = "OPEN-MISE-HOST"
+
+# D-8 (engine starter), appended by L.RB-7.2. The stub starts nothing real: starting the real
+# container engine is deferred (D-8), so the only venue is the stub `stub_engine_starter`.
+[[row]]
+label    = "WR-ENV-6:remediation-bounded-recorded"
+group    = "D-8"
+text     = "The engine remediation loop is bounded and recorded by the runtime against a stub engine starter (stub_engine_starter, a ResourceSafeStart whose descriptor is Durable(HOST)); starting the real container engine is unverified and deferred (D-8)."
+deferral = "D-8"
+
+[[row]]
+label    = "WR-REMEDY-4:b-engine-safe-start-stub"
+group    = "D-8"
+text     = "The safe-start remediation of the engine is proven with a stub starter that never invokes the real docker binary; a real engine start (and the host's own start command) is unverified, deferred as D-8."
+deferral = "D-8"

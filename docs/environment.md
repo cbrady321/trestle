@@ -79,6 +79,14 @@ catalog stage (before any run id); a Compose closure that cannot be derived fail
 before anything starts. Whatever the run did not create (a container you started yourself, a
 service found already running) is never stopped, repaired or removed by a failure.
 
+**Engine remediation is stub-proven only (D-8).** A catalog `remediation` pair declares a bounded
+answer to a code (attempts and a total budget), and the runtime records each attempt. The bounded,
+recorded safe start of the container engine is proven only against a stub engine starter that never
+invokes the real docker binary (`WR-ENV-6:remediation-bounded-recorded`,
+`WR-REMEDY-4:b-engine-safe-start-stub`). Starting the real engine, and the host's own start command,
+is unverified and deferred (D-8); the reference tree declares no engine remedy, so an unreachable
+engine ends the node `blocked` with its code and human action.
+
 ### Toolchain and project tasks
 
 The catalog (`TRESTLE_ENV_CATALOG`, an absolute path to a catalog file; the reference catalog when

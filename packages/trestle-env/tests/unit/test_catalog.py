@@ -147,7 +147,8 @@ def test_identifiers_are_closed_types(tmp_path: Path) -> None:
             if not f.init:
                 continue
             for leaf in closed_leaf_types(hints[f.name]):
-                assert leaf in CLOSED_TYPES or leaf in dataclasses_ or leaf is bool, (
+                budget = cls is model.RemediationPair and leaf in (int, float)  # L.RB-7.2: a budget
+                assert leaf in CLOSED_TYPES or leaf in dataclasses_ or leaf is bool or budget, (
                     cls.__name__,
                     f.name,
                     leaf,

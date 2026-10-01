@@ -227,10 +227,14 @@ def read_records(path: Path) -> dict[str, Any]:
 
 
 def _ports(
-    environ: Mapping[str, str], readiness_environment: Mapping[str, str] | None
+    environ: Mapping[str, str],
+    readiness_environment: Mapping[str, str] | None,
+    *,
+    reachable: bool = True,
 ) -> Mapping[type, object]:
     state = environ.get(STATE_ENV)
     engine = FakeReferenceEngine(Path(state) if state else None, _checks(readiness_environment))
+    engine.reachable = reachable
     mapping: dict[type, object] = {
         ports.ResourceReads: engine,
         ports.ResourceCreate: engine,
@@ -263,6 +267,16 @@ def fake_ports(environ: Mapping[str, str]) -> Mapping[type, object]:
 def wrong_password_ports(environ: Mapping[str, str]) -> Mapping[type, object]:
     """The seam with a planted wrong Postgres password in the readiness check's environment."""
     return _ports(environ, {"PGPASSWORD": WRONG_PASSWORD})
+
+
+UNREACHABLE_SEAM = f"{__name__}:unreachable_ports"
+
+
+def unreachable_ports(environ: Mapping[str, str]) -> Mapping[type, object]:
+    """The seam bound to an engine that does not answer (L.RB-7.1): every docker call exits as
+    the real CLI does at an absent endpoint (`DOCKER_ENGINE_UNREACHABLE`, never
+    `DOCKER_CLI_MISSING`)."""
+    return _ports(environ, None, reachable=False)
 
 
 class RecordingExecution:

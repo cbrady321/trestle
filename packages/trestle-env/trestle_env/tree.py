@@ -220,6 +220,24 @@ HTTP_READINESS: Final[Mapping[str, HttpReadiness]] = {HTTP_SUPPORT_READY: HTTP_S
 """Every HTTP readiness contract the tree declares, by check id."""
 
 
+# The two engine conditions a Docker leaf cannot go past (V-3.8: the port could not observe). They
+# are the container adapter's codes, spelled as its engine module spells them (this module may
+# not import an adapter; a test pins the spellings together), and each ends the node BLOCKED with
+# the code in a `Blocked` step (B4-T2 row 9), never `failed`: nothing was wrong with what the node
+# was asked to do, the machine cannot yet answer.
+DOCKER_CLI_MISSING: Final = "adapter.docker_cli_missing"
+DOCKER_ENGINE_UNREACHABLE: Final = "adapter.docker_engine_unreachable"
+ENGINE_BLOCKS: Final[Mapping[str, str]] = {
+    DOCKER_ENGINE_UNREACHABLE: (
+        "Start the Docker engine, or name the endpoint it answers on, so {stage} can be "
+        "read; then re-send."
+    ),
+    DOCKER_CLI_MISSING: (
+        "Install the Docker CLI at the operator's configured path so {stage} can be "
+        "read; then re-send."
+    ),
+}
+
 RESOURCE_KINDS: Final[Mapping[RealizationKind, str]] = {
     RealizationKind.DOCKER_SERVICE: "docker_container",
     RealizationKind.AGENT_LAUNCHED_PROJECT: "local_process",
@@ -330,6 +348,16 @@ class ServiceUnit:
         )
 
     def advance(self, params: Any, state: Verdict, effects: EffectFacets, ctx: ActContext) -> Step:
+        seen = effects.read(ResourceReads).observe(self._spec, ctx.lineage, UP)
+        if seen.code in ENGINE_BLOCKS:
+            # the engine cannot be read at all (a missing CLI and an unreachable engine are
+            # different codes, WR-VERIFY-3): block with the code and human action, create nothing
+            stage = f"{self._unit} ({self._spec.logical_system})"
+            return Blocked(
+                seen.code,
+                ENGINE_BLOCKS[seen.code].format(stage=stage),
+                Resend.SUCCEEDS_AFTER_ACTION,
+            )
         effects.create(ResourceCreate).create(self._spec, UP)
         return Acted()
 
