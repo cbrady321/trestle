@@ -1,0 +1,26 @@
+# RV-5 at J-SLICE-B (CM-5 role 1, L.J-SLICE-B.1): stage-critic transcription review paired with
+# `python -m tests.proof.transcribe --check all`. Reviewer: stage critic (independent), read-only.
+# Scope (plans/b-slice-b.md L.J-SLICE-B.1): matrix map (the 25 step-B clauses) and row owners vs requirements
+# L425-440 / L493-505 and decomposition s7; labels.d/slice-b.toml, b/stub_labels.toml, temporary.d/slice-b.toml and
+# fence.d/slice-b.toml vs the plan literals and Coverage (a)-(c); k_doc_map for K-6, K-15 (NW-1) and the K-8
+# container half (RB-12); divergence.toml and fence.d/tree.toml deltas as read-through.
+# Round history:
+# - Round 1, pass, at f1820bd (PR #46 head, the B4 slice-b bundle; verdict _tmp/delivery/RV-5-slice-b-verdict.md).
+#   The previous RV-5 (RV-5-slice-a.toml) reviewed 4a94b9e; matrix_map, row_owners, k_doc_map, deferrals,
+#   open_questions, transcribe.py, labels.d/{core,single,tree,p0} are byte-identical 4a94b9e..f1820bd.
+# Departures recorded (declared, not transcription defects): fence.d/slice-b.toml uses CM-2's bundle form
+# (16 product gates on wr/slice-b-bundle/slice-b, lane slice-b-bundle); B's fossil MANIFEST lives at
+# fossils/slice-b/ (not the plan's fossils/b/), so the bundle lane globs it.
+# Observations, no action: TM-B4-3 probe narrowed with --include=*.py (L.RB-0.2.fix2); 52 non-twin labels carry
+# plan-prescribed CSC-9 component tiers; F-13(d) gated_on on the label vs both_variant in open_questions.toml.
+id = "RV-5"
+mode = "stage-critic review"
+outcome = "pass"
+sha = "f1820bde632c05a189d5bd5f0e495f61d03d1d16"
+transcribe_log = "J-SLICE-B round 1 at f1820bd (reviewer, scratch git-archive extraction, PYTHONPATH + packages/trestle-packs + packages/trestle-env): transcribe --check all --requirements requirements-workflow-runtime.md --decomposition decomposition-workflow-runtime.md: exit 0, empty output; TRESTLE_REQUIREMENTS/TRESTLE_DECOMPOSITION pytest tests/proof/drift -k 'SA-06 or SA-02 or SA-07 or SA-08 or SA-15': 23 passed; pytest tests/proof/b/test_slice_b_fragments.py tests/proof/b/test_stub_labels.py tests/proof/drift/b: 35 passed; pytest tests/proof/b/test_k8_container_doc.py tests/proof/b/test_twin_pairs.py: 16 passed; meta check-map: exit 0; meta audit-rows: exit 0 (129 rows, 0 unregistered); meta register, kdoc, open-questions: exit 0. Reviewer: matrix_map, row_owners, k_doc_map, deferrals, open_questions, transcribe.py, labels.d/{core,single,tree,p0}, d2_exceptions, rollback, temporary.toml byte-identical 4a94b9e..f1820bd (matrix_map also = 15e22cf); every transcribed file byte-identical at the carrier head wr/b-ckpt/j-slice-b (+4eb644a fossils only); 25 step-B clauses B1.1..B9.2 verbatim in requirements L497-505 with zero residue per cell = plan Coverage (b) and root plan L1066-1074, no parts, B4.5 rows WR-VERIFY-5 (L1078), stub_label_required B4.6/B6.2/B8.4, adversary_stub B4.5/B9.1 (DM-29); labels.d/slice-b.toml byte-identical to plan L2676-2867, 186 labels = 136 + 50 twins = Coverage (a) (id, row in s7, declared_by = first leaf, posture, oq, tier, venue: 0 diffs; 7 gated_on F-13(d)/OPEN-MISE-HOST/OQ-26x2/F-12/F-B3-2/OQ-25 all in open_questions.toml; CSC-9 DOCKER<->HOST both ways; 50 twins STUB CI stub_proven on every HOST label but the two gated; the four deferred core labels claim, slice core, declared_by L.NW-2.9/L.RB-12.3/L.RB-12.5/L.RB-12.6 = deferrals.toml closes_at NW-2/RB-12 kept); tier = plan-prescribed CSC-9 component on 52 non-twin labels (observation, as slice-a finding 1); b/stub_labels.toml twin_suffix @stub-twin, 24 rows bijective with the 24 non-twin stub_proven labels, groups in GROUPS, B4.5/B9.1 absent; temporary.d/slice-b.toml = plan L2902-2952 except TM-B4-3 probe '--include=*.py' (L.RB-0.2.fix2 195b712, stale bytecode; observation); fence.d/slice-b.toml lanes b-legacy, b-adapters, b-ckpt verbatim, b-env + temporary.d/p0.toml (AMB-12, B-LEGACY-RETURN dev 2), 18 gates merges/requires_merge = plan L230-301 in order, J-SLICE-B on wr/b-ckpt/j-slice-b ['RB-12'], bundle-form branch and slice-b-bundle lane a declared deviation (file header; B-LEGACY-RETURN dev 1; glob commits f740a1e/9504ec9/828499f each with a leaf comment; observation: 828499f globs the b-ckpt fossil band for the MANIFEST at fossils/slice-b/ instead of the plan's fossils/b/); 49 B-named rows owner_node, disposition, contributing, join_cids = decomposition s7 (all 129 equal); K-6 and K-15 -> docs/packs.md landing NW-1 edited by 9d1bfe8 L.NW-1.1 and 6528049 L.NW-1.2, labels WR-PROOF-10:K-6/K-15; K-8 container half: k_doc_map K-8 docs/agents.md CK-8 unchanged, the K-8 block already states the container half at base e47577d (test_k8_container_doc.py passes), no other K-item due in B4; divergence.toml +9 ADD-code-* entries each authorized_by a b-slice-b leaf, codes present in the tree; fence.d/tree.toml +5 = L.TR-6.fix5 fix-route gate (not B). Verdict: _tmp/delivery/RV-5-slice-b-verdict.md."
+
+[criteria]
+verbatim_fragments = "pass"
+row_set = "pass"
+owner = "pass"
+k_docs = "pass"
