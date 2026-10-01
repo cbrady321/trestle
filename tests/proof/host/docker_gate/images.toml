@@ -1,7 +1,16 @@
-# Digest-pinned image set for the host-docker preflight (DM-24; L.P0-0d.6).
-# An unpinned entry (empty digest) always records PRECONDITION_UNMET —
-# no pinned image is cached today (PX-3's image half).
+# Digest-pinned image set for the host-docker preflight (DM-24; L.P0-0d.6; roles by L.NW-2.10, MC-B-10).
+# An unpinned entry (empty digest) always records PRECONDITION_UNMET. The three roles were pinned
+# on 2026-09-30 from the cached images (PX-3's image half, user-granted). `python -m tests.proof.host.docker_gate pin-images` records each cached
+# ref's registry digest (the `RepoDigests` entry, never the image Id) and commits nothing itself.
 
 [alpine]
 ref = "alpine:3.20"
-digest = ""
+digest = "sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"
+
+[postgres]
+ref = "postgres:16-alpine"
+digest = "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea"
+
+[http_support]
+ref = "nginx:1.27-alpine"
+digest = "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10"

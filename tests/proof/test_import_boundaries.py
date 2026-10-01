@@ -115,7 +115,7 @@ def test_workflow_imports_only_plugin_and_core() -> None:
 
 # The `trestle_packs` subpackages built for the workflow loop (L.SV-5.16 fakes, L.SL-3.2/3.3
 # real adapters): each imports only the standard library, itself and `trestle.workflow` (BFD-47).
-WORKFLOW_PACK_SUBPACKAGES = ("fakes", "process")
+WORKFLOW_PACK_SUBPACKAGES = ("fakes", "process", "container")
 
 # Slice B's toolchain subpackage (L.RB-4.2) is held to the same rule. It is listed on its own
 # line so that the B lanes' additions to the tuple above merge cleanly (L.P0-0d.33).
