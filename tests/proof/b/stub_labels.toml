@@ -1,0 +1,21 @@
+# tests/proof/b/stub_labels.toml -- MC-B-05 (ledger <-> docs), created by L.RB-0.5.
+#
+# `twin_suffix` (CSC-8): every label ending in it is a CI twin of a DOCKER . HOST node's label, is
+# declared `posture = "stub_proven"` and renders STUB-PROVEN. Every OTHER label declared
+# `posture = "stub_proven"` in labels.d/slice-b.toml has exactly one `[[row]]` here (its label text
+# and deferral, which RV-2 reads). B4.5 and B9.1 (the adversary-stub clauses) carry no STUB label
+# and so no row (DM-29).
+#
+# Append-only. The rows are appended by the leaves that own each stub group (a row never needs a
+# leaf's file listed, only this one): L.RB-4.5 (D-1, toolchain resolver and task stubs), L.RB-7.2
+# (D-8, engine starter), L.RB-9.6 (D-9, AWS demo, never real), L.RB-10.2 (D-19, JVM/Gradle).
+#
+# Row schema (exactly these keys; no other key or table shape):
+#
+# [[row]]
+# label    = "WR-ENV-3:allowlisted-noninteractive-identity"   # a stub_proven label id
+# group    = "D-1"        # one of stub_labels.GROUPS: B4.6 B6.2 B8.4 D-1 D-8 D-9 D-19
+# text     = "..."        # the label text: what the stub stands for and that the real tool is unverified
+# deferral = "OPEN-MISE-HOST"   # the open question or disclosure the row cites
+
+twin_suffix = "@stub-twin"
