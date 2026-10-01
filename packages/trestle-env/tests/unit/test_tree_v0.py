@@ -59,10 +59,16 @@ def leaf() -> LeafDeclaration:
 
 @pytest.mark.proves("WR-ENV-10", "WR-ENV-10:tree-declared-admitted", "B", "B", "LOGIC", "CI")
 def test_declared_tree_admitted_one_root_one_child() -> None:
+    # (the name is L.RB-0.2's: the tree began as one root over one child and has grown since;
+    # what it pins is that the declared tree compiles to an admitted plan with the env key)
     plan = compiled(tree.ENTRY, {schema.ENV_ARG: PROJECT})
-    assert [v.path for v in plan.vertices] == ["", tree.POSTGRES_UNIT]
-    assert [v.unit for v in plan.vertices] == [tree.ROOT_UNIT, tree.POSTGRES_UNIT]
-    assert plan.vertex("").children == (tree.POSTGRES_UNIT,)
+    assert [v.path for v in plan.vertices] == ["", tree.HTTP_SUPPORT_UNIT, tree.POSTGRES_UNIT]
+    assert [v.unit for v in plan.vertices] == [
+        tree.ROOT_UNIT,
+        tree.HTTP_SUPPORT_UNIT,
+        tree.POSTGRES_UNIT,
+    ]
+    assert plan.vertex("").children == (tree.HTTP_SUPPORT_UNIT, tree.POSTGRES_UNIT)
     assert plan.vertex(tree.POSTGRES_UNIT).compose == "leaf"
     # the environment key is the Compose project the request names (opaque bytes to the host)
     root = tree.ENTRY.units[tree.ROOT_UNIT]

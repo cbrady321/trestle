@@ -120,7 +120,12 @@ class FakeReferenceEngine(FakeContainerEngine):
 
     def check(self, check: str, target: Any) -> Any:
         expected = self._checks.get(check)
-        if expected is None:
+        if check in tree.HTTP_READINESS:
+            # a declared HTTP contract: the fake container serves the declared response once it
+            # runs (the real binding reads it through `HttpReadinessReads`, L.RB-2.1)
+            base = super().check("running", target)
+            answer = type(base)(base.satisfied, base.code, f"{check}: {base.detail}")
+        elif expected is None:
             answer = super().check(check, target)
         else:
             answer = self._exec_check(check, target, expected)

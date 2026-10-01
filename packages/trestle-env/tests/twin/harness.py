@@ -143,11 +143,17 @@ def container_released(answer: Mapping[str, Any]) -> bool:
 
 
 def claim_precedes_create(entries: list[dict[str, Any]], effect: str = tree.UP) -> bool:
-    """MC-10: the create's claim (`issue`) is written before its confirmation, once."""
-    classes = [(e["class"], e.get("effect")) for e in entries]
-    issued = [i for i, c in enumerate(classes) if c == ("issue", effect)]
-    confirmed = [i for i, c in enumerate(classes) if c == ("confirmation", effect)]
-    return len(issued) == 1 and len(confirmed) == 1 and issued[0] < confirmed[0]
+    """MC-10: every create's claim (`issue`) is written before its confirmation, once per path."""
+    paths = {e.get("path") for e in entries if (e["class"], e.get("effect")) == ("issue", effect)}
+    if not paths:
+        return False
+    for path in paths:
+        classes = [(e["class"], e.get("effect")) for e in entries if e.get("path") == path]
+        issued = [i for i, c in enumerate(classes) if c == ("issue", effect)]
+        confirmed = [i for i, c in enumerate(classes) if c == ("confirmation", effect)]
+        if not (len(issued) == 1 and len(confirmed) == 1 and issued[0] < confirmed[0]):
+            return False
+    return True
 
 
 def selector_prefix(run_id: str) -> str:

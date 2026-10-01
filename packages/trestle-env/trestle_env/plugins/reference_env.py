@@ -21,7 +21,7 @@ from trestle_env.schema import OverrideId, ServiceId, TestId
 from trestle_env.tree import ENTRY
 
 
-@trestle(deadline=180, env_arg="env", packages=("trestle_env", "trestle_packs"))
+@trestle(deadline=120, env_arg="env", packages=("trestle_env", "trestle_packs"))
 def reference_env(
     ctx: Context,
     env: str,

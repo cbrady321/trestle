@@ -21,8 +21,10 @@ from trestle.workflow.values import (
 
 from trestle_env import tree
 from trestle_env.plugins import _bind
+from trestle_env.plugins._http import HttpReadinessReads
 
 IMAGE = "postgres@sha256:" + "a" * 64
+SUPPORT_IMAGE = "nginx@sha256:" + "b" * 64
 ENDPOINT = "unix:///fake/desktop-linux.sock"
 
 
@@ -60,6 +62,7 @@ def make_env(tmp_path: Path, **extra: str) -> dict[str, str]:
         _bind.DOCKER_PATH_ENV: str(docker),
         _bind.ENDPOINT_ENV: ENDPOINT,
         f"{_bind.IMAGE_ENV_PREFIX}POSTGRES": IMAGE,
+        f"{_bind.IMAGE_ENV_PREFIX}HTTP_SUPPORT": SUPPORT_IMAGE,
         **extra,
     }
 
@@ -91,7 +94,9 @@ def test_the_port_map_binds_the_container_ports_and_the_execution_port(tmp_path:
         ports.ExecutionPort,
     }  # no Compose definition configured: no resolver bound
     assert bound[ports.ExecutionPort] is recorder
-    assert bound[ports.ResourceReads] is bound[ports.ResourceCreate]
+    # the reads answer the tree's HTTP readiness contracts over the container adapter
+    assert isinstance(bound[ports.ResourceReads], HttpReadinessReads)
+    assert bound[ports.ResourceCreate] is bound[ports.ResourceOwned]
 
 
 def test_create_runs_the_declared_definition_from_the_pinned_role_image(tmp_path: Path) -> None:
