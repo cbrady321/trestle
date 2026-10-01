@@ -78,6 +78,29 @@ catalog stage (before any run id); a Compose closure that cannot be derived fail
 before anything starts. Whatever the run did not create (a container you started yourself, a
 service found already running) is never stopped, repaired or removed by a failure.
 
+### Toolchain and project tasks
+
+The catalog (`TRESTLE_ENV_CATALOG`, an absolute path to a catalog file; the reference catalog when
+unset) lists projects, each with a toolchain pin and allowlisted task argv entries, and tests, each
+naming a project task. Every test the catalog lists is a node, `test.<test id>`, that runs its
+project's task once when the request names the test (`tests: ["<test id>"]`) and does nothing
+otherwise. Nothing of a request but the test identifier reaches a command.
+
+A task runs only as the catalog wrote it: its first entry is a bare tool name, resolved to an
+absolute executable by the toolchain manager (`TRESTLE_MISE_PATH`, an absolute path, with
+`TRESTLE_ENV_PROJECTS_DIR` holding one directory per project) to EXACTLY the pinned version, never a
+tool found on `PATH` and never through `mise exec`, `mise run` or a shim. The toolchain identity (the
+executable and the version it reports) is recorded in the run's evidence as `toolchain.task_start`
+before the task starts. If the pin cannot be resolved the node ends `blocked` with
+`execution.toolchain_missing`, naming the tool, before any task-start record or process exists;
+Trestle installs, refreshes and downloads nothing.
+
+**What is proven, and what is not.** The toolchain leg is proven against a stand-in for `mise`
+(`tests/fixtures/stubs/stub_mise.py`): it is STUB-PROVEN. The real tool's behaviour is unverified
+(open question OPEN-MISE-HOST: no real `mise` conformance has been run), and so is Gradle's
+(D-19). Whether toolchain state is serialized host-wide across runs is undecided (OQ-26); the leg
+assumes the per-environment lease reading.
+
 ### Publishing the plugin
 
 Point the server at `packages/trestle-env/trestle_env/plugins` (the `[plugins] paths` entry above, or

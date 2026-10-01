@@ -18,6 +18,7 @@ from trestle.workflow.values import CheckResult
 from trestle_packs.fakes.container import FakeContainerEngine, selector_name
 
 from trestle_env import schema, tree
+from trestle_env.plugins._tasks import TaskExecution
 
 REFUSED = 3  # the fake serves the declared response from the request after this many refusals
 
@@ -84,15 +85,13 @@ def rig_over(tmp_path: Path, engine: SupportEngine) -> tk.TreeRig:
     return tk.tree_rig(
         tmp_path,
         tree.ENTRY.units[tree.ROOT_UNIT],  # type: ignore[arg-type]
-        {
-            tree.HTTP_SUPPORT_UNIT: tree.ENTRY.units[tree.HTTP_SUPPORT_UNIT],
-            tree.POSTGRES_UNIT: tree.ENTRY.units[tree.POSTGRES_UNIT],
-        },
+        {name: unit for name, unit in tree.ENTRY.units.items() if name != tree.ROOT_UNIT},
         port_impl={
             ports.ResourceReads: engine,
             ports.ResourceCreate: engine,
             ports.ResourceOwned: engine,
             ports.ResourceSafeStart: engine,
+            ports.ExecutionPort: TaskExecution(None, None),  # a run of nothing (no test named)
         },
         deadline_s=tree.DEADLINE_S,
         request={schema.ENV_ARG: "twin"},

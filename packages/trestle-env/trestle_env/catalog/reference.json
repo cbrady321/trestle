@@ -5,7 +5,34 @@
     {"id": "postgres", "selector": "postgres"},
     {"id": "http_support", "selector": "http_support"}
   ],
-  "projects": [],
+  "projects": [
+    {
+      "id": "demo-py",
+      "pin": {"python": "3.12"},
+      "tasks": [
+        {"id": "version", "argv": ["python", "--version"]},
+        {"id": "pytest", "argv": ["python", "-m", "pytest", "-q", "./"]}
+      ]
+    },
+    {
+      "id": "demo-jvm",
+      "pin": {"java": "21"},
+      "tasks": [
+        {
+          "id": "build",
+          "argv": [
+            "java",
+            "-classpath",
+            "./gradle/wrapper/gradle-wrapper.jar",
+            "org.gradle.wrapper.GradleWrapperMain",
+            "--no-daemon",
+            "-Porg.gradle.java.installations.auto-download=false",
+            "build"
+          ]
+        }
+      ]
+    }
+  ],
   "tests": [],
   "overrides": []
 }
