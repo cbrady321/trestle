@@ -15,6 +15,10 @@ globs         = ["tests/proof/meta.py", "tests/proof/ckpt/root.py", "tests/proof
                  # L.CZ.1 also edits these two (the deferral posture gains step "CZ"; the report-mode
                  # enforce test becomes the --scope ci one); the plan literal omits them (plan gap).
                  "tests/core/docs/test_cl_d1_deferrals.py", "tests/proof/selftest/test_ledger.py",
+                 # root.py's J-ROOT-7:review reads RV-1..RV-5 root records; reviews.CRITERIA had no RV-2,
+                 # so the validator gains it here (L.CZ.9.fix1), before the J-ROOT lane (fossils and
+                 # reviews only, CM-5) records it.
+                 "tests/proof/reviews.py", "tests/proof/selftest/test_reviews.py",
                  "docs/*.md", "!docs/environment.md", ".github/workflows/ci.yml", ".cursor/skills/trestle/SKILL.md"]
 
 [[lane]]                     # the root checkpoint merge; diff limited to CM-5's checkpoint paths

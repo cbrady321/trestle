@@ -17,8 +17,9 @@ e.g. `RV-5-j0.toml`), written by the stage critic from the main checkout:
 Each review names its own criteria (C.4) and its paired automated check:
 `CRITERIA` holds, per RV id, the exact criterion keys and the one log key the
 record carries. RV-5 (transcription) keeps the four criteria above and
-`transcribe_log`; RV-1, RV-3 and RV-4 (J-CORE, L.J-CORE.1) carry
-`paired_check_log`, the output of their automated presence check. The key sets
+`transcribe_log`; RV-1, RV-3 and RV-4 (J-CORE, L.J-CORE.1) and RV-2 (the
+STUB-PROVEN wording, L.CZ.9.fix1) carry `paired_check_log`, the output of
+their automated presence check. The key sets
 are closed: an RV id with no `CRITERIA` entry, an unknown or missing key, or
 another review's criteria is a schema error. An `outcome = "pass"` record must
 have every criterion `pass`. `load_valid` skips a malformed record (the ledger shows
@@ -47,6 +48,19 @@ CRITERIA: dict[str, tuple[tuple[str, ...], str]] = {
             "plugins_md_double_fork",
             "security_md_pre_identity_run",
             "no_universal_claim",
+        ),
+        PAIRED_LOG,
+    ),
+    # WR-PROOF-3 "real tool unverified" wording on every STUB-PROVEN row (the L.RB-12.4 packet,
+    # `tests/proof/b/rv2_packet.py`; paired: tests/proof/b/test_rv2_packet.py, which writes the
+    # packet to tests/proof/results/rv2-packet-slice-b.md). Added at CZ (L.CZ.9.fix1) so that
+    # J-ROOT's `RV-2-root.toml` can be a valid record.
+    "RV-2": (
+        (
+            "every_stub_row_states_real_tool_unverified",
+            "stub_rows_disclosed_in_docs",
+            "twin_rows_defer_to_host_record",
+            "no_real_tool_claim",
         ),
         PAIRED_LOG,
     ),
