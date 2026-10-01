@@ -1,0 +1,22 @@
+# RV-3 at J-ROOT (L.J-ROOT.1, CM-5 role 1): stage-critic review of "not a sandbox" (WR-AUTH-5, WR-COMPAT-11)
+# and the closed agent policy sets across every delivered doc and the final MCP surface of both profiles, paired
+# with tests/core/admission/test_cl_a2_profile.py (::test_no_doc_claims_sandbox) and
+# tests/core/answer/test_cl_b3_keep.py. Reviewer: stage critic (independent, fable-high), read-only.
+# Round 1, pass, at 5f20c3f (origin/wr/cz/cz, the CZ head; contains master af15004 = WR-Merge: RB-12). Previous
+# RV-3: RV-3-core.toml at 6cef746; delta re-read across slice A/B docs and agent surface. PR #47 and the
+# J-SLICE-B carrier change no docs or product source, so the review stands at the J-ROOT candidate.
+# Non-gating notes: the presence scan reads README.md + docs/*.md only (packages/*/README.md, SKILL.md checked
+# by hand); docs/environment.md:189 calls `env` "the Compose project name" (it is the opaque lease key).
+# Packet _tmp/delivery/RV-3-root-packet.md; verdict _tmp/delivery/RV-3-root-verdict.md.
+id = "RV-3"
+mode = "stage-critic review"
+outcome = "pass"
+sha = "5f20c3fc63ace1726d0a661f91493123aaf65963"
+paired_check_log = "WT=<git archive 5f20c3f> locked.sh py.sh -m pytest -q -p no:cacheprovider tests/core/admission/test_cl_a2_profile.py -> 8 passed in 12.12s (exit 0); tests/core/answer/test_cl_b3_keep.py -> 2 passed in 2.99s (exit 0); arm64 .venv312, run from the scratch extraction of 5f20c3fc63ace1726d0a661f91493123aaf65963 under the machine-wide port lock"
+
+[criteria]
+no_sandbox_claim = "pass"
+full_profile_ten_tools = "pass"
+closed_sets_no_destructive = "pass"
+no_foreign_cleanup = "pass"
+profile_operator_only = "pass"
