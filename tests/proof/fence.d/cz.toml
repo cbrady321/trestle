@@ -24,6 +24,10 @@ globs         = ["tests/proof/meta.py", "tests/proof/ckpt/root.py", "tests/proof
                  # and the R-O allowlist disclosure in docs/environment.md. Both paths are b-env (RB-13) paths;
                  # RB-13 is conditional and unordered before CZ, so the up-to-date rule (R3) orders any overlap.
                  "tests/proof/b/stub_labels.toml",
+                 # L.CZ.4 closes the divergence ledger, so every `differ d1` runs closure; lane C's d1 pin
+                 # (a partial facet file) must switch closure off (L.CZ.rv-fix3). A pins/c_surface path,
+                 # widened here like stub_labels.toml above (plan departure, L.CZ.rv-fix4).
+                 "tests/pins/c_surface/test_goldens.py",
                  "docs/*.md", ".github/workflows/ci.yml", ".cursor/skills/trestle/SKILL.md"]
 
 [[lane]]                     # the root checkpoint merge; diff limited to CM-5's checkpoint paths
