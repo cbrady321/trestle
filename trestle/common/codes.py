@@ -115,6 +115,8 @@ CREDENTIAL_INTERACTIVE = _vocab.CREDENTIAL_INTERACTIVE
 GRANT_ISSUER_UNREACHABLE = _vocab.GRANT_ISSUER_UNREACHABLE
 # L.RB-6.3.fix1: the provisioning store's own unreadable-store code (see the vocabulary).
 PROVISION_STORE_UNREADABLE = _vocab.PROVISION_STORE_UNREADABLE
+# L.RB-9.3.fix1: V-11's host-scope port code (`HostScopeUnreadable.code`, B3-C18).
+HOST_SCOPE_UNREADABLE = _vocab.HOST_SCOPE_UNREADABLE
 
 EXECUTION_CODES: frozenset[str] = frozenset(
     {

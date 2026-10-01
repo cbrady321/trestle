@@ -125,6 +125,35 @@ and the failing test ids are in the run's evidence (`test.failing`), behind the 
 (D-19). Whether toolchain state is serialized host-wide across runs is undecided (OQ-26); the leg
 assumes the per-environment lease reading.
 
+### Demo credentials (demo only)
+
+**AWS is a DEMO in this workflow and is never real (D-9).** The only credential source the grant
+adapter can reach is a demo issuer on loopback (the proof uses the stub
+`tests/fixtures/stubs/stub_issuer.py`); it reads no profile, environment variable or credential file
+of its own, and nothing here reaches a real identity provider. A credential is exactly three facts:
+the identity's name, its expiry and its generation. Those are the only credential values Trestle
+reads or records; the secret itself is never captured, in the run directory, the ledger, the
+artifacts or the answer.
+
+A tree that includes the demo-credential node (`credential.demo`) makes every dependent wait for it:
+
+- **An identity that needs interactive sign-in** ends the node `blocked` with
+  `execution.credential_interactive`, naming the identity and the one action that unblocks it
+  (authenticate it with its issuer, then re-send). Nothing that depends on it starts.
+- **A lifetime shorter than the root's deadline plus the finalization margin** (never a slice) gets
+  one refresh first; if the credential is still too short, the node ends `blocked` with
+  `execution.credential_lifetime_insufficient`.
+- **A host-wide refresh** (one that changes what every environment sees) is not serialized across
+  environments: which reading is right is open (OQ-26); the leg assumes the per-environment lease.
+
+**What is proven, and what is not.** All of it is STUB-PROVEN against the demo issuer (D-9): what a
+real identity provider does is unverified and out of scope. The labels are
+`WR-ENV-8:mfa-blocked-human-action`, `WR-ENV-14:lifetime-vs-root-deadline-refresh-or-block`,
+`WR-VERIFY-6:invalid-credential-not-ready`, `WR-ENV-13:refresh-in-place-container`,
+`WR-ENV-13:refresh-in-place-local-app`, `WR-OWN-9:owned-process-restarted`,
+`WR-OWN-9:not-owned-blocked-untouched`, `WR-REMEDY-4:b-credential-refresh-safe`,
+`WR-PROOF-4:b-grant-suite` and `WR-VERIFY-8:b-stub-read-facets-grant`.
+
 ### Publishing the plugin
 
 Point the server at `packages/trestle-env/trestle_env/plugins` (the `[plugins] paths` entry above, or

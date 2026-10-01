@@ -54,6 +54,7 @@ COMPOSE_DEFINITION_INVALID: Final = "adapter.compose_definition_invalid"
 CREDENTIAL_INTERACTIVE: Final = "execution.credential_interactive"
 GRANT_ISSUER_UNREACHABLE: Final = "adapter.grant_issuer_unreachable"
 PROVISION_STORE_UNREADABLE: Final = "adapter.provision_store_unreadable"
+HOST_SCOPE_UNREADABLE: Final = "adapter.host_scope_unreadable"
 
 ADAPTER_CODES: Final = frozenset(
     {
@@ -65,6 +66,7 @@ ADAPTER_CODES: Final = frozenset(
         CREDENTIAL_INTERACTIVE,
         GRANT_ISSUER_UNREACHABLE,
         PROVISION_STORE_UNREADABLE,
+        HOST_SCOPE_UNREADABLE,
     }
 )
 

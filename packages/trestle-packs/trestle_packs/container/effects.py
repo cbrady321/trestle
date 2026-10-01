@@ -85,10 +85,22 @@ _UNKNOWN = ConfirmationStatus.UNKNOWN
 
 
 @dataclass(frozen=True, slots=True)
+class BindMount:
+    """A host directory a container sees, read-only unless asked (L.RB-9.2: a consumer's credential
+    channel is a mounted refreshable directory, never an environment variable). `source` is an
+    absolute host path; neither path may contain a comma (the `--mount` syntax has no escape)."""
+
+    source: str
+    target: str
+    readonly: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class ContainerDefinition:
     """What a catalog entry runs as: the image (a pinned `<repo>@sha256:<hex>` ref; nothing is ever
     pulled), its command, environment, declared data paths (mounted on tmpfs: no volume is ever
-    created), the container ports published on loopback and an optional existing network."""
+    created), the container ports published on loopback, an optional existing network and host
+    directories bind-mounted read-only by default (`mounts`; L.RB-9.2's credential channel)."""
 
     image: str
     command: tuple[str, ...] = ()
@@ -96,6 +108,7 @@ class ContainerDefinition:
     data_paths: tuple[str, ...] = ()
     ports: tuple[int, ...] = ()
     network: str | None = None
+    mounts: tuple[BindMount, ...] = ()
 
 
 def _applied(identity: str) -> Confirmation:
@@ -294,6 +307,11 @@ class ContainerPort(ContainerReads):
             args += ["--network", definition.network]
         for path in definition.data_paths:
             args += ["--tmpfs", path]
+        for mount in definition.mounts:
+            if not mount.source.startswith("/") or "," in mount.source + mount.target:
+                raise ValueError(f"unusable bind mount {mount!r}: absolute source, no comma")
+            spec = f"type=bind,source={mount.source},target={mount.target}"
+            args += ["--mount", spec + (",readonly" if mount.readonly else "")]
         for port in definition.ports:
             args += ["--publish", f"127.0.0.1::{port}"]
         for key, value in sorted(definition.environment.items()):

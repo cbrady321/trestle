@@ -33,7 +33,8 @@ V11_NAMES = frozenset(
 )
 
 # MC-B-12, adapter half (b-slice-b.md L.NW-2.3): the codes B's adapters raise. The eighth is the
-# one V-11 name the transcription above gains (L.RB-6.3.fix1, ADD-code-provision-store-unreadable).
+# one V-11 name the transcription above gains (L.RB-6.3.fix1, ADD-code-provision-store-unreadable);
+# the ninth, `HOST_SCOPE_UNREADABLE`, is V-11's own (L.RB-9.3.fix1, ADD-code-host-scope-unreadable).
 ADAPTER_NAMES = (
     "DOCKER_CLI_MISSING",
     "DOCKER_ENGINE_UNREACHABLE",
@@ -43,6 +44,7 @@ ADAPTER_NAMES = (
     "CREDENTIAL_INTERACTIVE",
     "GRANT_ISSUER_UNREACHABLE",
     "PROVISION_STORE_UNREADABLE",
+    "HOST_SCOPE_UNREADABLE",
 )
 # V-11 gives every code ONE spelling. A-1 already spelled these two `execution.*` (the join's
 # human-actionable set J-5a and the real command port compare that value), so they keep it.
@@ -97,6 +99,15 @@ def test_the_provision_store_code_is_the_one_added_v11_name() -> None:
         vocab.DOCKER_ENGINE_UNREACHABLE,  # the engine answered; the store did not
         vocab.TOOLCHAIN_INTERFACE_DRIFT,  # an unexpected output shape is another failure
     }
+
+
+def test_the_host_scope_code_is_v11s_and_adapter_spelled() -> None:
+    """L.RB-9.3.fix1: `HostScopeUnreadable.code` (B3-C18) is V-11's `HOST_SCOPE_UNREADABLE`."""
+    assert vocab.HOST_SCOPE_UNREADABLE == "adapter.host_scope_unreadable"
+    assert codes.HOST_SCOPE_UNREADABLE == vocab.HOST_SCOPE_UNREADABLE
+    assert engine.HOST_SCOPE_UNREADABLE == vocab.HOST_SCOPE_UNREADABLE
+    assert vocab.HOST_SCOPE_UNREADABLE in vocab.ADAPTER_CODES
+    assert "HOST_SCOPE_UNREADABLE" in V11_NAMES
 
 
 def test_a_planted_constant_outside_v11_fails() -> None:

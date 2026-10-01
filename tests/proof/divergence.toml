@@ -1549,3 +1549,17 @@ docs = []
 due_checkpoint = "RB-6 (leaf L.RB-6.3)"
 direction = "additive"
 authorized_by = "plans/b-slice-b.md L.RB-6.1/L.RB-6.3 (B3-C21 Provisioning; B3-E1: a store failure is a stable code, V-3.8: never absent); B-SINGLES-RETURN plan gap 3 (V-11 has no code for an authoritative store that did not answer)"
+
+# L.RB-9.3.fix1 (V-11 `HOST_SCOPE_UNREADABLE`, B3-C18, V-9.7): the host-scope port's unreadable-subject
+# code, spelled as DM-16 spells the adapter codes. The credential gate (RB-9.3, RB-9.4) reads the demo
+# credential's current generation through it; no earlier leaf defined it (B-GRANT plan gap 1).
+
+[[entry]]
+id = "ADD-code-host-scope-unreadable"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["adapter.host_scope_unreadable"]
+docs = []
+due_checkpoint = "RB-9 (leaf L.RB-9.3)"
+direction = "additive"
+authorized_by = "interfaces/00-shared-vocabulary.md V-11 HOST_SCOPE_UNREADABLE (CB-8; B3-C18 HostScopeUnreadable, V-9.7); plans/b-slice-b.md L.RB-9.3/L.RB-9.4; B-GRANT-RETURN plan gap 1"
