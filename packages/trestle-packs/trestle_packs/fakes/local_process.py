@@ -14,7 +14,9 @@ bound command; creation is idempotent per run-scoped selector (`proc-<16 hex>`) 
 runs the same command line (`plant_found`, or another selector's instance) is a `FoundRef`;
 `stop`, `restart` and `recreate` act only on an instance the fake holds (else `NOT_APPLIED`);
 `check("ready")` holds while the instance is alive; the `HOST` endpoint is `127.0.0.1:<PORT>` from
-the command's declared environment.
+the command's declared environment. A restart ends the old process before the new one starts (its
+`events()` read `start`, `stop`, `start`); one whose relaunch cannot start after the old process was
+stopped is `UNKNOWN`, never `NOT_APPLIED` (L.RB-8.1, B3-C16).
 """
 
 from __future__ import annotations
@@ -49,6 +51,7 @@ from trestle_packs.fakes.marker import (
 
 RESOURCE_KIND = "local_process"
 PORT_ENV = "PORT"
+TOOLCHAIN_MISSING = "execution.toolchain_missing"
 
 
 def run_scoped_selector(lineage: Any, effect: str) -> str:
@@ -78,6 +81,8 @@ class FakeLocalProcess:
         self._clock = count(1_000_000)  # a numeric start token, one per process
         self._table: list[_Process] = []
         self._instances: dict[str, tuple[_Process, Any]] = {}  # selector -> (process, spec)
+        self._events: list[str] = []  # `start` / `stop` of the instances this fake launched
+        self._launch_fails = False
 
     # ------------------------------------------------------------------ the fake's own controls
 
@@ -85,6 +90,44 @@ class FakeLocalProcess:
         for process in self._table:
             process.alive = False
         self._instances.clear()
+
+    def events(self) -> list[str]:
+        """The order in which this fake started (`start`) and ended (`stop`) its instances; an
+        instance killed out of band (`kill`) logs no `stop`, as a killed process would not."""
+        return list(self._events)
+
+    def break_launch(self) -> None:
+        """From now on a launch cannot start (the bound command is gone): a create returns
+        `NOT_APPLIED`, a restart that already stopped the old process returns `UNKNOWN`."""
+        self._launch_fails = True
+
+    def kill(self, selector: str) -> None:
+        """End an instance out of band (a crash): no `stop` is logged and it stays in the table
+        as a dead process the port still holds."""
+        held = self._instances.get(selector)
+        if held is not None:
+            held[0].alive = False
+
+    def token_of(self, selector: str) -> str | None:
+        """A token naming the process behind `selector` (its pid and start token), or None."""
+        held = self._instances.get(selector)
+        if held is not None:
+            return f"{held[0].pid}-{held[0].start}"
+        parts = selector.split("-")
+        if len(parts) == 3 and parts[0] == "found":
+            return f"{parts[1]}-{parts[2]}"
+        return None
+
+    def alive(self, token: str) -> bool:
+        pid, _, start = token.partition("-")
+        return any(p.alive and (str(p.pid), str(p.start)) == (pid, start) for p in self._table)
+
+    def in_run_group(self, token: str) -> bool:
+        """Every process this fake launches is in the run's group by construction; a planted
+        found process is not one it launched."""
+        pid, _, start = token.partition("-")
+        launched = {(str(p.pid), str(p.start)) for p, _ in self._instances.values()}
+        return (pid, start) in launched
 
     def plant_found(self, logical_system: str, argv: Sequence[str] = ()) -> str:
         """A live process this fake's selectors do not name, running `argv` (a found instance)."""
@@ -169,7 +212,9 @@ class FakeLocalProcess:
         held = self._instances.get(selector)
         if held is not None and held[0].alive:  # idempotent per selector (B3-C4)
             return Confirmation(ConfirmationStatus.APPLIED, None, selector)
-        self._instances[selector] = (self._spawn(tuple(spec.command.argv)), spec)
+        if self._launch_fails:
+            return Confirmation(ConfirmationStatus.NOT_APPLIED, TOOLCHAIN_MISSING, None)
+        self._instances[selector] = (self._launched(tuple(spec.command.argv)), spec)
         return Confirmation(ConfirmationStatus.APPLIED, None, selector)
 
     # ------------------------------------------------------------------ ResourceOwned
@@ -184,7 +229,7 @@ class FakeLocalProcess:
         held = self._instances.pop(target.selector, None)
         if held is None:  # not this fake's: nothing changed
             return Confirmation(ConfirmationStatus.NOT_APPLIED, None, None)
-        held[0].alive = False
+        self._ended(held[0])
         return Confirmation(ConfirmationStatus.APPLIED, None, target.selector)
 
     # ------------------------------------------------------------------ internals
@@ -212,10 +257,21 @@ class FakeLocalProcess:
             )
         return False
 
+    def _launched(self, argv: tuple[str, ...]) -> _Process:
+        self._events.append("start")
+        return self._spawn(argv)
+
+    def _ended(self, process: _Process) -> None:
+        if process.alive:
+            self._events.append("stop")
+        process.alive = False
+
     def _relaunch(self, selector: str) -> Confirmation:
         held = self._instances.pop(selector, None)
         if held is None:
             return Confirmation(ConfirmationStatus.NOT_APPLIED, None, None)
-        held[0].alive = False
-        self._instances[selector] = (self._spawn(held[0].argv), held[1])
+        self._ended(held[0])  # observed absent before the new process starts
+        if self._launch_fails:  # the old process is gone and the new one cannot start (B3-C16)
+            return Confirmation(ConfirmationStatus.UNKNOWN, TOOLCHAIN_MISSING, selector)
+        self._instances[selector] = (self._launched(held[0].argv), held[1])
         return Confirmation(ConfirmationStatus.APPLIED, None, selector)

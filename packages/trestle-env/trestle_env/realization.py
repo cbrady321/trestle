@@ -15,6 +15,14 @@ There is NO selection code here (hld-wr-environment KDD 4): choosing among the m
 dependency subtree is what `closure()` derives for it: an override keeps the dependencies of the
 node it replaces.
 
+`choice_for(catalog, logical, docker_unit, readiness)` turns that space into the `ChoiceDeclaration`
+a tree publishes for the logical system (L.RB-8.2): the Docker node's unit first, then one
+agent-launched alternative per override, whose unit name IS the override identifier (a request names
+an override in `overrides`, the choice's `select_arg`, and only the alternatives it names are
+eligible). Admission then refuses, before a run id, a request whose selected alternative does not
+declare the vantage a dependent consumes it from (a container consumer of a local process:
+`ROUTE_UNSUPPORTED`, V-7.3). Nothing here selects: the selection is `wr-run-control`'s.
+
 Root-entry levels (OQ-31 is open) are declared under both readings and parameterized by reading:
 `PRECONDITIONS_COVERED` (the interface stage's: a unit is a root only if its preconditions are
 covered by its own children's `needs` or by checks its own leaves observe) and `ENV_KEY_FIELD`
@@ -30,9 +38,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from trestle.workflow.declarations import RealizationKind, Vantage
+from trestle.workflow.declarations import Alternative, ChoiceDeclaration, RealizationKind, Vantage
 
 from trestle_env.catalog import Catalog, OverrideId, ProjectId, ServiceId, TaskId
+from trestle_env.schema import OVERRIDES_ARG
 
 ENV_AND_TEST = "env_and_test"  # executor-chosen level names (interface-work-unit P1-1/P1-2)
 SYSTEM_TEST = "system_test"
@@ -78,6 +87,27 @@ def realization_space(catalog: Catalog, logical: str) -> tuple[Realization, ...]
         if o.service == service.id
     )
     return tuple(space)
+
+
+def choice_for(
+    catalog: Catalog, logical: str, docker_unit: str, readiness: str
+) -> ChoiceDeclaration:
+    """The V-7 choice of `logical`'s realization space: `docker_unit` (the Docker service, the
+    fallback) and one alternative per override, unit = the override id, reachable from the host
+    only. Refuses (`ValueError`) a system the catalog does not hold."""
+    space = realization_space(catalog, logical)
+    if not space:
+        raise ValueError(f"{logical!r} is not a catalog service")
+    alternatives = tuple(
+        Alternative(
+            docker_unit if member.override is None else str(member.override),
+            member.kind,
+            member.reachable_from,
+            member.human_action,
+        )
+        for member in space
+    )
+    return ChoiceDeclaration(logical, alternatives, OVERRIDES_ARG, docker_unit, readiness)
 
 
 class RootEntryReading(StrEnum):

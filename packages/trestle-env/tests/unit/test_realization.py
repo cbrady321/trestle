@@ -72,7 +72,11 @@ def test_every_reference_service_has_a_docker_realization() -> None:
 def test_the_module_holds_no_selection_code() -> None:
     tree = ast.parse(Path(realization_module.__file__).read_text(encoding="utf-8"))
     functions = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
-    assert functions == {"realization_space", "root_entry_levels"}  # no chooser, no observer
+    assert functions == {
+        "realization_space",
+        "choice_for",
+        "root_entry_levels",
+    }  # data only: no chooser
     assert Realization.__dataclass_params__.frozen  # type: ignore[attr-defined]
 
 
