@@ -197,6 +197,102 @@ def changed_line_ranges(repo: Path, base: str, head: str, path: str) -> list[tup
     return ranges
 
 
+@dataclass
+class Hunk:
+    """One hunk of M's per-file diff (`git diff -U1 base head`): its text, and the merge-side
+    (new-side) line numbers of the lines it adds."""
+
+    text: str
+    added: set[int]
+
+
+def file_hunks(repo: Path, base: str, head: str, path: str) -> tuple[str, list[Hunk]]:
+    """(the per-file diff header, its hunks) of `path` between `base` and `head`, one line of
+    context each side, so a hunk reverts cleanly only where its own lines and their immediate
+    neighbours still read as M left them."""
+    out = _git(repo, "diff", "-U1", "--no-color", base, head, "--", path)
+    header: list[str] = []
+    hunks: list[Hunk] = []
+    lines: list[str] = []
+    added: set[int] = set()
+    new = 0
+    for line in out.splitlines(keepends=True):
+        match = re.match(r"^@@ -\S+ \+(\d+)(?:,\d+)? @@", line)
+        if match:
+            if lines:
+                hunks.append(Hunk("".join(lines), added))
+            lines, added, new = [line], set(), int(match.group(1))
+        elif not lines:
+            header.append(line)
+        else:
+            lines.append(line)
+            if line.startswith("+"):
+                added.add(new)
+                new += 1
+            elif line.startswith(" "):
+                new += 1
+    if lines:
+        hunks.append(Hunk("".join(lines), added))
+    return "".join(header), hunks
+
+
+def _reverse_apply(text: str, path: str, header: str, hunk: Hunk) -> str | None:
+    """`text` with `hunk` reverse-applied (`git apply -R`, no fuzz: every line of the hunk, its
+    one line of context included, must match, at any offset), or `None` when it does not apply."""
+    with tempfile.TemporaryDirectory(prefix="ck-hunk-") as tmp:
+        target = Path(tmp) / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+        patch_file = Path(tmp) / "hunk.patch"
+        patch_file.write_text(header + hunk.text)
+        proc = subprocess.run(
+            ["git", "apply", "-R", "--whitespace=nowarn", str(patch_file)],
+            cwd=tmp,
+            capture_output=True,
+            text=True,
+        )
+        return target.read_text() if proc.returncode == 0 else None
+
+
+def _unguarded_lines(source: str, name: str, lines: set[int]) -> set[int]:
+    """The lines of `lines` some call site in `source` spans that does not read the switch
+    `name` (CM-7 (b)'s AST rule)."""
+    tree = ast.parse(source)
+    parents = _parents(tree)
+    hit: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        span = set(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+        if span & lines and not _call_reads_switch(node, parents, name):
+            hit |= span & lines
+    return hit
+
+
+def revert_unguarded_hunks(
+    repo: Path, span: Span, path: str, name: str, text: str
+) -> tuple[str, set[int]]:
+    """CM-7 step 3, amended (L.CS-1.4.fix1): in a product file of M's lane globs that a later
+    commit changed, each hunk of M's diff with a changed call site that does not read the switch
+    is reverse-applied at HEAD when it still applies cleanly, so the decline restores M's
+    predecessor text there as step 2 does for an untouched file. Hunks whose calls read the switch
+    stay (the switch carries them); a hunk that no longer applies stays, for (b) to judge.
+    Returns (the new text, the merge-side added lines of the reverted hunks)."""
+    source = _show(repo, span.head, path)
+    if source is None or _show(repo, span.base, path) is None:
+        return text, set()  # a file M added (or deleted) is a whole-file matter, never a hunk's
+    header, hunks = file_hunks(repo, span.base, span.head, path)
+    reverted: set[int] = set()
+    for hunk in reversed(hunks):  # bottom first: earlier hunks keep their line numbers
+        if not _unguarded_lines(source, name, hunk.added):
+            continue
+        undone = _reverse_apply(text, path, header, hunk)
+        if undone is not None:
+            text = undone
+            reverted |= hunk.added
+    return text, reverted
+
+
 def _later_changed(repo: Path, landing: str | None, path: str) -> bool:
     """`git log <landing>..HEAD -- <file>` is not empty (CM-7 step 2)."""
     if landing is None:
@@ -285,6 +381,9 @@ class Patch:
     scope: set[str] = field(default_factory=set)  # CM-7's derived set
     reverted: set[str] = field(default_factory=set)  # step 2
     left: set[str] = field(default_factory=set)  # step 3: the diff's files left in place
+    # step 3, amended: per left file, the merge-side line numbers of M's added lines whose hunks
+    # were reverse-applied at HEAD (only hunks with a changed call site that ignores the switch)
+    hunks_reverted: dict[str, set[int]] = field(default_factory=dict)
 
 
 def _read(repo: Path, edits: dict[str, str | None], path: str) -> str | None:
@@ -468,14 +567,25 @@ def derive_patch(repo: Path, decline: dict[str, Any], lane_globs: list[str], spa
             edits[f] = block.sub("", _read(repo, edits, f) or "")
             patch.scope.add(f)
 
-    # steps 2-3: revert the lane-glob files no later commit changed; leave the rest in place
+    # steps 2-3: revert the lane-glob files no later commit changed; leave the rest in place,
+    # except that in a left product file of the lane globs M's hunks with an un-gated changed call
+    # site are reverse-applied where they still apply cleanly (step 3 as amended, L.CS-1.4.fix1)
     for f in diff:
-        if fence_mod.glob_match(f, lane_globs) and not _later_changed(repo, span.landing, f):
+        in_globs = fence_mod.glob_match(f, lane_globs)
+        if in_globs and not _later_changed(repo, span.landing, f):
             patch.reverted.add(f)
             edits[f] = _show(repo, span.base, f)  # None deletes a file the merge added
             patch.scope.add(f)
-        else:
-            patch.left.add(f)
+            continue
+        patch.left.add(f)
+        name = switch.get("name")
+        current = _read(repo, edits, f)
+        if in_globs and name and f.endswith(".py") and not is_test_path(f) and current is not None:
+            new_text, reverted = revert_unguarded_hunks(repo, span, f, name, current)
+            if reverted:
+                edits[f] = new_text
+                patch.scope.add(f)
+                patch.hunks_reverted[f] = reverted
 
     # step 4: restore the register entries, named-not-removed
     for entry_id in decline.get("restores", []):
@@ -586,7 +696,9 @@ def switch_isolation_violations(
     repo: Path, decline: dict[str, Any], span: Span, patch: Patch
 ) -> list[str]:
     """CM-7 (b): every call site the CK merge changed, in a file step 3 leaves in place,
-    reads the CK's switch (AST). A command switch has no call sites to read it.
+    reads the CK's switch (AST). A command switch has no call sites to read it. A changed line
+    whose hunk step 3 reverse-applied at HEAD (`Patch.hunks_reverted`) is M's predecessor text
+    again on the declined tree, so it is not judged; every other changed line still is.
 
     Only product source is checked (L.P0-0d.29). Step 3 puts behind the switch the behaviour a
     CK adds; a test file left in place adds no behaviour, and its nodes are judged by (a): a node
@@ -607,13 +719,15 @@ def switch_isolation_violations(
         ranges = changed_line_ranges(repo, span.base, span.head, path)
         if not ranges:
             continue
+        reverted = patch.hunks_reverted.get(path, set())
+        judged = {n for lo, hi in ranges for n in range(lo, hi + 1)} - reverted
         tree = ast.parse(source)
         parents = _parents(tree)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
             end = node.end_lineno or node.lineno
-            if not any(lo <= end and node.lineno <= hi for lo, hi in ranges):
+            if not judged & set(range(node.lineno, end + 1)):
                 continue
             if not _call_reads_switch(node, parents, name):
                 violations.append(f"{path}:{node.lineno}: changed call site does not read {name}")
