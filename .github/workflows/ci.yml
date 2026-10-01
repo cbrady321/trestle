@@ -45,7 +45,8 @@ jobs:
       - run: pip install -e ".[dev,packs]"
       - run: mypy
 
-  # The `test` job's work, split into path groups (tests/proof/ci_shards.py SHARDS; C1).
+  # The `test` job's work, split into path groups (tests/proof/ci_shards.py SHARDS; C1). Each
+  # node runs in exactly one shard; each package testpath is its own shard in the CSC-12 form (packs, env).
   # One runner per shard, so shards share no fixture dir, port or results file. Each
   # shard's proof records get a shard-unique file and artifact name: `proof-ledger` and
   # `ckpt` merge every `proof-results-*` artifact into one directory.
@@ -54,7 +55,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [baseline, planted, fence, proof, pins, root]
+        shard: [baseline, planted, fence, proof, pins, core, single, tree-host, tree, misc, packs, env]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -79,21 +80,14 @@ jobs:
         run: |
           args=$(python -m tests.proof.ci_shards args "${{ matrix.shard }}")
           pytest -q $args
-      - if: matrix.shard == 'root'
-        run: pytest -q -c pyproject.toml --rootdir . packages/trestle-packs/tests
-        env:
-          TRESTLE_PROOF_GATE: ci-test
-      - if: matrix.shard == 'root'
-        run: pytest -q -c pyproject.toml --rootdir . packages/trestle-env/tests
-        env:
-          TRESTLE_PROOF_GATE: ci-test
-      - if: matrix.shard == 'root'
+      # The packs shard's pytest above is the CSC-12 packs session itself; it is not run again.
+      - if: matrix.shard == 'misc'
         run: python scripts/smoke_agent_mcp.py
-      - if: matrix.shard == 'root'
+      - if: matrix.shard == 'misc'
         run: python scripts/smoke_operator_api.py
-      - if: matrix.shard == 'root'
+      - if: matrix.shard == 'misc'
         run: python scripts/smoke_packs.py
-      - if: matrix.shard == 'root'
+      - if: matrix.shard == 'misc'
         run: python scripts/demo_pack_workflows.py
       - name: shard-unique proof record files
         run: |
@@ -294,11 +288,13 @@ jobs:
   # C-ck: each present decline's real-history drill runs in one `ck-drill` part (the
   # declines' collected node ids, dealt round-robin over the parts), so declines run in
   # parallel on separate runners; a part with no decline passes at once. A drill nests a
-  # full REG (~10 min); a hang (a test blocked with no timeout of its own) fails the part at
-  # the job bound instead of GitHub's 6 h default.
+  # full REG: every default-collected node serially, the packs session, ruff and mypy (25-30
+  # min on master before Slice B; with packages/trestle-env in testpaths it outgrew 40 min,
+  # PR #46 run 36813565949). A hang (a test blocked with no timeout of its own) fails the part
+  # at the job bound instead of GitHub's 6 h default.
   ck-drill:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:

@@ -62,18 +62,59 @@ def kernel(tmp_path: Path) -> Kernel:
     return built
 
 
+LSOF_PATHS = ("/usr/sbin/lsof", "/usr/bin/lsof")  # macOS ships it in /usr/sbin, Linux in /usr/bin
+
+
 def listener(port: int) -> int:
-    """The pid listening on the app's loopback port."""
+    """The pid listening on the app's loopback port: `lsof` where the host has one, else the
+    Linux kernel's own socket tables (`/proc`), so the probe never depends on a tool a CI image may
+    lack."""
+    lsof = next((p for p in LSOF_PATHS if os.access(p, os.X_OK)), None) or shutil.which("lsof")
+    if lsof is None:
+        pids = proc_listeners(port)
+        assert len(pids) == 1, (port, pids)
+        return pids[0]
     found = subprocess.run(  # noqa: S603 - the test's own probe
-        ["/usr/sbin/lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+        [lsof, "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
         capture_output=True,
         text=True,
         check=False,
         stdin=subprocess.DEVNULL,
     )
-    pids = found.stdout.split()
-    assert len(pids) == 1, (found.stdout, found.stderr)
-    return int(pids[0])
+    listed = found.stdout.split()
+    assert len(listed) == 1, (found.stdout, found.stderr)
+    return int(listed[0])
+
+
+def proc_listeners(port: int) -> list[int]:
+    """The pids holding a TCP socket that LISTENs on `port`, read from `/proc` (Linux): the socket
+    inodes of `/proc/net/tcp{,6}` rows in state `0A` (LISTEN) on that local port, then every
+    process whose open descriptors name one of them."""
+    inodes: set[str] = set()
+    for table in (Path("/proc/net/tcp"), Path("/proc/net/tcp6")):
+        try:
+            rows = table.read_text().splitlines()[1:]
+        except OSError:
+            continue
+        for row in rows:
+            fields = row.split()
+            if int(fields[1].rsplit(":", 1)[1], 16) == port and fields[3] == "0A":
+                inodes.add(f"socket:[{fields[9]}]")
+    assert inodes, f"no /proc/net/tcp socket listens on {port} (and no lsof on this host)"
+    pids: set[int] = set()
+    for fds in Path("/proc").glob("[0-9]*/fd"):
+        try:
+            names = os.listdir(fds)
+        except OSError:  # gone, or not ours to read
+            continue
+        for name in names:
+            try:
+                if os.readlink(fds / name) in inodes:
+                    pids.add(int(fds.parent.name))
+                    break
+            except OSError:
+                continue
+    return sorted(pids)
 
 
 def run_and_kill(kernel_: Kernel, env: str, log: Path, port: int) -> tuple[RunView, int]:
