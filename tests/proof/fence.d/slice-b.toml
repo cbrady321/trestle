@@ -122,7 +122,9 @@ globs         = ["packages/trestle-packs/trestle_packs/core/dag.py", "packages/t
                  # L.RB-12.7: B's fossil band MANIFEST (the b-ckpt lane's glob; the checkpoint fills the band)
                  "tests/fixtures/fossils/slice-b/**",
                  # L.CS-1.4.fix1: CM-7 step 3 as amended (the CK drill and its self-test; PR #46 ck-drill [CK-3-4])
-                 "tests/core/tooling/ck_drill.py", "tests/core/tooling/test_ck_drill.py"]
+                 "tests/core/tooling/ck_drill.py", "tests/core/tooling/test_ck_drill.py",
+                 # L.TR-L.6.fix1: the lease rig waits for admission to mint the run (PR #46 test-shard (root))
+                 "tests/tree/host/test_trl_lease.py"]
 
 [[gate]]
 branch         = "wr/slice-b-bundle/slice-b"
