@@ -399,6 +399,30 @@ def test_reg_partition_deals_whole_files_and_keeps_the_serial_tail() -> None:
     assert not any(p.startswith("packages/") for c in chunks for p in c.paths)
 
 
+def test_reg_partition_moves_a_package_node_to_the_serial_tail() -> None:
+    """A race-shaped package node runs in the serial tail by its node id; its package's process
+    keeps the testpaths root and deselects it (still every node exactly once)."""
+    raced = (
+        "packages/trestle-env/tests/twin/test_reuse_twin.py::"
+        "test_prestarted_postgres_reused_untouched[cancelled]"
+    )
+    other = "packages/trestle-env/tests/twin/test_reuse_twin.py::test_found_is_kept"
+    plan = ck_drill.reg_partition([*SERIAL_NODES, other, raced], workers=4)
+    dealt = [n for g in [*plan.chunks, *plan.packages, plan.tail, *plan.readers] for n in g.nodes]
+    assert sorted(dealt) == sorted([*SERIAL_NODES, other, raced])
+    assert raced in plan.tail.paths and raced in plan.tail.nodes
+    (env,) = [g for g in plan.packages if g.paths == ["packages/trestle-env/tests"]]
+    assert env.deselect == [raced] and other in env.nodes and raced not in env.nodes
+
+
+def test_reg_workers_leave_a_core_free(monkeypatch: pytest.MonkeyPatch) -> None:
+    """REG's processes are the cores minus one, at most REG_MAX_WORKERS, never fewer than one."""
+    for cores, want in ((1, 1), (2, 1), (4, 3), (16, ck_drill.REG_MAX_WORKERS)):
+        cpus = set(range(cores))
+        monkeypatch.setattr(ck_drill.os, "sched_getaffinity", lambda _pid, c=cpus: c, raising=False)
+        assert ck_drill._reg_workers() == want  # noqa: SLF001
+
+
 def _fake_pytest(serial: list[str], drop: str | None = None):
     """A stand-in `_run`: a recorded pytest command selects the planted nodes its paths name (all
     of them without paths) minus its deselections, records them where the collection recorder
