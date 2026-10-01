@@ -436,3 +436,34 @@ def test_root_live_world_schedules_every_command_once_timing_ones_alone(monkeypa
     world.result("fence_history")
     world.result("drift")
     assert calls.count("fence_history") == 1 and calls.count("drift") == 1
+
+
+def test_release_graft_follows_every_full_history_checkout():
+    """Release option (c): every job whose checkout fetches full history (`fetch-depth: 0`, tags)
+    runs `release-graft` directly after that checkout, which keeps its whole `with:`; no shallow job
+    runs it. The step is a no-op unless a root of HEAD carries `Release-Of:`, and grafts only onto
+    an archived commit with the same tree."""
+    yaml = pytest.importorskip("yaml")
+    ci_path = Path(__file__).resolve().parents[3] / ".github" / "workflows" / "ci.yml"
+    jobs = yaml.safe_load(ci_path.read_text())["jobs"]
+    full, grafted = set(), set()
+    for job_id, job in jobs.items():
+        steps = job.get("steps", [])
+        for i, step in enumerate(steps):
+            with_ = step.get("with") or {}
+            if (
+                str(step.get("uses", "")).startswith("actions/checkout")
+                and with_.get("fetch-depth") == 0
+            ):
+                assert with_.get("fetch-tags") is True, job_id
+                full.add(job_id)
+                after = steps[i + 1] if i + 1 < len(steps) else {}
+                assert after.get("name") == "release-graft" and "with" not in after, job_id
+            if step.get("name") == "release-graft":
+                grafted.add(job_id)
+                assert "trailers:key=Release-Of" in step["run"], job_id
+                assert (
+                    '"$(git rev-parse "$of^{tree}")" != "$(git rev-parse "$root^{tree}")"'
+                    in step["run"]
+                ), job_id
+    assert full and grafted == full

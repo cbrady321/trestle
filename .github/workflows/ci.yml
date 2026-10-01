@@ -61,6 +61,36 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+      # release-graft (release option (c)): a no-op unless a root commit of HEAD carries a `Release-Of: <sha>`
+      # trailer, i.e. HEAD sits on a squashed release. Then it fetches refs/archive/*, requires the archived
+      # commit's tree to EQUAL the release commit's tree, and grafts the archived history under the release
+      # commit (`git replace --graft`, local to this runner), so this job's CM-6 admissibility, trailer, tag and
+      # checkpoint-anchor reads see the full history. It runs after the checkout's `with:` (full history, tags).
+      - name: release-graft
+        shell: bash
+        run: |
+          set -euo pipefail
+          grafts=0
+          for round in 1 2 3 4 5 6 7 8; do
+            pairs=""
+            for root in $(git rev-list --max-parents=0 HEAD); do
+              of=$(git log -1 --format='%(trailers:key=Release-Of,valueonly)' "$root" | sed -n 1p | tr -d '[:space:]')
+              if [ -n "$of" ]; then pairs="$pairs $root:$of"; fi
+            done
+            if [ -z "$pairs" ]; then echo "release-graft: $grafts graft(s); no root of HEAD carries Release-Of"; exit 0; fi
+            for pair in $pairs; do
+              root=${pair%%:*}; of=${pair#*:}
+              git cat-file -e "$of^{commit}" 2>/dev/null || git fetch -q --no-tags origin '+refs/archive/*:refs/archive/*'
+              git cat-file -e "$of^{commit}" || { echo "release-graft: archived commit $of not found" >&2; exit 1; }
+              if [ "$(git rev-parse "$of^{tree}")" != "$(git rev-parse "$root^{tree}")" ]; then
+                echo "release-graft: tree of $of differs from release commit $root; not grafting" >&2; exit 1
+              fi
+              git replace -f --graft "$root" "$of"
+              echo "release-graft: $root grafted onto $of"
+              grafts=$((grafts + 1))
+            done
+          done
+          echo "release-graft: a Release-Of root is still present after 8 rounds" >&2; exit 1
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -242,6 +272,36 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+      # release-graft (release option (c)): a no-op unless a root commit of HEAD carries a `Release-Of: <sha>`
+      # trailer, i.e. HEAD sits on a squashed release. Then it fetches refs/archive/*, requires the archived
+      # commit's tree to EQUAL the release commit's tree, and grafts the archived history under the release
+      # commit (`git replace --graft`, local to this runner), so this job's CM-6 admissibility, trailer, tag and
+      # checkpoint-anchor reads see the full history. It runs after the checkout's `with:` (full history, tags).
+      - name: release-graft
+        shell: bash
+        run: |
+          set -euo pipefail
+          grafts=0
+          for round in 1 2 3 4 5 6 7 8; do
+            pairs=""
+            for root in $(git rev-list --max-parents=0 HEAD); do
+              of=$(git log -1 --format='%(trailers:key=Release-Of,valueonly)' "$root" | sed -n 1p | tr -d '[:space:]')
+              if [ -n "$of" ]; then pairs="$pairs $root:$of"; fi
+            done
+            if [ -z "$pairs" ]; then echo "release-graft: $grafts graft(s); no root of HEAD carries Release-Of"; exit 0; fi
+            for pair in $pairs; do
+              root=${pair%%:*}; of=${pair#*:}
+              git cat-file -e "$of^{commit}" 2>/dev/null || git fetch -q --no-tags origin '+refs/archive/*:refs/archive/*'
+              git cat-file -e "$of^{commit}" || { echo "release-graft: archived commit $of not found" >&2; exit 1; }
+              if [ "$(git rev-parse "$of^{tree}")" != "$(git rev-parse "$root^{tree}")" ]; then
+                echo "release-graft: tree of $of differs from release commit $root; not grafting" >&2; exit 1
+              fi
+              git replace -f --graft "$root" "$of"
+              echo "release-graft: $root grafted onto $of"
+              grafts=$((grafts + 1))
+            done
+          done
+          echo "release-graft: a Release-Of root is still present after 8 rounds" >&2; exit 1
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -268,6 +328,36 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+      # release-graft (release option (c)): a no-op unless a root commit of HEAD carries a `Release-Of: <sha>`
+      # trailer, i.e. HEAD sits on a squashed release. Then it fetches refs/archive/*, requires the archived
+      # commit's tree to EQUAL the release commit's tree, and grafts the archived history under the release
+      # commit (`git replace --graft`, local to this runner), so this job's CM-6 admissibility, trailer, tag and
+      # checkpoint-anchor reads see the full history. It runs after the checkout's `with:` (full history, tags).
+      - name: release-graft
+        shell: bash
+        run: |
+          set -euo pipefail
+          grafts=0
+          for round in 1 2 3 4 5 6 7 8; do
+            pairs=""
+            for root in $(git rev-list --max-parents=0 HEAD); do
+              of=$(git log -1 --format='%(trailers:key=Release-Of,valueonly)' "$root" | sed -n 1p | tr -d '[:space:]')
+              if [ -n "$of" ]; then pairs="$pairs $root:$of"; fi
+            done
+            if [ -z "$pairs" ]; then echo "release-graft: $grafts graft(s); no root of HEAD carries Release-Of"; exit 0; fi
+            for pair in $pairs; do
+              root=${pair%%:*}; of=${pair#*:}
+              git cat-file -e "$of^{commit}" 2>/dev/null || git fetch -q --no-tags origin '+refs/archive/*:refs/archive/*'
+              git cat-file -e "$of^{commit}" || { echo "release-graft: archived commit $of not found" >&2; exit 1; }
+              if [ "$(git rev-parse "$of^{tree}")" != "$(git rev-parse "$root^{tree}")" ]; then
+                echo "release-graft: tree of $of differs from release commit $root; not grafting" >&2; exit 1
+              fi
+              git replace -f --graft "$root" "$of"
+              echo "release-graft: $root grafted onto $of"
+              grafts=$((grafts + 1))
+            done
+          done
+          echo "release-graft: a Release-Of root is still present after 8 rounds" >&2; exit 1
       # No install (C2): `meta report` imports only the standard library and the checkout.
       - uses: actions/setup-python@v5
         with:
@@ -310,6 +400,36 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+      # release-graft (release option (c)): a no-op unless a root commit of HEAD carries a `Release-Of: <sha>`
+      # trailer, i.e. HEAD sits on a squashed release. Then it fetches refs/archive/*, requires the archived
+      # commit's tree to EQUAL the release commit's tree, and grafts the archived history under the release
+      # commit (`git replace --graft`, local to this runner), so this job's CM-6 admissibility, trailer, tag and
+      # checkpoint-anchor reads see the full history. It runs after the checkout's `with:` (full history, tags).
+      - name: release-graft
+        shell: bash
+        run: |
+          set -euo pipefail
+          grafts=0
+          for round in 1 2 3 4 5 6 7 8; do
+            pairs=""
+            for root in $(git rev-list --max-parents=0 HEAD); do
+              of=$(git log -1 --format='%(trailers:key=Release-Of,valueonly)' "$root" | sed -n 1p | tr -d '[:space:]')
+              if [ -n "$of" ]; then pairs="$pairs $root:$of"; fi
+            done
+            if [ -z "$pairs" ]; then echo "release-graft: $grafts graft(s); no root of HEAD carries Release-Of"; exit 0; fi
+            for pair in $pairs; do
+              root=${pair%%:*}; of=${pair#*:}
+              git cat-file -e "$of^{commit}" 2>/dev/null || git fetch -q --no-tags origin '+refs/archive/*:refs/archive/*'
+              git cat-file -e "$of^{commit}" || { echo "release-graft: archived commit $of not found" >&2; exit 1; }
+              if [ "$(git rev-parse "$of^{tree}")" != "$(git rev-parse "$root^{tree}")" ]; then
+                echo "release-graft: tree of $of differs from release commit $root; not grafting" >&2; exit 1
+              fi
+              git replace -f --graft "$root" "$of"
+              echo "release-graft: $root grafted onto $of"
+              grafts=$((grafts + 1))
+            done
+          done
+          echo "release-graft: a Release-Of root is still present after 8 rounds" >&2; exit 1
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -347,6 +467,36 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+      # release-graft (release option (c)): a no-op unless a root commit of HEAD carries a `Release-Of: <sha>`
+      # trailer, i.e. HEAD sits on a squashed release. Then it fetches refs/archive/*, requires the archived
+      # commit's tree to EQUAL the release commit's tree, and grafts the archived history under the release
+      # commit (`git replace --graft`, local to this runner), so this job's CM-6 admissibility, trailer, tag and
+      # checkpoint-anchor reads see the full history. It runs after the checkout's `with:` (full history, tags).
+      - name: release-graft
+        shell: bash
+        run: |
+          set -euo pipefail
+          grafts=0
+          for round in 1 2 3 4 5 6 7 8; do
+            pairs=""
+            for root in $(git rev-list --max-parents=0 HEAD); do
+              of=$(git log -1 --format='%(trailers:key=Release-Of,valueonly)' "$root" | sed -n 1p | tr -d '[:space:]')
+              if [ -n "$of" ]; then pairs="$pairs $root:$of"; fi
+            done
+            if [ -z "$pairs" ]; then echo "release-graft: $grafts graft(s); no root of HEAD carries Release-Of"; exit 0; fi
+            for pair in $pairs; do
+              root=${pair%%:*}; of=${pair#*:}
+              git cat-file -e "$of^{commit}" 2>/dev/null || git fetch -q --no-tags origin '+refs/archive/*:refs/archive/*'
+              git cat-file -e "$of^{commit}" || { echo "release-graft: archived commit $of not found" >&2; exit 1; }
+              if [ "$(git rev-parse "$of^{tree}")" != "$(git rev-parse "$root^{tree}")" ]; then
+                echo "release-graft: tree of $of differs from release commit $root; not grafting" >&2; exit 1
+              fi
+              git replace -f --graft "$root" "$of"
+              echo "release-graft: $root grafted onto $of"
+              grafts=$((grafts + 1))
+            done
+          done
+          echo "release-graft: a Release-Of root is still present after 8 rounds" >&2; exit 1
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -375,6 +525,36 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+      # release-graft (release option (c)): a no-op unless a root commit of HEAD carries a `Release-Of: <sha>`
+      # trailer, i.e. HEAD sits on a squashed release. Then it fetches refs/archive/*, requires the archived
+      # commit's tree to EQUAL the release commit's tree, and grafts the archived history under the release
+      # commit (`git replace --graft`, local to this runner), so this job's CM-6 admissibility, trailer, tag and
+      # checkpoint-anchor reads see the full history. It runs after the checkout's `with:` (full history, tags).
+      - name: release-graft
+        shell: bash
+        run: |
+          set -euo pipefail
+          grafts=0
+          for round in 1 2 3 4 5 6 7 8; do
+            pairs=""
+            for root in $(git rev-list --max-parents=0 HEAD); do
+              of=$(git log -1 --format='%(trailers:key=Release-Of,valueonly)' "$root" | sed -n 1p | tr -d '[:space:]')
+              if [ -n "$of" ]; then pairs="$pairs $root:$of"; fi
+            done
+            if [ -z "$pairs" ]; then echo "release-graft: $grafts graft(s); no root of HEAD carries Release-Of"; exit 0; fi
+            for pair in $pairs; do
+              root=${pair%%:*}; of=${pair#*:}
+              git cat-file -e "$of^{commit}" 2>/dev/null || git fetch -q --no-tags origin '+refs/archive/*:refs/archive/*'
+              git cat-file -e "$of^{commit}" || { echo "release-graft: archived commit $of not found" >&2; exit 1; }
+              if [ "$(git rev-parse "$of^{tree}")" != "$(git rev-parse "$root^{tree}")" ]; then
+                echo "release-graft: tree of $of differs from release commit $root; not grafting" >&2; exit 1
+              fi
+              git replace -f --graft "$root" "$of"
+              echo "release-graft: $root grafted onto $of"
+              grafts=$((grafts + 1))
+            done
+          done
+          echo "release-graft: a Release-Of root is still present after 8 rounds" >&2; exit 1
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
