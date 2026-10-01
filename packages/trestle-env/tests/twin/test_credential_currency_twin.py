@@ -149,7 +149,10 @@ def _rotation_local_app(tmp_path: Path) -> None:
     before = grant.current_generation()
     log = tmp_path / "app-events.log"
     command = local_consumer.app_command(local_app.free_port(), log)
-    watched = local_consumer.Watched(LocalProcessPort(), selector, rotate=grant.advance)
+    # start-up is the harness's to wait for (`local_app.AwaitListening`): unwaited, a fast run
+    # stops the app before its interpreter has written `listening` (seen on Linux CI)
+    launcher = local_app.AwaitListening(LocalProcessPort(), log)
+    watched = local_consumer.Watched(launcher, selector, rotate=grant.advance)
     rig = tk.tree_rig(
         tmp_path,
         tk.group("consumers", (tk.bind(UNIT),)),

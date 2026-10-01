@@ -34,7 +34,7 @@ from trestle_packs.process.local import LocalProcessPort, run_scoped_selector
 
 from trestle_env import tree
 from twin import consumers
-from twin.local_app import APP
+from twin.local_app import APP, AwaitListening
 
 UNIT: Final = "consumer.current"
 _OWNED_PROCESS: Final = re.compile(r"proc-[0-9a-f]{16}")
@@ -112,7 +112,9 @@ class Watched:
     credential rotates while the run waits), every observation of the owned process records its
     identity (pid, start), and a restart or recreate is recorded."""
 
-    def __init__(self, inner: LocalProcessPort, selector: str, rotate: Any = None) -> None:
+    def __init__(
+        self, inner: LocalProcessPort | AwaitListening, selector: str, rotate: Any = None
+    ) -> None:
         self._inner, self._selector, self._rotate = inner, selector, rotate
         self.seen: list[tuple[int, Any]] = []
         self.repairs: list[str] = []
