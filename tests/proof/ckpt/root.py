@@ -152,9 +152,11 @@ COMMANDS: dict[str, list[str]] = {
 # rest run side by side (longest first), at most `PARALLEL_WORKERS` at once. None of them writes
 # a proof result (`TRESTLE_PROOF_GATE` is unset in the ckpt step), and none reads another's output.
 # `fence_history` (carrier only) and `spine_budget` (junit present only) stay lazy, as before.
-SERIAL_KEYS = ("perf", "spine")
+# d8 runs alone too: `differ d8 --pair process` compares the fake against the real machine's
+# observed local processes (the `found` set), so a command in flight beside it changes what it sees.
+SERIAL_KEYS = ("perf", "spine", "d8")
 PARALLEL_KEYS = (
-    "security_guards", "packs", "drift", "d1_closure", "d4", "d5", "d6", "d7", "d8",
+    "security_guards", "packs", "drift", "d1_closure", "d4", "d5", "d6", "d7",
     "security_compat", "security_admission", "boundaries", "locality", "ruff_check",
     "ruff_format", "mypy", "enforce", "audit_rows", "register_final", "open_questions_final",
 )  # fmt: skip

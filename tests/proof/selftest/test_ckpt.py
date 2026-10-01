@@ -396,6 +396,8 @@ def test_root_live_world_schedules_every_command_once_timing_ones_alone(monkeypa
     import threading
     import time
 
+    from tests.proof import tolerances
+
     root_mod = _root_mod()
     keys = set(root_mod.SERIAL_KEYS) | set(root_mod.PARALLEL_KEYS) | set(root_mod.LAZY_KEYS)
     assert keys == set(root_mod.COMMANDS) | {"enforce"}
@@ -416,7 +418,7 @@ def test_root_live_world_schedules_every_command_once_timing_ones_alone(monkeypa
             calls.append(key)
             overlapped[key] = set(running)
             running.add(key)
-        time.sleep(0.01)
+        time.sleep(tolerances.POLL_FINE_S)  # SA-05: a timing value comes from tolerances
         with lock:
             running.discard(key)
             for other in running:
