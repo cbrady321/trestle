@@ -115,7 +115,7 @@ def test_workflow_imports_only_plugin_and_core() -> None:
 
 # The `trestle_packs` subpackages built for the workflow loop (L.SV-5.16 fakes, L.SL-3.2/3.3
 # real adapters): each imports only the standard library, itself and `trestle.workflow` (BFD-47).
-WORKFLOW_PACK_SUBPACKAGES = ("fakes", "process")
+WORKFLOW_PACK_SUBPACKAGES = ("fakes", "process", "container", "grant")
 
 # Slice B's toolchain subpackage (L.RB-4.2) is held to the same rule. It is listed on its own
 # line so that the B lanes' additions to the tuple above merge cleanly (L.P0-0d.33).
@@ -137,6 +137,51 @@ def test_new_packs_subpackages_import_only_stdlib_and_workflow() -> None:
                     f"{path.relative_to(ROOT)}:{lineno}: trestle_packs.{sub} may import only "
                     f"stdlib, trestle.workflow and itself, not {name!r}"
                 )
+
+
+ENV_DIR = ROOT / "packages" / "trestle-env" / "trestle_env"
+# `trestle_env` imports only stdlib, itself, `trestle.plugin` and `trestle.workflow`; only its
+# `plugins/*.py` composition roots bind concrete adapters (`trestle_packs`; DIP, S-5).
+ENV_ALLOWED = ("trestle.plugin", "trestle.workflow", "trestle_env")
+ENV_PLUGIN_ALLOWED = (*ENV_ALLOWED, "trestle_packs")
+
+
+def env_modules(env_dir: Path | None = None) -> list[Path]:
+    """Every module of the `trestle_env` package; empty when the package is absent."""
+    directory = env_dir if env_dir is not None else ENV_DIR
+    return sorted(directory.rglob("*.py")) if directory.exists() else []
+
+
+def scan_env_source(source: str, rel: str, *, composition_root: bool) -> list[str]:
+    """The boundary violations of one `trestle_env` module's source text."""
+    allowed = ENV_PLUGIN_ALLOWED if composition_root else ENV_ALLOWED
+    violations = []
+    for name, lineno in _imported_names(source):
+        if name.split(".")[0] in sys.stdlib_module_names or name == "__future__":
+            continue
+        if not _starts_with_any(name, allowed):
+            violations.append(f"{rel}:{lineno}: trestle_env may not import {name!r}")
+    return violations
+
+
+def scan_env_violations(env_dir: Path | None = None) -> list[str]:
+    directory = env_dir if env_dir is not None else ENV_DIR
+    violations = []
+    for path in env_modules(directory):
+        relative = path.relative_to(directory)
+        violations += scan_env_source(
+            path.read_text(),
+            str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path),
+            composition_root=relative.parts[:1] == ("plugins",),
+        )
+    return violations
+
+
+def test_env_imports_only_stdlib_plugin_and_workflow() -> None:
+    """`trestle_env` is absent before L.RB-0.1: not-applicable(absent), never a pass."""
+    if not ENV_DIR.exists():
+        return  # not-applicable(absent)
+    assert scan_env_violations() == []
 
 
 def test_lane_modules_import_no_other_lane() -> None:

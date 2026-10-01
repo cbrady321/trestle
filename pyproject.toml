@@ -26,6 +26,10 @@ dev = [
 packs = [
     "trestle-packs[all] @ file:packages/trestle-packs",
 ]
+env = [
+    "trestle-packs[all] @ file:packages/trestle-packs",
+    "trestle-env @ file:packages/trestle-env",
+]
 
 [project.scripts]
 trestle = "trestle.cli:main"
@@ -41,7 +45,7 @@ line-length = 100
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "packages/trestle-packs/tests"]
+testpaths = ["tests", "packages/trestle-packs/tests", "packages/trestle-env/tests"]
 filterwarnings = [
     "ignore:Using `httpx` with `starlette.testclient`:starlette.exceptions.StarletteDeprecationWarning",
 ]

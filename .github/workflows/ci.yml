@@ -24,8 +24,8 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - run: pip install -e ".[dev]"
-      - run: ruff check trestle tests packages/trestle-packs conftest.py scripts/smoke_packs.py scripts/demo_pack_workflows.py
-      - run: ruff format --check trestle tests packages/trestle-packs conftest.py scripts/smoke_packs.py scripts/demo_pack_workflows.py
+      - run: ruff check trestle tests packages/trestle-packs packages/trestle-env conftest.py scripts/smoke_packs.py scripts/demo_pack_workflows.py
+      - run: ruff format --check trestle tests packages/trestle-packs packages/trestle-env conftest.py scripts/smoke_packs.py scripts/demo_pack_workflows.py
 
   # K-14 (L.CK-14.1): mypy at zero errors. It needs `.[dev,packs]`: with `.[dev]` alone
   # trestle_packs is absent and its py.typed marker cannot fix `import-not-found`. The job
@@ -46,7 +46,7 @@ jobs:
       - run: mypy
 
   # The `test` job's work, split into path groups (tests/proof/ci_shards.py SHARDS; C1). Each
-  # node runs in exactly one shard; each package testpath is its own shard in the CSC-12 form.
+  # node runs in exactly one shard; each package testpath is its own shard in the CSC-12 form (packs, env).
   # One runner per shard, so shards share no fixture dir, port or results file. Each
   # shard's proof records get a shard-unique file and artifact name: `proof-ledger` and
   # `ckpt` merge every `proof-results-*` artifact into one directory.
@@ -55,7 +55,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [baseline, planted, fence, proof, pins, core, single, tree-host, tree, misc, packs]
+        shard: [baseline, planted, fence, proof, pins, core, single, tree-host, tree, misc, packs, env]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -68,7 +68,8 @@ jobs:
           cache-dependency-path: |
             pyproject.toml
             packages/trestle-packs/pyproject.toml
-      - run: pip install -e ".[dev,packs]"
+            packages/trestle-env/pyproject.toml
+      - run: pip install -e ".[dev,packs,env]"
       - run: python -m tests.proof.guards clean-path --github-env
       # The shards' union is exactly the unsharded collection, and the matrix names them all.
       - if: matrix.shard == 'planted'
@@ -120,7 +121,8 @@ jobs:
           cache-dependency-path: |
             pyproject.toml
             packages/trestle-packs/pyproject.toml
-      - run: pip install -e ".[dev,packs]"
+            packages/trestle-env/pyproject.toml
+      - run: pip install -e ".[dev,packs,env]"
       - run: python -m tests.proof.guards clean-path --github-env
       - run: pytest -q -m compat
         env:
@@ -142,7 +144,8 @@ jobs:
           cache-dependency-path: |
             pyproject.toml
             packages/trestle-packs/pyproject.toml
-      - run: pip install -e ".[dev,packs]"
+            packages/trestle-env/pyproject.toml
+      - run: pip install -e ".[dev,packs,env]"
       - run: python -m tests.proof.guards clean-path --github-env
       - run: pytest -q tests/proof/selftest/test_guards.py tests/proof/selftest/test_session.py
         env:
@@ -167,7 +170,8 @@ jobs:
           cache-dependency-path: |
             pyproject.toml
             packages/trestle-packs/pyproject.toml
-      - run: pip install -e ".[dev,packs]"
+            packages/trestle-env/pyproject.toml
+      - run: pip install -e ".[dev,packs,env]"
       - run: python -m tests.proof.guards clean-path --github-env
       - run: pytest -q -m spine
         env:
@@ -194,7 +198,8 @@ jobs:
           cache-dependency-path: |
             pyproject.toml
             packages/trestle-packs/pyproject.toml
-      - run: pip install -e ".[dev,packs]"
+            packages/trestle-env/pyproject.toml
+      - run: pip install -e ".[dev,packs,env]"
       - run: python -m tests.proof.guards clean-path --github-env
       - run: pytest -q -m long tests/core/contract/test_cl_c1_deadline.py
         env:
@@ -283,11 +288,13 @@ jobs:
   # C-ck: each present decline's real-history drill runs in one `ck-drill` part (the
   # declines' collected node ids, dealt round-robin over the parts), so declines run in
   # parallel on separate runners; a part with no decline passes at once. A drill nests a
-  # full REG (~10 min); a hang (a test blocked with no timeout of its own) fails the part at
-  # the job bound instead of GitHub's 6 h default.
+  # full REG: every default-collected node serially, the packs session, ruff and mypy (25-30
+  # min on master before Slice B; with packages/trestle-env in testpaths it outgrew 40 min,
+  # PR #46 run 36813565949). A hang (a test blocked with no timeout of its own) fails the part
+  # at the job bound instead of GitHub's 6 h default.
   ck-drill:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -304,7 +311,8 @@ jobs:
           cache-dependency-path: |
             pyproject.toml
             packages/trestle-packs/pyproject.toml
-      - run: pip install -e ".[dev,packs]"
+            packages/trestle-env/pyproject.toml
+      - run: pip install -e ".[dev,packs,env]"
       - run: python -m tests.proof.guards clean-path --github-env
       - name: this part's decline drills
         env:
@@ -340,7 +348,8 @@ jobs:
           cache-dependency-path: |
             pyproject.toml
             packages/trestle-packs/pyproject.toml
-      - run: pip install -e ".[dev,packs]"
+            packages/trestle-env/pyproject.toml
+      - run: pip install -e ".[dev,packs,env]"
       - run: python -m tests.proof.guards clean-path --github-env
       - run: pytest tests/core/tooling/test_ck_drill.py -q
 
@@ -367,7 +376,8 @@ jobs:
           cache-dependency-path: |
             pyproject.toml
             packages/trestle-packs/pyproject.toml
-      - run: pip install -e ".[dev,packs]"
+            packages/trestle-env/pyproject.toml
+      - run: pip install -e ".[dev,packs,env]"
       - uses: actions/download-artifact@v4
         with:
           pattern: proof-results-*

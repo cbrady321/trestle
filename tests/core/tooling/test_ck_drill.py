@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -557,6 +558,63 @@ def test_switch_isolation_checks_product_call_sites_not_test_files(tmp_path: Pat
     assert ck_drill.is_test_path("tests/core/test_ck9.py")
     assert ck_drill.is_test_path("packages/trestle-packs/tests/test_x.py")
     assert not ck_drill.is_test_path("trestle/plugin/_codec.py")
+
+
+UNGATED_CORE = CK_CORE.replace("    if SWITCH:\n        stop(x)\n", "    stop(x)\n")
+LATER_HEADER = "# a later merge's header line\n"
+
+
+def _land_later(repo: Path, edit: Callable[[str], str]) -> None:
+    """Land CK-9, then a later merge whose only change is `edit` applied to pkg/core.py."""
+    _merge_branch(repo, "wr/x/ck-9", "WR-Merge: CK-9")
+    _git(repo, "checkout", "-q", "-b", "wr/x/later")
+    _write(repo, "pkg/core.py", edit((repo / "pkg/core.py").read_text()))
+    _commit(repo, "L.LATER.1: a later merge edits a file of the CK's landing diff")
+    _git(repo, "checkout", "-q", "master")
+    _merge_branch(repo, "wr/x/later", "WR-Merge: LATER")
+
+
+def test_step3_reverse_applies_an_ungated_hunk_a_later_merge_left_intact(tmp_path: Path) -> None:
+    """CM-7 step 3 as amended (L.CS-1.4.fix1): in a product file of the lane a later merge
+    changed elsewhere, M's hunk with an un-gated changed call site is reverse-applied at HEAD, so
+    the declined tree holds M's predecessor text there and (b) does not judge it; M's other hunks
+    and the later merge's change stay, and the derived set includes the file."""
+    repo, _ = _plant(tmp_path, core_after_ck=UNGATED_CORE)
+    _land_later(repo, lambda text: LATER_HEADER + text)
+    report = ck_drill.drill(repo, DECLINE, lane_globs=LANE_GLOBS)
+    assert report.problems == [], report.problems
+    patch = report.patch
+    assert "pkg/core.py" in patch.left and patch.hunks_reverted["pkg/core.py"]
+    declined = patch.edits["pkg/core.py"]
+    assert declined is not None
+    assert "def run(x):\n    return stop(x)\n" in declined  # M's predecessor text again
+    assert declined.startswith(LATER_HEADER)  # the later merge's change stays
+    assert "SWITCH: bool = False" in declined  # the gated switch hunk stays, flipped by step 1
+    assert "pkg/core.py" in patch.scope and report.touched == patch.scope
+
+
+def test_step3_leaves_a_hunk_a_later_merge_rewrote_and_b_still_judges_it(tmp_path: Path) -> None:
+    """A hunk whose lines (or their one line of context) a later merge changed no longer applies:
+    it stays in place and (b) still reports its un-gated call; nothing is fuzzed."""
+    repo, _ = _plant(tmp_path, core_after_ck=UNGATED_CORE)
+    _land_later(repo, lambda text: text.replace("    stop(x)\n", "    stop(x)  # later\n"))
+    report = ck_drill.drill(repo, DECLINE, lane_globs=LANE_GLOBS)
+    assert "pkg/core.py" not in report.patch.hunks_reverted
+    assert any(
+        p.startswith("pkg/core.py:") and "does not read SWITCH" in p for p in report.problems
+    )
+
+
+def test_step3_never_reverts_a_gated_hunk_or_a_test_file(tmp_path: Path) -> None:
+    """Only hunks with an un-gated changed call site are reverse-applied: a hunk whose calls read
+    the switch is carried by the switch (step 3), and a test file is judged by REG, never here."""
+    repo, _ = _plant(tmp_path)
+    _land_later(repo, lambda text: LATER_HEADER + text)
+    report = ck_drill.drill(repo, DECLINE, lane_globs=LANE_GLOBS)
+    assert report.problems == [] and report.patch.hunks_reverted == {}
+    assert report.patch.edits["pkg/core.py"] == LATER_HEADER + CK_CORE.replace(
+        "SWITCH: bool = True", "SWITCH: bool = False"
+    )
 
 
 def test_patch_touching_a_file_outside_the_derived_set_fails(tmp_path: Path) -> None:

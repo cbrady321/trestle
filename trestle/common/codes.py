@@ -102,6 +102,22 @@ DECLARATION_CONFLICT = _vocab.DECLARATION_CONFLICT
 LEASE_SET_UNDECIDABLE = _vocab.LEASE_SET_UNDECIDABLE
 ROUTE_UNSUPPORTED = _vocab.ROUTE_UNSUPPORTED
 
+# L.NW-2.3 (MC-B-12, DM-16): the adapter half of Slice B's code set, defined in the vocabulary
+# (V-11 names, `<origin>.<snake>` values) and re-exported here. `TOOLCHAIN_MISSING` and
+# `CREDENTIAL_INTERACTIVE` keep the `execution.*` spelling `trestle.workflow.codes` already
+# gives them.
+DOCKER_CLI_MISSING = _vocab.DOCKER_CLI_MISSING
+DOCKER_ENGINE_UNREACHABLE = _vocab.DOCKER_ENGINE_UNREACHABLE
+TOOLCHAIN_MISSING = _vocab.TOOLCHAIN_MISSING
+TOOLCHAIN_INTERFACE_DRIFT = _vocab.TOOLCHAIN_INTERFACE_DRIFT
+COMPOSE_DEFINITION_INVALID = _vocab.COMPOSE_DEFINITION_INVALID
+CREDENTIAL_INTERACTIVE = _vocab.CREDENTIAL_INTERACTIVE
+GRANT_ISSUER_UNREACHABLE = _vocab.GRANT_ISSUER_UNREACHABLE
+# L.RB-6.3.fix1: the provisioning store's own unreadable-store code (see the vocabulary).
+PROVISION_STORE_UNREADABLE = _vocab.PROVISION_STORE_UNREADABLE
+# L.RB-9.3.fix1: V-11's host-scope port code (`HostScopeUnreadable.code`, B3-C18).
+HOST_SCOPE_UNREADABLE = _vocab.HOST_SCOPE_UNREADABLE
+
 EXECUTION_CODES: frozenset[str] = frozenset(
     {
         EXECUTION_IMPORT_FAILED,

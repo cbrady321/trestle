@@ -76,6 +76,8 @@ def measure_current() -> dict[str, object]:
             "--ignore=tests/single",
             "--ignore=tests/tree",
             "--ignore-glob=packages/trestle-packs/*",
+            # L.RB-0.1: the env tests are in `testpaths` too and are not the S0 corpus
+            "--ignore-glob=packages/trestle-env/*",
         ]
     )
     # The packs half is run with the worktree's own trestle_packs source

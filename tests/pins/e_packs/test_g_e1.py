@@ -1,6 +1,6 @@
-"""G-E1: an unknown service named in an explicit wave is silently dropped
-(BFD-44). The filter in `_plan_explicit_waves` removes the name before the
-`unknown service in wave` check, so that check is dead."""
+"""G-E1: an unknown service named in an explicit wave is refused (BFD-44), flipped by
+L.NW-1.3. It used to be silently dropped: the filter in `_plan_explicit_waves` removed the name
+before the `unknown service in wave` check, so that check was dead."""
 
 from __future__ import annotations
 
@@ -13,14 +13,6 @@ SERVICES = ["db", "web"]
 WAVES = [["db", "ghost"], ["web"]]
 
 
-@pytest.mark.pin("G-E1")
-def test_pin_unknown_wave_name_dropped() -> None:
-    plan = plan_waves(SERVICES, explicit_waves=WAVES)
-    assert plan.waves == (("db",), ("web",))
-    assert "ghost" not in plan.flat()
-
-
-@pytest.mark.target("G-E1")
 @pytest.mark.proves(
     "WR-ENV-1",
     "WR-ENV-1:legacy-explicit-waves-refuse-unknown-duplicate",
@@ -29,7 +21,6 @@ def test_pin_unknown_wave_name_dropped() -> None:
     "must",
     "CI",
 )
-@pytest.mark.xfail(strict=True, reason="defect:G-E1")
 def test_target_unknown_wave_name_refused() -> None:
     refused = False
     try:

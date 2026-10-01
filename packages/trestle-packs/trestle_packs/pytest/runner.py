@@ -53,7 +53,15 @@ class _ResultsCollector:
     def pytest_collection_modifyitems(self, items: list[Any]) -> None:
         self.collected = len(items)
 
+    def pytest_collectreport(self, report: Any) -> None:
+        if report.failed:
+            self.errors += 1
+
     def pytest_runtest_logreport(self, report: Any) -> None:
+        if report.when in ("setup", "teardown"):
+            if report.failed:
+                self.errors += 1
+            return
         if report.when != "call":
             return
         if report.passed:
@@ -96,6 +104,7 @@ def run_pytest(spec: PytestSpec, *, report_dir: Path) -> PytestResult:
         "passed": collector.passed,
         "failed": collector.failed,
         "skipped": collector.skipped,
+        "errors": collector.errors,
         "failures": collector.failures,
     }
     report_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")

@@ -109,9 +109,20 @@ def publish_both(kernel: Kernel) -> None:
         assert isinstance(published, PublishView), published
 
 
+def minted(kernel: Kernel, run_id: str) -> bool:
+    """Whether the scheduler has minted `run_id` (read without its lock: a concurrent mutation of
+    the queue is retried by the caller's poll)."""
+    try:
+        return run_id in kernel.control.scheduler.queue
+    except RuntimeError:  # deque mutated during iteration
+        return False
+
+
 def call(kernel: Kernel, plugin: str) -> Run:
     """`ControlSurface.run(completion="terminal")` for `plugin` (environment `ENV`) on a thread;
-    returns once the run is admitted (its run directory exists)."""
+    returns once admission has finished: the run directory exists *and* the scheduler has minted
+    the run id. Admission writes the run directory (with its `created` row) before it records the
+    holder and mints, on the caller's thread, so the directory alone is seen mid-admission."""
     before = set(run_dirs(kernel))
     result: list[Any] = []
     thread = threading.Thread(
@@ -122,6 +133,11 @@ def call(kernel: Kernel, plugin: str) -> Run:
     assert not result or isinstance(result[0], RunView), f"{plugin} was refused: {result}"
     assert set(run_dirs(kernel)) - before, f"{plugin} was never admitted"
     (run_dir,) = set(run_dirs(kernel)) - before
+    # minting is admission's last step (after the holder index is told); a run that has already
+    # ended has left the queue, and its host call has returned
+    assert wait_until(lambda: minted(kernel, run_dir.name) or bool(result)), (
+        f"{plugin}: admission never finished"
+    )
     return Run(kernel, plugin, run_dir, thread, result)
 
 

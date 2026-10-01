@@ -15,7 +15,10 @@
   never signalled: `stop`, `restart` and `recreate` act only on an instance this port recorded
   (pid and start), and refuse (`NOT_APPLIED`, no signal) for a selector it does not hold.
 - **restart / recreate** are one ticketed repair on the same handle: stop, observe until absent,
-  launch again from the recorded spec under the same selector and bound command (B3-C21).
+  launch again from the recorded spec under the same selector and bound command (B3-C21). The old
+  process is ended and reaped before the new one starts, in the run's group like every launch; a
+  relaunch that cannot start after the old one was stopped is `UNKNOWN`, never `NOT_APPLIED`
+  (L.RB-8.1, B3-C16); a selector this port does not hold is `NOT_APPLIED` with no signal sent.
 - **check** `ready` holds when the recorded instance is alive; **endpoint** for `HOST` is
   `127.0.0.1:<PORT>` where `PORT` is the bound command's declared environment value, else
   `RouteRefused`; from a container it is `RouteRefused(ROUTE_UNSUPPORTED)` (B3-C2, D-4).
@@ -268,7 +271,12 @@ class LocalProcessPort:
         if instance is None:
             return Confirmation(ConfirmationStatus.NOT_APPLIED, None, None)
         self._end(instance)  # observed absent: the child is reaped before it is launched again
-        return self._launch(instance.selector, instance.spec)
+        made = self._launch(instance.selector, instance.spec)
+        if made.status is ConfirmationStatus.NOT_APPLIED:
+            # the old process is gone and the new one never started: something changed, so
+            # NOT_APPLIED would be a claim the adapter cannot prove (B3-C16)
+            return Confirmation(ConfirmationStatus.UNKNOWN, made.code, instance.selector)
+        return made
 
     def _alive(self, instance: _Instance) -> bool:
         """Running, and the very process recorded (a reused pid has another start time)."""

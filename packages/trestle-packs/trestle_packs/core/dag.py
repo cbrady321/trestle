@@ -49,12 +49,18 @@ def _plan_explicit_waves(
     seen: set[str] = set()
     waves: list[tuple[str, ...]] = []
 
+    named: set[str] = set()
     for wave in explicit_waves:
-        ordered = tuple(sorted(name for name in wave if name in known))
-        for name in ordered:
+        for name in wave:
             if name not in known:
                 msg = f"unknown service in wave: {name}"
                 raise ValueError(msg)
+            if name in named:
+                msg = f"duplicate service in waves: {name}"
+                raise ValueError(msg)
+            named.add(name)
+        ordered = tuple(sorted(wave))
+        for name in ordered:
             for dep in depends_on.get(name, []):
                 if dep not in seen:
                     msg = f"service {name} depends on {dep} which is not in a prior wave"
