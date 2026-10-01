@@ -34,6 +34,8 @@ globs = [
   # parallel REG and the re-sharded `test` job. The four paths exactly, nothing broader.
   ".github/workflows/ci.yml", "tests/proof/ci_shards.py",
   "tests/core/tooling/ck_drill.py", "tests/core/tooling/test_ck_drill.py",
+  # L.TR-6.fix8: ruff's `extend-exclude` of the fossil snapshot dirs. That one file exactly.
+  "pyproject.toml",
 ]
 
 [[lane]]                     # the checkpoint merge only (CM-5, DM-76)
@@ -91,6 +93,8 @@ globs = [
   # parallel REG and the re-sharded `test` job. The four paths exactly, nothing broader.
   ".github/workflows/ci.yml", "tests/proof/ci_shards.py",
   "tests/core/tooling/ck_drill.py", "tests/core/tooling/test_ck_drill.py",
+  # L.TR-6.fix8: ruff's `extend-exclude` of the fossil snapshot dirs. That one file exactly.
+  "pyproject.toml",
 ]
 
 [[gate]]
