@@ -294,11 +294,13 @@ jobs:
   # C-ck: each present decline's real-history drill runs in one `ck-drill` part (the
   # declines' collected node ids, dealt round-robin over the parts), so declines run in
   # parallel on separate runners; a part with no decline passes at once. A drill nests a
-  # full REG (~10 min); a hang (a test blocked with no timeout of its own) fails the part at
-  # the job bound instead of GitHub's 6 h default.
+  # full REG: every default-collected node serially, the packs session, ruff and mypy (25-30
+  # min on master before Slice B; with packages/trestle-env in testpaths it outgrew 40 min,
+  # PR #46 run 36813565949). A hang (a test blocked with no timeout of its own) fails the part
+  # at the job bound instead of GitHub's 6 h default.
   ck-drill:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
