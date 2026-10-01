@@ -53,6 +53,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -144,6 +145,21 @@ COMMANDS: dict[str, list[str]] = {
     "register_final": _meta("register", "--final"),
     "open_questions_final": _meta("open-questions", "--final"),
 }
+
+# Scheduling only (never which commands run, nor their argv): the first command a `LiveWorld` is
+# asked for starts the whole run. The timing-sensitive commands run first, one at a time, with
+# nothing else in flight (perf asserts budgets; spine's junit duration is a budget too); then the
+# rest run side by side (longest first), at most `PARALLEL_WORKERS` at once. None of them writes
+# a proof result (`TRESTLE_PROOF_GATE` is unset in the ckpt step), and none reads another's output.
+# `fence_history` (carrier only) and `spine_budget` (junit present only) stay lazy, as before.
+SERIAL_KEYS = ("perf", "spine")
+PARALLEL_KEYS = (
+    "security_guards", "packs", "drift", "d1_closure", "d4", "d5", "d6", "d7", "d8",
+    "security_compat", "security_admission", "boundaries", "locality", "ruff_check",
+    "ruff_format", "mypy", "enforce", "audit_rows", "register_final", "open_questions_final",
+)  # fmt: skip
+LAZY_KEYS = ("fence_history", "spine_budget")
+PARALLEL_WORKERS = 4
 
 
 # ---------------------------------------------------------------------------
@@ -342,13 +358,31 @@ class LiveWorld:
     def __init__(self, commit: str) -> None:
         self.commit = commit
         self._results: dict[str, CommandResult] = {}
+        self._scheduled = False
+
+    def _argv(self, key: str) -> list[str]:
+        if key == "enforce":
+            return _meta("enforce", "--scope", "checkpoint", "--commit", self.commit)
+        return list(COMMANDS.get(key, []))
+
+    def _run_scheduled(self) -> None:
+        """Run each non-lazy command once: `SERIAL_KEYS` alone, then `PARALLEL_KEYS` together."""
+        self._scheduled = True
+        for key in SERIAL_KEYS:
+            self._results[key] = _run(self._argv(key))
+        with ThreadPoolExecutor(max_workers=PARALLEL_WORKERS) as pool:
+            futures = {key: pool.submit(_run, self._argv(key)) for key in PARALLEL_KEYS}
+            for key, future in futures.items():
+                try:
+                    self._results[key] = future.result()
+                except Exception as exc:  # a command that cannot be run is a failed run
+                    self._results[key] = (1, f"cannot run: {type(exc).__name__}: {exc}")
 
     def result(self, key: str) -> CommandResult:
+        if not self._scheduled and key not in LAZY_KEYS:
+            self._run_scheduled()
         if key not in self._results:
-            argv = list(COMMANDS.get(key, []))
-            if key == "enforce":
-                argv = _meta("enforce", "--scope", "checkpoint", "--commit", self.commit)
-            self._results[key] = _run(argv)
+            self._results[key] = _run(self._argv(key))
         return self._results[key]
 
     def __getattr__(self, name: str) -> Any:
