@@ -931,11 +931,13 @@ def reg_partition(nodes: list[str], workers: int = REG_WORKERS) -> RegPlan:
                 reader.nodes.append(node)
                 moved.append(node)
         kept = [n for n in ids if n not in moved]
-        if not kept:
-            continue
         if path.startswith(REG_PACKAGES_PREFIX):
+            # given its testpaths root, a package's process collects this file whatever is kept:
+            # every node that runs elsewhere is deselected there, a file's last one included
             path = "/".join(path.split("/")[:3])
             group = packages.setdefault(path, RegGroup(f"pytest [{path}]"))
+        elif not kept:
+            continue
         else:
             group = RegGroup("")
             files.append(group)
