@@ -16,7 +16,12 @@ and the column-B condition (i)):
   (a) every one of the 25 Slice B clauses (one condition per clause id, so `--dry` lists each) and
       every label declared for step B (one condition) is PROVEN@HOST, PROVEN@CI, STUB-PROVEN or
       registered as declared (`gated_on`, `na(reason)`); a DOCKER-tier clause or label counts only
-      through an admissible host-docker record (CSC-9). Band preflight (J-SINGLE-R2 rule 2): a
+      through an admissible host-docker record (CSC-9). A key's venue is its labels' and its
+      `proves()` markers'; a HOST key (DOCKER tier, a docker_host registrant, or venue HOST) is
+      PROVEN@HOST through the admissible role-2 record alone, since CI deselects its nodes and the
+      ledger the ckpt job renders holds only the CI shards' results; a BOTH key needs both halves
+      (the ledger and the record), a CI key the ledger (the slice-a `key_problems` rule, the
+      J-SINGLE venue-BOTH rule). Band preflight (J-SINGLE-R2 rule 2): a
       clause is judged only when a collected, non-twin node names the part id itself in a
       `proves()` marker (a row label that composes it does not count), so a missing marker is
       listed by `--dry` before any carrier is spent
@@ -160,6 +165,10 @@ def _proven(w: World, key: str) -> bool:
     return w.report.get(key, {}).get("status") == PROVEN
 
 
+HOST_DOCKER = "host-docker"
+HOST_PROC = "host-proc"
+
+
 def _record_hit(record: dict[str, Any] | None, key: str) -> tuple[bool, bool]:
     """(the record's results name `key`, every such result PASSED)."""
     if record is None:
@@ -173,25 +182,55 @@ def _record_hit(record: dict[str, Any] | None, key: str) -> tuple[bool, bool]:
 # ---------------------------------------------------------------------------
 
 
-def _evidence(w: World, key: str, tiers: list[Any], venues: list[Any], stub: bool) -> str | None:
-    """The satisfied status of a ledger key the nodes registering it declare `tiers`/`venues` for,
-    or a problem string. A DOCKER-tier key counts only through an admissible host-docker record."""
-    if not _proven(w, key):
+def _host_half(w: World, key: str, gate: str) -> str | None:
+    """`None` when `key` is PASSED in the role-2 `gate` record (results name it and every one of
+    them PASSED) and that record is admissible for the anchor (CM-6), else the problem."""
+    record = w.host_docker if gate == HOST_DOCKER else w.host_proc
+    what = "DOCKER-tier" if gate == HOST_DOCKER else "venue HOST"
+    if record is None:
+        tail = " (CI-only evidence)" if gate == HOST_DOCKER else ""
+        return f"{key} is {what}: no admissible {gate} record{tail}"
+    ok, why = w.admissible(record)
+    if not ok:
+        detail = f": {why}" if why else ""
+        return (
+            f"{key} is {what}: no admissible {gate} record (record {str(record.get('sha'))[:12]} "
+            f"is not admissible for the anchor{detail}, CM-6)"
+        )
+    has, passed = _record_hit(record, key)
+    if not has or not passed:
+        return f"{key} is {what}: not PASSED in the admissible {gate} record"
+    return None
+
+
+def _evidence(
+    w: World,
+    key: str,
+    tiers: list[Any],
+    venues: list[Any],
+    stub: bool,
+    docker_node: bool = False,
+) -> str | None:
+    """The satisfied status of a ledger key the labels and markers registering it declare `tiers` /
+    `venues` for (`docker_node`: a docker_host node registers it), or a problem string.
+
+    * DOCKER (a DOCKER tier, or a docker_host registrant): PASSED in the admissible host-docker
+      record (CSC-9);
+    * venue HOST: PASSED in the admissible host-proc record;
+    * venue BOTH: both halves, PROVEN in the ledger and PASSED in the admissible host record;
+    * otherwise (venue CI): PROVEN in the ledger.
+
+    A HOST half never reads the ledger: CI deselects docker_host and host_only nodes (CSC-9) and the
+    ckpt job renders the ledger from the CI shards' results only, so the committed role-2 record is
+    the one place a HOST result exists (slice-a's `key_problems`, the J-SINGLE venue-BOTH rule). A
+    record's results are those of its own gate run; an inadmissible record is no evidence."""
+    docker = docker_node or any(_is_docker(t) for t in tiers)
+    host = docker or any(v in ("HOST", "BOTH") for v in venues)
+    ci = not host or any(v in ("CI", "BOTH") for v in venues)
+    if ci and not _proven(w, key):
         return f"{key} is not PROVEN in the ledger"
-    if any(_is_docker(t) for t in tiers):
-        has, passed = _record_hit(w.host_docker, key)
-        if w.host_docker is None:
-            return f"{key} is DOCKER-tier: no admissible host-docker record (CI-only evidence)"
-        if not has or not passed:
-            return f"{key} is DOCKER-tier: not PASSED in the admissible host-docker record"
-        return PROVEN_HOST
-    if any(v in ("HOST", "BOTH") for v in venues):
-        has, passed = _record_hit(w.host_proc, key)
-        if w.host_proc is None:
-            return f"{key} is venue HOST: no admissible host-proc record"
-        if not has or not passed:
-            return f"{key} is venue HOST: not PASSED in the admissible host-proc record"
-        return PROVEN_HOST
+    if host:
+        return _host_half(w, key, HOST_DOCKER if docker else HOST_PROC) or PROVEN_HOST
     return STUB_PROVEN if stub else PROVEN_CI
 
 
@@ -233,8 +272,9 @@ def part_registrants(w: World, clause_id: str) -> list[dict[str, Any]]:
 
 
 def clause_status(w: World, clause_id: str) -> tuple[str | None, str | None]:
-    """(status, problem) of one clause: its ledger key, through the tier and venue of the labels
-    on the nodes that register it (a stub label makes it STUB-PROVEN)."""
+    """(status, problem) of one clause: through the tier and venue of the labels on the nodes that
+    register it and of their markers naming it, and whether a docker_host node registers it (a stub
+    label makes a CI-only clause STUB-PROVEN)."""
     by_id = label_index(w)
     registrants = part_registrants(w, clause_id)
     if not registrants:
@@ -247,12 +287,14 @@ def clause_status(w: World, clause_id: str) -> tuple[str | None, str | None]:
     clause = next((c for c in w.clauses if str(c["id"]) == clause_id), {})
     if clause.get("stub_label_required") and not stub_labels and _proven(w, clause_id):
         return None, f"{clause_id} requires a STUB label and no registering node carries one"
+    marks = [m for n in registrants for m in (n.get("marked") or {}).get(clause_id, [])]
     result = _evidence(
         w,
         clause_id,
-        [lb.get("tier") for lb in node_labels],
-        [lb.get("venue") for lb in node_labels],
+        [lb.get("tier") for lb in node_labels] + [m[0] for m in marks],
+        [lb.get("venue") for lb in node_labels] + [m[1] for m in marks],
         bool(stub_labels),
+        any(n.get("docker_host") for n in registrants),
     )
     if result in SATISFIED:
         return result, None

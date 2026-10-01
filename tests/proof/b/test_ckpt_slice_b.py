@@ -183,8 +183,11 @@ def test_conditions_fail_on_planted_defects(world):
     w.admissible = lambda record: (False, "not an ancestor")
     world["w"] = w
     got = failing()
-    # column B (i) reads only admissible records: a DOCKER-tier clause on an inadmissible one fails
-    assert set(got) == {"J-SLICE-B-b", "J-SLICE-B-i"} and "not admissible" in got["J-SLICE-B-b"]
+    # (a) and column B (i) read only admissible records: a DOCKER-tier label or clause resting on
+    # an inadmissible one fails there too
+    assert set(got) == {"J-SLICE-B-b", "J-SLICE-B-i", "J-SLICE-B-a:B1.1", "J-SLICE-B-a:labels"}
+    assert "not admissible" in got["J-SLICE-B-b"]
+    assert "not admissible for the anchor" in got["J-SLICE-B-a:B1.1"]
 
     # (c) a record with a non-empty diff, one that changed the engine, one that omits a node
     w = green_world()
@@ -684,3 +687,150 @@ def test_a_part_no_marker_names_is_listed_before_any_carrier(world):
     w.nodes.append({"nodeid": "t::b43", "labels": ["B4.3", CI_LABEL], "docker_host": False})
     assert "J-SLICE-B-a:B4.3" not in failing()
     assert [n["nodeid"] for n in slice_b.part_registrants(w, "B4.3")] == ["t::b43"]
+
+
+# ---- (a): a HOST key is PROVEN@HOST through the admissible record, never the CI ledger -----------
+
+HOST_PROC_NODE = "packages/trestle-env/tests/proc/test_x.py::test_p"
+DOCKER_NODE_B83 = "packages/trestle-env/tests/host/test_y.py::test_b"
+
+
+def _host_keys_world():
+    """The green world with every HOST key absent from the ledger, as in the ckpt job (CI
+    deselects docker_host / host_only nodes): B1.1 on the docker_host node only (its CI registrant
+    dropped), B8.3 on a docker_host node that declares no label (its marker says DOCKER · HOST),
+    B4.1 on a node whose marker says PROC · BOTH, and B9.2 on a host_only node (PROC · HOST)."""
+    w = green_world()
+    for clause in ("B1.1", "B8.3", "B4.1", "B9.2"):
+        w.nodes = [n for n in w.nodes if n["nodeid"] != f"t::{clause}"]
+    w.nodes.append(
+        {
+            "nodeid": DOCKER_NODE_B83,
+            "labels": ["B8.3"],
+            "docker_host": True,
+            "marked": {"B8.3": [["DOCKER+PROC+STUB", "HOST"]]},
+        }
+    )
+    w.nodes.append(
+        {
+            "nodeid": "packages/trestle-env/tests/twin/test_y_twin.py::test_b",
+            "labels": [],
+            "docker_host": False,
+        }
+    )
+    w.nodes.append(
+        {
+            "nodeid": HOST_PROC_NODE,
+            "labels": ["B4.1"],
+            "docker_host": False,
+            "marked": {"B4.1": [["PROC", "BOTH"]]},
+        }
+    )
+    w.nodes.append(
+        {
+            "nodeid": "packages/trestle-env/tests/proc/test_z.py::test_q",
+            "labels": ["B9.2"],
+            "docker_host": False,
+            "host_only": True,
+            "marked": {"B9.2": [["PROC", "HOST"]]},
+        }
+    )
+    w.host_docker["results"].append(
+        {"nodeid": DOCKER_NODE_B83, "outcome": "PASSED", "labels": ["B8.3"]}
+    )
+    w.host_proc["results"] = [
+        {"nodeid": HOST_PROC_NODE, "outcome": "PASSED", "labels": ["B4.1"]},
+        {"nodeid": w.nodes[-1]["nodeid"], "outcome": "PASSED", "labels": ["B9.2"]},
+    ]
+    for key in ("B1.1", "B8.3", "B9.2", DOCKER_LABEL):
+        del w.report[key]
+    return w
+
+
+@pytest.mark.proves("WR-PROOF-6", "WR-PROOF-6:ckpt-requires-clean-records", "B", "B", "LOGIC", "CI")
+def test_host_keys_proven_at_host_through_the_admissible_record_alone(world):
+    """CI deselects docker_host / host_only nodes, so the ckpt job's ledger never holds a HOST key:
+    a DOCKER or HOST key is PROVEN@HOST from the committed role-2 record alone (the slice-a rule);
+    a BOTH key needs the ledger too; nothing is PROVEN@HOST from a record that omits the key, has
+    it failed, or is inadmissible for the anchor."""
+    w = _host_keys_world()
+    world["w"] = w
+    assert failing() == {}
+    for key in ("B1.1", "B8.3", "B9.2", DOCKER_LABEL, "B4.1"):
+        assert slice_b.render_status(w, key) == slice_b.PROVEN_HOST, key
+
+    # a docker_host registrant makes the clause DOCKER whatever its labels say
+    w = _host_keys_world()
+    w.host_docker["results"] = [r for r in w.host_docker["results"] if "B8.3" not in r["labels"]]
+    world["w"] = w
+    assert "B8.3 is DOCKER-tier: not PASSED" in failing()["J-SLICE-B-a:B8.3"]
+
+    # a venue-HOST marker reads the host-proc record: omitted, or not PASSED
+    w = _host_keys_world()
+    w.host_proc["results"][1]["outcome"] = "SKIPPED"
+    world["w"] = w
+    got = failing()
+    assert (
+        "B9.2 is venue HOST: not PASSED in the admissible host-proc record"
+        in got["J-SLICE-B-a:B9.2"]
+    )
+    assert "J-SLICE-B-i" in got
+
+    # venue BOTH: the record alone is not enough, the CI half must be PROVEN in the ledger ...
+    w = _host_keys_world()
+    w.report["B4.1"]["status"] = "UNPROVEN"
+    world["w"] = w
+    assert "B4.1 is not PROVEN in the ledger" in failing()["J-SLICE-B-a:B4.1"]
+    # ... and the ledger alone is not enough either
+    w = _host_keys_world()
+    w.host_proc["results"] = w.host_proc["results"][1:]
+    world["w"] = w
+    assert "B4.1 is venue HOST" in failing()["J-SLICE-B-a:B4.1"]
+
+    # an inadmissible record is no evidence for any HOST key
+    w = _host_keys_world()
+    w.admissible = lambda record: (False, "a product path changed since its sha")
+    world["w"] = w
+    got = failing()
+    for clause in ("B1.1", "B8.3", "B9.2", "B4.1"):
+        assert "not admissible for the anchor" in got[f"J-SLICE-B-a:{clause}"], clause
+    assert "not admissible for the anchor" in got["J-SLICE-B-a:labels"]
+
+    # no record at all: CI-only evidence never makes a HOST key PROVEN
+    w = _host_keys_world()
+    w.host_docker = None
+    w.host_proc = None
+    world["w"] = w
+    got = failing()
+    assert "no admissible host-docker record" in got["J-SLICE-B-a:B8.3"]
+    assert "no admissible host-proc record" in got["J-SLICE-B-a:B9.2"]
+
+
+def test_collector_records_each_markers_tier_and_venue():
+    """The node collector keeps the `[tier, venue]` of each `proves()` marker per id: a clause
+    part's venue lives only in its marker (no label declares it)."""
+    from tests.proof.b import twin_audit
+
+    def mark(*args, **kwargs):
+        return pytest.mark.proves(*args, **kwargs).mark
+
+    class Item:
+        def __init__(self, marks):
+            self._marks = marks
+
+        def iter_markers(self, name=None):
+            return iter(self._marks)
+
+    item = Item(
+        [
+            mark("WR-OWN-9", "B8.3", "B", "B", "DOCKER+PROC+STUB", "HOST"),
+            mark("WR-VERIFY-2", "B4.1", "B", "B", "PROC", "BOTH"),
+            mark("WR-VERIFY-2", "B4.1", "B", "B", "PROC", "BOTH"),
+            mark(row="WR-ENV-1", tier="LOGIC", venue="CI"),
+        ]
+    )
+    assert twin_audit.marked(item) == {
+        "B8.3": [["DOCKER+PROC+STUB", "HOST"]],
+        "B4.1": [["PROC", "BOTH"]],
+        "WR-ENV-1": [["LOGIC", "CI"]],
+    }

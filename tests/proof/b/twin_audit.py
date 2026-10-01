@@ -3,8 +3,9 @@
 Two roles in one module, neither a test (never matches `test_*.py`, DM-80):
 
 * pytest plugin (`-p tests.proof.b.twin_audit`): under `TRESTLE_COLLECT_OUT` writes every collected
-  item's nodeid, the label ids the root plugin resolved for it, and whether it carries
-  `docker_host` / `host_only`;
+  item's nodeid, the label ids the root plugin resolved for it, whether it carries
+  `docker_host` / `host_only`, and the `[tier, venue]` each of its `proves()` markers declares per
+  label or matrix id (`marked`: a clause part's venue lives only in its marker);
 * pure functions over those node dicts: `twin_nodeid`, `twin_problems`, `adversary_problems`.
 
 HOST selection (CSC-9) deselects `docker_host` nodes unless `TRESTLE_HOST_GATE=docker` and
@@ -34,6 +35,24 @@ DEFAULT_PATHS = ("tests", "packages/trestle-packs/tests", "packages/trestle-env/
 _NODES: list[dict[str, Any]] = []
 
 
+def _arg(mark: pytest.Mark, index: int, name: str) -> Any:
+    return mark.args[index] if len(mark.args) > index else mark.kwargs.get(name)
+
+
+def marked(item: pytest.Item) -> dict[str, list[list[str]]]:
+    """Label or matrix id -> the `[tier, venue]` of every `proves(row, clause, slice, step, tier,
+    venue)` marker on `item` naming it (the clause, else the row, as the root plugin keys it)."""
+    out: dict[str, list[list[str]]] = {}
+    for mark in item.iter_markers(name="proves"):
+        key = _arg(mark, 1, "clause") or _arg(mark, 0, "row")
+        if key is None:
+            continue
+        pair = [str(_arg(mark, 4, "tier") or ""), str(_arg(mark, 5, "venue") or "")]
+        if pair not in out.setdefault(str(key), []):
+            out[str(key)].append(pair)
+    return out
+
+
 def pytest_collection_finish(session: pytest.Session) -> None:
     _NODES.clear()
     for item in session.items:
@@ -43,6 +62,7 @@ def pytest_collection_finish(session: pytest.Session) -> None:
                 "labels": list(plugin_mod._ITEM_LABELS.get(item.nodeid, [])),  # noqa: SLF001
                 "docker_host": item.get_closest_marker("docker_host") is not None,
                 "host_only": item.get_closest_marker("host_only") is not None,
+                "marked": marked(item),
             }
         )
 
