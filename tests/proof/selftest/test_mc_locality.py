@@ -34,6 +34,21 @@ PHASE_ROOTS: dict[str, list[str]] = {
 }
 
 
+# Recorded crossings (L.CZ.8.fix1): slice B builds on A-2's tree runtime, and its lanes reused three
+# of the tree phase's test kits without the plan registering them as root contracts (plan gap; B's
+# plan file names none of them). Each is (module, the foreign phase allowed to import it); every
+# other crossing still fails, and an entry no file uses any more fails too, so the list cannot go
+# stale.
+# Moving the kits to a root-registered module is the follow-up (a WR-Fix on B and tree paths).
+RECORDED_CROSSINGS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("tests/tree/treekit.py", "b"),  # MC-B3-01 fixture runner (B's env tests run trees)
+        ("tests/tree/hostpath.py", "b"),  # MC-B3-02 host-path runner (B's readiness HOST test)
+        ("tests/tree/gen_fossils.py", "b"),  # MC-B3-05 fossil producers (B's fossil states)
+    }
+)
+
+
 def phase_of(rel: str, roots: dict[str, list[str]] = PHASE_ROOTS) -> str | None:
     for phase, globs in roots.items():
         if any(fnmatch.fnmatch(rel, g) for g in globs):
@@ -83,8 +98,14 @@ def _dotted_variants(rel: str) -> list[str]:
     return [".".join(parts[i:]) for i in range(len(parts) - 1)]
 
 
-def cross_phase_imports(repo: Path = ROOT, roots: dict[str, list[str]] = PHASE_ROOTS) -> list[str]:
-    """Every import of a phase-local contract module from a file under another phase's roots."""
+def cross_phase_imports(
+    repo: Path = ROOT,
+    roots: dict[str, list[str]] = PHASE_ROOTS,
+    recorded: frozenset[tuple[str, str]] = frozenset(),
+    used: set[tuple[str, str]] | None = None,
+) -> list[str]:
+    """Every import of a phase-local contract module from a file under another phase's roots,
+    except a `recorded` (module, importer phase) crossing, which is added to `used` instead."""
     files = _py_files(repo)
     modules = contract_modules(files, roots)
     by_name: dict[str, set[str]] = {}
@@ -105,7 +126,13 @@ def cross_phase_imports(repo: Path = ROOT, roots: dict[str, list[str]] = PHASE_R
                 names = [node.module] + [f"{node.module}.{alias.name}" for alias in node.names]
             for name in names:
                 for target in sorted(by_name.get(name, ())):
-                    if modules[target] != importer:
+                    if modules[target] == importer:
+                        continue
+                    if (target, importer) in recorded:
+                        if used is not None:
+                            used.add((target, importer))
+                        continue
+                    if True:
                         violations.append(
                             f"{rel}:{node.lineno} ({importer}) imports {target} "
                             f"({modules[target]}'s contract module)"
@@ -118,7 +145,9 @@ def test_no_phase_local_contract_crosses_phases() -> None:
     modules = contract_modules(files)
     # the scan is not vacuous: core, tree and B each own contract modules
     assert {"core", "tree", "b"} <= set(modules.values()), sorted(set(modules.values()))
-    assert cross_phase_imports(ROOT) == []
+    used: set[tuple[str, str]] = set()
+    assert cross_phase_imports(ROOT, recorded=RECORDED_CROSSINGS, used=used) == []
+    assert used == set(RECORDED_CROSSINGS), sorted(RECORDED_CROSSINGS - used)
 
 
 def _plant(repo: Path, rel: str, text: str) -> None:
@@ -164,3 +193,10 @@ def test_planted_cross_phase_import_fails(tmp_path: Path) -> None:
     _plant(other, "tests/tree/plans.py", '"""Plan helpers (MC-CORE-04)."""\n')
     _plant(other, "tests/core/test_plans.py", "from tests.tree import plans\n")
     assert cross_phase_imports(other) == []
+
+    # a recorded crossing passes and is reported used; an unrecorded one beside it still fails
+    used: set[tuple[str, str]] = set()
+    recorded = frozenset({("tests/tree/capacity.py", "b")})
+    found = cross_phase_imports(tmp_path, recorded=recorded, used=used)
+    assert used == set(recorded)
+    assert [v.split(" ")[0] for v in found] == ["tests/core/test_uses_tree.py:1"]
