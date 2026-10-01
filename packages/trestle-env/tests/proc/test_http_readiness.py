@@ -10,112 +10,24 @@ Every claim is read from the run's lane and the app's own event log, never from 
 from __future__ import annotations
 
 import sys
-import time
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
 
 import pytest
-from tests.proof import tolerances
 from tests.tree import treekit as tk
 from trestle.workflow import ports
 from trestle.workflow.declarations import (
-    CompletionSource,
-    Compose,
-    LeafDeclaration,
-    LoopFlags,
     RealizationKind,
-    Repeat,
-    WaitPolicy,
 )
-from trestle.workflow.values import CheckResult, Observation
 from trestle_packs.process.local import LocalProcessPort
+from twin.local_app import APP, REFUSED, AwaitListening, free_port
+from twin.twin_engine import TEST_NODE, Probe, entry_with_test
 
 from trestle_env import schema, tree
 from trestle_env.plugins._http import HttpReadinessReads
 
-APP = Path(__file__).resolve().parents[4] / "tests" / "fixtures" / "apps" / "http_app.py"
-REFUSED = 3  # the app answers `/health` 503 this many times before the first 200
 
-
-def free_port() -> int:
-    import socket
-
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return int(probe.getsockname()[1])
-
-
-class AwaitListening:
-    """The create facet of the local port, returning once the app says it is listening.
-
-    The loop's clock is manual here (no test sleeps), so without this a poll could ask a
-    still-starting app: process start-up is the harness's to wait for, the readiness contract is
-    the read facet's. Every other member is the port's own."""
-
-    def __init__(self, inner: LocalProcessPort, log: Path) -> None:
-        self._inner = inner
-        self._log = log
-
-    def create(self, spec: ports.ResourceSpec, ticket: Any) -> Any:
-        confirmation = self._inner.create(spec, ticket)
-        deadline = time.monotonic() + tolerances.JOIN_WAIT_S
-        while time.monotonic() < deadline:
-            if self._log.exists() and "listening" in self._log.read_text().splitlines():
-                return confirmation
-            time.sleep(tolerances.POLL_FINE_S)
-        raise AssertionError("the app never said it was listening")
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._inner, name)
-
-
-class Dependent:
-    """The backend, as a leaf that reads what the app has answered when the loop starts it."""
-
-    def __init__(self, log: Path) -> None:
-        self._log = log
-        self.saw: list[list[str]] = []
-
-    def declare(self) -> LeafDeclaration:
-        return LeafDeclaration(
-            unit=tree.POSTGRES_UNIT,
-            flags=LoopFlags(Compose.LEAF, CompletionSource.OBSERVED, Repeat.SAFE),
-            preconditions=(),
-            postcondition="dependent_ready",
-            wait=WaitPolicy(timedelta(seconds=1), 1.0, timedelta(seconds=5)),
-            resource_kind="marker",
-            may_touch=frozenset({"marker"}),
-            effects=(),
-            retryable=frozenset(),
-            remedies=(),
-            budget=timedelta(seconds=tree.LEAF_BUDGET_S),
-            max_attempts=1,
-        )
-
-    def observe(self, params: Any, reads: Any, ctx: Any) -> Observation:
-        self.saw.append(self._log.read_text().split("\n"))
-        return Observation(
-            present=True,
-            selector_present=True,
-            identity_proven=True,
-            configuration_compatible=True,
-            postcondition=CheckResult(True, None, ""),
-            preconditions=(),
-            currency=(),
-            found=(),
-            code=None,
-            payload=None,
-        )
-
-    def advance(self, params: Any, state: Any, effects: Any, ctx: Any) -> Any:
-        raise AssertionError("a satisfied dependent is never advanced")
-
-    def release(self, params: Any, handle: Any, effects: Any, ctx: Any) -> Any:
-        raise AssertionError("the dependent created nothing")
-
-
-def rig_over_local_app(tmp_path: Path, mode: tuple[str, ...]) -> tuple[tk.TreeRig, Dependent, Path]:
+def rig_over_local_app(tmp_path: Path, mode: tuple[str, ...]) -> tuple[tk.TreeRig, Probe, Path]:
     port, log = free_port(), tmp_path / "app-events.log"
     resolved = ports.Resolved(sys.executable, "3.12", "pin", "adoption")
     command = ports.BoundCommand(
@@ -131,7 +43,10 @@ def rig_over_local_app(tmp_path: Path, mode: tuple[str, ...]) -> tuple[tk.TreeRi
     local = LocalProcessPort()
     creating = AwaitListening(local, log)
     reads = HttpReadinessReads(local, tree.HTTP_READINESS, alive="ready")
-    dependent = Dependent(log)
+    saw: list[list[str]] = []
+    dependent = Probe(TEST_NODE, lambda: saw.append(log.read_text().split("\n")))
+    dependent.saw = saw  # type: ignore[attr-defined]
+    entry = entry_with_test()
     units = {
         tree.HTTP_SUPPORT_UNIT: tree.ServiceUnit(
             tree.HTTP_SUPPORT_UNIT,
@@ -139,11 +54,12 @@ def rig_over_local_app(tmp_path: Path, mode: tuple[str, ...]) -> tuple[tk.TreeRi
             tree.HTTP_SUPPORT_READY,
             spec=spec,
         ),
-        tree.POSTGRES_UNIT: dependent,
+        tree.POSTGRES_UNIT: Probe(tree.POSTGRES_UNIT),
+        TEST_NODE: dependent,
     }
     rig = tk.tree_rig(
         tmp_path,
-        tree.ENTRY.units[tree.ROOT_UNIT],  # type: ignore[arg-type]
+        entry.units[tree.ROOT_UNIT],  # type: ignore[arg-type]
         units,
         port_impl={
             ports.ResourceReads: reads,
@@ -174,9 +90,9 @@ def test_dependent_starts_after_local_http_readiness_pass(tmp_path: Path) -> Non
 
     ends = rig.ends()
     assert ends[tree.HTTP_SUPPORT_UNIT]["condition"] == "satisfied"
-    assert ends[tree.POSTGRES_UNIT]["condition"] == "satisfied"
+    assert ends[TEST_NODE]["condition"] == "satisfied"
     # the readiness pass (the supporting node's satisfied end) precedes the dependent's first entry
-    assert end(tree.HTTP_SUPPORT_UNIT) < first(tree.POSTGRES_UNIT)
+    assert end(tree.HTTP_SUPPORT_UNIT) < first(TEST_NODE)
     # and the app itself had answered the declared response by the time the dependent was started
     assert dependent.saw and dependent.saw[0][-3:-1] == ["health 503", "health 200"]  # then a `""`
     # the app saw exactly the polls the contract needed: REFUSED refusals, then the pass

@@ -13,21 +13,14 @@ STUB-PROVEN and the real tool stays unverified (D-1, OPEN-MISE-HOST, docs/enviro
 
 from __future__ import annotations
 
-import json
-import stat
-import sys
 from pathlib import Path
-from typing import Any
 
 import pytest
 from twin import fake_binding, harness
+from twin.toolchain_world import SEAM, World, call
 
-from trestle_env import schema, tree
-from trestle_env.catalog import REFERENCE_PATH
-from trestle_env.plugins import _bind
+from trestle_env import schema
 
-SEAM = Path(__file__).with_name("toolchain_seam.py")
-STUB_MISE = Path(__file__).resolve().parents[4] / "tests" / "fixtures" / "stubs" / "stub_mise.py"
 TEST_ID = "demo-version"
 NODE = f"test.{TEST_ID}"
 TOOLCHAIN_MISSING = "execution.toolchain_missing"
@@ -35,83 +28,11 @@ TASK_START = "toolchain.task_start"
 PYTHON = "3.12.4"
 
 
-def script(path: Path, text: str) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    return path
-
-
-class World:
-    """Everything the stub mise and the resolver need, on disk under `base`."""
-
-    def __init__(self, base: Path, *, installed: bool) -> None:
-        install = base / "installs" / "python" / PYTHON
-        script(
-            install / "bin" / "python",
-            f"#!{sys.executable}\nimport sys\n"
-            f"print('Python {PYTHON}' if sys.argv[1:] == ['--version'] else '')\n",
-        )
-        self.mise = script(
-            base / "bin" / "stub_mise",
-            f"#!{sys.executable}\nimport runpy, sys\nsys.argv = ['stub_mise.py', *sys.argv[1:]]\n"
-            f"runpy.run_path({str(STUB_MISE)!r}, run_name='__main__')\n",
-        )
-        self.config = base / "world" / "mise.json"
-        self.log = base / "world" / "mise.log"
-        self.config.parent.mkdir(parents=True)
-        entry = {
-            "version": PYTHON,
-            "requested_version": "3.12",
-            "install_path": str(install),
-            "installed": installed,
-            "active": True,
-            "source": {"type": "stub_mise.toml", "path": "world"},
-        }
-        self.config.write_text(json.dumps({"mode": "normal", "tools": {"python": entry}}), "utf-8")
-        self.projects = base / "projects"
-        (self.projects / "demo-py").mkdir(parents=True)
-        self.catalog = base / "catalog.json"
-        data = json.loads(REFERENCE_PATH.read_text(encoding="utf-8"))
-        data["tests"] = [{"id": TEST_ID, "project": "demo-py", "task": "version"}]
-        self.catalog.write_text(json.dumps(data), "utf-8")
-
-    def environ(self, state: Path) -> dict[str, str | None]:
-        return {
-            **harness.twin_environ(state, f"{SEAM}:stub_toolchain_ports"),
-            tree.CATALOG_ENV: str(self.catalog),
-            _bind.PROJECTS_DIR_ENV: str(self.projects),
-            "TESTKIT_MISE": str(self.mise),
-            "TESTKIT_MISE_CONFIG": str(self.config),
-            "TESTKIT_MISE_LOG": str(self.log),
-        }
-
-    def mise_calls(self) -> list[dict[str, Any]]:
-        if not self.log.exists():
-            return []
-        return [json.loads(line) for line in self.log.read_text().splitlines() if line]
-
-
-def call(host: Any) -> dict[str, Any]:
-    """One `run(reference_env, tests=[demo-version], completion="terminal")`."""
-    answer = host.call(
-        "run",
-        {
-            "plugin": harness.PLUGIN_NAME,
-            "args": {schema.ENV_ARG: "toolchain-leg", schema.TESTS_ARG: [TEST_ID]},
-            "wait_ms": harness.tolerances.HARNESS_WAIT_MS,
-            "completion": "terminal",
-        },
-    )
-    assert isinstance(answer, dict), answer
-    return answer
-
-
 @pytest.mark.proves("WR-PROOF-3", "WR-PROOF-3:b-toolchain-label", "B", "B", "MCP+STUB", "CI")
 def test_pin_satisfied_passes_with_identity(tmp_path: Path) -> None:
     world = World(tmp_path / "world-dir", installed=True)
     with harness.reference_host(tmp_path / "home", world.environ(tmp_path / "engine.json")) as host:
-        answer = call(host)
+        answer = call(host, TEST_ID)
         events = harness.events(harness.run_dir(host, answer["run_id"]))
     assert answer["answer"]["outcome"] == "passed", answer["answer"]
     started = [e for e in events if e.get("kind") == TASK_START]
@@ -132,7 +53,7 @@ def test_pin_satisfied_passes_with_identity(tmp_path: Path) -> None:
 def test_pin_unsatisfied_blocked_before_task_start(tmp_path: Path) -> None:
     world = World(tmp_path / "world-dir", installed=False)
     with harness.reference_host(tmp_path / "home", world.environ(tmp_path / "engine.json")) as host:
-        answer = call(host)
+        answer = call(host, TEST_ID)
         run_dir = harness.run_dir(host, answer["run_id"])
         events = harness.events(run_dir)
         entries = harness.lane(run_dir)

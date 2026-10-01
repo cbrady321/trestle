@@ -150,6 +150,7 @@ class TaskEntry:
 
     id: TaskId
     argv: tuple[Arg, ...]  # argv[0] is a `ToolName` (checked at construction), the rest literals
+    reports_tests: bool = False  # a test selector: its result is read from a JUnit report
 
     def __post_init__(self) -> None:
         if not self.argv or len(self.argv) > ARGV_MAX:
@@ -185,7 +186,8 @@ class Override:
 _TOP = ("schema", "env_key", "services", "projects", "tests", "overrides")
 _SERVICE = ("id", "selector")
 _PROJECT = ("id", "pin", "tasks")
-_TASK = ("id", "argv")
+_TASK = ("id", "argv", "reports_tests")
+_TASK_OPTIONAL = ("reports_tests",)
 _TEST = ("id", "project", "task")
 _OVERRIDE = ("id", "service", "project", "task")
 
@@ -339,7 +341,10 @@ def _project(obj: Mapping[str, Any]) -> Project:
     pin = tuple(ToolPin(ToolName(tool), PinVersion(version)) for tool, version in pin_obj.items())
     tasks = []
     for task in _items(obj["tasks"], "tasks"):
-        entry = _keys(task, _TASK, "a task")
+        entry = _keys(task, _TASK, "a task", optional=_TASK_OPTIONAL)
         argv = _items(entry["argv"], "argv")
-        tasks.append(TaskEntry(TaskId(entry["id"]), tuple(Arg(a) for a in argv)))
+        reports = entry.get("reports_tests", False)
+        if not isinstance(reports, bool):
+            raise CatalogError("invalid", str(entry["id"])[:ID_MAX], "reports_tests is a boolean")
+        tasks.append(TaskEntry(TaskId(entry["id"]), tuple(Arg(a) for a in argv), reports))
     return Project(ProjectId(obj["id"]), pin, tuple(tasks))

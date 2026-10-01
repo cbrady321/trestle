@@ -5,7 +5,8 @@ The fake engine holds a found container named as the logical system (`postgres`)
 configuration and readiness the reuse proof reads. The tree's own units run through the loop:
 the supporting service is created, the found Postgres is reported reused, and on the failed and
 the cancelled path (the supporting service never ready; a stop raised during its wait) the found
-container is never created over, stopped, restarted, recreated or started."""
+container (reused by its own sibling node meanwhile) is never created over, stopped, restarted,
+recreated or started."""
 
 from __future__ import annotations
 
@@ -48,9 +49,11 @@ def test_prestarted_postgres_reused_untouched(tmp_path: Path, path: str) -> None
         assert rig.rig.cancel.requested
         ends = rig.ends()
         assert ends[tree.HTTP_SUPPORT_UNIT]["cut"] == "stopped"  # cut mid-wait by the stop
-        assert ends[tree.POSTGRES_UNIT]["cut"] == "not_started"  # never observed, never started
+        # the backends are siblings: the found Postgres was observed and reused before the stop
+        assert ends[tree.POSTGRES_UNIT]["condition"] == "satisfied"
         untouched(engine)
         assert engine.inventory()["containers"] == frozenset({FOUND})  # the run's own released
+        assert engine.asked.count(tree.POSTGRES_READY) >= 1  # it really was read
         return
     answer = tk.answer_of(rig)
     if path == "passed":

@@ -149,3 +149,21 @@ def test_the_tree_module_binds_no_adapter() -> None:
     source = TREE_SOURCE.read_text(encoding="utf-8")
     assert "trestle_packs" not in source  # bound by the composition root only
     assert trestle_env.__file__ is not None
+
+
+def test_a_catalog_test_node_needs_every_readiness_node_and_backends_are_siblings() -> None:
+    from twin.twin_engine import TEST_NODE, entry_with_test
+
+    entry = entry_with_test()
+    root = entry.units[tree.ROOT_UNIT]
+    assert isinstance(root, AllDeclaration)
+    needs = {c.unit: c.needs for c in root.children}
+    assert needs[tree.HTTP_SUPPORT_UNIT] == () and needs[tree.POSTGRES_UNIT] == ()
+    assert set(needs[TEST_NODE]) == {tree.HTTP_SUPPORT_UNIT, tree.POSTGRES_UNIT}
+    plan = compiled(entry, {schema.ENV_ARG: PROJECT})
+    assert set(plan.vertex(TEST_NODE).needs) == {tree.HTTP_SUPPORT_UNIT, tree.POSTGRES_UNIT}
+    # the reference catalog lists no test: the default tree is the two backends
+    assert [c.unit for c in tree.ENTRY.units[tree.ROOT_UNIT].children] == [  # type: ignore[union-attr]
+        tree.HTTP_SUPPORT_UNIT,
+        tree.POSTGRES_UNIT,
+    ]

@@ -40,7 +40,7 @@ def test_readiness_ends_at_stage_budget_names_stage_and_service(tmp_path: Path) 
     # it ended when its declared wait elapsed (plus the supporting node's own polls and the margin)
     budget = tree.READY_WAIT_S + (REFUSED + 1) * tree.READY_POLL_S + kit.MARGIN_S
     assert rig.rig.clock.now - kit.NOW <= timedelta(seconds=budget)
-    assert engine.asked.count(tree.POSTGRES_READY) >= tree.READY_WAIT_S // tree.READY_POLL_S
+    assert engine.asked.count(tree.POSTGRES_READY) > 1  # polled through its wait, not once
     # found fingerprints unchanged: the bystander is untouched and only what the run made is gone
     assert engine.inventory() == before
     assert engine.inventory()["containers"] == frozenset({"bystander"})

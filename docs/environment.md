@@ -95,6 +95,14 @@ before the task starts. If the pin cannot be resolved the node ends `blocked` wi
 `execution.toolchain_missing`, naming the tool, before any task-start record or process exists;
 Trestle installs, refreshes and downloads nothing.
 
+A test node starts only after EVERY readiness pass: it needs both backends (`backend.http_support`
+and `backend.postgres`, which are independent of each other), so a test never runs against a service
+that is not ready. A catalog task marked `reports_tests` is a pytest selector: its counts come from
+the JUnit report it writes, never from console text, and an exit status that disagrees with the
+report is a contract violation, not a pass. A suite that only errors (a fixture that fails at
+setup, a collection error) never passes: the answer is `failed`, `test_counts.errors` is positive,
+and the failing test ids are in the run's evidence (`test.failing`), behind the answer's `detail`.
+
 **What is proven, and what is not.** The toolchain leg is proven against a stand-in for `mise`
 (`tests/fixtures/stubs/stub_mise.py`): it is STUB-PROVEN. The real tool's behaviour is unverified
 (open question OPEN-MISE-HOST: no real `mise` conformance has been run), and so is Gradle's

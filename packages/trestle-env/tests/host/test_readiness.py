@@ -2,9 +2,10 @@
 
 DOCKER, venue HOST (`docker_host`; `python -m tests.proof.host.docker_gate run`, F-PX3): the
 published `reference_env` runs through the control surface on the operator's docker at the gate's
-endpoint, on the pinned MC-B-10 images (nginx serves the declared `/health` response; Postgres
-needs it). The fact is read from the finalized run's lane: the supporting node's readiness pass
-precedes the backend's first entry. Its CI twin is `tests/twin/test_readiness_twin.py`."""
+endpoint, on the pinned MC-B-10 images (nginx serves the declared `/health` response). The
+operator's catalog lists one test whose node needs both backends. The fact is read from the
+finalized run's lane: the supporting node's readiness pass precedes the dependent's first entry.
+Its CI twin is `tests/twin/test_readiness_twin.py`."""
 
 from __future__ import annotations
 
@@ -19,6 +20,7 @@ from tests.proof import records
 from tests.tree import hostpath
 from trestle.common.types import RunView
 from trestle.server.main import Kernel, create_kernel
+from twin.twin_engine import TEST_NODE, catalog_file
 
 from trestle_env import schema, tree
 from trestle_env.plugins import _bind, reference_env
@@ -36,6 +38,8 @@ def kernel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Kernel:
     monkeypatch.setenv(_bind.DOCKER_PATH_ENV, docker)
     monkeypatch.setenv("TRESTLE_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
+    # the dependent: a catalog test's node needs both backends' readiness (it runs nothing here)
+    monkeypatch.setenv(tree.CATALOG_ENV, str(catalog_file(tmp_path)))
     for role in ("POSTGRES", "HTTP_SUPPORT"):
         assert f"{_bind.IMAGE_ENV_PREFIX}{role}" in os.environ, "the gate exports the image pins"
     built = create_kernel(home=tmp_path / "home", plugin_dirs=[PLUGINS], skip_recovery=True)
@@ -82,9 +86,10 @@ def test_dependent_starts_after_http_readiness_pass(kernel: Kernel) -> None:
             n for n, row in enumerate(rows) if row.get("path") == path and row["class"] == "end"
         )
 
-    # the supporting service's readiness pass (the declared response) precedes the backend's start
+    # the supporting service's readiness pass (the declared response) precedes the dependent's start
     assert rows[end(tree.HTTP_SUPPORT_UNIT)]["condition"] == "satisfied"
-    assert end(tree.HTTP_SUPPORT_UNIT) < first(tree.POSTGRES_UNIT)
-    assert rows[end(tree.POSTGRES_UNIT)]["condition"] == "satisfied"
+    assert end(tree.HTTP_SUPPORT_UNIT) < first(TEST_NODE)
+    assert end(tree.POSTGRES_UNIT) < first(TEST_NODE)
+    assert rows[end(TEST_NODE)]["condition"] == "satisfied"
     # released with the run: no container of this run is left on the engine
     assert containers_named(view.run_id) == []
