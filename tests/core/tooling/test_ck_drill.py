@@ -401,18 +401,25 @@ def test_reg_partition_deals_whole_files_and_keeps_the_serial_tail() -> None:
 
 def test_reg_partition_moves_a_package_node_to_the_serial_tail() -> None:
     """A race-shaped package node runs in the serial tail by its node id; its package's process
-    keeps the testpaths root and deselects it (still every node exactly once)."""
+    keeps the testpaths root and deselects it, also when it is its file's only node (the root
+    collects that file all the same): still every node exactly once."""
     raced = (
         "packages/trestle-env/tests/twin/test_reuse_twin.py::"
         "test_prestarted_postgres_reused_untouched[cancelled]"
     )
     other = "packages/trestle-env/tests/twin/test_reuse_twin.py::test_found_is_kept"
-    plan = ck_drill.reg_partition([*SERIAL_NODES, other, raced], workers=4)
+    alone = (
+        "packages/trestle-env/tests/proc/test_readiness_cancel.py::"
+        "test_cancel_during_readiness_wait_prompt"
+    )
+    nodes = [*SERIAL_NODES, other, raced, alone]
+    plan = ck_drill.reg_partition(nodes, workers=4)
     dealt = [n for g in [*plan.chunks, *plan.packages, plan.tail, *plan.readers] for n in g.nodes]
-    assert sorted(dealt) == sorted([*SERIAL_NODES, other, raced])
-    assert raced in plan.tail.paths and raced in plan.tail.nodes
+    assert sorted(dealt) == sorted(nodes)
+    assert {raced, alone} <= set(plan.tail.paths) and {raced, alone} <= set(plan.tail.nodes)
     (env,) = [g for g in plan.packages if g.paths == ["packages/trestle-env/tests"]]
-    assert env.deselect == [raced] and other in env.nodes and raced not in env.nodes
+    assert env.deselect == [raced, alone] and other in env.nodes
+    assert not {raced, alone} & set(env.nodes)
 
 
 def test_reg_workers_leave_a_core_free(monkeypatch: pytest.MonkeyPatch) -> None:
