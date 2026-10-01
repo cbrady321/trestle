@@ -12,6 +12,9 @@ globs         = ["tests/proof/meta.py", "tests/proof/ckpt/root.py", "tests/proof
                  "tests/proof/selftest/spine_budget_check.py",
                  "tests/proof/selftest/test_mc_locality.py", "tests/proof/selftest/test_open_questions.py",
                  "tests/proof/selftest/test_register_final.py", "tests/proof/selftest/test_ckpt.py",
+                 # L.CZ.1 also edits these two (the deferral posture gains step "CZ"; the report-mode
+                 # enforce test becomes the --scope ci one); the plan literal omits them (plan gap).
+                 "tests/core/docs/test_cl_d1_deferrals.py", "tests/proof/selftest/test_ledger.py",
                  "docs/*.md", "!docs/environment.md", ".github/workflows/ci.yml", ".cursor/skills/trestle/SKILL.md"]
 
 [[lane]]                     # the root checkpoint merge; diff limited to CM-5's checkpoint paths
