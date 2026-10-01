@@ -116,7 +116,7 @@ def exec_checks(
     `readiness_environment` replaces the environment of the Postgres check (a proof harness
     plants a wrong password here: readiness must then never pass, KDD 2)."""
     checks: dict[str, ExecCheck] = {}
-    for name, declared in tree.READINESS.items():
+    for name, declared in tree.EXEC_CHECKS.items():
         environment = declared.environment
         if name == tree.POSTGRES_READY and readiness_environment is not None:
             environment = readiness_environment
