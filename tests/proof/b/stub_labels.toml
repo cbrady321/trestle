@@ -59,7 +59,7 @@ deferral = "OPEN-MISE-HOST"
 [[row]]
 label    = "WR-ENV-16:jvm-wrapper-fetch-disabled-or-blocked"
 group    = "D-19"
-text     = "A Gradle-shaped task runs the wrapper main class with the daemon and toolchain auto-download off, or blocks: shown on a stub tool. Gradle itself is absent and unproven."
+text     = "A Gradle-shaped task is run as the resolved JDK executing `org.gradle.wrapper.GradleWrapperMain` from the project's wrapper jar, never the wrapper script, with `--no-daemon` and JDK auto-provisioning disabled by configuration (`-Porg.gradle.java.installations.auto-download=false`, else the step blocks); a wrapper-declared distribution absent from the store blocks with `TOOLCHAIN_MISSING` before any task start: all shown on a stub standing in for the JDK and wrapper (`stub_tool --mode wrapper-fetch`). Gradle is absent here and the real wrapper's behaviour is unverified (D-19)."
 deferral = "D-19"
 
 [[row]]

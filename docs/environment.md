@@ -35,6 +35,13 @@ runs that command only when its executable is on the operator's allowlist
 (`OperatorLimits.release_executables`). **The library default is empty**: a release whose executable
 is not listed is reported `unknown` and never run.
 
+**The allowlist bounds which executables run, not what their arguments address.** Each recorded
+release command (the `observe`, `stop` and `remove` argv written into the run record when the
+resource was created) runs exactly as recorded, with no shell and an empty environment, once its
+executable is listed. Listing `docker` therefore trusts every descriptor that names it: a release
+descriptor written by an adapter other than the shipped effect facets is run as written and is
+outside the guarantee that a run never touches a resource it found.
+
 The reference operator configuration, `packages/trestle-env/tests/fixtures/operator/config.toml`, is
 the only place the docker path is listed. It is a Trestle home's `config.toml`:
 
