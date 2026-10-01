@@ -19,7 +19,12 @@ globs         = ["tests/proof/meta.py", "tests/proof/ckpt/root.py", "tests/proof
                  # so the validator gains it here (L.CZ.9.fix1), before the J-ROOT lane (fossils and
                  # reviews only, CM-5) records it.
                  "tests/proof/reviews.py", "tests/proof/selftest/test_reviews.py",
-                 "docs/*.md", "!docs/environment.md", ".github/workflows/ci.yml", ".cursor/skills/trestle/SKILL.md"]
+                 # J-ROOT's RV-2 and RV-4 root reviews failed on CZ's base and their fixes land here, before the
+                 # J-ROOT lane (fossils and reviews only, CM-5): the WR-ENV-16 jvm-wrapper row text (MC-B-05)
+                 # and the R-O allowlist disclosure in docs/environment.md. Both paths are b-env (RB-13) paths;
+                 # RB-13 is conditional and unordered before CZ, so the up-to-date rule (R3) orders any overlap.
+                 "tests/proof/b/stub_labels.toml",
+                 "docs/*.md", ".github/workflows/ci.yml", ".cursor/skills/trestle/SKILL.md"]
 
 [[lane]]                     # the root checkpoint merge; diff limited to CM-5's checkpoint paths
 name          = "j-root"

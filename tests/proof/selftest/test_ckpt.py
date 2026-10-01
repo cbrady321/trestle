@@ -388,3 +388,51 @@ def test_root_dry_run_lists_only_host_record_and_review_pending(monkeypatch, cap
         "pending:J-ROOT-6:host-record",
         "pending:J-ROOT-7:review",
     ]
+
+
+def test_root_live_world_schedules_every_command_once_timing_ones_alone(monkeypatch):
+    """The live world's scheduling changes no command and no argv: every non-lazy command runs
+    exactly once, perf and spine run with nothing else in flight, the lazy ones only on demand."""
+    import threading
+    import time
+
+    root_mod = _root_mod()
+    keys = set(root_mod.SERIAL_KEYS) | set(root_mod.PARALLEL_KEYS) | set(root_mod.LAZY_KEYS)
+    assert keys == set(root_mod.COMMANDS) | {"enforce"}
+    scheduled = root_mod.SERIAL_KEYS + root_mod.PARALLEL_KEYS
+    assert len(scheduled) == len(set(scheduled)) and not set(scheduled) & set(root_mod.LAZY_KEYS)
+
+    world = root_mod.LiveWorld("abc1234")
+    by_argv = {tuple(world._argv(key)): key for key in keys}  # noqa: SLF001
+    assert len(by_argv) == len(keys)  # each key has its own argv
+    lock = threading.Lock()
+    running: set[str] = set()
+    calls: list[str] = []
+    overlapped: dict[str, set[str]] = {}
+
+    def fake_run(argv, env=None):
+        key = by_argv[tuple(argv)]
+        with lock:
+            calls.append(key)
+            overlapped[key] = set(running)
+            running.add(key)
+        time.sleep(0.01)
+        with lock:
+            running.discard(key)
+            for other in running:
+                overlapped[key].add(other)
+        return (0 if key != "d8" else 3), f"out {key}"
+
+    monkeypatch.setattr(root_mod, "_run", fake_run)
+    assert world.result("drift") == (0, "out drift")
+    assert sorted(calls) == sorted(scheduled)
+    assert calls[: len(root_mod.SERIAL_KEYS)] == list(root_mod.SERIAL_KEYS)
+    for key in root_mod.SERIAL_KEYS:
+        assert overlapped[key] == set(), (key, overlapped[key])
+    assert world.result("d8") == (3, "out d8")  # each result is its own command's
+    assert world.result("enforce")[1] == "out enforce"
+    assert "--commit" in world._argv("enforce") and "abc1234" in world._argv("enforce")  # noqa: SLF001
+    assert not set(root_mod.LAZY_KEYS) & set(calls)
+    world.result("fence_history")
+    world.result("drift")
+    assert calls.count("fence_history") == 1 and calls.count("drift") == 1
