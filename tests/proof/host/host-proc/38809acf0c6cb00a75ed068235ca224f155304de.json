@@ -1,0 +1,781 @@
+{
+  "schema": 1,
+  "gate": "host-proc",
+  "sha": "38809acf0c6cb00a75ed068235ca224f155304de",
+  "mode": "run",
+  "python": "3.12.8",
+  "platform": "darwin",
+  "results": [
+    {
+      "nodeid": "tests/core/answer/test_cl_b3_cleanup.py::test_injected_confirmation_failure_keeps_primary",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-3:unconfirmed-never-clean-cancel-deadline",
+        "WR-OWN-6:cleanup-failure-beside-primary"
+      ]
+    },
+    {
+      "nodeid": "tests/core/answer/test_cl_b3_cleanup.py::test_injected_confirmation_failure_keeps_primary_on_the_pass",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-3:success-no-survivor",
+        "WR-OWN-6:cleanup-failure-beside-primary"
+      ]
+    },
+    {
+      "nodeid": "tests/core/answer/test_cl_b3_cleanup.py::test_reported_disposition_matches_ancestry_snapshot",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-6:disposition-matches-process-table"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_ck8_success_reap.py::test_passed_run_leaves_no_attributable_process",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-3:success-no-survivor",
+        "A8.2"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_ck8_success_reap.py::test_success_no_bytes_after_finalization",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-2:success-no-bytes-after-finalization"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_clock.py::test_short_deadline_stops_tree_in_window",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-1:deadline-tree-within-bound",
+        "WR-DEADLINE-2:no-process-survives",
+        "WR-DEADLINE-2:ends-in-deadline-window",
+        "A5.1"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_clock.py::test_failed_run_survivor_killed",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-3:non-success-no-survivor"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_containment.py::test_cancel_stops_attributable_tree_within_bound",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-5:stub-subprocess-killed",
+        "WR-CANCEL-1:own-session-descendant-attributable"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_containment.py::test_cancel_during_blocking_wait_ends_tree_and_wakes_caller",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-1:cancel-during-blocking-wait"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_containment.py::test_orphaned_own_session_descendant_still_stopped",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-1:own-session-descendant-attributable"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_finalization.py::test_no_evidence_or_result_bytes_change_after_terminal",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CON-6:containment-both-kernels",
+        "WR-CANCEL-2:no-bytes-after-finalization-stop-paths"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_group_stop.py::test_group_stop_row_on_every_terminal_path",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-6:gone-group-reports-released"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_group_stop.py::test_group_stop_row_on_the_pass_path",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-3:success-no-survivor",
+        "WR-OWN-6:gone-group-reports-released"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_group_stop.py::test_unconfirmed_stopper_projects_unknown_on_the_pass_path",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-3:success-no-survivor"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_identity.py::test_stub_reading_stdin_gets_eof_not_transport",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-5:stdin-not-transport"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_recovery.py::test_server_killed_mid_run_recovery_stops_recorded_group",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-1:recovery-ends-run-created-process",
+        "WR-CANCEL-3:process-alive-after-recovery",
+        "WR-CANCEL-3:never-nonterminal",
+        "WR-CANCEL-3:interrupted-never-succeeded",
+        "A6.2:core"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_recovery.py::test_recovery_under_other_tz_and_locale_signals_live_leader",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-3:signals-only-recorded-identity"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_recovery.py::test_live_leader_reused_member_pid_not_signalled",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-3:signals-only-recorded-identity"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_recovery.py::test_reused_pid_not_signalled",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-3:signals-only-recorded-identity"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_recovery.py::test_leader_gone_members_started_after_record_not_signalled",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-3:unconfirmed-never-clean-restart",
+        "WR-CANCEL-3:signals-only-recorded-identity"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_recovery.py::test_other_boot_confirmed_gone_nothing_signalled",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-3:signals-only-recorded-identity"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_recovery.py::test_same_boot_empty_pgid_confirmed_gone",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-3:signals-only-recorded-identity"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_recovery.py::test_same_boot_empty_pgid_live_recorded_row_unconfirmed",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-3:unconfirmed-never-clean-restart",
+        "WR-CANCEL-3:signals-only-recorded-identity"
+      ]
+    },
+    {
+      "nodeid": "tests/core/spine/test_cs2_recovery.py::test_straddle_s0_run_unconfirmed_never_clean",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-3:s0-straddle-stop-unconfirmed-never-clean"
+      ]
+    },
+    {
+      "nodeid": "tests/pins/a_lifecycle/test_g_a1.py::test_target_no_attributable_survivor_after_terminal_row",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-1:cancel-tree-within-bound",
+        "A6.1:core"
+      ]
+    },
+    {
+      "nodeid": "tests/pins/a_lifecycle/test_g_a3.py::test_target_restart_leaves_no_attributable_survivor",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-3:recovery-stops-recorded-group",
+        "A6.2:core"
+      ]
+    },
+    {
+      "nodeid": "tests/pins/a_lifecycle/test_straddle.py::test_target_s0_straddle_branch_i_unconfirmed_never_clean",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-3:s0-straddle-stop-unconfirmed-never-clean"
+      ]
+    },
+    {
+      "nodeid": "tests/pins/a_lifecycle/test_straddle.py::test_target_s0_orphan_not_signalled_branch_i_unconfirmed_never_clean",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-3:s0-straddle-stop-unconfirmed-never-clean"
+      ]
+    },
+    {
+      "nodeid": "tests/proof/spine/test_stop_offset.py::test_cancel_one_stop_row_class_is_its_cause",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-1:A-no-applied-effect-past-stop-offset"
+      ]
+    },
+    {
+      "nodeid": "tests/proof/suites/ports/test_fake_real.py::test_one_suite_file_passes_fake_and_real",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-PROOF-4:A-command-runner"
+      ]
+    },
+    {
+      "nodeid": "tests/single/control/test_recovery_plan.py::test_unknown_plan_format_interrupted_cleanup_unknown",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-3:unknown-plan-format"
+      ]
+    },
+    {
+      "nodeid": "tests/single/control/test_stop_protocol.py::test_request_path_writes_only_flag",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-1:u2-sole-signaller"
+      ]
+    },
+    {
+      "nodeid": "tests/single/control/test_stop_protocol.py::test_release_point_flag_then_stop_row",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-DEADLINE-2:release-point-stop-row"
+      ]
+    },
+    {
+      "nodeid": "tests/single/workflow/proc/test_command_port.py::test_child_pgid_equals_run_group",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-5:A-bound-command-never-detached"
+      ]
+    },
+    {
+      "nodeid": "tests/single/workflow/proc/test_command_port.py::test_interrupted_result_coded_from_cause",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-5:A-bound-command-never-detached"
+      ]
+    },
+    {
+      "nodeid": "tests/single/workflow/proc/test_found_resources.py::test_foreign_listener_not_reused_not_signalled",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-7:foreign-listener-blocked"
+      ]
+    },
+    {
+      "nodeid": "tests/single/workflow/proc/test_runtime_containment.py::test_created_resource_released_on_cancel_within_reserve",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-4:A-PROC"
+      ]
+    },
+    {
+      "nodeid": "tests/single/workflow/test_loop.py::test_dispatch_budget_recheck_zero_effects",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-DEADLINE-2:dispatch-recheck-stops-before-effect"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/facts/test_tree_facts.py::test_survivor_cannot_write_child_slice_after_finalize[proc]",
+      "outcome": "PASSED",
+      "labels": [
+        "C-RECORD-INTEGRITY:child-slice-frozen",
+        "WR-CANCEL-2:tree"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/host/test_tr5_containment.py::test_choice_tree_root_cancel_contained",
+      "outcome": "PASSED",
+      "labels": [
+        "C-CONTAIN-AND-CLOCK:choice-tree-stop"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/host/test_tr5_containment.py::test_choice_tree_root_deadline_contained",
+      "outcome": "PASSED",
+      "labels": [
+        "C-CONTAIN-AND-CLOCK:choice-tree-stop"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/host/test_trl_cancel.py::test_root_cancel_readiness_wait_and_running_sibling",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-1:tree",
+        "WR-UNIT-6:cancel-created-gone-found-untouched",
+        "WR-UNIT-6:cancel-pids-dead",
+        "WR-UNIT-6:cancel-no-start-after",
+        "A6.3"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/host/test_trl_cancel.py::test_root_deadline_same_clauses",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-1:tree",
+        "WR-UNIT-6:cancel-created-gone-found-untouched",
+        "WR-UNIT-6:cancel-pids-dead",
+        "WR-UNIT-6:deadline-variant",
+        "A6.3"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/host/test_trl_failure.py::test_exception_stops_siblings_listed_in_answer",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-6:exception-in-answer",
+        "WR-UNIT-6:exception-siblings-stop",
+        "A6.3"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/host/test_trl_failure.py::test_ordinary_failure_stops_only_dependents",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-6:ordinary-failure-dependents-only",
+        "A6.4"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/host/test_trl_failure.py::test_restricted_owner_reads_child_view",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-AUTH-1:tree",
+        "WR-UNIT-6:owner-reads-child-view",
+        "A6.3"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/host/test_trl_failure.py::test_child_addressed_cancel",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-6:child-addressed-cancel",
+        "A6.3"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/host/test_trl_slices.py::test_noncooperating_child_dead_by_root_deadline_margin_kill",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-3:descendant-dead-by-root-bound",
+        "A5.4"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/host/test_trl_slices.py::test_cooperating_child_timed_out_names_path",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-3:no-start-after-slice-verdict",
+        "WR-UNIT-3:coop-child-stopped-at-slice",
+        "A5.4"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_capacity.py::test_default_holds_slice_a_workload",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-TERM-7:capacity-default-measured@host"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr1_carve.py::test_misfit_refused_before_run_id",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-3:misfit-refused",
+        "WR-DEADLINE-3:tree-admission"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr1_carve.py::test_shared_node_carved_at_min_of_parents",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-3:misfit-refused"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr1_carve.py::test_choice_worst_case_misfit_refused",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-3:misfit-refused"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr1_carve.py::test_release_slice_vs_margin_refused",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-3:misfit-refused"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr2_child_cancel.py::test_child_cancel_assumed_refusal",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-6:child-addressed-cancel"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr2_restricted.py::test_owner_session_reads_child_view",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-AUTH-1:tree",
+        "WR-UNIT-6:owner-reads-child-view"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr2_restricted.py::test_other_session_refused_child_view",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-AUTH-1:tree",
+        "WR-UNIT-6:owner-reads-child-view"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr3_cut.py::test_failed_branch_stops_only_dependents[failed]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-6:ordinary-failure-dependents-only"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr3_cut.py::test_failed_branch_stops_only_dependents[blocked]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-6:ordinary-failure-dependents-only"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr3_cut.py::test_independent_sibling_uncut",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-6:ordinary-failure-dependents-only"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr3_cut.py::test_no_stop_row_through_a_real_run[failed]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-6:ordinary-failure-dependents-only"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr3_cut.py::test_no_stop_row_through_a_real_run[blocked]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-6:ordinary-failure-dependents-only"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr3_dispatch.py::test_credential_check_uses_root_deadline_plus_margin",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-3:credential-vs-root-deadline"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr3_dispatch.py::test_direct_call_held_to_declared_deadline",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-3:direct-uses-declared-deadline"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr3_failfast.py::test_exception_siblings_release_only",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-6:exception-siblings-stop"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr3_failfast.py::test_exception_listed_origin0",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-6:exception-in-answer"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr3_failfast.py::test_cancel_no_nonrelease_entry_past_offset_any_node",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-6:cancel-no-start-after"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr3_failfast.py::test_release_point_same_as_cancel[cancel]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-6:deadline-variant"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr3_failfast.py::test_release_point_same_as_cancel[release_point]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-6:deadline-variant"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr3_slices.py::test_coop_child_timed_out_names_path",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-3:no-start-after-slice-verdict",
+        "WR-UNIT-3:coop-child-stopped-at-slice"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr3_slices.py::test_subtree_only_release_after_verdict",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-3:no-start-after-slice-verdict"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr3_slices.py::test_subtree_resources_stay_in_root_record",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-3:subtree-resources-in-root-record"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr3_slices.py::test_shared_node_in_timed_out_subtree_release_only",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-3:shared-node-in-timed-out-subtree"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr3_slices.py::test_noncoop_grandchild_fixture_publishes_and_grandchild_is_attributable",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-3:coop-child-stopped-at-slice"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/process/test_restart_conformance.py::test_local_process_restart_suite[real]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-PROOF-4:b-process-restart-suite",
+        "WR-ENV-7:restart-mechanism-adapter"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/testrun/test_conformance.py::test_testrun_suite[pytest-junit]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-PROOF-4:b-testrun-suite"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/testrun/test_pytest_junit.py::test_counts_include_setup_teardown_collection_errors",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-VERIFY-4:runner-counts-errors"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/proc/test_http_readiness.py::test_dependent_starts_after_local_http_readiness_pass",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-VERIFY-2:b-readiness-ordering-proc"
+      ]
+    },
+    {
+      "nodeid": "tests/single/control/test_recovery_plan.py::test_server_killed_mid_run_plan_rank_sweep_after_restart",
+      "outcome": "PASSED",
+      "labels": [
+        "A6.2:single"
+      ]
+    },
+    {
+      "nodeid": "tests/single/workflow/proc/test_found_resources.py::test_found_process_untouched_on_every_path[passed]",
+      "outcome": "PASSED",
+      "labels": [
+        "A8.1"
+      ]
+    },
+    {
+      "nodeid": "tests/single/workflow/proc/test_found_resources.py::test_found_process_untouched_on_every_path[failed]",
+      "outcome": "PASSED",
+      "labels": [
+        "A8.1"
+      ]
+    },
+    {
+      "nodeid": "tests/single/workflow/proc/test_found_resources.py::test_found_process_untouched_on_every_path[blocked]",
+      "outcome": "PASSED",
+      "labels": [
+        "A8.1"
+      ]
+    },
+    {
+      "nodeid": "tests/single/workflow/proc/test_found_resources.py::test_found_process_untouched_on_every_path[cancelled]",
+      "outcome": "PASSED",
+      "labels": [
+        "A8.1"
+      ]
+    },
+    {
+      "nodeid": "tests/single/workflow/proc/test_found_resources.py::test_found_process_untouched_on_every_path[timed_out]",
+      "outcome": "PASSED",
+      "labels": [
+        "A8.1"
+      ]
+    },
+    {
+      "nodeid": "tests/single/workflow/proc/test_found_resources.py::test_found_process_untouched_on_every_path[recovered]",
+      "outcome": "PASSED",
+      "labels": [
+        "A8.1"
+      ]
+    },
+    {
+      "nodeid": "tests/single/workflow/proc/test_found_resources.py::test_unhealthy_found_blocked_never_restarted",
+      "outcome": "PASSED",
+      "labels": [
+        "A8.3"
+      ]
+    },
+    {
+      "nodeid": "tests/single/workflow/proc/test_runtime_containment.py::test_runtime_launched_tree_ignoring_sigterm_gone_after_cancel",
+      "outcome": "PASSED",
+      "labels": [
+        "A6.1:single"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr2_child_views.py::test_child_view_names_root_and_path",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-2:child-view-resolves"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr2_child_views.py::test_child_view_nonterminal_while_root_live",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-7:view-nonterminal-while-live"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr2_child_views.py::test_child_views_materialized_at_finalize_and_recovery[finalization]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-2:child-view-resolves"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr2_child_views.py::test_child_views_materialized_at_finalize_and_recovery[recovery]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-2:child-view-resolves"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr2_child_views.py::test_never_started_child_disposition",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-2:child-view-resolves"
+      ]
+    },
+    {
+      "nodeid": "tests/tree/test_tr2_child_views.py::test_composite_view_rolled_up_by_b4_c8",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-2:child-view-resolves"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/testrun/test_pytest_junit.py::test_full_output_behind_handle",
+      "outcome": "PASSED",
+      "labels": [
+        "B9.2"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/proc/test_test_after_readiness.py::test_system_test_starts_after_local_http_readiness_pass",
+      "outcome": "PASSED",
+      "labels": [
+        "B4.1"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/proc/test_owned_restart.py::test_killed_owned_app_restarted_reported_repaired",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-7:restart-within-budget-repaired",
+        "B7.1"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/proc/test_owned_restart.py::test_restart_is_of_the_owned_process_only",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-REMEDY-4:b-owned-restart-only"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/proc/test_build_daemon.py::test_daemon_prevented_by_declared_config",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-7:prevented-by-config"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/proc/test_build_daemon.py::test_in_group_helper_ended_within_bound_after_cancel",
+      "outcome": "PASSED",
+      "labels": [
+        "B6.2",
+        "WR-CANCEL-7:contained-within-bound"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/proc/test_build_daemon.py::test_escaping_helper_named_in_docs",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-CANCEL-7:disclosed-boundary"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/toolchain/test_python_host.py::test_demo_py_task_runs_on_real_interpreter_identity_recorded",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-EVID-10:python-host",
+        "WR-ENV-3:python-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/toolchain/test_python_host.py::test_recorded_argv_reproduces_by_hand",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-EVID-10:python-host",
+        "WR-ENV-3:python-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/toolchain/test_python_host.py::test_the_pin_is_resolved_without_installing_or_searching",
+      "outcome": "PASSED",
+      "labels": []
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/proc/test_readiness_cancel.py::test_cancel_during_readiness_wait_prompt",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-DEADLINE-4:b-readiness-cancel-prompt"
+      ]
+    }
+  ],
+  "status": "PASSED"
+}

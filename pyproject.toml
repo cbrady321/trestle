@@ -40,6 +40,8 @@ packages = ["trestle"]
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+# fossils are byte snapshots of plugin sources (MC-11), not code to lint
+extend-exclude = ["tests/fixtures/fossils"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

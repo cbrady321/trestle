@@ -1,0 +1,34 @@
+# RV-5 at J-SLICE-B (CM-5 role 1, L.J-SLICE-B.1): stage-critic transcription review paired with
+# `python -m tests.proof.transcribe --check all`. Reviewer: stage critic (independent), read-only.
+# Scope (plans/b-slice-b.md L.J-SLICE-B.1): matrix map (the 25 step-B clauses) and row owners vs requirements
+# L425-440 / L493-505 and decomposition s7; labels.d/slice-b.toml, b/stub_labels.toml, temporary.d/slice-b.toml and
+# fence.d/slice-b.toml vs the plan literals and Coverage (a)-(c); k_doc_map for K-6, K-15 (NW-1) and the K-8
+# container half (RB-12); divergence.toml and fence.d/tree.toml deltas as read-through.
+# Round history:
+# - Round 1, pass, at f1820bd (PR #46 head, the B4 slice-b bundle; verdict _tmp/delivery/RV-5-slice-b-verdict.md).
+#   The previous RV-5 (RV-5-slice-a.toml) reviewed 4a94b9e; matrix_map, row_owners, k_doc_map, deferrals,
+#   open_questions, transcribe.py, labels.d/{core,single,tree,p0} are byte-identical 4a94b9e..f1820bd.
+# - Round 2, pass, at b6a08ce (the carrier merge of PR #47 054b504, which contains master af15004
+#   WR-Merge: RB-12 = the landed #46 bundle with its fix rounds; verdict _tmp/delivery/RV-5-slice-b-r2-verdict.md).
+#   Only fence.d/slice-b.toml (slice-b-bundle lane +3 globs) and fence.d/tree.toml (tree lanes +5 globs, PR #47) moved
+#   among transcribed files; every other one is byte-identical f1820bd..b6a08ce, so round-1 results stand for them.
+# - Round 3, pass, at 6954949 (this record; the carrier merges of PR #47 86251aa L.TR-6.fix9 and e051ab6 L.TR-6.fix10
+#   over the round-2 record; verdict _tmp/delivery/RV-5-slice-b-r3-verdict.md). Every transcribed file and docs/ is
+#   byte-identical b6a08ce..6954949, so round-1 and round-2 results stand; the only non-record change is the CK
+#   drill's REG scheduling (ck_drill.py, test_ck_drill.py), which no criterion covers.
+# Departures recorded (declared, not transcription defects): fence.d/slice-b.toml uses CM-2's bundle form
+# (16 product gates on wr/slice-b-bundle/slice-b, lane slice-b-bundle); B's fossil MANIFEST lives at
+# fossils/slice-b/ (not the plan's fossils/b/), so the bundle lane globs it.
+# Observations, no action: TM-B4-3 probe narrowed with --include=*.py (L.RB-0.2.fix2); 52 non-twin labels carry
+# plan-prescribed CSC-9 component tiers; F-13(d) gated_on on the label vs both_variant in open_questions.toml.
+id = "RV-5"
+mode = "stage-critic review"
+outcome = "pass"
+sha = "695494922579466ddb5abe55cf10f6bcc538b759"
+transcribe_log = "J-SLICE-B round 3 at 6954949 (reviewer, scratch git-archive extraction, py.sh: arm64 .venv312, PYTHONPATH + packages/trestle-packs + packages/trestle-env, transcribe and every pytest under locked.sh): transcribe --check all --requirements requirements-workflow-runtime.md --decomposition decomposition-workflow-runtime.md: exit 0, empty output; TRESTLE_REQUIREMENTS/TRESTLE_DECOMPOSITION pytest tests/proof/drift -k 'SA-06 or SA-02 or SA-07 or SA-08 or SA-11 or SA-15': 33 passed, 55 deselected; pytest tests/proof/b/test_slice_b_fragments.py tests/proof/b/test_stub_labels.py tests/proof/drift/b tests/proof/b/test_k8_container_doc.py tests/proof/b/test_twin_pairs.py: 51 passed; meta check-map: exit 0; meta audit-rows: exit 0 (129 rows, 0 unregistered); meta register, kdoc, open-questions: exit 0; delta sanity pytest tests/core/tooling/test_ck_drill.py tests/proof/b/test_record_facts.py tests/proof/selftest/test_reviews.py: 49 passed, 6 skipped. Delta b6a08ce..6954949 (two plain carrier merges of PR #47 86251aa L.TR-6.fix9 and e051ab6 L.TR-6.fix10; 5 files, +1449/-5): every transcribed file byte-identical by blob id (matrix_map 3cab379, row_owners 2be3398, k_doc_map 8b97c10, deferrals f9f79be, open_questions 890010d, divergence 62ff699, transcribe.py 7904b41, compat_map 1700220, d2_exceptions c7116a1, rollback bddbaaa, temporary.toml 1b915c1, fence.toml 33beaa0, b/stub_labels 5c935c3) and by tree id (labels.d beb1021, temporary.d d9f9af1, fence.d 7346247, docs 0aadd7d); no product/package/docs/CI path changed; only tests/core/tooling/ck_drill.py (+26/-3, REG scheduling only: REG_MAX_WORKERS/_reg_workers = cores-1 capped at 4, REG_SERIAL_NODES +3 race-shaped node ids, reg_partition keeps a package group whose nodes all moved so the package process deselects them; DECLINES, derive_patch, assert_within_scope, run_regression, drill untouched), tests/core/tooling/test_ck_drill.py (+2 tests), host-{docker,proc}/054b504 records (exempt, void per ci47/POST-RUN.md) and the round-2 record itself moved. Verdict: all four criteria unaffected, pass; no BLOCKING finding. _tmp/delivery/RV-5-slice-b-r3-verdict.md."
+
+[criteria]
+verbatim_fragments = "pass"
+row_set = "pass"
+owner = "pass"
+k_docs = "pass"
