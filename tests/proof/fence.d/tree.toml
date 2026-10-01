@@ -30,6 +30,10 @@ globs = [
   "tests/single/control/test_admission_refusals.py", "tests/single/control/test_admission_plan.py",
   "tests/single/spine/test_w_a1.py",
   "trestle/server/main.py",
+  # L.TR-6.fix6/fix7 (the CI speed-up, a WR-Fix on this lane's `wr/tree/` fix route): the CK drill's
+  # parallel REG and the re-sharded `test` job. The four paths exactly, nothing broader.
+  ".github/workflows/ci.yml", "tests/proof/ci_shards.py",
+  "tests/core/tooling/ck_drill.py", "tests/core/tooling/test_ck_drill.py",
 ]
 
 [[lane]]                     # the checkpoint merge only (CM-5, DM-76)
@@ -83,6 +87,10 @@ globs = [
   "tests/proof/suites/guarantees.py", "tests/proof/suites/test_conformance_matrix.py",
   # L.TR-6.8: core's capacity pin asserted the provisional default TM-C3 held; inverted with the measured one
   "tests/core/admission/test_cl_a1_capacity.py",
+  # L.TR-6.fix6/fix7 (the CI speed-up, a WR-Fix on this lane's `wr/tree/` fix route): the CK drill's
+  # parallel REG and the re-sharded `test` job. The four paths exactly, nothing broader.
+  ".github/workflows/ci.yml", "tests/proof/ci_shards.py",
+  "tests/core/tooling/ck_drill.py", "tests/core/tooling/test_ck_drill.py",
 ]
 
 [[gate]]
