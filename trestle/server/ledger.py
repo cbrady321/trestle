@@ -33,6 +33,7 @@ class RunLedger:
         return record
 
     def last_kind(self, kind: str) -> dict[str, Any] | None:
+        record: dict[str, Any]
         for record in reversed(self.records):
             if record.get("kind") == kind:
                 return record

@@ -10,7 +10,7 @@ import signal
 import subprocess
 from pathlib import Path
 from types import FrameType
-from typing import IO, cast
+from typing import IO
 
 from trestle.common import redact
 from trestle.common.fsutil import atomic_write, atomic_write_json
@@ -99,9 +99,10 @@ def run_reactor(
     markers: list[dict[str, object]] = []
 
     stopped = False
+    stdout_stream, stderr_stream = proc.stdout, proc.stderr
     pipes: dict[str, _Pipe | None] = {
-        "stdout": _Pipe(cast(IO[str], proc.stdout)) if proc.stdout is not None else None,
-        "stderr": _Pipe(cast(IO[str], proc.stderr)) if proc.stderr is not None else None,
+        "stdout": _Pipe(stdout_stream) if stdout_stream is not None else None,
+        "stderr": _Pipe(stderr_stream) if stderr_stream is not None else None,
     }
 
     def take(name: str, chunk: str) -> None:

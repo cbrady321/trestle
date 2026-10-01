@@ -28,6 +28,10 @@ globs         = ["tests/proof/meta.py", "tests/proof/ckpt/root.py", "tests/proof
                  # (a partial facet file) must switch closure off (L.CZ.rv-fix3). A pins/c_surface path,
                  # widened here like stub_labels.toml above (plan departure, L.CZ.rv-fix4).
                  "tests/pins/c_surface/test_goldens.py",
+                 # CI's unpinned mypy moved 2.3.1 -> 2.4.0 while PR #49 was open: reversed() over a list now
+                 # yields Any (no-any-return) and Popen's narrowed pipes made two casts redundant. Typing-only
+                 # restructures, clean under both versions (plan departure, L.CZ.rv-fix5).
+                 "trestle/server/ledger.py", "trestle/wrapper/reactor.py",
                  "docs/*.md", ".github/workflows/ci.yml", ".cursor/skills/trestle/SKILL.md"]
 
 [[lane]]                     # the root checkpoint merge; diff limited to CM-5's checkpoint paths
