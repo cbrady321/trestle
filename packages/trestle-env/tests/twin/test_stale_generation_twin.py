@@ -4,6 +4,10 @@ The consumer tree of `twin/consumers.py` runs through the real loop (the tree ri
 and services under a manual clock) over `FakeContainerEngine` and `FakeGrant`, with the join's host
 scope read live from the same fake issuer (`LiveScope`: the loop feeds none of its own). The same
 node names as `host/test_stale_generation.py`; only `@stub-twin` labels.
+
+`test_owned_process_older_generation_restarted` (L.RB-9.5.fix1) runs a real local process (the
+stdlib app, the real `LocalProcessPort`) that takes its credential at start, read through the fake
+issuer: `twin/local_consumer.py`'s `stale_restart_case`, shared with the HOST node.
 """
 
 from __future__ import annotations
@@ -19,7 +23,7 @@ from trestle.workflow.values import CheckResult, Lineage, NodePath
 from trestle_packs.fakes.container import FakeContainerEngine, selector_name
 from trestle_packs.fakes.grant import FakeGrant
 
-from twin import consumers
+from twin import consumers, local_consumer
 
 UNIT = "consumer.stale"
 FOUND = "trestle-stale-consumer"
@@ -127,3 +131,17 @@ def test_found_container_unproven_generation_blocked_untouched(tmp_path: Path) -
     assert [e for e in engine.effects if e[1] == FOUND] == [] and delivery.delivered == []
     assert grant.channel_generation(FOUND) == old  # untouched
     assert FOUND in engine.inventory()["containers"]
+
+
+@pytest.mark.stub_proven("WR-OWN-9:owned-process-restarted@stub-twin")
+def test_owned_process_older_generation_restarted(tmp_path: Path) -> None:
+    grant = FakeGrant()
+    delivery = Delivery(grant)
+    before = grant.current_generation()
+    case = local_consumer.stale_restart_case(
+        tmp_path, "r_tree_0001", grant, delivery, issue=grant.plant_consumer, rotate=grant.advance
+    )
+    local_consumer.assert_restarted(case)
+    assert grant.current_generation() != before  # the issuer moved on after the first launch
+    assert delivery.delivered == []  # nothing was delivered: the restart took the new one
+    assert grant.channel_generation(case.selector) == grant.current_generation()

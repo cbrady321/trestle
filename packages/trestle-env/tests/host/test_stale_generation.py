@@ -20,9 +20,16 @@ without it every current credential would read as stale in production (reported 
   generation, ends INCOMPATIBLE (J-13) with `CREDENTIAL_STALE`, the answer BLOCKED, and nothing
   acts on it: same container, same channel file.
 
-Not built: the owned LOCAL PROCESS consumer (`::test_owned_process_older_generation_restarted`).
-`ChannelDelivery` addresses only run-scoped container selectors (`trwr-...`), and a local
-process's selector is `proc-<hex>`, so no adapter can re-deliver to a local app (B-HOST1-RETURN).
+* owned local process (L.RB-9.5.fix1, `::test_owned_process_older_generation_restarted`): a real
+  local app (the stdlib app over the real `LocalProcessPort`) that reads its credential when it
+  starts, so nothing refreshes it in place (`ChannelDelivery` addresses only container selectors,
+  B-HOST1-RETURN): each launch is given the stub issuer's current token in the app's credentials
+  file, which the shipped `LocalAppProbe` (the demo client `stub_cloud`) reads. The issuer rotates
+  right after the launch; the join proves the generation older and the declared remedy restarts the
+  run's own process once (`twin/local_consumer.py`'s `RestartingConsumerUnit`): a new process
+  holding the current generation, no delivery, no recreate, no second create. No Docker is used by
+  that case; the found-container case above is the not-owned half.
+
 The CI twins are `twin/test_stale_generation_twin.py`.
 """
 
@@ -51,16 +58,18 @@ from trestle_packs.container import ContainerDefinition, ExecCheck, bind
 from trestle_packs.container.effects import BindMount
 from trestle_packs.fakes.container import selector_name
 from trestle_packs.grant import (
+    CHANNEL_FILE,
     ArgvRunner,
     ChannelDelivery,
     ContainerExecProbe,
     DemoGrant,
+    LocalAppProbe,
     channel_mount,
     provision_channel,
     write_channel,
 )
 from trestle_packs.process.command import CommandPort
-from twin import consumers
+from twin import consumers, local_consumer
 
 pytestmark = pytest.mark.docker_host
 
@@ -251,3 +260,33 @@ def test_found_container_unproven_generation_blocked_untouched(tmp_path: Path, i
     finally:
         _docker("rm", "-f", found)
         _cleanup(run_id)
+
+
+@pytest.mark.stub_proven("WR-OWN-9:owned-process-restarted")
+def test_owned_process_older_generation_restarted(tmp_path: Path, issuer: Any) -> None:
+    run_id = f"r_stale_{uuid.uuid4().hex[:10]}"
+    channels = tmp_path / "channels"
+    delivery = local_consumer.LocalAppDelivery(issuer.url, channels)  # declared, never used
+
+    def issue(selector: str) -> None:  # a launch takes the issuer's current credential
+        directory = delivery.channel(selector)
+        directory.mkdir(parents=True, exist_ok=True)
+        write_channel(directory, issuer.state.token())
+
+    probe = LocalAppProbe(
+        sys.executable,
+        str(REPO / "tests" / "fixtures" / "stubs" / "stub_cloud.py"),
+        issuer.url,
+        lambda sel: delivery.channel(sel) / CHANNEL_FILE if sel.startswith("proc-") else None,
+        ArgvRunner(CommandPort()),
+    )
+    grant = DemoGrant(issuer.url, probe=probe)
+    before = issuer.state.current()
+    case = local_consumer.stale_restart_case(
+        tmp_path, run_id, grant, delivery, issue=issue, rotate=issuer.state.advance
+    )
+    local_consumer.assert_restarted(case)
+    assert issuer.state.current() != before  # the issuer moved on after the first launch
+    assert delivery.delivered == []  # nothing was delivered: the restart took the new one
+    held = (delivery.channel(case.selector) / CHANNEL_FILE).read_text(encoding="utf-8")
+    assert issuer.state.current() in held
