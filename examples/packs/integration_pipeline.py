@@ -53,17 +53,22 @@ def integration_pipeline(
     pytest_path: str = "tests",
     workdir: str | None = None,
 ) -> PipelineResult:
-    """Run docker stack → optional alembic migrate → pytest."""
+    """Run docker stack → optional alembic migrate → pytest.
+
+    The stack is stopped exactly once on every path (K-15): `up` tears itself down when it
+    fails, and once it has returned the pipeline tears down in `finally` on success and on
+    every failure, per the declared `teardown` policy.
+    """
     cwd = Path(workdir) if workdir else Path.cwd()
     stages: dict[str, Any] = {}
     stack = StackSpec.from_dict(asdict(stack_spec))
     runner = StackRunner(ctx)
 
-    try:
-        ctx.log("stage: docker_stack")
-        docker_result = runner.up(stack, cwd=cwd)
-        stages["docker"] = docker_result.to_dict()
+    ctx.log("stage: docker_stack")
+    docker_result = runner.up(stack, cwd=cwd)  # a failing `up` runs its own single teardown
+    stages["docker"] = docker_result.to_dict()
 
+    try:
         if alembic_config:
             ctx.log("stage: migrate")
             mig = run_alembic_upgrade(resolve_under(cwd, alembic_config))
@@ -83,6 +88,5 @@ def integration_pipeline(
             raise RuntimeError(msg)
 
         return {"stages": stages, "ok": True}
-    except Exception:
+    finally:
         runner.down(stack, cwd=cwd)
-        raise

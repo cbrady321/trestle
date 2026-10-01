@@ -79,11 +79,18 @@ Copy-paste into `run(plugin="docker_stack", args={…})`:
 
 ### Teardown
 
-| Value | On failure or `down()` |
-|-------|------------------------|
-| `down` | `docker compose down` (removes containers + networks) |
-| `stop` | `docker compose stop` (containers preserved) |
-| `none` | No automatic cleanup |
+| Value | On failure or `down()` | Removes |
+|-------|------------------------|---------|
+| `down` | `docker compose down` (containers and networks; volumes are kept) | containers, networks |
+| `stop` | `docker compose stop` (containers are stopped and kept) | nothing |
+| `none` | No automatic cleanup | nothing |
+| `reset_volumes=True` | `StackRunner.down(spec, reset_volumes=True)`: `docker compose down --volumes`, whatever the declared policy | containers, networks, volumes |
+
+No default or failure-path teardown deletes a volume, the legacy pack's included. Removing volumes is
+an explicit, non-default choice: `reset_volumes=True` is a Python-only argument of `StackRunner.down`,
+and no entry-point schema (`docker_stack`, `integration_pipeline`) exposes it. Earlier releases removed
+the stack's volumes on every `down` teardown; that changed (K-6), so state kept in named volumes now
+survives a stack teardown.
 
 ### Evidence
 
@@ -169,7 +176,15 @@ Full stack test in one `run`:
 }
 ```
 
-Then `await_runs(timeout_ms=600000)`. On pytest failure the stack is torn down automatically (`teardown` policy from `stack_spec`).
+Then `await_runs(timeout_ms=600000)`. The stack is stopped exactly once on every path (`teardown` policy from `stack_spec`; volumes are kept, see Teardown above):
+
+| Path | Teardown |
+|------|----------|
+| `up` fails | `up` tears the stack down itself, once; the pipeline does not tear down again |
+| migrate or pytest fails | once, after the failing stage |
+| success | once, after pytest passes (earlier releases left the stack running) |
+
+`teardown: none` means no effect on every path.
 
 ---
 

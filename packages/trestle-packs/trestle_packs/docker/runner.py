@@ -92,9 +92,21 @@ class StackRunner:
             self._teardown(spec, policy, cwd=workdir)
             raise
 
-    def down(self, spec: StackSpec, *, cwd: Path | None = None) -> None:
+    def down(
+        self,
+        spec: StackSpec,
+        *,
+        cwd: Path | None = None,
+        reset_volumes: bool = False,
+    ) -> None:
+        """Tear the stack down per its policy; volumes are kept unless `reset_volumes=True`.
+
+        `reset_volumes=True` is the only volume-removing path (K-6): an explicit, Python-only
+        request that runs `compose down` with volumes whatever the declared policy is. No
+        entry-point schema exposes it.
+        """
         policy = TeardownPolicy(spec.teardown)
-        self._teardown(spec, policy, cwd=cwd or Path.cwd())
+        self._teardown(spec, policy, cwd=cwd or Path.cwd(), reset_volumes=reset_volumes)
 
     def _attach_service_logs(
         self,
@@ -109,7 +121,16 @@ class StackRunner:
             log_path.write_text(content, encoding="utf-8")
             self._artifacts.attach_file(self._ctx, log_path, name=f"{service}.log")
 
-    def _teardown(self, spec: StackSpec, policy: TeardownPolicy, *, cwd: Path) -> None:
+    def _teardown(
+        self,
+        spec: StackSpec,
+        policy: TeardownPolicy,
+        *,
+        cwd: Path,
+        reset_volumes: bool = False,
+    ) -> None:
+        if reset_volumes:
+            policy = TeardownPolicy.DOWN
         if policy == TeardownPolicy.NONE:
             return
         try:
@@ -117,8 +138,7 @@ class StackRunner:
                 self._backend.stop(spec, cwd=cwd)
                 self._ctx.log("teardown: compose stop complete")
                 return
-            remove_volumes = policy == TeardownPolicy.DOWN
-            self._backend.down(spec, cwd=cwd, remove_volumes=remove_volumes)
+            self._backend.down(spec, cwd=cwd, remove_volumes=reset_volumes)
             self._ctx.log("teardown: compose down complete")
         except Exception as exc:  # noqa: BLE001 — best-effort teardown
             self._ctx.log(f"teardown warning: {exc}")
