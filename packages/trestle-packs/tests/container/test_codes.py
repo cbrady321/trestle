@@ -28,10 +28,12 @@ V11_NAMES = frozenset(
     SECTION_UNAVAILABLE DOCKER_CLI_MISSING DOCKER_ENGINE_UNREACHABLE TOOLCHAIN_INTERFACE_DRIFT
     ADOPTION_STALE COMPOSE_DEFINITION_INVALID GRANT_ISSUER_UNREACHABLE HOST_SCOPE_UNREADABLE
     WORKER_EXIT EXECUTION_RESTART VERTEX_UNENDED RESULT_UNENCODABLE
+    PROVISION_STORE_UNREADABLE
     """.split()
 )
 
-# MC-B-12, adapter half (b-slice-b.md L.NW-2.3): the seven codes B's adapters raise.
+# MC-B-12, adapter half (b-slice-b.md L.NW-2.3): the codes B's adapters raise. The eighth is the
+# one V-11 name the transcription above gains (L.RB-6.3.fix1, ADD-code-provision-store-unreadable).
 ADAPTER_NAMES = (
     "DOCKER_CLI_MISSING",
     "DOCKER_ENGINE_UNREACHABLE",
@@ -40,6 +42,7 @@ ADAPTER_NAMES = (
     "COMPOSE_DEFINITION_INVALID",
     "CREDENTIAL_INTERACTIVE",
     "GRANT_ISSUER_UNREACHABLE",
+    "PROVISION_STORE_UNREADABLE",
 )
 # V-11 gives every code ONE spelling. A-1 already spelled these two `execution.*` (the join's
 # human-actionable set J-5a and the real command port compare that value), so they keep it.
@@ -81,6 +84,19 @@ def test_adapter_constants_carry_the_v11_name_and_dm16_value() -> None:
     assert vocab.DOCKER_ENGINE_UNREACHABLE == "adapter.docker_engine_unreachable"
     for name in ADAPTER_NAMES:
         assert getattr(vocab, name) == getattr(codes, name), name  # re-exported unchanged
+
+
+def test_the_provision_store_code_is_the_one_added_v11_name() -> None:
+    """L.RB-6.3.fix1: V-11 has no code for a record store that did not answer; the adapter half
+    gains `PROVISION_STORE_UNREADABLE`, spelled and mirrored like the seven others."""
+    assert vocab.PROVISION_STORE_UNREADABLE == "adapter.provision_store_unreadable"
+    assert codes.PROVISION_STORE_UNREADABLE == vocab.PROVISION_STORE_UNREADABLE
+    assert engine.PROVISION_STORE_UNREADABLE == vocab.PROVISION_STORE_UNREADABLE
+    assert vocab.PROVISION_STORE_UNREADABLE in vocab.ADAPTER_CODES
+    assert vocab.PROVISION_STORE_UNREADABLE not in {
+        vocab.DOCKER_ENGINE_UNREACHABLE,  # the engine answered; the store did not
+        vocab.TOOLCHAIN_INTERFACE_DRIFT,  # an unexpected output shape is another failure
+    }
 
 
 def test_a_planted_constant_outside_v11_fails() -> None:

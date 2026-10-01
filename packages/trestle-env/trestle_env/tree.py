@@ -113,6 +113,10 @@ ROOT_BUDGET_S: Final = 100
 LEAF_BUDGET_S: Final = 40
 READY_POLL_S: Final = 1
 READY_WAIT_S: Final = 30
+# The work nodes after readiness (the provisioning submit, a test's task) have their own, shorter
+# budget: the root budget holds the longest `needs` chain, backend -> provision -> test.
+STAGE_BUDGET_S: Final = 20
+STAGE_WAIT_S: Final = 10
 RELEASE_TIMEOUT_S: Final = 2
 CONCURRENCY: Final = 2
 
@@ -362,6 +366,76 @@ def task_unit_name(test_id: str) -> str:
     return f"{TASK_PREFIX}.{test_id}"
 
 
+PROVISION_UNIT: Final = "provision.postgres"
+PROVISION_SERVICE: Final = "postgres"  # the logical system whose record is provisioned
+PROVISION_ENTRY: Final = "reference-fixture"  # the catalog entry the store maps to its payload
+PROVISION_PAYLOAD: Final = "fixture-record"
+SUBMIT: Final = "submit"
+PROVISIONED: Final = "provisioned"  # the postcondition: the authoritative probe sees the record
+
+
+class ProvisionUnit:
+    """Provision the environment's fixture record exactly once (L.RB-6.2; WR-ENV-4, B3.3).
+
+    The submit is `ResourceCreate.create` of a `PROVISIONED` resource and NOT safe to resubmit
+    (`Repeat.ONCE`): once a ticket is issued the node never issues another, whatever a read says.
+    Completion is observed through the AUTHORITATIVE probe only (`ResourceReads.observe`, a
+    read-only authenticated query of the record store): a submit the port ACCEPTED is not the
+    record being there, so the node converges (polls, within its declared wait) until the probe
+    sees it, and a lagging convenience read (`check`) is never consulted. A record of the same
+    system already in the store under another key (an earlier equivalent run's) is reused: no
+    submit is issued for it. The record is durable (`Durable(ENVIRONMENT)`): no run releases it."""
+
+    def __init__(self) -> None:
+        self._spec = ResourceSpec(
+            PROVISION_SERVICE, RealizationKind.PROVISIONED, PROVISION_ENTRY, None
+        )
+
+    def declare(self) -> LeafDeclaration:
+        return LeafDeclaration(
+            unit=PROVISION_UNIT,
+            flags=LoopFlags(Compose.LEAF, CompletionSource.OBSERVED, Repeat.ONCE),
+            preconditions=(),
+            postcondition=PROVISIONED,
+            wait=WaitPolicy(timedelta(seconds=READY_POLL_S), 1.0, timedelta(seconds=STAGE_WAIT_S)),
+            resource_kind="postgres_record",
+            may_touch=frozenset({"postgres_record"}),
+            effects=(
+                EffectDeclaration(
+                    SUBMIT, EffectFacetClass.CREATE, "", Lifetime.DURABLE, frozenset(), None
+                ),
+            ),
+            retryable=frozenset(),
+            remedies=(),
+            budget=timedelta(seconds=STAGE_BUDGET_S),
+            max_attempts=1,
+        )
+
+    def observe(self, params: Any, reads: ReadFacets, ctx: ObserveContext) -> Observation:
+        seen = reads.read(ResourceReads).observe(self._spec, ctx.lineage, SUBMIT)
+        recorded = seen.selector_present or bool(seen.found)
+        return Observation(
+            present=recorded,
+            selector_present=seen.selector_present,
+            # a found record was selected by the system it names: it is this service's record
+            identity_proven=seen.identity_proven or bool(seen.found),
+            configuration_compatible=True,
+            postcondition=CheckResult(recorded and seen.code is None, seen.code, ""),
+            preconditions=(),
+            currency=(),
+            found=tuple(seen.found),
+            code=seen.code,
+            payload=None,
+        )
+
+    def advance(self, params: Any, state: Verdict, effects: EffectFacets, ctx: ActContext) -> Step:
+        effects.create(ResourceCreate).create(self._spec, SUBMIT)
+        return Acted()
+
+    def release(self, params: Any, handle: CreatedHandle, effects: Any, ctx: ActContext) -> Step:
+        raise AssertionError("a durable record is never released by a run")
+
+
 class TaskUnit:
     """The toolchain leg for one catalog test: run its project's allowlisted task once, when the
     request names the test, through the `ExecutionPort` (L.RB-4.5; B3-C14, WR-ENV-3, WR-ENV-15).
@@ -388,7 +462,7 @@ class TaskUnit:
             flags=LoopFlags(Compose.LEAF, CompletionSource.RECORDED, Repeat.SAFE),
             preconditions=(),
             postcondition="task_recorded",
-            wait=WaitPolicy(timedelta(seconds=READY_POLL_S), 1.0, timedelta(seconds=READY_WAIT_S)),
+            wait=WaitPolicy(timedelta(seconds=READY_POLL_S), 1.0, timedelta(seconds=STAGE_WAIT_S)),
             resource_kind="toolchain_task",
             may_touch=frozenset({"toolchain_task"}),
             effects=(
@@ -398,7 +472,7 @@ class TaskUnit:
             ),
             retryable=frozenset(),
             remedies=(),
-            budget=timedelta(seconds=LEAF_BUDGET_S),
+            budget=timedelta(seconds=STAGE_BUDGET_S),
             max_attempts=1,
         )
 
@@ -477,6 +551,7 @@ def build_entry(catalog: Catalog) -> WorkflowEntry:
         return TaskUnit(test, project, task)
 
     backends = (HTTP_SUPPORT_UNIT, POSTGRES_UNIT)
+    provisioned = any(t.provision for t in tests)  # a test that needs the fixture record
     return WorkflowEntry(
         root=ROOT_UNIT,
         units={
@@ -486,13 +561,18 @@ def build_entry(catalog: Catalog) -> WorkflowEntry:
                 children=(
                     ChildBinding(unit=HTTP_SUPPORT_UNIT, params={}, needs=()),
                     ChildBinding(unit=POSTGRES_UNIT, params={}, needs=()),
+                    *(
+                        (ChildBinding(unit=PROVISION_UNIT, params={}, needs=(POSTGRES_UNIT,)),)
+                        if provisioned
+                        else ()
+                    ),
                     # the test leg: one node per catalog test, after every readiness pass, running
                     # the test's project task when the request names the test
                     *(
                         ChildBinding(
                             unit=task_unit_name(str(t.id)),
                             params={"tests": TESTS_ARG},
-                            needs=backends,
+                            needs=(*backends, *((PROVISION_UNIT,) if t.provision else ())),
                         )
                         for t in tests
                     ),
@@ -515,6 +595,7 @@ def build_entry(catalog: Catalog) -> WorkflowEntry:
             POSTGRES_UNIT: ServiceUnit(
                 POSTGRES_UNIT, POSTGRES_SERVICE, POSTGRES_READY, reuse=POSTGRES_REUSE
             ),
+            **({PROVISION_UNIT: ProvisionUnit()} if provisioned else {}),
             **{task_unit_name(str(t.id)): task_unit(t) for t in tests},
         },
         deadline=timedelta(seconds=DEADLINE_S),
