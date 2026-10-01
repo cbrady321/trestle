@@ -323,6 +323,11 @@ jobs:
   proof-ledger:
     runs-on: ubuntu-latest
     needs: [test, compat, guards, spine, long-gate, ancestry, d2-straddle]
+    # enforce's `--scope ci` anchor reads the `ckpt` check run of a check_run-marked carrier
+    # (J0, J-ROOT: fence.ckpt_succeeded) through `gh`, as the ckpt job's eval step does.
+    permissions:
+      contents: read
+      checks: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -358,7 +363,7 @@ jobs:
             done
           done
           echo "release-graft: a Release-Of root is still present after 8 rounds" >&2; exit 1
-      # No install (C2): `meta report` imports only the standard library and the checkout.
+      # No install (C2): `meta report` and `meta enforce` import only the standard library and the checkout.
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -372,6 +377,8 @@ jobs:
       # committed host records at the last successful checkpoint (fetch-depth 0 above); no digest,
       # no CI artifact beyond this run's own results, and no fresh HOST record per PR.
       - run: python -m tests.proof.meta enforce --scope ci
+        env:
+          GH_TOKEN: ${{ github.token }}
       - uses: actions/upload-artifact@v4
         with:
           name: proof-ledger.json

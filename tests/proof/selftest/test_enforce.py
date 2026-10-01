@@ -187,8 +187,10 @@ def test_shape_docker_host_and_docker_evidenced_keys(monkeypatch: pytest.MonkeyP
 
     from tests.proof.ckpt import slice_b as slice_b_mod
 
+    # meta reads the keys from slice_b's source (no import, C2); the read agrees with the import
+    assert meta_mod.docker_evidenced_keys() == frozenset(slice_b_mod.DOCKER_EVIDENCED)
     key = "WR-Z-9:docker-live"
-    monkeypatch.setattr(slice_b_mod, "DOCKER_EVIDENCED", {key: "t"})
+    monkeypatch.setattr(meta_mod, "docker_evidenced_keys", lambda: frozenset({key}))
     label = {"id": key, "tier": "must", "venue": "CI", "posture": "claim"}
     world = meta_mod.EnforceWorld(
         scope="ci",
@@ -321,6 +323,28 @@ def test_scope_ci_anchor_is_last_successful_checkpoint_commit(tmp_path: Path) ->
     assert meta_mod.scope_ci_anchor("HEAD", repo, reader) == good
     assert seen == [(root_carrier, "ckpt")]
     assert meta_mod.scope_ci_anchor("HEAD", repo, lambda *_a: "success") == root_carrier
+
+
+def test_enforce_scope_ci_runs_without_pytest() -> None:
+    """The `proof-ledger` job installs nothing (C2): `enforce --scope ci`'s modules and its
+    clause and label walk (`_docker_evidenced` included) import no pytest (PR #49 run 36937361366
+    failed `No module named 'pytest'`). Run with pytest unimportable over the real labels/matrix."""
+    code = (
+        "import sys\n"
+        "sys.modules['pytest'] = None\n"
+        "sys.modules['_pytest'] = None\n"
+        "from tests.proof import fence, ledger, meta, transcribe\n"
+        "from tests.proof.host import record\n"
+        "w = meta.EnforceWorld(scope='ci', labels=meta._load_all_labels(),\n"
+        "    clauses=list(transcribe.load_matrix_map()),\n"
+        "    markers=meta.scan_proves_markers([meta.ROOT / 'tests' / 'proof']))\n"
+        "assert meta.enforce_problems(w)\n"  # no records here: problems, never an ImportError
+        "print('walked')\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, timeout=300
+    )
+    assert proc.returncode == 0 and proc.stdout.strip() == "walked", proc.stdout + proc.stderr
 
 
 def test_print_mode_prints_enforce_and_scope_is_required(capsys) -> None:

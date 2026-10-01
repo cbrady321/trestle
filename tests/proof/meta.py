@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import functools
 import json
 import os
 import re
@@ -339,13 +340,29 @@ def label_problems(w: EnforceWorld, label: dict[str, Any]) -> list[str]:
     return key_problems(w, label_id, _docker_evidenced(label_id, pairs))
 
 
+@functools.cache
+def docker_evidenced_keys() -> frozenset[str]:
+    """The keys of slice_b.py's `DOCKER_EVIDENCED`, read from the source like `proves()` markers:
+    importing slice_b pulls in pytest (twin_audit, plugin), and the `proof-ledger` job installs
+    nothing (C2), so `enforce --scope ci` must not import it."""
+    tree = ast.parse((ROOT / "tests" / "proof" / "ckpt" / "slice_b.py").read_text(encoding="utf-8"))
+    for node in tree.body:
+        if (
+            isinstance(node, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == "DOCKER_EVIDENCED" for t in node.targets)
+            and isinstance(node.value, ast.Dict)
+        ):
+            keys = [k.value if isinstance(k, ast.Constant) else None for k in node.value.keys]
+            if all(isinstance(k, str) for k in keys):
+                return frozenset(str(k) for k in keys)
+    raise RuntimeError("slice_b.py declares no literal-keyed DOCKER_EVIDENCED dict")
+
+
 def _docker_evidenced(key: str, pairs: list[tuple[str, str]]) -> list[tuple[str, str]]:
     """A key the plan evidences only through the host-docker record (slice_b.py's
     `DOCKER_EVIDENCED`: G-E2's `WR-PROOF-2:pack-docker-live`, whose CI skip renders UNPROVEN by
     design) is read at the DOCKER tier, never from the CI ledger."""
-    from tests.proof.ckpt import slice_b as slice_b_mod
-
-    return [("DOCKER", "HOST")] if key in slice_b_mod.DOCKER_EVIDENCED else pairs
+    return [("DOCKER", "HOST")] if key in docker_evidenced_keys() else pairs
 
 
 def clause_problems(w: EnforceWorld, key: str) -> list[str]:
