@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "gate": "host-docker",
-  "sha": "bf7c598bfb04fac203a30b417905f43304d1bfca",
+  "sha": "6d74f360d15c23c863bbcdd10ac8b26185ebf73b",
   "mode": "run",
   "python": "3.12.8",
   "platform": "darwin",
@@ -368,6 +368,13 @@
       ]
     },
     {
+      "nodeid": "packages/trestle-env/tests/host/test_stale_generation.py::test_owned_process_older_generation_restarted",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-9:owned-process-restarted"
+      ]
+    },
+    {
       "nodeid": "packages/trestle-env/tests/host/test_system_test.py::test_test_starts_after_every_readiness_pass",
       "outcome": "PASSED",
       "labels": [
@@ -455,7 +462,7 @@
     "volumes": [],
     "networks": [
       {
-        "id": "5c256ab7b58e4b38e581ef123a17e5dd8406e0eb8f3f08b88477fb52ed6ec0ce",
+        "id": "8fc1a9c02b8008d88daac1d3ef170ce99db4cf7ada1c654186c4e0c1205aa30c",
         "name": "bridge",
         "labels": {}
       },
@@ -479,9 +486,9 @@
     },
     "containers": [
       {
-        "id": "9db8ef30a3d9740e4cf5f309c34690eec23215849abad27de96a749c44fc6936",
+        "id": "78a0f1aa40bc28e2322700b22d1a24a4057121809e9fd99e8945bd56df0a77f3",
         "names": [
-          "trwr-r_aaaadihv374kszmxs36-backend.helper"
+          "trwr-r_aaaadihv6d4dkkhwaka-backend.helper"
         ],
         "image": "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
         "state": "exited",
@@ -490,9 +497,9 @@
         }
       },
       {
-        "id": "69f8819426b4868a25a21b249c05278e7e5884fdb4e7b2b4fdd48d5f7c7ac735",
+        "id": "df499ed21a4eb75b18e29280e2537faf8065e26984d6ce16970637b810d3a129",
         "names": [
-          "trwr-r_aaaadihv374kszmxs36-backend.postgres"
+          "trwr-r_aaaadihv6d4dkkhwaka-backend.postgres"
         ],
         "image": "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
         "state": "exited",
@@ -502,9 +509,9 @@
         }
       },
       {
-        "id": "14f903736f8ab22cb6161fb501b6fac64fcc30281f73f46b80ed5e7e1623efc7",
+        "id": "62f406b81dcfe86fe93467661a7400a558b91b01a96614e70f0038f0c4bf5ddb",
         "names": [
-          "trwr-r_aaaadihv3xmowa5hu56-backend.helper"
+          "trwr-r_aaaadihv53neo4xmcrw-backend.helper"
         ],
         "image": "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
         "state": "exited",
@@ -513,9 +520,9 @@
         }
       },
       {
-        "id": "51bab448fc09e4bdb72d313eed085906a5839d87ee66557412f31f54281f44d5",
+        "id": "ec8bcd25025571b77f21cbd1d2096a9bedaf86bcf0093e44175632320e9a17ab",
         "names": [
-          "trwr-r_aaaadihv3xmowa5hu56-backend.postgres"
+          "trwr-r_aaaadihv53neo4xmcrw-backend.postgres"
         ],
         "image": "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
         "state": "exited",
@@ -545,7 +552,7 @@
     "volumes": [],
     "networks": [
       {
-        "id": "5c256ab7b58e4b38e581ef123a17e5dd8406e0eb8f3f08b88477fb52ed6ec0ce",
+        "id": "8fc1a9c02b8008d88daac1d3ef170ce99db4cf7ada1c654186c4e0c1205aa30c",
         "name": "bridge",
         "labels": {}
       },
@@ -569,29 +576,29 @@
     {
       "kind": "containers",
       "change": "added",
-      "id": "9db8ef30a3d9740e4cf5f309c34690eec23215849abad27de96a749c44fc6936",
-      "name": "trwr-r_aaaadihv374kszmxs36-backend.helper",
+      "id": "78a0f1aa40bc28e2322700b22d1a24a4057121809e9fd99e8945bd56df0a77f3",
+      "name": "trwr-r_aaaadihv6d4dkkhwaka-backend.helper",
       "removed": true
     },
     {
       "kind": "containers",
       "change": "added",
-      "id": "69f8819426b4868a25a21b249c05278e7e5884fdb4e7b2b4fdd48d5f7c7ac735",
-      "name": "trwr-r_aaaadihv374kszmxs36-backend.postgres",
+      "id": "df499ed21a4eb75b18e29280e2537faf8065e26984d6ce16970637b810d3a129",
+      "name": "trwr-r_aaaadihv6d4dkkhwaka-backend.postgres",
       "removed": true
     },
     {
       "kind": "containers",
       "change": "added",
-      "id": "14f903736f8ab22cb6161fb501b6fac64fcc30281f73f46b80ed5e7e1623efc7",
-      "name": "trwr-r_aaaadihv3xmowa5hu56-backend.helper",
+      "id": "62f406b81dcfe86fe93467661a7400a558b91b01a96614e70f0038f0c4bf5ddb",
+      "name": "trwr-r_aaaadihv53neo4xmcrw-backend.helper",
       "removed": true
     },
     {
       "kind": "containers",
       "change": "added",
-      "id": "51bab448fc09e4bdb72d313eed085906a5839d87ee66557412f31f54281f44d5",
-      "name": "trwr-r_aaaadihv3xmowa5hu56-backend.postgres",
+      "id": "ec8bcd25025571b77f21cbd1d2096a9bedaf86bcf0093e44175632320e9a17ab",
+      "name": "trwr-r_aaaadihv53neo4xmcrw-backend.postgres",
       "removed": true
     }
   ]
