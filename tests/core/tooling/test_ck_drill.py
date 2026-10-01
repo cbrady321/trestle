@@ -7,10 +7,12 @@ nested REG only under the `ck-isolation` job or when named by node id."""
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -343,6 +345,204 @@ def test_regression_runs_the_declined_tree_and_skips_the_baseline_file(
     # spawned `python -P` children import trestle from the path: the declined scratch tree first
     assert env["PYTHONPATH"].split(os.pathsep)[0] == str(tmp_path)
     assert "--deselect=tests/proof/selftest/test_baseline.py" in pytest_cmd
+
+
+# A planted serial collection: plain files of uneven size, the two shared-resource files, one
+# timing-sensitive node inside an otherwise parallel file, the results reader inside its own file,
+# and the packages' test files.
+FLAKY = "tests/test_user_stories.py::test_us08_hostile_plugin_control_plane_responsive"
+READER = "tests/core/docs/test_cl_d1_deferrals.py::test_core_deferrals_cited_and_unproven"
+SERIAL_NODES = (
+    [f"tests/core/test_f{i}.py::test_{j}" for i in range(30) for j in range(1 + i % 7)]
+    + ["tests/core/docs/test_cl_d1_deferrals.py::test_a", READER]
+    + [f"tests/core/test_g{i}.py::test_0" for i in range(3)]
+    + [f"tests/test_m6_extending.py::test_{j}" for j in range(3)]
+    + ["tests/test_mcp_http_smoke.py::test_serve[a]", "tests/test_mcp_http_smoke.py::test_serve[b]"]
+    + ["tests/test_user_stories.py::test_us01", FLAKY, "tests/test_user_stories.py::test_us09"]
+    + [f"packages/trestle-packs/tests/test_p{i}.py::test_x" for i in range(4)]
+    + [f"packages/trestle-env/tests/unit/test_e{i}.py::test_y" for i in range(2)]
+)
+REGISTERED = "tests/core/test_f3.py::test_9"
+
+
+def _files(nodes: list[str]) -> set[str]:
+    return {n.split("::", 1)[0] for n in nodes}
+
+
+def test_reg_partition_deals_whole_files_and_keeps_the_serial_tail() -> None:
+    plan = ck_drill.reg_partition(SERIAL_NODES, workers=4)
+    chunks, tail = plan.chunks, plan.tail
+    dealt = [n for g in [*chunks, *plan.packages, tail, *plan.readers] for n in g.nodes]
+    assert sorted(dealt) == sorted(SERIAL_NODES)  # every node exactly once
+    # whole files: no file's nodes are split between two parallel chunks
+    for a in chunks:
+        for b in chunks:
+            assert a is b or not (_files(a.nodes) & _files(b.nodes))
+    assert [len(c.nodes) for c in chunks] == sorted((len(c.nodes) for c in chunks), reverse=True)
+    assert 1 < len(chunks) <= 4 * ck_drill.REG_CHUNKS_PER_WORKER
+    # the shared-resource files and the timing-sensitive node run serially, after the chunks
+    assert set(tail.paths) == {"tests/test_m6_extending.py", "tests/test_mcp_http_smoke.py", FLAKY}
+    assert FLAKY in tail.nodes and len(tail.nodes) == 6
+    (stories,) = [c for c in chunks if "tests/test_user_stories.py" in c.paths]
+    assert stories.deselect == [FLAKY] and FLAKY not in stories.nodes
+    # the results reader runs alone; its file's other node stays in a chunk
+    assert [(r.paths, r.nodes) for r in plan.readers] == [([READER], [READER])]
+    (docs,) = [c for c in chunks if "tests/core/docs/test_cl_d1_deferrals.py" in c.paths]
+    assert READER in docs.deselect and READER not in docs.nodes
+    # each package's files run in one process given its testpaths root, as REG reaches them
+    packs, env = plan.packages
+    assert packs.paths == ["packages/trestle-packs/tests"] and env.paths == [
+        "packages/trestle-env/tests"
+    ]
+    assert _files(packs.nodes) == {f"packages/trestle-packs/tests/test_p{i}.py" for i in range(4)}
+    assert len(env.nodes) == 2
+    assert not any(p.startswith("packages/") for c in chunks for p in c.paths)
+
+
+def test_reg_partition_moves_a_package_node_to_the_serial_tail() -> None:
+    """A race-shaped package node runs in the serial tail by its node id; its package's process
+    keeps the testpaths root and deselects it, also when it is its file's only node (the root
+    collects that file all the same): still every node exactly once."""
+    raced = (
+        "packages/trestle-env/tests/twin/test_reuse_twin.py::"
+        "test_prestarted_postgres_reused_untouched[cancelled]"
+    )
+    other = "packages/trestle-env/tests/twin/test_reuse_twin.py::test_found_is_kept"
+    alone = (
+        "packages/trestle-env/tests/proc/test_readiness_cancel.py::"
+        "test_cancel_during_readiness_wait_prompt"
+    )
+    nodes = [*SERIAL_NODES, other, raced, alone]
+    plan = ck_drill.reg_partition(nodes, workers=4)
+    dealt = [n for g in [*plan.chunks, *plan.packages, plan.tail, *plan.readers] for n in g.nodes]
+    assert sorted(dealt) == sorted(nodes)
+    assert {raced, alone} <= set(plan.tail.paths) and {raced, alone} <= set(plan.tail.nodes)
+    (env,) = [g for g in plan.packages if g.paths == ["packages/trestle-env/tests"]]
+    assert env.deselect == [raced, alone] and other in env.nodes
+    assert not {raced, alone} & set(env.nodes)
+
+
+def test_reg_workers_leave_a_core_free(monkeypatch: pytest.MonkeyPatch) -> None:
+    """REG's processes are the cores minus one, at most REG_MAX_WORKERS, never fewer than one."""
+    for cores, want in ((1, 1), (2, 1), (4, 3), (16, ck_drill.REG_MAX_WORKERS)):
+        cpus = set(range(cores))
+        monkeypatch.setattr(ck_drill.os, "sched_getaffinity", lambda _pid, c=cpus: c, raising=False)
+        assert ck_drill._reg_workers() == want  # noqa: SLF001
+
+
+def _fake_pytest(serial: list[str], drop: str | None = None):
+    """A stand-in `_run`: a recorded pytest command selects the planted nodes its paths name (all
+    of them without paths) minus its deselections, records them where the collection recorder
+    would, and writes one proof record per selected node into the results dir; every command
+    exits 0. `drop` is a node the serial collection selects and no process runs. The results
+    reader's command records the node ids of the results it saw."""
+    calls: list[list[str]] = []
+    seen_by_reader: list[str] = []
+
+    def fake_run(root: Path, cmd: list[str], env: dict[str, str]) -> subprocess.CompletedProcess:
+        calls.append(cmd)
+        if "pytest" in cmd and ck_drill.REG_PLUGIN in cmd:
+            args = cmd[cmd.index("pytest") + 1 :]
+            values = {i + 1 for i, a in enumerate(args) if a in ("-c", "--rootdir", "-p")}
+            paths = [a for i, a in enumerate(args) if not a.startswith("-") and i not in values]
+            gone = [a.split("=", 1)[1] for a in args if a.startswith("--deselect=")]
+            if "--collect-only" not in args and drop:
+                gone.append(drop)
+            universe = [*serial, REGISTERED, "tests/proof/selftest/test_baseline.py::test_b"]
+
+            def under(node: str, path: str) -> bool:
+                return node == path or node.startswith((path + "::", path + "[", path + "/"))
+
+            picked = [
+                n
+                for n in universe
+                if (not paths or any(under(n, p) for p in paths))
+                and not any(under(n, d) for d in gone)
+            ]
+            Path(env[ck_drill.COLLECTED_ENV]).write_text(json.dumps(picked))
+            results = root / "tests" / "proof" / "results"
+            if "--collect-only" not in args:
+                if paths == [READER]:
+                    seen_by_reader.extend(
+                        json.loads(x)["nodeid"]
+                        for f in results.glob("*.jsonl")
+                        for x in f.read_text().splitlines()
+                    )
+                results.mkdir(parents=True, exist_ok=True)
+                with (results / "ci-test.jsonl").open("a") as fh:
+                    fh.writelines(json.dumps({"nodeid": n}) + "\n" for n in picked)
+        return subprocess.CompletedProcess(cmd, 0, stdout="{}\n", stderr="")
+
+    return fake_run, calls, seen_by_reader
+
+
+def _parallel(monkeypatch: pytest.MonkeyPatch, fake_run) -> None:
+    monkeypatch.setattr(ck_drill, "_run", fake_run)
+    monkeypatch.setattr(ck_drill, "registered_nodes", lambda root, ids, env: [REGISTERED])
+    # an enclosing parallel REG's recorder (this file runs inside the drill's own REG) is not ours
+    monkeypatch.setenv(ck_drill.COLLECTED_ENV, "/nonexistent/enclosing-recorder.json")
+
+
+def test_parallel_regression_runs_the_serial_collection_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_run, calls, seen_by_reader = _fake_pytest(SERIAL_NODES)
+    _parallel(monkeypatch, fake_run)
+    _write(tmp_path, ".github/workflows/ci.yml", "jobs:\n  t:\n    steps:\n      - run: mypy\n")
+    assert ck_drill.run_regression(tmp_path, DECLINE).failures == []
+    # the serial collection is REG's literal `pytest -q` step, with its deselections
+    assert "--collect-only" in calls[0]
+    assert f"--deselect={REGISTERED}" in calls[0]
+    assert "--deselect=tests/proof/selftest/test_baseline.py" in calls[0]
+    runs = [" ".join(c) for c in calls]
+    tail = next(i for i, c in enumerate(runs) if "tests/test_m6_extending.py" in c)
+    reader = next(
+        i for i, c in enumerate(runs) if c.endswith(f" {READER} -p {ck_drill.REG_PLUGIN}")
+    )
+    chunks = [i for i, c in enumerate(runs) if " tests/core/test_f" in c]
+    ruff = [i for i, c in enumerate(runs) if " ruff " in c]
+    # the tail starts after every parallel process, the reader after the tail; ruff lints last
+    assert chunks and max(chunks) < tail < reader < min(ruff)
+    assert any("mypy" in c for c in runs)
+    # the CSC-12 packs session runs after the packs root's process, never beside it
+    root = next(i for i, c in enumerate(runs) if " packages/trestle-packs/tests -p " in c)
+    session = next(i for i, c in enumerate(runs) if c.endswith("packages/trestle-packs/tests"))
+    assert root < session
+    # the reader saw exactly the records of the nodes before it in the serial order
+    assert sorted(seen_by_reader) == sorted(SERIAL_NODES[: SERIAL_NODES.index(READER)])
+    # and every record is back afterwards, the reader's own included
+    lines = (tmp_path / "tests/proof/results/ci-test.jsonl").read_text().splitlines()
+    assert sorted(json.loads(x)["nodeid"] for x in lines) == sorted(SERIAL_NODES)
+
+
+def test_parallel_regression_fails_when_a_node_runs_in_no_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dropped = "tests/core/test_f5.py::test_2"
+    fake_run, _, _ = _fake_pytest(SERIAL_NODES, drop=dropped)
+    _parallel(monkeypatch, fake_run)
+    _write(tmp_path, ".github/workflows/ci.yml", "jobs: {}\n")
+    failures = ck_drill.run_regression(tmp_path, DECLINE).failures
+    assert failures == [f"REG partition: 1 node(s) ran in no process: [{dropped!r}]"]
+    serial = list(SERIAL_NODES)
+    problems = ck_drill.partition_problems(serial, {"a": serial[:11], "b": serial[10:], "c": None})
+    assert problems == [
+        "REG partition: c recorded no collection",
+        f"REG partition: {serial[10]} ran in a and b",
+    ]
+
+
+def test_collection_recorder_writes_the_selected_node_ids(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / "ids.json"
+    session = SimpleNamespace(items=[SimpleNamespace(nodeid="a.py::t[1]")])
+    monkeypatch.delenv(ck_drill.COLLECTED_ENV, raising=False)
+    ck_drill.pytest_collection_finish(session)
+    assert not out.exists()  # inert outside the parallel REG
+    monkeypatch.setenv(ck_drill.COLLECTED_ENV, str(out))
+    ck_drill.pytest_collection_finish(session)
+    assert json.loads(out.read_text()) == ["a.py::t[1]"]
 
 
 def test_switch_isolation_fails_when_a_changed_call_site_ignores_the_switch(

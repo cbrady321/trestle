@@ -41,6 +41,7 @@ import sys
 import tempfile
 import tomllib
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -810,6 +811,179 @@ Regression = Callable[[Path, dict[str, Any]], RegressionResult]
 # `test` job runs it on the same head.
 REG_NOT_RUN = ("tests/proof/selftest/test_baseline.py",)
 
+# REG in parallel (speed plan L3/C5). REG's serial `pytest -q` step runs as proven partitions, the
+# reading CI's `test` job already makes (L.P0-0d.17): its node ids are collected once with that
+# step's own arguments, dealt by whole file over REG_WORKERS concurrent pytest processes, and the
+# nodes that cannot share a host with another suite run after them, serially. Every process
+# records the node ids it selected (`pytest_collection_finish` below); REG fails unless those sets
+# are disjoint and their union is the serial collection exactly. Same tree, same nodes, same pass
+# rule (every process exits 0); only the order and the process boundaries differ.
+REG_MAX_WORKERS = 4
+
+
+def _reg_workers() -> int:
+    """One core is left for what the workers' tests spawn (servers, wrappers, children): REG's
+    processes are never more than the cores minus one, at most REG_MAX_WORKERS (3 on CI's 4-vCPU
+    runner, where 4 starved the sibling threads the race-shaped nodes below rely on)."""
+    cores = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count()
+    return max(1, min(REG_MAX_WORKERS, (cores or 2) - 1))
+
+
+REG_WORKERS = _reg_workers()
+REG_CHUNKS_PER_WORKER = 6  # whole-file chunks per worker: enough to balance, few enough to start
+# Shared resources: the only writer into tests/fixtures/plugins, and the fixed port 18792 (its
+# client has no timeout, so two suites on one host hang each other).
+REG_SERIAL_FILES = ("tests/test_m6_extending.py", "tests/test_mcp_http_smoke.py")
+# Timing-sensitive nodes: each passes alone and has failed on a loaded host.
+REG_SERIAL_NODES = (
+    "tests/test_mcp_stdio_smoke.py::test_stdio_run_returns_running_on_short_wait_ms",
+    "tests/test_user_stories.py::test_us08_hostile_plugin_control_plane_responsive",
+    "tests/core/spine/test_cs1_framing.py::test_e6_rerun_quartile_ratio",
+    "tests/pins/c_surface/test_goldens.py::test_runview_shape_matches_golden",
+    "tests/pins/c_surface/test_g_c4.py::test_pin_index_coarsened_summary_is_field_count",
+    "tests/proof/spine/test_stop_offset.py::"
+    "test_stop_seen_and_releases_past_the_offset_are_not_counted",
+    "tests/proof/selftest/test_landing_loop.py::"
+    "test_p1_new_land_starts_after_first_dies_without_reclaim",
+    # Race-shaped: a stop raised on one sibling thread's progress, then an assertion that another,
+    # concurrent, sibling had already got somewhere. Under 4-way load on CI's 4-vCPU runner the
+    # trigger came first (run 36866235573, CK-1 and CK-14): the stop at the supporting node's 2nd
+    # wait found Postgres not yet observed (`None == 'satisfied'`); the cancel on `independent`'s
+    # marker found `broken` not yet failed (`not_started`). Both pass serially.
+    "packages/trestle-env/tests/twin/test_reuse_twin.py::test_prestarted_postgres_reused_untouched",
+    "tests/tree/host/test_trl_rollup.py::test_root_stop_after_ordinary_failure",
+    # The same stop-at-the-n-th-wait shape over a real app on a free port, with a wall-clock bound.
+    "packages/trestle-env/tests/proc/test_readiness_cancel.py::"
+    "test_cancel_during_readiness_wait_prompt",
+)
+# Nodes that read the session's own proof results (`ledger.render()` over tests/proof/results):
+# in the serial step each sees exactly the records of the nodes before it. Each runs alone after
+# every other process, over a results dir holding just those records (`_seeded_run`), so it reads
+# what the serial step would show it, never a concurrent process's records.
+REG_RESULTS_READERS = (
+    "tests/core/docs/test_cl_d1_deferrals.py::test_core_deferrals_cited_and_unproven",
+)
+# Each package's tests (collected by `pytest -q` through testpaths) run in one process given the
+# package's testpaths root `packages/<name>/tests`, as the serial step reaches them: their modules
+# import `conftest` and siblings by name, which a file-by-file argument list reorders. The packs
+# root's process and the CSC-12 packs session share one worker, so the two packs runs never overlap.
+REG_PACKAGES_PREFIX = "packages/"
+COLLECTED_ENV = "TRESTLE_CK_REG_COLLECTED"
+REG_PLUGIN = "tests.core.tooling.ck_drill"
+_INI = ["-c", "pyproject.toml", "--rootdir", "."]
+
+
+def pytest_collection_finish(session: Any) -> None:
+    """Pytest hook, live only in the parallel REG's processes (`-p tests.core.tooling.ck_drill`):
+    the node ids this process selected, after every deselection, written to $COLLECTED_ENV."""
+    out = os.environ.get(COLLECTED_ENV)
+    if out:
+        Path(out).write_text(json.dumps([item.nodeid for item in session.items]))
+
+
+@dataclass
+class RegGroup:
+    """One pytest process of the parallel REG: the paths it is given (files, node ids, or a
+    package's testpaths root), the node ids it must select, and the nodes of its files that run
+    in another group instead (deselected here)."""
+
+    label: str
+    paths: list[str] = field(default_factory=list)
+    nodes: list[str] = field(default_factory=list)
+    deselect: list[str] = field(default_factory=list)
+
+
+@dataclass
+class RegPlan:
+    """The serial collection dealt into groups; every node is in exactly one."""
+
+    chunks: list[RegGroup]  # whole-file chunks, largest first
+    packages: list[RegGroup]  # one per package testpaths root
+    tail: RegGroup  # the shared-resource files and the timing-sensitive nodes, serially
+    readers: list[RegGroup]  # the results readers, one process each, after the tail
+
+
+def _named(node: str, names: tuple[str, ...]) -> bool:
+    return any(node == n or node.startswith(n + "[") for n in names)
+
+
+def reg_partition(nodes: list[str], workers: int = REG_WORKERS) -> RegPlan:
+    """The serial collection `nodes` dealt into a `RegPlan`."""
+    by_file: dict[str, list[str]] = {}
+    for node in nodes:
+        by_file.setdefault(node.split("::", 1)[0], []).append(node)
+    tail = RegGroup("pytest [serial tail]")
+    packages: dict[str, RegGroup] = {}
+    readers: dict[str, RegGroup] = {}
+    files: list[RegGroup] = []
+    for path, ids in by_file.items():
+        if path in REG_SERIAL_FILES:
+            tail.paths.append(path)
+            tail.nodes += ids
+            continue
+        moved = [n for n in ids if _named(n, REG_SERIAL_NODES)]
+        tail.paths += moved
+        tail.nodes += moved
+        for node in ids:
+            if _named(node, REG_RESULTS_READERS):
+                reader = readers.setdefault(node.split("[", 1)[0], RegGroup(""))
+                reader.paths.append(node)
+                reader.nodes.append(node)
+                moved.append(node)
+        kept = [n for n in ids if n not in moved]
+        if path.startswith(REG_PACKAGES_PREFIX):
+            # given its testpaths root, a package's process collects this file whatever is kept:
+            # every node that runs elsewhere is deselected there, a file's last one included
+            path = "/".join(path.split("/")[:3])
+            group = packages.setdefault(path, RegGroup(f"pytest [{path}]"))
+        elif not kept:
+            continue
+        else:
+            group = RegGroup("")
+            files.append(group)
+        if path not in group.paths:
+            group.paths.append(path)
+        group.nodes += kept
+        group.deselect += moved
+    target = max(1, -(-sum(len(g.nodes) for g in files) // (workers * REG_CHUNKS_PER_WORKER)))
+    chunks: list[RegGroup] = []
+    for group in files:
+        if not chunks or len(chunks[-1].nodes) >= target:
+            chunks.append(RegGroup(""))
+        chunks[-1].paths += group.paths
+        chunks[-1].nodes += group.nodes
+        chunks[-1].deselect += group.deselect
+    chunks.sort(key=lambda g: len(g.nodes), reverse=True)
+    for i, chunk in enumerate(chunks, 1):
+        chunk.label = f"pytest [{i}/{len(chunks)}]"
+    for name, reader in readers.items():
+        reader.label = f"pytest [results reader {name}]"
+    return RegPlan(chunks, list(packages.values()), tail, list(readers.values()))
+
+
+def partition_problems(serial: list[str], ran: dict[str, list[str] | None]) -> list[str]:
+    """CI's `ci_shards` proof for REG: every process recorded its collection, no node was
+    selected by two processes, and their union is the serial collection exactly."""
+    problems = [
+        f"REG partition: {label} recorded no collection"
+        for label, ids in ran.items()
+        if ids is None
+    ]
+    seen: dict[str, str] = {}
+    for label, ids in ran.items():
+        for node in ids or []:
+            if node in seen:
+                problems.append(f"REG partition: {node} ran in {seen[node]} and {label}")
+            seen[node] = label
+    serial_set = set(serial)
+    missing = [n for n in serial if n not in seen]
+    extra = [n for n in seen if n not in serial_set]
+    for what, ids in (("ran in no process", missing), ("is not in the serial collection", extra)):
+        if ids:
+            more = f" (and {len(ids) - 10} more)" if len(ids) > 10 else ""
+            problems.append(f"REG partition: {len(ids)} node(s) {what}: {ids[:10]}{more}")
+    return problems
+
 
 def _run(root: Path, cmd: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, cwd=root, env=env, capture_output=True, text=True)
@@ -837,9 +1011,108 @@ def registered_nodes(root: Path, ids: set[str], env: dict[str, str]) -> list[str
     return [n["nodeid"] for n in nodes if ids & set(n["labels"])]
 
 
-def run_regression(root: Path, decline: dict[str, Any]) -> RegressionResult:
+def _failure(label: str, proc: subprocess.CompletedProcess[str]) -> str | None:
+    if proc.returncode == 0:
+        return None
+    tail = "\n".join((proc.stdout + proc.stderr).splitlines()[-15:])
+    return f"{label} exited {proc.returncode}:\n{tail}"
+
+
+def _selecting(
+    root: Path, cmd: list[str], env: dict[str, str], out: Path
+) -> tuple[subprocess.CompletedProcess[str], list[str] | None]:
+    """`cmd` run with the collection recorder: (its process, the node ids it selected)."""
+    proc = _run(root, [*cmd, "-p", REG_PLUGIN], dict(env, **{COLLECTED_ENV: str(out)}))
+    return proc, (json.loads(out.read_text()) if out.exists() else None)
+
+
+def _parallel_reg(
+    root: Path,
+    serial: list[str],
+    workers: int,
+    pytest_cmd: list[str],
+    deselect: list[str],
+    gate_env: dict[str, str],
+    packs: tuple[str, list[str], dict[str, str]],
+    typecheck: list[tuple[str, list[str], dict[str, str]]],
+    tmp: Path,
+) -> list[str]:
+    """REG's `pytest` step over the partition of its serial collection, the packs session and
+    the typecheck: `workers` processes at a time, largest first, then the serial tail, then each
+    results reader over the records the serial step would have shown it. Returns
+    the failures in a fixed order (never completion order), the partition proof's last."""
+    plan = reg_partition(serial, workers)
+    ran: dict[str, list[str] | None] = {}
+
+    def group_cmd(group: RegGroup) -> list[str]:
+        return pytest_cmd + [f"--deselect={n}" for n in deselect + group.deselect] + group.paths
+
+    def run_group(group: RegGroup, idx: int) -> list[str]:
+        proc, ran[group.label] = _selecting(root, group_cmd(group), gate_env, tmp / f"g{idx}")
+        failure = _failure(group.label, proc)
+        return [failure] if failure else []
+
+    def run_step(step: tuple[str, list[str], dict[str, str]]) -> list[str]:
+        failure = _failure(step[0], _run(root, step[1], step[2]))
+        return [failure] if failure else []
+
+    session_root = packs[1][-1]  # the CSC-12 session's path: packages/trestle-packs/tests
+    jobs: list[Callable[[], list[str]]] = []
+    for i, group in enumerate(plan.packages):  # the packs root's process, then the packs session
+        if group.paths == [session_root]:
+            jobs.append(lambda g=group, i=i: run_group(g, -1 - i) + run_step(packs))
+        else:
+            jobs.append(lambda g=group, i=i: run_group(g, -1 - i))
+    if not any(g.paths == [session_root] for g in plan.packages):
+        jobs.append(lambda: run_step(packs))
+    jobs += [lambda step=step: run_step(step) for step in typecheck]
+    jobs += [lambda c=c, i=i: run_group(c, i) for i, c in enumerate(plan.chunks, 1)]
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:  # FIFO: submission order
+        outcomes = list(pool.map(lambda job: job(), jobs))
+    failures = [f for fs in outcomes for f in fs]
+    if plan.tail.nodes:
+        failures += run_group(plan.tail, len(plan.chunks) + 1)
+    results_dir = root / "tests" / "proof" / "results"
+    for i, reader in enumerate(plan.readers, len(plan.chunks) + 2):
+        before = set(serial[: min(serial.index(n) for n in reader.nodes)])
+        failures += _seeded_run(results_dir, before, lambda r=reader, i=i: run_group(r, i))
+    groups = [g for g in [*plan.packages, *plan.chunks, plan.tail, *plan.readers] if g.nodes]
+    return failures + partition_problems(serial, {g.label: ran.get(g.label) for g in groups})
+
+
+def _record_node(line: str) -> str | None:
+    try:
+        return str(json.loads(line).get("nodeid"))
+    except (ValueError, AttributeError):
+        return None
+
+
+def _seeded_run(results_dir: Path, before: set[str], run: Callable[[], list[str]]) -> list[str]:
+    """`run` over a results dir holding only the records of the `before` nodes (what the serial
+    step had written when it reached the reader); then every record is put back, the run's own
+    appended."""
+    results_dir.mkdir(parents=True, exist_ok=True)
+    held = {p.name: p.read_text().splitlines(keepends=True) for p in results_dir.glob("*.jsonl")}
+    seeds = {name: [x for x in lines if _record_node(x) in before] for name, lines in held.items()}
+    for name, lines in seeds.items():
+        (results_dir / name).write_text("".join(lines))
+    try:
+        return run()
+    finally:
+        for path in results_dir.glob("*.jsonl"):
+            new = path.read_text().splitlines(keepends=True)[len(seeds.get(path.name, [])) :]
+            held.setdefault(path.name, []).extend(new)
+        for name, lines in held.items():
+            (results_dir / name).write_text("".join(lines))
+
+
+def run_regression(
+    root: Path, decline: dict[str, Any], workers: int = REG_WORKERS
+) -> RegressionResult:
     """REG (CSC-12) over the patched tree in `root`, every node outside the CK's registered nodes
-    passing, then the ledger render: the CK's labels and clauses are never PROVEN."""
+    passing, then the ledger render: the CK's labels and clauses are never PROVEN. The `pytest`
+    step runs as proven partitions over `workers` processes (REG_WORKERS above); when its
+    collection fails, REG's steps run serially, as written."""
     result = RegressionResult()
     # the scratch root first: spawned wrapper/child processes start with `python -P` and import
     # `trestle` from the path, so without it they would run the un-declined tree (the checkout's
@@ -853,40 +1126,56 @@ def run_regression(root: Path, decline: dict[str, Any]) -> RegressionResult:
         **{NESTED_ENV: "1"},
     )
     env.pop("TRESTLE_PROOF_GATE", None)
+    env.pop(COLLECTED_ENV, None)  # an enclosing REG process's recorder is never this REG's
     ids = set(decline.get("labels", [])) | set(decline.get("clauses", []))
     deselect = registered_nodes(root, ids, env) + list(REG_NOT_RUN)
     results_dir = root / "tests" / "proof" / "results"
     shutil.rmtree(results_dir, ignore_errors=True)
     gate_env = dict(env, TRESTLE_PROOF_GATE="ci-test", GITHUB_ACTIONS="true")
     py = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
-    steps: list[tuple[str, list[str], dict[str, str]]] = [
-        ("pytest", py + [f"--deselect={n}" for n in deselect], gate_env),
-        (
-            "packs pytest",
-            py + ["-c", "pyproject.toml", "--rootdir", ".", "packages/trestle-packs/tests"],
-            gate_env,
-        ),
-    ]
+    serial_pytest = py + [f"--deselect={n}" for n in deselect]
+    packs: tuple[str, list[str], dict[str, str]] = (
+        "packs pytest",
+        py + [*_INI, "packages/trestle-packs/tests"],
+        gate_env,
+    )
     lint = (
         "trestle tests packages/trestle-packs conftest.py "
         "scripts/smoke_packs.py scripts/demo_pack_workflows.py"
     )
-    steps += [
+    ruff: list[tuple[str, list[str], dict[str, str]]] = [
         ("ruff check", [sys.executable, "-m", "ruff", "check", *lint.split()], env),
         ("ruff format", [sys.executable, "-m", "ruff", "format", "--check", *lint.split()], env),
     ]
+    typecheck: list[tuple[str, list[str], dict[str, str]]] = []
     ci = (root / ".github" / "workflows" / "ci.yml").read_text()
     for match in re.finditer(r"^\s*- run: (.*\bmypy\b.*)$", ci, re.M):
         cmd = match.group(1).strip().split()
         argv = [sys.executable, *cmd[1:]] if cmd[0] == "python" else cmd
         if argv[0] == "mypy":
             argv = [sys.executable, "-m", "mypy", *argv[1:]]
-        steps.append(("typecheck", argv, env))
-    for label, cmd, step_env in steps:
-        proc = _run(root, cmd, step_env)
-        if proc.returncode != 0:
-            tail = "\n".join((proc.stdout + proc.stderr).splitlines()[-15:])
-            result.failures.append(f"{label} exited {proc.returncode}:\n{tail}")
+        typecheck.append(("typecheck", argv, env))
+    with tempfile.TemporaryDirectory(prefix="ck-reg-") as tmp:
+        proc, serial = _selecting(
+            root, [*serial_pytest, "--collect-only"], gate_env, Path(tmp) / "s"
+        )
+        if proc.returncode != 0 or serial is None:
+            # no clean collection to partition: REG's steps, serially, exactly as written
+            for label, cmd, step_env in [
+                ("pytest", serial_pytest, gate_env),
+                packs,
+                *ruff,
+                *typecheck,
+            ]:
+                failure = _failure(label, _run(root, cmd, step_env))
+                result.failures += [failure] if failure else []
+        else:
+            result.failures += _parallel_reg(
+                root, serial, workers, py + _INI, deselect, gate_env, packs, typecheck, Path(tmp)
+            )
+            for label, cmd, step_env in ruff:  # after every test: it lints what the tests left
+                failure = _failure(label, _run(root, cmd, step_env))
+                result.failures += [failure] if failure else []
     code = (
         "import json; from tests.proof import ledger; "
         "print(json.dumps({k: v['status'] for k, v in ledger.render().items()}))"

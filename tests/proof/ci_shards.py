@@ -1,11 +1,14 @@
 """The `test` job's shards (L.P0-0d.17): the one list ci.yml's `test-shard` matrix reads.
 
 CI's unsharded `pytest -q` is split into explicit path groups, one matrix job each; the
-`test` job only aggregates them, so CM-4's required name `test` is kept. `root` ignores
+`test` job only aggregates them, so CM-4's required name `test` is kept. `misc` ignores
 every path another shard names, so the shards' union is the unsharded collection by
-construction; `check` proves it against `pytest --collect-only -q`: every shard collects
-something, no node is in two shards, the union equals the full collection, and ci.yml's
-matrix names exactly these shards. Stdlib only.
+construction. Each package testpath (`packages/<name>/tests`, pyproject `testpaths`) is its
+own shard, run once in the CSC-12 form (`-c pyproject.toml --rootdir .`, the root conftest
+and proof plugin kept) whose node ids equal the unsharded run's; the root session runs none
+of them a second time. `check` proves it against `pytest --collect-only -q`: every shard
+collects something, no node is in two shards, the union equals the full collection, and
+ci.yml's matrix names exactly these shards. Stdlib only.
 
     python -m tests.proof.ci_shards args <shard>   # the pytest arguments, one per line
     python -m tests.proof.ci_shards check          # the partition proof (exit 1 on a gap)
@@ -17,6 +20,7 @@ import os
 import re
 import subprocess
 import sys
+import tomllib
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -33,13 +37,40 @@ _FENCE = [
     "tests/proof/selftest/test_landing_loop.py",
 ]
 
+# Path splits of the former `root` shard, by measured CI time (TEST-SPEEDUP-ANALYSIS: tree/host
+# with facts is one ~440 s block, the largest left).
+_TREE_HOST = ["tests/tree/host", "tests/tree/facts"]
+_PATHS: dict[str, list[str]] = {
+    "core": ["tests/core"],
+    "single": ["tests/single"],
+    "tree-host": list(_TREE_HOST),
+    "tree": ["tests/tree", *(f"--ignore={p}" for p in _TREE_HOST)],
+}
+
+
+def package_testpaths(pyproject: Path = ROOT / "pyproject.toml") -> dict[str, str]:
+    """`packages/<name>/tests` entries of pyproject `testpaths`, keyed by shard name
+    (`trestle-packs` -> `packs`)."""
+    paths = tomllib.loads(pyproject.read_text())["tool"]["pytest"]["ini_options"]["testpaths"]
+    return {p.split("/")[1].removeprefix("trestle-"): p for p in paths if p.startswith("packages/")}
+
+
+_PACKAGES = package_testpaths()
+
 SHARDS: dict[str, list[str]] = {
     "baseline": [_BASELINE, f"--deselect={_PLANTED}"],
     "planted": [_PLANTED],
     "fence": list(_FENCE),
     "proof": ["tests/proof", f"--ignore={_BASELINE}", *(f"--ignore={f}" for f in _FENCE)],
     "pins": ["tests/pins"],
-    "root": ["--ignore=tests/proof", "--ignore=tests/pins"],
+    **_PATHS,
+    # tests/*.py, tests/spine and whatever else under tests/ no other shard names (an explicit
+    # path: an `--ignore` does not drop a testpaths entry itself, the package testpaths)
+    "misc": [
+        "tests",
+        *(f"--ignore=tests/{d}" for d in ("proof", "pins", "core", "single", "tree")),
+    ],
+    **{name: ["-c", "pyproject.toml", "--rootdir", ".", p] for name, p in _PACKAGES.items()},
 }
 
 
