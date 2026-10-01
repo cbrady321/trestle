@@ -307,7 +307,9 @@ def _rotation_local_app(tmp_path: Path, issuer: Any) -> None:
     grant = DemoGrant(issuer.url, probe=probe)
     log = tmp_path / "app-events.log"
     command = local_consumer.app_command(local_app.free_port(), log)
-    watched = local_consumer.Watched(LocalProcessPort(), selector, rotate=issuer.state.advance)
+    # start-up is the harness's to wait for (`local_app.AwaitListening`), as in the twin
+    launcher = local_app.AwaitListening(LocalProcessPort(), log)
+    watched = local_consumer.Watched(launcher, selector, rotate=issuer.state.advance)
     before = issuer.state.current()
     rig = tk.tree_rig(
         tmp_path,

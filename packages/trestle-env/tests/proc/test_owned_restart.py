@@ -105,7 +105,7 @@ def rig_for(tmp_path: Path, refusals: str = "2") -> tuple[tk.TreeRig, Path, int,
         port_impl={
             ports.ResourceReads: HttpReadinessReads(local, tree.HTTP_READINESS, alive="ready"),
             ports.ResourceCreate: AwaitListening(local, log),
-            ports.ResourceOwned: local,
+            ports.ResourceOwned: AwaitListening(local, log),  # a restart waits for the new app
         },
         deadline_s=600,
     )

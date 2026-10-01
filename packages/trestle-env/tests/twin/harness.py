@@ -110,7 +110,19 @@ def run_terminal(
     )
     assert host.request_count() == sent + 1, "one request, counted once by the MCP host"
     assert isinstance(answer, dict), answer
+    note_passed(answer)
     return answer
+
+
+# Every passed run this test session made through the harness, by run id (L.RB-12.6: the WR-OWN-3
+# container-half falsifier checks each of them, not only its own).
+PASSED_RUNS: list[str] = []
+
+
+def note_passed(answer: Mapping[str, Any]) -> None:
+    body = answer.get("answer")
+    if isinstance(body, Mapping) and body.get("outcome") == "passed" and "run_id" in answer:
+        PASSED_RUNS.append(str(answer["run_id"]))
 
 
 def run_dir(host: mcp_host.McpHost, run_id: str) -> Path:
