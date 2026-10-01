@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from tests.proof import meta as meta_mod
+from tests.proof import tolerances
 
 ROOT = Path(__file__).resolve().parents[3]
 ENV = {
@@ -342,7 +343,11 @@ def test_enforce_scope_ci_runs_without_pytest() -> None:
         "print('walked')\n"
     )
     proc = subprocess.run(
-        [sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, timeout=300
+        [sys.executable, "-c", code],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=tolerances.JOIN_WAIT_S,
     )
     assert proc.returncode == 0 and proc.stdout.strip() == "walked", proc.stdout + proc.stderr
 
