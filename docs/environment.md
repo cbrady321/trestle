@@ -154,6 +154,25 @@ real identity provider does is unverified and out of scope. The labels are
 `WR-OWN-9:not-owned-blocked-untouched`, `WR-REMEDY-4:b-credential-refresh-safe`,
 `WR-PROOF-4:b-grant-suite` and `WR-VERIFY-8:b-stub-read-facets-grant`.
 
+### Containment boundary: build daemons and helpers
+
+A task the toolchain leg runs is contained by the run: a process it starts that stays attributable
+to the run (in the run's process group and session) is ended by a stop or cancel within the stop
+bound. A
+Gradle-shaped build adds a case: Gradle starts a build daemon that outlives the build. That is
+**prevented by declared configuration**: the catalog's task argv carries `--no-daemon` and
+`-Porg.gradle.java.installations.auto-download=false`, its policy reads `DISABLED_BY_CONFIGURATION`
+and helpers `PREVENTED`, and a task that loses either flag blocks before anything starts.
+
+**The boundary.** A helper started outside Gradle's daemon machinery (a language server the tool
+launches itself, a detached shell job that double-forks and is reparented) leaves the run's group
+and is not contained: nothing that reaches a run's processes by group or by parentage reaches it. A
+task that is known to do this declares it, and its policy is `DISCLOSED` with that text: its release
+descriptor says `helpers_disclosed`, so the run's group is reported `unknown` rather than clean, and
+the answer names the disclosure. It is disclosed as a boundary, unproven pending real Gradle (D-19).
+The labels are `WR-CANCEL-7:prevented-by-config`, `WR-CANCEL-7:contained-within-bound` and
+`WR-CANCEL-7:disclosed-boundary`, all STUB-PROVEN against `tests/fixtures/stubs/stub_gradle.py`.
+
 ### Publishing the plugin
 
 Point the server at `packages/trestle-env/trestle_env/plugins` (the `[plugins] paths` entry above, or

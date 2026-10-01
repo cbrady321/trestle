@@ -149,3 +149,22 @@ label    = "WR-REMEDY-4:b-credential-refresh-safe"
 group    = "D-9"
 text     = "Credential refresh is the safe-refresh remediation, issued at most as declared and recorded: shown against the stub issuer; the real provider's refresh is unverified and AWS is never real (D-9)."
 deferral = "D-9"
+
+# D-19 (JVM/Gradle), appended by L.RB-10.2: the build-daemon patterns on tests/fixtures/stubs/stub_gradle.py.
+[[row]]
+label    = "WR-CANCEL-7:prevented-by-config"
+group    = "D-19"
+text     = "A Gradle-shaped task's daemon is prevented by the declared configuration (--no-daemon): shown on a stub that starts a daemon without the flag; real Gradle's daemon behaviour is unverified and unproven pending D-19."
+deferral = "D-19"
+
+[[row]]
+label    = "WR-CANCEL-7:contained-within-bound"
+group    = "D-19"
+text     = "An in-group helper of a Gradle-shaped build is ended within the stop bound after a cancel: shown with a stub helper in the run's group; real Gradle's helpers are unverified and unproven pending D-19."
+deferral = "D-19"
+
+[[row]]
+label    = "WR-CANCEL-7:disclosed-boundary"
+group    = "D-19"
+text     = "A helper outside Gradle's daemon machinery is not contained and is disclosed as a boundary (policy DISCLOSED, helpers_disclosed, named in docs/environment.md): shown with a stub that escapes the run's group; real Gradle is unverified and unproven pending D-19."
+deferral = "D-19"

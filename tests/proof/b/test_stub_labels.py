@@ -129,3 +129,13 @@ def test_docs_state_real_tool_unverified():
     text = (sl.ROOT / "docs" / "environment.md").read_text()
     assert "STUB-PROVEN" in text and "unverified" in text
     assert "OPEN-MISE-HOST" in text and "D-19" in text and "OQ-26" in text
+
+
+def test_docs_name_the_build_daemon_boundary_build_daemon_boundary():
+    """RV-1 presence (L.RB-10.2; WR-CANCEL-6, D-3): `docs/environment.md` names the escaping helper
+    of a build as a boundary that is not contained, disclosed and unproven pending D-19."""
+    text = (sl.ROOT / "docs" / "environment.md").read_text(encoding="utf-8")
+    assert "Containment boundary" in text
+    boundary = text.split("Containment boundary", 1)[1].lower()
+    for phrase in ("outside gradle's daemon", "not contained", "disclosed", "d-19"):
+        assert phrase in boundary, phrase
