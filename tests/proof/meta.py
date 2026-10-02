@@ -340,12 +340,16 @@ def label_problems(w: EnforceWorld, label: dict[str, Any]) -> list[str]:
     return key_problems(w, label_id, _docker_evidenced(label_id, pairs))
 
 
+_SLICE_B_SOURCE = Path(__file__).resolve().parent / "ckpt" / "slice_b.py"
+
+
 @functools.cache
 def docker_evidenced_keys() -> frozenset[str]:
     """The keys of slice_b.py's `DOCKER_EVIDENCED`, read from the source like `proves()` markers:
     importing slice_b pulls in pytest (twin_audit, plugin), and the `proof-ledger` job installs
-    nothing (C2), so `enforce --scope ci` must not import it."""
-    tree = ast.parse((ROOT / "tests" / "proof" / "ckpt" / "slice_b.py").read_text(encoding="utf-8"))
+    nothing (C2), so `enforce --scope ci` must not import it. The file is located beside this
+    module, as the import found it, never under `ROOT` (selftests point ROOT at planted repos)."""
+    tree = ast.parse(_SLICE_B_SOURCE.read_text(encoding="utf-8"))
     for node in tree.body:
         if (
             isinstance(node, ast.Assign)
