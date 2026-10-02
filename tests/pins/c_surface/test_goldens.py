@@ -89,5 +89,9 @@ def test_d1_strict_passes_with_lane_c_facets_registered(
         "".join(FACET_TOML.format(id=fid, additive=add) for fid, add in ADDITIVE.items())
     )
     monkeypatch.setattr(differ, "FACETS_PATH", facets_toml)
+    # The closed ledger (`[ledger] closed`, L.CZ.4) makes every d1 run the closure rules over the
+    # whole ledger, which needs every registered facet; this temporary file holds only lane C's.
+    # Closure is proven by `differ d1 --closure` over the real facets, so it stays off here.
+    monkeypatch.setattr(differ, "ledger_closed", lambda path=None: False)
     args = argparse.Namespace(facet=sorted(ADDITIVE), strict=True)
     assert differ.cmd_d1(args) == 0, capsys.readouterr().out

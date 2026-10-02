@@ -180,7 +180,11 @@ def test_report_json_matches_schema_shape_without_jsonschema_dep(tmp_path: Path)
         assert isinstance(entry["n_results"], int) and entry["n_results"] >= 1
 
 
-def test_enforce_report_mode_exits_0(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_enforce_scope_ci_fails_on_an_unproven_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """L.CZ.1: `meta enforce` is no longer a report-mode command; an unproven clause fails it
+    (the scope-by-scope cases are `test_enforce.py`'s)."""
     results_dir = tmp_path / "results"
     _record(results_dir, "CLAUSE-J", "xfailed", "ci-test", "CI")
     monkeypatch.setattr(results_mod, "RESULTS_DIR", results_dir)
@@ -189,10 +193,10 @@ def test_enforce_report_mode_exits_0(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
     import tests.proof.meta as meta_mod
 
-    assert meta_mod.main(["enforce"]) == 0
+    assert meta_mod.main(["enforce", "--scope", "ci"]) == 1
 
 
-def test_enforce_print_mode_prints_report() -> None:
+def test_enforce_print_mode_prints_enforce() -> None:
     proc = subprocess.run(
         [sys.executable, "-m", "tests.proof.meta", "enforce", "--print-mode"],
         cwd=ROOT,
@@ -200,7 +204,7 @@ def test_enforce_print_mode_prints_report() -> None:
         text=True,
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert proc.stdout.strip() == "report"
+    assert proc.stdout.strip() == "enforce"
 
 
 def _review(reviews_dir: Path, outcome: str = "pass") -> None:

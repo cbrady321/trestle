@@ -20,6 +20,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import threading
+import time
 from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
@@ -163,14 +164,28 @@ def held_tree(tmp_path: Path, gate: threading.Event, held: threading.Event) -> t
 
 
 def stopped_answer(
-    rig: tk.TreeRig, cause: StopCause, held: threading.Event, gate: threading.Event
+    rig: tk.TreeRig,
+    cause: StopCause,
+    held: threading.Event,
+    gate: threading.Event,
+    *,
+    ended: tuple[str, ...] = (),
 ) -> answer.TerminalAnswer:
-    """Run `rig`; once `held` is set raise the stop `cause`, let the leaf go, and project the
-    lane with the host's stop row (B2-C15) in the fold."""
+    """Run `rig`; once `held` is set and every path of `ended` has its `NodeEnd`, raise the stop
+    `cause`, let the leaf go, and project the lane with the host's stop row (B2-C15) in the fold.
+    `held` says nothing of a concurrent sibling: a test asserting what one reached waits on it."""
     runner = threading.Thread(target=rig.run)
     runner.start()
     try:
         assert tk.wait_for(held), "the depth-two node never held"
+        deadline = time.monotonic() + tolerances.JOIN_WAIT_S
+        while time.monotonic() < deadline:  # read mid-run: a torn last line is "not yet"
+            done = {r.path for r in rig.rig.lane().rows if r.cls == "end"}
+            if set(ended) <= done:
+                break
+            time.sleep(tolerances.POLL_FINE_S)
+        else:
+            raise AssertionError(f"{ended} never ended")
         rig.rig.cancel.stop = cause
         offset = rig.rig.services.attempts().committed_length()
     finally:
@@ -288,7 +303,7 @@ def test_root_stop_after_ordinary_failure(stop: str, tmp_path: Path) -> None:
     }
     rig = tk.rig_of_entry(tmp_path, entry, behaviour=behaviour, request={"env": "dev"})
     cause = StopCause.CANCEL if stop == "cancel" else StopCause.RELEASE_POINT
-    got = stopped_answer(rig, cause, held, gate)
+    got = stopped_answer(rig, cause, held, gate, ended=("broken",))
     want = OutcomeClass.CANCELLED if stop == "cancel" else OutcomeClass.TIMED_OUT
     assert got.outcome is want, got.outcome
     assert got.primary.path == () and got.primary.node_class is None  # the root's own account

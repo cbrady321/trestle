@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -315,67 +316,229 @@ def _due(entry: dict[str, object]) -> bool:
     return due_checkpoint in (None, "", "P0", "s0")
 
 
-def cmd_d1(args: argparse.Namespace) -> int:
+# ---------------------------------------------------------------------------
+# the closed ledger (L.CZ.4, C-PROOF-HONEST:divergence-ledger-closed)
+# ---------------------------------------------------------------------------
+#
+# `differ d1 --closure` closes the divergence ledger: every entry (a) *appeared* by its due
+# checkpoint and (b) is *named*, a row falsifier or a pinned Part 1 clause, and the file is marked
+# `[ledger] closed = true`. Golden S0 stays and is still d1's baseline; from then on every `d1` (C.5
+# step 2, SC-3, post-delivery PRs) also holds the witness and reference rules below, so a later
+# entry that names nothing, or an addition the head no longer has, fails. The differ, normalizer,
+# the D2 job and `d2_exceptions.toml` are untouched (permanent; CM-9).
+#
+# (a) appeared: `due_checkpoint` names a merge id (its leading token: `CS-3`, `CK-3/4`, `SV-4
+#     (leaf L.SV-4.2)`) that has a `WR-Merge` carrier in history (`--closure` only); an entry with
+#     selectors has one used by this head's diff; an entry with `codes` names patterns that each
+#     match a code the head defines; a `change` entry's K-item has landed. A due checkpoint the
+#     plan never enumerated (`post-P0 ...`, `none (...)`) is witnessed by the head alone.
+# (b) named: `authorized_by` is present and `row_or_k` cites, per token, a row of row_owners.toml
+#     (a row falsifier; `WR-COMPAT-n` is a Part 1 clause), a K-item of k_doc_map.toml, a design
+#     item `D-x`, or a contract id (`MC-..`, `BFD-..`, `V-..`, `B<n>-C<m>`). That a cited row owns a
+#     passing falsifier is `meta audit-rows --enforce`'s verdict (L.CZ.2), never repeated here.
+#     `none` is admitted only for an aggregate `ADD-*` additive seed, which excuses nothing and is
+#     named by its `authorized_by` (the MC-06 seed list); a `change` entry never cites `none`.
+
+CLOSURE_MERGE_RE = re.compile(r"^([A-Z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*(?:/\d+)?)\b")
+CLOSURE_CONTRACT_RE = re.compile(r"^(MC-(?:[A-Z0-9]+-)?\d+|BFD-\d+|V-\d+|B\d-[CE]\d+)$")
+CLOSURE_DESIGN_RE = re.compile(r"^D-[a-z]$")
+
+
+def ledger_closed(path: Path | None = None) -> bool:
+    """`[ledger] closed = true` in divergence.toml (written once, by `L.CZ.4`)."""
+    path = path or DIVERGENCE_PATH
+    if not path.exists():
+        return False
+    return bool(tomllib.loads(path.read_text()).get("ledger", {}).get("closed"))
+
+
+def _has_witnessable_body(entry: dict[str, object]) -> bool:
+    return bool(entry.get("codes")) or any(k in entry for k in SELECTOR_FIELDS)
+
+
+@dataclass
+class ClosureContext:
+    """Plain data for `closure_problems`: the self-test builds these; `live` fills them."""
+
+    code_values: set[str] | None = None  # the wire values of the head's code constants
+    used: set[Selector] = field(default_factory=set)  # selectors this head's diff used
+    rows: set[str] = field(default_factory=set)  # row_owners.toml ids
+    k_landing: dict[str, str] = field(default_factory=dict)  # K id -> its landing merge id
+    landed: Callable[[str], bool] | None = None  # has this merge id a `WR-Merge` carrier
+
+    @classmethod
+    def live(
+        cls, codes_facet: object, used: set[Selector], *, check_landing: bool
+    ) -> ClosureContext:
+        from tests.proof import trailers as trailers_mod
+
+        codes = codes_facet.get("codes", {}) if isinstance(codes_facet, dict) else {}
+        rows = {
+            str(r["id"])
+            for r in tomllib.loads((ROOT / "tests/proof/row_owners.toml").read_text()).get(
+                "row", []
+            )
+        }
+        ks = tomllib.loads((ROOT / "tests/proof/k_doc_map.toml").read_text()).get("k", [])
+        cache: dict[str, bool] = {}
+
+        def has_landed(merge_id: str) -> bool:
+            if merge_id not in cache:
+                cache[merge_id] = trailers_mod.landing(merge_id, cwd=ROOT) is not None
+            return cache[merge_id]
+
+        return cls(
+            code_values={str(v) for v in codes.values() if isinstance(v, str)},
+            used=used,
+            rows=rows,
+            k_landing={str(k["id"]): str(k.get("landing_merge") or "") for k in ks},
+            landed=has_landed if check_landing else None,
+        )
+
+
+def _tokens(entry: dict[str, object]) -> list[str]:
+    return [t.strip() for t in str(entry.get("row_or_k", "")).split(",") if t.strip()]
+
+
+def closure_problems(entries: list[dict[str, object]], ctx: ClosureContext) -> list[str]:
+    """Why the ledger cannot be closed (empty when it can); see the block comment above."""
+    problems: list[str] = []
+    for entry in entries:
+        eid = str(entry.get("id"))
+        additive = entry.get("direction") == "additive"
+        if not str(entry.get("authorized_by", "")).strip():
+            problems.append(f"{eid}: no authorized_by")
+
+        # (b) named
+        for token in _tokens(entry):
+            if token == "none":
+                if not (additive and eid.startswith("ADD-")):
+                    problems.append(f"{eid}: cites `none` but is not an aggregate ADD-* seed")
+            elif token in ctx.rows:
+                continue
+            elif token in ctx.k_landing:
+                merge = ctx.k_landing[token]
+                if merge and ctx.landed is not None and not ctx.landed(merge):
+                    problems.append(f"{eid}: {token}'s landing merge {merge} has not landed")
+            elif CLOSURE_CONTRACT_RE.match(token) or CLOSURE_DESIGN_RE.match(token):
+                continue
+            else:
+                problems.append(
+                    f"{eid}: cites {token!r}, which names no row, K-item, design item or contract"
+                )
+        if not _tokens(entry):
+            problems.append(f"{eid}: names no row, K-item, design item or contract")
+
+        # (a) appeared
+        due = str(entry.get("due_checkpoint", ""))
+        match = CLOSURE_MERGE_RE.match(due)
+        if match and ctx.landed is not None and not ctx.landed(match.group(1)):
+            problems.append(f"{eid}: due checkpoint {match.group(1)} has not landed")
+        selectors = entry_selectors(entry) if additive and _has_witnessable_body(entry) else []
+        for selector in selectors:
+            if selector not in ctx.used:
+                problems.append(f"{eid}: {selector.describe()} appears nowhere on this head")
+        if additive and entry.get("codes") and ctx.code_values is not None:
+            for pattern in entry["codes"]:  # type: ignore[attr-defined]
+                if not any(fnmatch.fnmatch(v, str(pattern)) for v in ctx.code_values):
+                    problems.append(f"{eid}: code {pattern!r} is defined nowhere on this head")
+    return problems
+
+
+@dataclass
+class D1Run:
+    ok: bool = True
+    used: set[Selector] = field(default_factory=set)
+    diffed: set[str] = field(default_factory=set)
+    currents: dict[str, object] = field(default_factory=dict)  # facet id -> its normalized current
+    entries: list[dict[str, object]] = field(default_factory=list)
+    bad_entries: bool = False
+
+
+def run_d1(args: argparse.Namespace) -> D1Run:
+    """The golden-S0 comparison of `d1` (L.P0-0c.4): prints every finding, returns what it saw."""
     facets = load_facets()
     if args.facet:
         wanted = set(args.facet)
         facets = [f for f in facets if f["id"] in wanted]
 
-    ok = True
-    diffed_facets: set[str] = set()
-    used: set[Selector] = set()
-    entries = load_divergence()
+    run = D1Run(entries=load_divergence())
+    entries = run.entries
     bad = _bad_entries(entries)
     for problem in bad:
         eid, _, reason = problem.partition(": ")
         print(f"d1: BAD DIVERGENCE ENTRY: divergence entry {eid} ({reason})")
     if bad:
-        return 1
+        run.ok = False
+        run.bad_entries = True
+        return run
     for facet in facets:
         fid = facet["id"]
         extractor = facet.get("extractor", "pending")
         if extractor == "pending":
             if args.strict:
                 print(f"d1: STRICT: facet {fid!r} has no extractor yet (pending)")
-                ok = False
+                run.ok = False
             continue
 
-        diffed_facets.add(fid)
+        run.diffed.add(fid)
         func = _resolve_extractor(str(extractor))
         current = normalize_mod.normalize(func())
+        run.currents[str(fid)] = current
         golden_path = ROOT / str(facet["golden"])
         if not golden_path.exists():
             print(f"d1: UNEXPECTED: facet {fid!r} has no golden file {golden_path}")
-            ok = False
+            run.ok = False
             continue
         golden = normalize_mod.normalize(json.loads(golden_path.read_text()))
         result = facet_diff(
             str(fid), golden, current, policy=str(facet.get("additive", "named")), entries=entries
         )
-        used |= result.used
+        run.used |= result.used
         if result.missing or result.unexpected:
             print(
                 f"d1: UNEXPECTED DIFF: facet {fid!r}: "
                 f"missing={result.missing} unexpected={result.unexpected}"
             )
-            ok = False
+            run.ok = False
 
-    for sel in stale_selectors(diffed_facets, used, entries):
+    for sel in stale_selectors(run.diffed, run.used, entries):
         print(
             f"d1: STALE DIVERGENCE: divergence entry {sel.entry_id} (facet {sel.facet!r}): "
             f"{sel.describe()} names no addition on this head"
         )
-        ok = False
+        run.ok = False
 
     for entry in entries:
         if entry.get("facet") not in {f["id"] for f in facets}:
             continue
-        if _due(entry) and entry.get("facet") not in diffed_facets:
+        if _due(entry) and entry.get("facet") not in run.diffed:
             print(
                 f"d1: MISSING DUE DIFF: divergence entry {entry.get('id')} ({entry.get('facet')})"
             )
-            ok = False
+            run.ok = False
 
+    return run
+
+
+def cmd_d1(args: argparse.Namespace) -> int:
+    run = run_d1(args)
+    if run.bad_entries:
+        return 1
+    ok = run.ok
+    closure = getattr(args, "closure", False)
+    if closure or ledger_closed():
+        # `--closure` also demands each due merge landed; once the ledger is marked closed, every
+        # later d1 keeps the witness and reference rules (never the delivery-time landing check)
+        problems = closure_problems(
+            run.entries,
+            ClosureContext.live(run.currents.get(CODES_FACET), run.used, check_landing=closure),
+        )
+        for problem in problems:
+            print(f"d1: CLOSURE: {problem}")
+        ok = ok and not problems
+        if closure and ok:
+            print(f"d1: closure: {len(run.entries)} divergence entries, ledger closed")
     return 0 if ok else 1
 
 
@@ -531,6 +694,7 @@ def build_parser() -> argparse.ArgumentParser:
     d1 = sub.add_parser("d1")
     d1.add_argument("--strict", action="store_true")
     d1.add_argument("--facet", action="append", default=[])
+    d1.add_argument("--closure", action="store_true")
 
     d2 = sub.add_parser("d2")
     d2.add_argument("--reader", required=True)

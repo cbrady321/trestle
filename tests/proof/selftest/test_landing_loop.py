@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -130,18 +131,24 @@ def test_p1_new_land_starts_after_first_dies_without_reclaim(rig):
 
     lock_path = rig["state_dir"] / ".land.lock"
     rig["state_dir"].mkdir(parents=True, exist_ok=True)
+    held = rig["state_dir"] / ".land.lock.held"
     proc = sp.Popen(
         [
-            "python3",
+            sys.executable,
             "-c",
             f"import fcntl; f=open('{lock_path}','a+'); "
-            f"fcntl.flock(f.fileno(), fcntl.LOCK_EX); import time; time.sleep(30)",
+            f"fcntl.flock(f.fileno(), fcntl.LOCK_EX); open('{held}','w').close(); "
+            "import time; time.sleep(30)",
         ]
     )
     try:
         import time as _t
 
-        _t.sleep(tolerances.SETTLE_S)
+        # the child holds the lock once it says so: a fixed settle lost to a slow interpreter start
+        deadline = _t.monotonic() + tolerances.JOIN_WAIT_S
+        while not held.exists() and _t.monotonic() < deadline:
+            _t.sleep(tolerances.POLL_FINE_S)
+        assert held.exists(), "the first holder never took the lock"
         with pytest.raises(fence_mod.SecondLandRefused):
             fence_mod.take_land_lock(rig["state_dir"])
     finally:

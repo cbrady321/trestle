@@ -85,14 +85,14 @@ def _paired(rid: str, criteria: tuple[str, ...], log: str = "paired_check_log") 
     return "\n".join(lines) + "\n"
 
 
-@pytest.mark.parametrize("rid", ["RV-1", "RV-3", "RV-4", "RV-5"])
+@pytest.mark.parametrize("rid", ["RV-1", "RV-2", "RV-3", "RV-4", "RV-5"])
 def test_each_review_valid_with_its_own_criteria(tmp_path, rid):
     criteria, log = reviews_mod.CRITERIA[rid]
     record = reviews_mod.load(_write(tmp_path, _paired(rid, criteria, log), f"{rid}-core.toml"))
     assert set(record["criteria"]) == set(criteria)
 
 
-@pytest.mark.parametrize("rid", ["RV-1", "RV-3", "RV-4"])
+@pytest.mark.parametrize("rid", ["RV-1", "RV-2", "RV-3", "RV-4"])
 def test_planted_missing_or_extra_criterion_rejected(tmp_path, rid):
     criteria, log = reviews_mod.CRITERIA[rid]
     for planted in (criteria[:-1], (*criteria, "unnamed_extra")):

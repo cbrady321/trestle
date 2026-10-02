@@ -11,6 +11,14 @@
 # is given verbatim, CL-D1); every other post-P0 entry here records
 # due_checkpoint as a deliberately-not-yet-due placeholder string so d1's
 # `_due()` check does not treat it as missing today.
+#
+# L.CZ.4: the ledger is closed. `differ d1 --closure` checked that every entry appeared by its due
+# checkpoint and names a row, a K-item, a design item or a contract; from here every `d1` holds the
+# witness and reference rules too (tests/proof/differ.py, `closure_problems`), against golden S0,
+# which stays.
+
+[ledger]
+closed = true
 
 [[entry]]
 id = "K-1"
