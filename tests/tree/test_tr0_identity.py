@@ -4,9 +4,9 @@ slot), `WR-UNIT-8:descendant-edit-identity`.
 The slot is `DeclaredTree.digest`, the sha256 over `{format_version, root, nodes}` (MC-34). Since
 L.TR-0.2 records every descendant as a node, a descendant declaration edit moves that digest and so
 the published snapshot's identity, a non-declaration edit moves source identity only, and a plain
-plugin or a leaf root is byte-identical to `wr-ckpt/single`. No admission is attempted here: a
-multi-vertex root is refused until TR-L (MB3-03), so the admitted-identity case and
-`WR-PLAN-5:tree` are L.TR-L.4's."""
+plugin or a leaf root keeps its `wr-ckpt/single` identity at the same runtime version. No
+admission is attempted here: a multi-vertex root is refused until TR-L (MB3-03), so the
+admitted-identity case and `WR-PLAN-5:tree` are L.TR-L.4's."""
 
 from __future__ import annotations
 
@@ -25,10 +25,10 @@ ECHO = REPO / "examples" / "plugins" / "echo.py"
 SPINE_LEAF = REPO / "tests" / "fixtures" / "workflows" / "spine_leaf.py"
 THREE_LEVEL = REPO / "tests" / "fixtures" / "trees" / "three_level.py"
 
-# The snapshot identities of the two bare plugins as `wr-ckpt/single` (the A-1 bundle head)
-# produces them: one declares no tree (echo), one a leaf-root tree (spine_leaf).
-ECHO_SNAPSHOT_ID = "snap_625a117d0a2b667b"
-ECHO_SNAPSHOT_RUNTIME = "0.1.0"  # the runtime version (an identity ingredient) it was pinned under
+# The snapshot identities of the two bare plugins under runtime 0.2.0: one declares no tree (echo),
+# one a leaf-root tree (spine_leaf). The runtime version is an identity ingredient (MC-18), so a
+# version bump re-pins echo's id; `wr-ckpt/single` (runtime 0.1.0) gave snap_625a117d0a2b667b.
+ECHO_SNAPSHOT_ID = "snap_6f04ffcc9585cf7d"
 SPINE_LEAF_DECLARATION_DIGEST = "df1c29c802b30eeb7a6869107b3f55690eb3192d19e937193c45279a2210efda"
 
 DB_BUDGET = 'leaf("db")'  # the descendant `three_level` declares at depth 3
@@ -177,8 +177,7 @@ def test_package_descendant_edit_moves_identity(
 
 
 @proves_descendant_edit
-def test_bare_plugin_identity_unchanged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("trestle.__version__", ECHO_SNAPSHOT_RUNTIME)
+def test_bare_plugin_identity_unchanged(tmp_path: Path) -> None:
     echo = materialize_snapshot(ECHO, "echo", home=tmp_path / "home")
     assert echo.snapshot_id == ECHO_SNAPSHOT_ID
     assert load_declared_tree(echo) is None  # a plain plugin declares no tree
