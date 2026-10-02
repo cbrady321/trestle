@@ -14,8 +14,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from tests.core.spine import support
-from tests.proof import tolerances
+from tests.proof import records
 from tests.tree import treekit as tk
 from trestle.common.plan.vocabulary import ResourceDisposition
 
@@ -48,12 +47,9 @@ def stop_once_found_reused(rig: tk.TreeRig, on_wait: int) -> None:
     cancel = rig.rig.cancel
     plain = cancel.wait
 
-    def reused() -> bool:
-        return any(r.cls == "end" and r.path == tree.POSTGRES_UNIT for r in rig.rig.lane().rows)
-
     def wait(timeout: timedelta) -> bool:
         if cancel.stop is None and len(cancel.waits) + 1 >= on_wait:
-            support.wait_until(reused, tolerances.JOIN_WAIT_S)
+            records.await_node_end(rig.run_dir, tree.POSTGRES_UNIT)
             cancel.stop = cancel.stop_cause
         return plain(timeout)
 

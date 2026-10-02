@@ -61,9 +61,11 @@ def test_over_capacity_queued_then_dispatched_or_refused(
         second_dir = _run_dir(host.home, second["run_id"])
 
         # the second run waits for the slot: admitted, not started, no process yet
-        assert support.wait_until(
-            lambda: "started" in records.node_record(first_dir).kinds,
-            tolerances.JOIN_WAIT_S,
+        assert (
+            records.await_record(
+                first_dir, lambda _, node: "started" in node.kinds, bound_s=tolerances.JOIN_WAIT_S
+            ).why
+            == "condition"
         )
         assert second["state"] == "queued", second
         assert records.node_record(second_dir).terminal is None
@@ -80,9 +82,12 @@ def test_over_capacity_queued_then_dispatched_or_refused(
         # when the slot frees (the first run is cancelled) the queued run is dispatched, and runs
         # to its own terminal row
         assert host.call("cancel", {"run_id": first["run_id"]})["code"] == codes.CANCEL_ACCEPTED
-        assert support.wait_until(
-            lambda: records.node_record(second_dir).terminal is not None,
-            clock.stop_bound + clock.poll_interval + tolerances.HARNESS_WAIT_MS / 1000,
+        assert (
+            records.await_terminal(
+                second_dir,
+                bound_s=clock.stop_bound + clock.poll_interval + tolerances.HARNESS_WAIT_MS / 1000,
+            ).why
+            == "condition"
         )
         assert records.node_record(first_dir).terminal == "cancelled"
         assert records.node_record(second_dir).terminal == "succeeded"
@@ -148,9 +153,8 @@ def test_queued_run_gets_no_extra_time(monkeypatch: pytest.MonkeyPatch) -> None:
         assert not kernel.control.scheduler.waiting
     finally:
         kernel.control.cancel(holder.run_id)
-        support.wait_until(
-            lambda: records.node_record(holder_dir).terminal is not None,
-            clock.stop_bound + clock.poll_interval + tolerances.SETTLE_LONG_S,
+        records.await_terminal(
+            holder_dir, bound_s=clock.stop_bound + clock.poll_interval + tolerances.SETTLE_LONG_S
         )
 
 

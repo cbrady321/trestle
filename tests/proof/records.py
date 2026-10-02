@@ -372,6 +372,11 @@ def await_record(
         time.sleep(tolerances.POLL_S)
 
 
+def await_terminal(run_dir: Path, *, bound_s: float = tolerances.JOIN_WAIT_S) -> Awaited:
+    """The root has its terminal row (`why` is then "condition")."""
+    return await_record(run_dir, lambda _, node: node.terminal is not None, bound_s=bound_s)
+
+
 def await_node_end(run_dir: Path, *paths: str, bound_s: float = tolerances.JOIN_WAIT_S) -> Awaited:
     """Every path in `paths` (lane path text: `"raiser"`, `"branch/w1"`; `""` is the root) has
     its `NodeEnd`."""

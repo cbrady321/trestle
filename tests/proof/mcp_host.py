@@ -30,12 +30,23 @@ import subprocess
 import sys
 import tempfile
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from tests.proof import tolerances
 
 REPO = Path(__file__).resolve().parents[2]
+
+
+@dataclass(frozen=True)
+class Joined:
+    """A held request's answer as a value: the tool's result, or the JSON-RPC error."""
+
+    result: Any = None
+    error: dict[str, Any] | None = None
+
+
 PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -194,6 +205,15 @@ class McpHost:
         `call()`'s own internal id, though `call()` already does this)."""
         raw = self._await_response(req_id, timeout=timeout)
         return self._parse_call_result(raw, name=f"request {req_id}")
+
+    def join_outcome(self, req_id: int, *, timeout: float | None = None) -> Joined:
+        """`join` as a value: the result, or the JSON-RPC error, never a raise (a test then
+        never synchronises on an error)."""
+        raw = self._await_response(req_id, timeout=timeout)
+        message = json.loads(raw)
+        if "error" in message:
+            return Joined(error=message["error"])
+        return Joined(result=self._parse_call_result(raw, name=f"request {req_id}"))
 
     def call(self, name: str, args: dict[str, Any] | None = None) -> Any:
         req_id = self.hold(name, args)

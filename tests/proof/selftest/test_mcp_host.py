@@ -16,8 +16,6 @@ import subprocess
 import time
 from pathlib import Path
 
-import pytest
-
 from tests.proof import records, tolerances
 from tests.proof.mcp_host import McpHost, rejoin
 
@@ -62,33 +60,32 @@ def test_hold_does_not_block_other_requests_accounting() -> None:
         assert host.request_count() == 3  # initialize, hold(run), call(list_plugins)
 
 
+def _started_run(home: Path) -> Path:
+    """The home's one run directory, once its ledger holds the `started` row (the run is in
+    flight, not merely admitted)."""
+    deadline = time.monotonic() + tolerances.JOIN_WAIT_S
+    while not _run_dirs(home) and time.monotonic() < deadline:
+        time.sleep(tolerances.POLL_S)
+    run_dirs = _run_dirs(home)
+    assert len(run_dirs) == 1, run_dirs
+    started = records.await_record(run_dirs[0], lambda _, node: "started" in node.kinds)
+    assert started.why == "condition", f"the run never started ({started.why})"
+    return run_dirs[0]
+
+
 def test_sever_cancel_notification_run_reaches_terminal() -> None:
     with McpHost() as host:
-        home = host.home
         held = host.hold("run", {"plugin": "slow", "args": {"seconds": 1.0}, "wait_ms": 10_000})
-        time.sleep(tolerances.SETTLE_SHORT_S)
+        run_dir = _started_run(host.home)  # sever an in-flight run, not after a fixed pause
         host.sever("cancel_notification", req_id=held)
-        # today the server answers a cancelled MCP request with a JSON-RPC
-        # error (mcp SDK cancellation support) rather than the tool's own
-        # result; the underlying run itself is not stopped by this —
-        # it keeps running and reaches a terminal state on its own.
-        with pytest.raises(RuntimeError, match="cancelled"):
-            host.join(held, timeout=tolerances.JOIN_WAIT_S)
-
-        deadline = time.monotonic() + 5
-        run_dirs: list[Path] = []
-        while time.monotonic() < deadline:
-            run_dirs = _run_dirs(home)
-            if run_dirs:
-                break
-            time.sleep(tolerances.POLL_S)
-        assert len(run_dirs) == 1
-        node = records.node_record(run_dirs[0])
-        deadline = time.monotonic() + 5
-        while node.terminal is None and time.monotonic() < deadline:
-            time.sleep(tolerances.POLL_S)
-            node = records.node_record(run_dirs[0])
-        assert node.terminal is not None
+        # the underlying run is not stopped by a cancelled MCP request: it reaches a terminal
+        # state on its own, and that is the claim, read from the record first
+        ended = records.await_record(run_dir, lambda _, node: node.terminal is not None)
+        assert ended.node.terminal is not None, f"no terminal row ({ended.why})"
+        # today the server answers the cancelled request with a JSON-RPC error (mcp SDK
+        # cancellation support) rather than the tool's own result
+        joined = host.join_outcome(held, timeout=tolerances.JOIN_WAIT_S)
+        assert joined.error is not None and "cancelled" in str(joined.error), joined
 
 
 def test_sever_close_server_exits_run_recovered_interrupted() -> None:
@@ -107,12 +104,7 @@ def test_sever_close_server_exits_run_recovered_interrupted() -> None:
         host.hold("run", {"plugin": "slow", "args": {"seconds": 5.0}, "wait_ms": 200})
         # the run is in flight (admitted and started) before the sever, not after a fixed pause:
         # a slow admission would otherwise be severed before any run directory exists
-        deadline = time.monotonic() + tolerances.JOIN_WAIT_S
-        while time.monotonic() < deadline:
-            run_dirs = _run_dirs(home)
-            if run_dirs and "started" in records.node_record(run_dirs[0]).kinds:
-                break
-            time.sleep(tolerances.POLL_S)
+        _started_run(home)
         host.sever("stdin_close")
         grace_deadline = time.monotonic() + 1.0
         while host.proc.poll() is None and time.monotonic() < grace_deadline:

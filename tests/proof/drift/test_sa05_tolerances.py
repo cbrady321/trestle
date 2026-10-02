@@ -239,48 +239,28 @@ def test_the_sleep_sync_scan_finds_a_planted_site(tmp_path: Path) -> None:
 LANE_POLL_READERS = {"lane_rows", "ledger_rows", "node_record", "lane"}
 LANE_POLL_HOME = "tests/proof/records.py"
 LANE_POLL_BASELINE: set[tuple[str, str]] = {
-    # the race leads' local waits (RACES-REPORT L-1..L-5, L-15a): moved onto the kit next
-    ("tests/tree/test_tr3_slices.py", "_wait_end"),
-    ("tests/tree/host/test_trl_rollup.py", "wait_end"),
-    ("tests/tree/test_tr4_depth.py", "stopped_answer"),
-    ("tests/tree/test_tr3_failfast.py", "_readiness_run"),
-    (
-        "tests/proof/selftest/test_mcp_host.py",
-        "test_sever_cancel_notification_run_reaches_terminal",
-    ),
-    (
-        "tests/proof/selftest/test_mcp_host.py",
-        "test_sever_close_server_exits_run_recovered_interrupted",
-    ),
-    # predate the rule: each moves onto `await_record` when its file is next changed
+    # predates the rule: the twin's mid-readiness wait reads the lane and the app's log together
     ("packages/trestle-env/tests/twin/cancel_case.py", "mid_wait"),
-    ("packages/trestle-env/tests/twin/test_reuse_twin.py", "stop_once_found_reused"),
-    (
-        "tests/core/admission/test_cl_a1_capacity.py",
-        "test_over_capacity_queued_then_dispatched_or_refused",
-    ),
-    ("tests/core/admission/test_cl_a1_capacity.py", "test_queued_run_gets_no_extra_time"),
-    ("tests/core/spine/test_cs4_call.py", "test_cancel_and_query_answer_while_terminal_call_held"),
-    ("tests/core/spine/test_cs4_call.py", "test_terminal_response_follows_terminal_row"),
-    (
-        "tests/core/spine/test_cs4_call.py",
-        "test_wait_past_the_bound_is_the_named_code_never_running",
-    ),
-    (
-        "tests/single/workflow/proc/test_runtime_containment.py",
-        "test_runtime_launched_tree_ignoring_sigterm_gone_after_cancel",
-    ),
-    ("tests/tree/host/test_tr5_containment.py", "start_and_settle"),
-    ("tests/tree/host/test_trl_cancel.py", "start_and_settle"),
-    ("tests/tree/host/test_trl_lease.py", "test_direct_call_acquires_before_effect"),
-    ("tests/tree/test_tr4_lease.py", "test_child_record_has_no_lease_entry"),
 }
 
 
+def _call_name(node: ast.Call) -> str:
+    func = node.func
+    return (func.attr if isinstance(func, ast.Attribute) else "") or getattr(func, "id", "")
+
+
+def _reads_record(node: ast.AST) -> bool:
+    return any(
+        isinstance(n, ast.Call) and _call_name(n) in LANE_POLL_READERS for n in ast.walk(node)
+    )
+
+
 def _lane_poll_sites(root: Path) -> dict[tuple[str, str], int]:
-    """Every `(file, function)` outside `records.py` whose body holds a `while` loop or a
-    `wait_until(` call and also calls a record reader (`lane_rows`, `ledger_rows`, `node_record`,
-    or a rig's `lane`), with the function's line. Nested helpers count toward their encloser."""
+    """Every `(file, function)` outside `records.py` that polls the record: it holds a loop (a
+    `while`, or a `wait_until(` call) and calls a record reader (`lane_rows`, `ledger_rows`,
+    `node_record`, or a rig's `lane`) inside that loop or inside a nested function or lambda it
+    defines (the loop's predicate). A read after the loop is not a poll. With the function's
+    line; nested helpers count toward their encloser."""
     sites: dict[tuple[str, str], int] = {}
     for base in SLEEP_SYNC_SCOPE:
         for path in sorted((root / base).rglob("*.py")):
@@ -290,17 +270,21 @@ def _lane_poll_sites(root: Path) -> dict[tuple[str, str], int]:
             for func in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
                 if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
-                loops = reads = False
-                for node in ast.walk(func):
-                    if isinstance(node, ast.While):
-                        loops = True
-                    elif isinstance(node, ast.Call):
-                        call = node.func
-                        name = call.attr if isinstance(call, ast.Attribute) else ""
-                        name = name or getattr(call, "id", "")
-                        loops = loops or name == "wait_until"
-                        reads = reads or name in LANE_POLL_READERS
-                if loops and reads:
+                inner = [n for n in ast.walk(func) if n is not func]
+                loops = [
+                    n
+                    for n in inner
+                    if isinstance(n, ast.While)
+                    or (isinstance(n, ast.Call) and _call_name(n) == "wait_until")
+                ]
+                if not loops:
+                    continue
+                nested = [
+                    n
+                    for n in inner
+                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))
+                ]
+                if any(_reads_record(n) for n in [*loops, *nested]):
                     sites.setdefault((rel, func.name), func.lineno)
     return sites
 

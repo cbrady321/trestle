@@ -831,9 +831,9 @@ def _reg_workers() -> int:
 
 REG_WORKERS = _reg_workers()
 REG_CHUNKS_PER_WORKER = 6  # whole-file chunks per worker: enough to balance, few enough to start
-# Shared resources: the only writer into tests/fixtures/plugins, and the fixed port 18792 (its
-# client has no timeout, so two suites on one host hang each other).
-REG_SERIAL_FILES = ("tests/test_m6_extending.py", "tests/test_mcp_http_smoke.py")
+# A shared resource: the fixed port 18792 (its client has no timeout, so two suites on one host
+# hang each other).
+REG_SERIAL_FILES = ("tests/test_mcp_http_smoke.py",)
 # Timing-sensitive nodes: each passes alone and has failed on a loaded host.
 REG_SERIAL_NODES = (
     "tests/test_mcp_stdio_smoke.py::test_stdio_run_returns_running_on_short_wait_ms",

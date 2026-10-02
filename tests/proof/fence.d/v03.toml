@@ -13,6 +13,14 @@ globs         = [
   # lane-poll ratchet.
   "tests/proof/records.py", "tests/core/spine/support.py", "tests/proof/results.py",
   "tests/proof/drift/test_sa05_tolerances.py", "tests/proof/selftest/test_await_record.py",
+  # stage 3: the race leads' local waits move onto the kit (L-1..L-5, L-15a), and the older record
+  # polls with them; m2's liveness bound, m6's private plugin dir, the REG serial lists.
+  "tests/tree/test_tr3_slices.py", "tests/tree/host/test_trl_rollup.py", "tests/tree/test_tr4_depth.py",
+  "tests/tree/test_tr3_failfast.py", "tests/proof/selftest/test_mcp_host.py", "tests/proof/mcp_host.py",
+  "tests/core/admission/test_cl_a1_capacity.py", "tests/core/spine/test_cs4_call.py",
+  "packages/trestle-env/tests/twin/test_reuse_twin.py",
+  "tests/test_m2_bounding.py", "tests/test_m6_extending.py", "tests/core/tooling/ck_drill.py",
+  "tests/core/tooling/test_ck_drill.py",
 ]
 
 [[gate]]

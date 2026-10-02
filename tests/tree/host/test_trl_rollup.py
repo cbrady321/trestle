@@ -527,12 +527,7 @@ def run_dir_of_active(server: mcp_host.McpHost, unit: str, seen: set[str]) -> Pa
 
 def wait_end(run_dir: Path, path: str) -> bool:
     """Whether the run's lane records `path`'s `NodeEnd` within the join wait."""
-    deadline = time.monotonic() + tolerances.JOIN_WAIT_S
-    while time.monotonic() < deadline:
-        if any(r.cls == "end" and r.path == path for r in records.lane_rows(run_dir).rows):
-            return True
-        time.sleep(tolerances.POLL_S)
-    return False
+    return records.await_node_end(run_dir, path).why == "condition"
 
 
 def await_terminal(server: mcp_host.McpHost, run_id: str) -> dict[str, Any]:

@@ -11,7 +11,6 @@ services under a manual clock (MC-26); the host halves are `L.TR-L.5`'s."""
 from __future__ import annotations
 
 import threading
-import time
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
@@ -21,7 +20,7 @@ import pytest
 from trestle_packs.fakes import FakeMarker
 
 from tests.core.spine import support
-from tests.proof import ancestry, harness, tolerances
+from tests.proof import ancestry, harness, records, tolerances
 from tests.single.workflow import loopkit as kit
 from tests.tree import treekit as tk
 from trestle.common import clock
@@ -114,16 +113,8 @@ def _nested(tmp_path: Path, gate: threading.Event, held: threading.Event) -> tk.
 
 
 def _wait_end(rig: tk.TreeRig, path: str) -> bool:
-    """Whether `path`'s `NodeEnd` is recorded within the join wait. Read mid-run: a torn last line
-    (an append in flight) is "not yet", never a failure."""
-
-    def ended() -> bool:
-        return any(r.cls == "end" and r.path == path for r in rig.rig.lane().rows)
-
-    deadline = time.monotonic() + tolerances.JOIN_WAIT_S
-    while not ended() and time.monotonic() < deadline:
-        time.sleep(tolerances.POLL_FINE_S)
-    return ended()
+    """Whether `path`'s `NodeEnd` is recorded within the join wait."""
+    return records.await_node_end(rig.run_dir, path).why == "condition"
 
 
 def _run_to_verdict(rig: tk.TreeRig, gate: threading.Event, held: threading.Event) -> None:
@@ -225,9 +216,7 @@ def test_shared_node_in_timed_out_subtree_release_only(tmp_path: Path) -> None:
         between = rig.rig.services.slice_end(right) + timedelta(seconds=1)
         assert between < rig.rig.services.slice_end(left)  # `left` is not over
         rig.rig.clock.now = between
-        deadline = time.monotonic() + tolerances.JOIN_WAIT_S
-        while "mid/right" not in rig.ends() and time.monotonic() < deadline:
-            time.sleep(tolerances.POLL_FINE_S)
+        records.await_node_end(rig.run_dir, "mid/right")
     finally:
         gate.set()
         runner.join(tolerances.JOIN_WAIT_S)

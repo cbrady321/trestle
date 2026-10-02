@@ -122,22 +122,14 @@ def _readiness_run(kernel: Kernel, tmp_path: Path) -> tuple[harness.AdmittedTree
     path = _published(kernel, tmp_path, "readiness_sibling")
     admitted = harness.admit_tree(path, {"env": "dev"}, kernel=kernel)
 
-    def created() -> bool:
-        lane = records.lane_rows(admitted.run_dir)
-        made = {
-            r.path
-            for r in lane.rows
-            if r.cls == "confirmation"
-            and r.entry["effect"] == "up"
-            and r.entry["status"] == "applied"
-        }
-        return made >= {"waiter", "branch/w1", "branch/w2"}
-
     views: list[Any] = []
     conductor = threading.Thread(target=lambda: views.append(harness.drive_tree(admitted)))
     with support.reaping(admitted.run_id):
         conductor.start()
-        assert support.wait_until(created, tolerances.JOIN_WAIT_S), "not every leaf is polling"
+        created = records.await_confirmations(
+            admitted.run_dir, "up", "waiter", "branch/w1", "branch/w2"
+        )
+        assert created.why == "condition", f"not every leaf is polling ({created.why})"
         admitted.kernel.control.cancel(admitted.run_id)
         conductor.join(timeout=clock.stop_bound + tolerances.JOIN_WAIT_S)
         assert not conductor.is_alive(), "the run never reached its terminal row"
