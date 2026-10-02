@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "trestle-packs"
-version = "0.1.0"
+version = "0.2.0"
 description = "Pre-built workflow packs for Trestle plugins — Docker, pytest, migrations"
 readme = "README.md"
 requires-python = ">=3.12"

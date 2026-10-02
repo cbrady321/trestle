@@ -12,6 +12,7 @@ from tests.single.contract import declared_fixtures as fx
 from tests.single.contract.test_publish_workflow import (
     ECHO,
     ECHO_SNAPSHOT_ID,
+    ECHO_SNAPSHOT_RUNTIME,
     WORKFLOW_SOURCE,
 )
 from trestle.child.validate import env_declaration_error, imported_port_modules
@@ -141,8 +142,11 @@ def test_env_key_field_must_match_declared_env_arg(tmp_path: Path) -> None:
     assert error is not None and error[0] == codes.PUBLICATION_ENV_ARG_MISSING
 
 
-def test_plugin_without_ports_needs_no_env_arg(tmp_path: Path) -> None:
-    # a plain plugin publishes with the identity it has at wr-ckpt/core
+def test_plugin_without_ports_needs_no_env_arg(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # a plain plugin publishes with the identity it has at wr-ckpt/core (under that runtime version)
+    monkeypatch.setattr("trestle.__version__", ECHO_SNAPSHOT_RUNTIME)
     plain = materialize_snapshot(ECHO, "echo", home=tmp_path / "plain")
     assert plain.snapshot_id == ECHO_SNAPSHOT_ID
     # a workflow plugin that neither imports ports nor names an environment publishes

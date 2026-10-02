@@ -28,6 +28,7 @@ THREE_LEVEL = REPO / "tests" / "fixtures" / "trees" / "three_level.py"
 # The snapshot identities of the two bare plugins as `wr-ckpt/single` (the A-1 bundle head)
 # produces them: one declares no tree (echo), one a leaf-root tree (spine_leaf).
 ECHO_SNAPSHOT_ID = "snap_625a117d0a2b667b"
+ECHO_SNAPSHOT_RUNTIME = "0.1.0"  # the runtime version (an identity ingredient) it was pinned under
 SPINE_LEAF_DECLARATION_DIGEST = "df1c29c802b30eeb7a6869107b3f55690eb3192d19e937193c45279a2210efda"
 
 DB_BUDGET = 'leaf("db")'  # the descendant `three_level` declares at depth 3
@@ -176,7 +177,8 @@ def test_package_descendant_edit_moves_identity(
 
 
 @proves_descendant_edit
-def test_bare_plugin_identity_unchanged(tmp_path: Path) -> None:
+def test_bare_plugin_identity_unchanged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("trestle.__version__", ECHO_SNAPSHOT_RUNTIME)
     echo = materialize_snapshot(ECHO, "echo", home=tmp_path / "home")
     assert echo.snapshot_id == ECHO_SNAPSHOT_ID
     assert load_declared_tree(echo) is None  # a plain plugin declares no tree

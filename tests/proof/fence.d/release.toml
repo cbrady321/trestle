@@ -1,0 +1,26 @@
+# tests/proof/fence.d/release.toml — post-release fixes on top of the v0.2.0 release commit
+# (20e6988, `Release-Of: 592d3b5`). Every plan phase has landed and the history above the
+# release commit carries no `WR-Merge:` trailer, so a gate here requires no earlier merge
+# (R2 has nothing to read on the squashed base). Each fix adds its own gate and widens the
+# lane's globs with a comment, as the CZ lane did.
+phase = "release"
+
+[[lane]]
+name          = "release"
+branch_prefix = "wr/release/"
+globs         = [
+  # REL-VERSION: the package versions and the runtime's `__version__` say the release's 0.2.0.
+  "pyproject.toml", "packages/trestle-packs/pyproject.toml", "packages/trestle-env/pyproject.toml",
+  "trestle/__init__.py",
+  # The runtime version is an identity ingredient (MC-18): the pinned echo identity is checked
+  # under the runtime version it was recorded under.
+  "tests/single/contract/test_publish_workflow.py", "tests/single/contract/test_env_declaration.py",
+  "tests/tree/test_tr0_identity.py",
+  # The phase's `[phases]` entry.
+  "tests/proof/fence.toml",
+]
+
+[[gate]]
+branch         = "wr/release/version"
+merge          = "REL-VERSION"
+requires_merge = []
