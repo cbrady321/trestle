@@ -109,6 +109,8 @@ trestle serve --transport streamable-http --port 18732
 }
 ```
 
+`--port 0` picks a free port and prints `trestle: listening 127.0.0.1:<port>` on stderr once it accepts connections (useful for scripts and tests that must not collide on a fixed port).
+
 Bind is fixed at `127.0.0.1`. There is no `--host` flag. Any process on the same machine can hit that port — prefer stdio when possible.
 
 ## 5. Verify

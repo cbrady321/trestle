@@ -47,7 +47,10 @@ def main(argv: list[str] | None = None) -> int:
         "--port",
         type=int,
         default=18732,
-        help="HTTP bind port on 127.0.0.1 (streamable-http only, default 18732)",
+        help=(
+            "HTTP bind port on 127.0.0.1 (streamable-http only, default 18732; 0 picks a free port"
+            " and prints `trestle: listening 127.0.0.1:<port>` on stderr)"
+        ),
     )
     _add_home_arg(serve)
     _add_plugin_dir_arg(serve)

@@ -51,6 +51,10 @@ globs         = [
   "packages/trestle-env/tests/host/test_healthy_machine_full.py",
   "packages/trestle-env/tests/unit/test_local_composition.py",
   "packages/trestle-packs/tests/process/*.py", "packages/trestle-packs/tests/conformance/process_restart_cases.py",
+  # stage 8: L-18, `serve --port 0` binds a free port and reports it; the HTTP smokes use it and
+  # REG_SERIAL_FILES is empty.
+  "trestle/server/main.py", "trestle/cli.py", "tests/test_mcp_http_smoke.py", "docs/install.md",
+  "tests/core/admission/test_cl_a2_profile.py", "tests/proof/baseline.json",
 ]
 
 [[gate]]

@@ -299,3 +299,45 @@ def rejoin(old: McpHost) -> McpHost:
     is — sever it first if the point is testing a session against a
     server that is already gone."""
     return McpHost(home=old.home)
+
+
+def serve_http(
+    home: Path, *, env: dict[str, str] | None = None
+) -> tuple[subprocess.Popen[bytes], int]:
+    """`trestle serve --transport streamable-http --port 0` on `home`: the server process and the
+    port it reports on stderr (`trestle: listening 127.0.0.1:<port>`, RACES-REPORT L-18), read
+    within `tolerances.JOIN_WAIT_S`. The rest of stderr is drained in the background so the
+    server never blocks on a full pipe. Raises if the server exits or never reports."""
+    from trestle.server.main import LISTENING_PREFIX
+
+    environ = dict(env if env is not None else os.environ)
+    environ["TRESTLE_HOME"] = str(home)
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "trestle.cli", "serve", "--transport", "streamable-http"]
+        + ["--port", "0"],
+        env=environ,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    lines: queue.Queue[bytes] = queue.Queue()
+
+    def drain() -> None:
+        assert proc.stderr is not None
+        for line in proc.stderr:
+            lines.put(line)
+        lines.put(b"")  # end of stream: the server exited
+
+    threading.Thread(target=drain, daemon=True).start()
+    seen: list[str] = []
+    try:
+        while True:
+            line = lines.get(timeout=tolerances.JOIN_WAIT_S).decode(errors="replace")
+            if not line:
+                raise RuntimeError(f"the server exited before it listened: {''.join(seen)}")
+            if line.startswith(LISTENING_PREFIX):
+                return proc, int(line.strip().rsplit(":", 1)[1])
+            seen.append(line)
+    except BaseException:
+        proc.kill()
+        proc.wait()
+        raise

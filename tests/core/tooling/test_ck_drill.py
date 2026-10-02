@@ -347,7 +347,7 @@ def test_regression_runs_the_declined_tree_and_skips_the_baseline_file(
     assert "--deselect=tests/proof/selftest/test_baseline.py" in pytest_cmd
 
 
-# A planted serial collection: plain files of uneven size, the shared-resource file, one
+# A planted serial collection: plain files of uneven size, the formerly shared-resource files, one
 # timing-sensitive node inside an otherwise parallel file, the results reader inside its own file,
 # and the packages' test files.
 FLAKY = "tests/test_user_stories.py::test_us08_hostile_plugin_control_plane_responsive"
@@ -380,9 +380,11 @@ def test_reg_partition_deals_whole_files_and_keeps_the_serial_tail() -> None:
             assert a is b or not (_files(a.nodes) & _files(b.nodes))
     assert [len(c.nodes) for c in chunks] == sorted((len(c.nodes) for c in chunks), reverse=True)
     assert 1 < len(chunks) <= 4 * ck_drill.REG_CHUNKS_PER_WORKER
-    # the shared-resource files and the timing-sensitive node run serially, after the chunks
-    assert set(tail.paths) == {"tests/test_mcp_http_smoke.py", FLAKY}
-    assert FLAKY in tail.nodes and len(tail.nodes) == 3
+    # the timing-sensitive node runs serially, after the chunks; no file is held there whole
+    assert ck_drill.REG_SERIAL_FILES == ()
+    assert set(tail.paths) == {FLAKY}
+    assert tail.nodes == [FLAKY]
+    assert any("tests/test_mcp_http_smoke.py" in c.paths for c in chunks)
     # test_m6_extending builds its kernels over private plugin directories: dealt like any file
     assert any("tests/test_m6_extending.py" in c.paths for c in chunks)
     (stories,) = [c for c in chunks if "tests/test_user_stories.py" in c.paths]
