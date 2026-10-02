@@ -44,6 +44,7 @@ from trestle.server.registry import Registry
 WAIT_S = tolerances.JOIN_WAIT_S
 # a plugin run's admission, first process and terminal row, as the sever tests elsewhere allow
 RUN_WAIT_S = tolerances.JOIN_WAIT_S * 3
+HELD_CALL_MS = int(WAIT_S * 1000)  # the held terminal `run` call waits this long (SA-05: named)
 
 SOURCE_A = """\
 from trestle.plugin.surface import Context, trestle
@@ -388,7 +389,10 @@ def _cancel_run_call_at(kernel: Any, reached: threading.Event, go: threading.Eve
     async def scenario() -> None:
         call = asyncio.create_task(
             kernel.control.run_async(
-                plugin="echo", args={"message": "sever"}, wait_ms=10_000, completion="terminal"
+                plugin="echo",
+                args={"message": "sever"},
+                wait_ms=HELD_CALL_MS,
+                completion="terminal",
             )
         )
         assert await asyncio.to_thread(reached.wait, WAIT_S), "the call never got there"
