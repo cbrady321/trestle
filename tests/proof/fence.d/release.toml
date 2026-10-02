@@ -31,6 +31,37 @@ globs         = [
   "trestle/common/limits.py", "trestle/server/projection.py", "trestle/query/fs.py",
   # The races' proving tests (one deterministic interleaving per race).
   "tests/core/spine/test_product_races.py",
+  # CI hardening. The tool set is pinned: constraints/ci.txt via PIP_CONSTRAINT, exact mypy and
+  # ruff in pyproject.toml, read by CI's workflow.
+  "constraints/ci.txt", ".github/workflows/ci.yml",
+  # ci_parity.sh runs CI's checks locally in CI's shape before a push or a host session.
+  "scripts/ci_parity.sh",
+  # Test races: wait on the condition, not a pause (CS-2 containment and its pipe holder, the
+  # tree-facts freeze, the port holders, SA-05's tolerances).
+  "tests/core/spine/plugins/pipe_holder.py", "tests/core/spine/test_cs2_containment.py",
+  "tests/tree/facts/test_tree_facts.py", "tests/proof/suites/ports/implementations.py",
+  "tests/proof/drift/test_sa05_tolerances.py",
+  # reuse_twin[cancelled]: the stop waits for the sibling's end, so it leaves ck_drill's REG
+  # serial tail.
+  "packages/trestle-env/tests/twin/test_reuse_twin.py",
+  "tests/core/tooling/ck_drill.py", "tests/core/tooling/test_ck_drill.py",
+  # The stop-offset proof: no step lies past the offset (tightened again by P4 below).
+  "tests/proof/spine/test_stop_offset.py",
+  # G-E2 is pending on PR runs; fence landing rule L1 requires the host-docker record.
+  "tests/pins/e_packs/test_g_e2.py", "tests/proof/host/record.py", "tests/proof/fence.py",
+  # The fence and G-E2 selftests that hold L1 and the pending rule.
+  "tests/proof/selftest/test_g_e2_pending.py", "tests/proof/selftest/test_fence_merge.py",
+  "tests/proof/selftest/test_fence_cli.py", "tests/proof/selftest/test_bundle_landing.py",
+  "tests/proof/selftest/test_landing_loop.py",
+  # P4: the root is carved nothing; its slice end is the release point and flips the goal
+  # (`LeafWalk.step`), so a single-vertex deadline run ends STOPPED, never CARVE_EXCEEDED.
+  "trestle/workflow/loop.py",
+  # P4's named contract change in the agent and plugin guides ("a carved node").
+  "docs/agents.md", "docs/plugins.md",
+  # P4's proofs: both orderings in a tree rig, and the carve kept for a carved leaf; the
+  # single-vertex loop and polling tests now see the root's stop.
+  "tests/tree/test_tr3_slices.py", "tests/single/workflow/test_loop.py",
+  "tests/single/workflow/test_polling.py",
 ]
 
 [[gate]]

@@ -116,6 +116,7 @@ class Stopped:
     request_calls: list[tuple[str, int]] = field(
         default_factory=list
     )  # signals on the request thread
+    answer: dict[str, Any] = field(default_factory=dict)  # the wire answer
 
     @property
     def lane(self) -> LaneRows:
@@ -215,7 +216,7 @@ def run_deadline(directory: Path) -> Stopped:
     with support.reaping(admitted.run_id):
         view = harness.drive_tree(admitted)
     outcome, answer = _answered(view)
-    return Stopped(admitted.run_dir, outcome, answer)
+    return Stopped(admitted.run_dir, outcome, answer, answer=dict(view.to_dict()["answer"]))
 
 
 @pytest.fixture(scope="module")
@@ -255,32 +256,43 @@ def test_deadline_one_stop_row_class_is_its_cause(timed_out: Stopped) -> None:
     assert verdict.ok and not verdict.vacuous and not verdict.unproven, verdict
 
 
-# The record's own spelling of `StepEntry(FAILED, CARVE_EXCEEDED)`: this suite reads the record
-# through the seam and imports no product vocabulary but the clock (SA-04).
-CARVE_EXCEEDED_STEP = ("failed", "execution.carve_exceeded")
+def test_deadline_root_end_is_stopped_never_carve_exceeded(timed_out: Stopped) -> None:
+    """P4: a single-vertex deadline run ends its root `stopped` (the goal cut it), with exactly
+    one `end` row and no `CARVE_EXCEEDED` step; the answer's primary is `stopped` with the last
+    verdict's code and the root stop is the release point."""
+    rows = timed_out.lane.rows
+    (end,) = [r.entry for r in rows if r.cls == "end"]
+    assert end["cut"] == "stopped", end
+    assert end["code"] != "execution.carve_exceeded", end
+    assert not [
+        r for r in rows if r.cls == "step" and r.entry.get("code") == "execution.carve_exceeded"
+    ]
+    assert timed_out.answer["root_stop"] == "release_point", timed_out.answer
+    primary = timed_out.answer["primary"]
+    assert (primary["listing"], primary["code"]) == ("stopped", end["code"]), primary
 
 
 def _allowed_past_offset(row: Any) -> bool:
     """What may lie past the stop offset: the release walk (the stop issue and its confirmation,
-    `released`), the `end`, and the leaf's `StepEntry(FAILED, CARVE_EXCEEDED)` (loop
-    `_carve_exceeded`), no other step."""
+    `released`) and the `end`. No `step`: the root is carved nothing, so under the deadline its
+    slice end is the release point and is the goal flip, never a `StepEntry(FAILED,
+    CARVE_EXCEEDED)` (P4); under a cancel no step follows the flag either."""
     if row.cls in ("released", "end"):
         return True
     if row.cls == "step":
-        return (row.entry.get("kind"), row.entry.get("code")) == CARVE_EXCEEDED_STEP
+        return False
     return row.entry.get("effect") == "stop"
 
 
-def test_only_the_carve_exceeded_step_may_lie_past_the_offset() -> None:
+def test_no_step_may_lie_past_the_offset() -> None:
     def row(cls: str, **entry: Any) -> SimpleNamespace:
         return SimpleNamespace(cls=cls, entry=entry)
 
-    carve = row("step", kind="failed", code="execution.carve_exceeded")
-    assert _allowed_past_offset(carve)
-    assert not _allowed_past_offset(row("step", kind="blocked", code="execution.carve_exceeded"))
+    assert not _allowed_past_offset(row("step", kind="failed", code="execution.carve_exceeded"))
     assert not _allowed_past_offset(row("step", kind="failed", code="execution.unit_raised"))
     assert not _allowed_past_offset(row("issue", effect="up"))
     assert _allowed_past_offset(row("issue", effect="stop"))
+    assert _allowed_past_offset(row("end"))
 
 
 @pytest.mark.parametrize("which", ["cancelled", "timed_out"])
@@ -288,11 +300,9 @@ def test_the_offset_separates_the_claim_from_the_release(
     which: str, request: pytest.FixtureRequest
 ) -> None:
     """Not a vacuous pass: the create was applied before the recorded offset, and the release
-    walk (the stop issue, its confirmation and `released`) lies past it, all allowed. A `step`
-    may lie past it too, but only that one record: under the deadline the leaf's own slice ends at
-    the release point, and its `StepEntry(FAILED, CARVE_EXCEEDED)` can land after the stop row; a
-    step is a record, not an action start (it has no effect). Any other step past the offset is
-    still a finding."""
+    walk (the stop issue, its confirmation and `released`) and the `end` lie past it, all allowed.
+    No step lies past it, the deadline's included: the root's slice end is the release point, the
+    goal flip, so no `StepEntry(FAILED, CARVE_EXCEEDED)` is recorded whichever is seen first."""
     run: Stopped = request.getfixturevalue(which)
     (stop,) = run.stops
     length = stop["lane_committed_length"]

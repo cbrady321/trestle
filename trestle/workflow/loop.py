@@ -400,6 +400,13 @@ class LeafWalk:
             self._reached = True
             return False
         if self._slice_ended():
+            if self.path == ROOT:
+                # The root is carved nothing: its slice end is the release point, the whole-root
+                # stop (as `_time_out_expired` skips the root). Seeing it first is the goal flip
+                # the release-point flag makes, so the end is `STOPPED` with the last verdict and
+                # no `CARVE_EXCEEDED` step, whichever of the two is seen first.
+                self._loop.flip_goal()
+                return False
             self._carve_exceeded()
             self._reached = True
             return False
@@ -414,9 +421,9 @@ class LeafWalk:
         return self._loop.now() >= self._terms.slice_end
 
     def _carve_exceeded(self) -> None:
-        """B1-O8: the slice ended with a non-terminal verdict. A STALE verdict joins once more
-        first and yields CURRENCY_UNCONFIRMED (V-3.5); otherwise the loop records
-        `StepEntry(FAILED, CARVE_EXCEEDED)` and joins once (J-2)."""
+        """B1-O8 for a carved (non-root) node: the slice ended with a non-terminal verdict. A
+        STALE verdict joins once more first and yields CURRENCY_UNCONFIRMED (V-3.5); otherwise the
+        loop records `StepEntry(FAILED, CARVE_EXCEEDED)` and joins once (J-2)."""
         assert self.verdict is not None
         if self.verdict.condition is Condition.STALE:
             self._rejoin()

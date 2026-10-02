@@ -782,14 +782,18 @@ def test_release_call_raise_is_the_handles_cleanup_outcome(tmp_path: Path) -> No
     assert rig.ends()[0]["condition"] == "satisfied", "never the node's condition (V-3.7)"
 
 
-def test_carve_exceeded_step_then_join(tmp_path: Path) -> None:
+def test_root_slice_end_flips_the_goal_no_carve_step(tmp_path: Path) -> None:
+    """P4: the root is carved nothing, so its slice end is the release point and flips the goal:
+    the walk is cut (`STOPPED`, the last verdict) and releases, with no `CARVE_EXCEEDED` step.
+    The carve itself (step, then a join) is a carved node's: `tests/tree/test_tr3_slices.py`."""
     marker, unit = created_never_ready()
     rig = kit.build(tmp_path, unit, ports=marker_ports(marker), slice_end_s=5.0)
-    walk(rig)
-    (step,) = [s for s in rig.rows("step") if s["kind"] == "failed"]
-    assert step["code"] == codes.CARVE_EXCEEDED
+    walked = walk(rig)
+    assert walked.goal is Goal.RELEASE
+    assert not [s for s in rig.rows("step") if s["code"] == codes.CARVE_EXCEEDED]
     (end,) = rig.ends()
-    assert (end["condition"], end["code"], end["cut"]) == ("failed", codes.CARVE_EXCEEDED, None)
+    assert (end["condition"], end["cut"], end["provenance"]) == ("converging", "stopped", "created")
+    assert end["code"] != codes.CARVE_EXCEEDED
     assert unit.observes >= 5
 
 

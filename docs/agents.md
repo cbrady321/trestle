@@ -431,9 +431,12 @@ root's deadline stops the whole tree. A crash of the worker process ends every n
   check budgets, so such a plugin publishes and is then refused on every run; the fix is the
   author's. A started tree can also stop `blocked` with the same code when time spent queued left
   it less than its worst case.
-- A node still working when its carved slice ends stops `timed_out` with
+- A carved node still working when its slice ends stops `timed_out` with
   `execution.carve_exceeded`; the nodes below a timed-out composite only release. The slice is
   checked between a unit's calls, so a unit stuck inside one call runs on until the root deadline.
+  The root is carved nothing: its slice ends at the release point, which stops the whole run. A
+  single-vertex run that reaches it answers `timed_out` with `root_stop` `release_point`, its
+  primary `stopped` and carrying the last verdict's code, never `execution.carve_exceeded`.
 - Two runs that give the same environment value never run at once: the second waits in the queue,
   or is refused `admission.environment_busy` (retryable, no run id) when the holder's deadline
   leaves it too little time. A plugin that declares no environment is not excluded.
@@ -527,7 +530,7 @@ started run's answer: every `execution.*` code, and `admission.budget_does_not_f
 | `admission.budget_does_not_fit` | The tree's budgets do not fit: a child's budget is over its parent's less the 10 s reserve, a composite's budget is under its longest `needs` chain or under ceil(children / `concurrency`) × its largest child, or the root's budget plus the release slice is over the deadline (the message names the node). On a started tree, a `blocked` stop when time spent queued left it less than its worst case | Ask the plugin's author to fix the budgets or the deadline; for the started-tree stop, run again when the environment is free |
 | `admission.route_unsupported` | A `ChoiceNode` has no eligible alternative, or a node that needs a choice cannot reach the alternative it would get | Change the selection argument; otherwise ask the author |
 | `admission.environment_busy` | Another run holds the environment and its deadline leaves this request too little time (retryable, no run id) | Run again after that run ends |
-| `execution.carve_exceeded` | A node's carved time slice ended before it reached its condition; class `timed_out`, and the nodes below a timed-out composite only release | Ask the author for a larger budget, or find why the node is slow |
+| `execution.carve_exceeded` | A carved node's time slice ended before it reached its condition; class `timed_out`, and the nodes below a timed-out composite only release. Never the root's: the root's slice ends at the release point, a whole-run stop (`root_stop` `release_point`) | Ask the author for a larger budget, or find why the node is slow |
 | `execution.unit_raised` | A unit raised an exception, or broke its contract (for example `Acted` with no effect issued); class `execution_error`, and the whole tree stops | A plugin defect: report it to the author |
 | `execution.postcondition_timeout` | A node acted but its postcondition did not hold within its wait; class `exhausted`, reported as `blocked` | Find from the node's evidence why it did not become ready |
 | `execution.remedy_exhausted` | A node's declared repair was spent without success; class `blocked` | Find from the node's evidence why the repair did not work |
