@@ -59,13 +59,21 @@ def test_setsid_grandchild_attributed_by_marker_and_sid(sa: str) -> None:
     )
     grandchild_pids: set[int] = set()
     try:
-        time.sleep(tolerances.SETTLE_LONG_S)
+        # wait for the grandchild (exec'd with the marker, reparented once mid has exited), not
+        # a fixed pause: a slow interpreter start would otherwise find nothing yet
+        snap: set[ancestry.ProcInfo] = set()
+        marked: list[ancestry.ProcInfo] = []
+        deadline = time.monotonic() + tolerances.JOIN_WAIT_S
+        while time.monotonic() < deadline:
+            snap = ancestry.snapshot()
+            marked = [p for p in snap if marker in p.argv and p.pid != root.pid]
+            if len(marked) == 1 and marked[0].ppid != root.pid:
+                break
+            time.sleep(tolerances.POLL_S)
         root_sid = os.getsid(root.pid)
         assert root_sid == root.pid  # root did start a new session
 
-        snap = ancestry.snapshot()
         root_info = next(p for p in snap if p.pid == root.pid)
-        marked = [p for p in snap if marker in p.argv and p.pid != root.pid]
         assert len(marked) == 1, marked
         grandchild = marked[0]
         grandchild_pids.add(grandchild.pid)

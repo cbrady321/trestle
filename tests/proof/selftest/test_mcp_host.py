@@ -105,7 +105,14 @@ def test_sever_close_server_exits_run_recovered_interrupted() -> None:
     home = host.home
     try:
         host.hold("run", {"plugin": "slow", "args": {"seconds": 5.0}, "wait_ms": 200})
-        time.sleep(tolerances.SETTLE_S)
+        # the run is in flight (admitted and started) before the sever, not after a fixed pause:
+        # a slow admission would otherwise be severed before any run directory exists
+        deadline = time.monotonic() + tolerances.JOIN_WAIT_S
+        while time.monotonic() < deadline:
+            run_dirs = _run_dirs(home)
+            if run_dirs and "started" in records.node_record(run_dirs[0]).kinds:
+                break
+            time.sleep(tolerances.POLL_S)
         host.sever("stdin_close")
         grace_deadline = time.monotonic() + 1.0
         while host.proc.poll() is None and time.monotonic() < grace_deadline:

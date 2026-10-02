@@ -164,8 +164,6 @@ SLEEP_SYNC_BASELINE = {
         "test_sever_run_continues_bounded_and_cleaned",
     ),
     ("tests/single/spine/test_w_a1.py", "test_wait_ends_on_stop_read_from_the_record"),
-    ("tests/tree/host/test_trl_lease.py", "test_root_and_direct_child_never_overlap"),
-    ("tests/tree/host/test_trl_lease.py", "test_direct_call_acquires_before_effect"),
     ("tests/tree/test_tr4_lease.py", "test_direct_call_acquires_before_first_effect"),
 }
 

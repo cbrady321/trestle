@@ -141,6 +141,14 @@ def call(kernel: Kernel, plugin: str) -> Run:
     return Run(kernel, plugin, run_dir, thread, result)
 
 
+def waiting(kernel: Kernel) -> list[str]:
+    """The run ids waiting in the scheduler's FIFO (read without its lock, as `minted`)."""
+    try:
+        return [w.order.run_id for w in kernel.control.scheduler.waiting]
+    except RuntimeError:  # deque mutated during iteration
+        return []
+
+
 def mutation_open(run: Run) -> None:
     assert wait_until(lambda: run.marked("entered")), f"{run.plugin} never opened its mutation"
     assert not run.marked("exited")
@@ -165,7 +173,7 @@ def test_root_and_direct_child_never_overlap(tree_kernel: Kernel) -> None:
     files each run wrote, are disjoint."""
     root, direct = root_then_direct(tree_kernel)
     # the root's mutation is open: the direct call is queued behind it, not running
-    time.sleep(tolerances.SETTLE_S * 3)
+    time.sleep(tolerances.SETTLE_S * 3)  # absence-window
     assert not direct.marked("entered") and "started" not in direct.kinds()
     root_view = root.finish()
     assert wait_until(lambda: direct.marked("entered")), "the direct call never ran"
@@ -231,10 +239,11 @@ def test_direct_call_acquires_before_effect(tree_kernel: Kernel) -> None:
         row for row in records.ledger_rows(direct.run_dir).rows if row["kind"] == "created"
     )
     assert created["lease_key"] == KEY
-    time.sleep(tolerances.SETTLE_S * 3)
+    time.sleep(tolerances.SETTLE_S * 3)  # absence-window
     assert not direct.marked("entered")  # no effect while the root holds the environment
     assert not records.lane_rows(direct.run_dir).rows  # ... and not one lane entry
-    assert [w.order.run_id for w in tree_kernel.control.scheduler.waiting] == [direct.run_id]
+    # the direct call's thread enqueues it after admission returns: awaited, not read at once
+    assert wait_until(lambda: waiting(tree_kernel) == [direct.run_id]), waiting(tree_kernel)
     root.finish()
     assert wait_until(lambda: direct.marked("entered"))
     direct.finish()

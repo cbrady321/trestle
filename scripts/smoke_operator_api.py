@@ -94,7 +94,10 @@ def main() -> int:
         assert ui.status_code == 200, ui.text
         assert "text/html" in ui.headers.get("content-type", "")
     else:
-        print("WARN: console/web/dist missing — build with: cd console/web && npm install && npm run build")
+        print(
+            "WARN: console/web/dist missing — build with: "
+            "cd console/web && npm install && npm run build"
+        )
 
     print(f"SMOKE OK run_id={run_id} fetch={chunk_body['body'].get('values')}")
     return 0
