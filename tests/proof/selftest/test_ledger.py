@@ -190,6 +190,12 @@ def test_enforce_scope_ci_fails_on_an_unproven_result(
     monkeypatch.setattr(results_mod, "RESULTS_DIR", results_dir)
     monkeypatch.setattr(results_mod, "META_CONFIG_PATH", _meta_config(tmp_path, ["ci-test"]))
     monkeypatch.setattr(results_mod, "GATES_DIR", _gates_dir(tmp_path))
+    # `--scope ci` resolves its anchor through `fence.ckpt_succeeded`; once the newest carrier on
+    # HEAD is a check-run checkpoint (J0, J-ROOT) that is a live `gh` read, which a test job has
+    # no token for. The read is not under test here: the newest check-run carrier is unmarked.
+    from tests.proof import fence as fence_mod
+
+    monkeypatch.setattr(fence_mod, "_default_check_run_reader", lambda *_a: "missing")
 
     import tests.proof.meta as meta_mod
 
