@@ -68,7 +68,7 @@ globs         = [
   # stop row and `timed_out`, never `passed`.
   "trestle/workflow/services.py", "trestle/child/run_services.py", "trestle/server/conductor.py",
   "tests/single/workflow/loopkit.py",
-  # REL-LEADS: the RACES-REPORT test leads #6-#18 that were confirmed and are cheap to close wait
+  # REL-FOLLOWUPS (leads folded in): the RACES-REPORT test leads #6-#18 that were confirmed and are cheap to close wait
   # on the condition or carry a stall-sized slack (cs2_clock queue time, run-services promptness,
   # capacity hold, lease FIFO read, m3 cancel vs deadline, SA-10 grandchild, MCP stdin-close
   # sever); the trl_lease absence windows are marked and leave SA-05's baseline (already globbed).
@@ -85,9 +85,4 @@ globs         = [
 [[gate]]
 branch         = "wr/release/followups"
 merge          = "REL-FOLLOWUPS"
-requires_merge = []
-
-[[gate]]
-branch         = "wr/release/leads"
-merge          = "REL-LEADS"
 requires_merge = []
