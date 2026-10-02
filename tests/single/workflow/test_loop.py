@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 
 from tests.single.control.sweep_stub import EXE, Engine, run_sweep
+from tests.single.workflow import joinkit as jk
 from tests.single.workflow import loopkit as kit
 from tests.single.workflow.loopkit import (
     EFFECT,
@@ -811,6 +812,51 @@ def test_stale_at_slice_end_joins_once_more_and_yields_currency_unconfirmed(
     (end,) = rig.ends()
     assert (end["condition"], end["code"]) == ("blocked", codes.CURRENCY_UNCONFIRMED)
     assert end["human_action"] and end["resend"] == "succeeds_after_action"
+
+
+def _currency_rig(tmp_path: Path, scope: object | None) -> tuple[Rig, Unit]:
+    """A ready leaf whose observation carries the demo credential at generation g1; the loop
+    reads the host scope through `scope` (`HostScopeReads`), or with none bound."""
+    fact = CurrencyFact(HostScopeRef.DEMO_CREDENTIAL, "g1", None)
+    unit = Unit(
+        declaration(),
+        lambda u, p, reads, ctx: observation(found=1, ready=True, currency=(fact,)),
+    )
+    bound = {} if scope is None else {ports.HostScopeReads: scope}
+    return kit.build(tmp_path, unit, ports=bound, slice_end_s=4.0), unit
+
+
+def _scope_events(rig: Rig) -> list[Any]:
+    return [fields for kind, fields in rig.sink.events if kind == "loop_host_scope"]
+
+
+def test_the_loop_reads_the_host_scope_and_a_current_fact_is_satisfied(tmp_path: Path) -> None:
+    """V-9.6: the loop reads the subject the fact names through the bound reader; equal
+    generations join SATISFIED. One reading per observation, recorded as one evidence event."""
+    rig, unit = _currency_rig(tmp_path, jk.StaticScope((HostScopeRef.DEMO_CREDENTIAL, "g1")))
+    walk(rig)
+    (end,) = rig.ends()
+    assert (end["condition"], end["code"]) == ("satisfied", None)
+    events = _scope_events(rig)
+    assert len(events) == unit.observes
+    assert events[0]["read"] == {"demo_credential": "g1"} and events[0]["unread"] == {}
+
+
+@pytest.mark.parametrize("bound", ["unreadable", "none"])
+def test_an_unread_subject_joins_stale_then_currency_unconfirmed(
+    tmp_path: Path, bound: str
+) -> None:
+    """V-9.7, B3-C18: an unreadable subject, or no reader bound, gives no reading; the fact joins
+    as if it differed (STALE) and the slice end yields CURRENCY_UNCONFIRMED."""
+    scope = jk.StaticScope() if bound == "unreadable" else None
+    rig, unit = _currency_rig(tmp_path, scope)
+    walk(rig)
+    (end,) = rig.ends()
+    assert (end["condition"], end["code"]) == ("blocked", codes.CURRENCY_UNCONFIRMED)
+    events = _scope_events(rig)
+    assert len(events) == unit.observes
+    want = vocab.HOST_SCOPE_UNREADABLE if bound == "unreadable" else None
+    assert events[0]["read"] == {} and events[0]["unread"] == {"demo_credential": want}
 
 
 @pytest.mark.parametrize(

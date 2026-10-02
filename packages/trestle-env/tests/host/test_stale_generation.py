@@ -6,9 +6,9 @@ The consumer tree of `twin/consumers.py` runs through the real loop (the tree ri
 container adapter on the operator's docker, the demo grant adapters (`DemoGrant` with the
 `ContainerExecProbe`: one authenticated call from inside the consumer, through
 `host.docker.internal`; `ChannelDelivery`: the mounted refreshable file) and the stub issuer on
-loopback. The loop feeds no host-scope readings of its own, so the run's join reads the issuer's
-current generation through a live `DemoHostScope` (`consumers.LiveScope`, as L.RB-9.3's proof does):
-without it every current credential would read as stale in production (reported in the RETURN).
+loopback. The loop reads the issuer's current generation itself, once per observation, through the
+bound `HostScopeReads` (a `DemoHostScope` over the same issuer): without one every current
+credential would read as stale.
 
 * owned: the run creates the consumer with its channel holding a generation the issuer has since
   moved past. `observe_in_consumer` proves it older (`CREDENTIAL_STALE`) and the declared remedy
@@ -68,6 +68,7 @@ from trestle_packs.grant import (
     provision_channel,
     write_channel,
 )
+from trestle_packs.grant.host_scope import DemoHostScope
 from trestle_packs.process.command import CommandPort
 from twin import consumers, local_consumer
 
@@ -190,6 +191,7 @@ def _rig(
             ports.ResourceCreate: containers.containers,
             ports.ResourceOwned: containers.containers,
             ports.GrantReads: grant,
+            ports.HostScopeReads: DemoHostScope(grant, now=lambda: kit.NOW),
             ports.GrantDelivery: delivery,
         },
     )
@@ -215,7 +217,7 @@ def test_owned_container_older_generation_recreated(tmp_path: Path, issuer: Any)
         tmp_path, issuer, "consumer", run_id, (BindMount(source, target),)
     )
     try:
-        rig.run(consumers.LiveScope(grant, lambda: kit.NOW))
+        rig.run()
     finally:
         _cleanup(run_id)
     end = rig.ends()[UNIT]
@@ -248,7 +250,7 @@ def test_found_container_unproven_generation_blocked_untouched(tmp_path: Path, i
     try:
         before = _container(found)
         rig, _reads, delivery, grant = _rig(tmp_path, issuer, found, run_id, ())
-        rig.run(consumers.LiveScope(grant, lambda: kit.NOW))
+        rig.run()
         end = rig.ends()[UNIT]
         assert (end["condition"], end["code"]) == ("incompatible", codes.CREDENTIAL_STALE), end
         answer = tk.answer_of(rig)

@@ -1,7 +1,7 @@
 """CI twins of `host/test_credential_currency.py` (L.RB-9.4; MC-B-03; STUB · CI): the same consumer
 unit through the real loop (the tree rig) over `FakeContainerEngine` and `FakeGrant`, the join's
-host scope read live from the same fake issuer (`consumers.LiveScope`). Same node names; only
-`@stub-twin` labels."""
+host scope read by the loop from the same fake issuer (the bound `DemoHostScope`). Same node
+names; only `@stub-twin` labels."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from trestle.workflow import codes, ports
 from trestle.workflow.values import CheckResult, Lineage, NodePath
 from trestle_packs.fakes.container import FakeContainerEngine, selector_name
 from trestle_packs.fakes.grant import FakeGrant
+from trestle_packs.grant.host_scope import DemoHostScope
 from trestle_packs.process.local import LocalProcessPort
 
 from twin import consumers, local_app, local_consumer
@@ -82,10 +83,11 @@ def run(tmp_path: Path, grant: Asked, engine: Engine) -> tuple[tk.TreeRig, dict[
             ports.ResourceCreate: engine,
             ports.ResourceOwned: engine,
             ports.GrantReads: grant,
+            ports.HostScopeReads: DemoHostScope(grant, now=lambda: kit.NOW),
             ports.GrantDelivery: grant,
         },
     )
-    rig.run(consumers.LiveScope(grant, lambda: kit.NOW))
+    rig.run()
     return rig, rig.ends()[UNIT]
 
 
@@ -161,7 +163,7 @@ def _rotation_local_app(tmp_path: Path) -> None:
         run_id=run_id,
         port_impl=local_consumer.port_map(watched, grant, grant),
     )
-    rig.run(consumers.LiveScope(grant, lambda: kit.NOW))
+    rig.run()
     assert rig.ends()[UNIT]["condition"] == "satisfied"
     assert grant.current_generation() != before  # the host rotated while the run waited
     assert len(local_consumer.stale_remedy_rows(rig.rows())) == 1

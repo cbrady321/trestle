@@ -50,6 +50,7 @@ from trestle_packs.process.command import CommandPort
 from trestle_packs.provision import ProvisionPort, RecordStore
 from trestle_packs.testrun import PytestJunitRunner
 from trestle_packs.toolchain import MiseToolchainResolver
+from trestle_packs.toolchain.host_scope import ToolchainHostScope
 from trestle_packs.toolchain.tasks import ProjectTasks, TaskDeclaration, TaskRunner
 
 from trestle_env import tree
@@ -180,6 +181,9 @@ def reference_ports(
     resolver, tasks = toolchain_ports(env, runner, artifacts=artifacts)
     if resolver is not None:
         mapping[ports.ToolchainResolver] = resolver
+        # the toolchain's host-scope reader (Q3): bound with no target until a leaf emits a
+        # TOOLCHAIN_INSTALLS currency fact, so the subject reads as unreadable (V-9.7)
+        mapping[ports.HostScopeReads] = ToolchainHostScope(resolver)
     routed: Any = bound.containers
     if tree.PROVISION_UNIT in tree.ENTRY.units:
         # the tree provisions a fixture record: its `PROVISIONED` resource goes to the record store

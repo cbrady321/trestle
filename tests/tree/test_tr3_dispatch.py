@@ -27,6 +27,7 @@ from trestle.common.plan import carving
 from trestle.server.ledger import evidence_dir, run_dir_for
 from trestle.server.main import Kernel
 from trestle.workflow import codes
+from trestle.workflow.ports import HostScopeReads
 from trestle.workflow.values import CurrencyFact, NodePath
 
 proves_dispatch = pytest.mark.proves(
@@ -150,8 +151,10 @@ def _credential_rig(tmp_path: Path, valid_until: Any) -> tk.TreeRig:
 
     web = kit.Unit(unit.decl, observe, unit._advance, unit._release)
     root = tk.group("app", (tk.bind("web"),), concurrency=1)
-    rig = tk.tree_rig(tmp_path, root, {"web": web})
-    return rig
+    scope = jk.StaticScope((jk.DEMO, "g1"))  # the host's current generation (V-9.6)
+    marker = tk.PathMarker()
+    ports = {**tk.port_map(marker), HostScopeReads: scope}
+    return tk.tree_rig(tmp_path, root, {"web": web}, marker, port_impl=ports)
 
 
 @proves_credential
@@ -164,7 +167,7 @@ def test_credential_check_uses_root_deadline_plus_margin(tmp_path: Path) -> None
 
     def joined(valid_until: Any, name: str) -> dict[str, Any]:
         rig = _credential_rig(tmp_path / name, valid_until)
-        rig.run(host_scope=jk.readings((jk.DEMO, "g1")))
+        rig.run()
         return rig.ends()["web"]
 
     # a credential that outlives the root's deadline plus the margin passes ...

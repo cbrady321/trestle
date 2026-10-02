@@ -53,6 +53,7 @@ from trestle.workflow.values import (
 )
 from trestle_packs.grant import CHANNEL_FILE, IssuerClient, write_channel
 from trestle_packs.grant.demo import GRANT_ISSUER_UNREACHABLE, IssuerUnreachable, IssuerUnreadable
+from trestle_packs.grant.host_scope import DemoHostScope
 from trestle_packs.process.local import LocalProcessPort, run_scoped_selector
 
 from trestle_env import tree
@@ -178,6 +179,7 @@ def port_map(watched: Watched, grant: Any, delivery: Any) -> dict[type, object]:
         ports.ResourceCreate: watched,
         ports.ResourceOwned: watched,
         ports.GrantReads: grant,
+        ports.HostScopeReads: DemoHostScope(grant, now=lambda: kit.NOW),
         ports.GrantDelivery: delivery,
     }
 
@@ -303,7 +305,7 @@ def stale_restart_case(
         run_id=run_id,
         port_impl=port_map(watched, grant, delivery),
     )
-    rig.run(consumers.LiveScope(grant, lambda: kit.NOW))
+    rig.run()
     return StaleRestart(rig, watched, log, selector)
 
 

@@ -30,6 +30,18 @@ globs         = [
   # stage 5: L-10, the raiser waits for its siblings' markers through `wait_for`, not a pause; its
   # six fossil states re-recorded over the changed fixture.
   "tests/fixtures/trees/exception_branch.py", "tests/fixtures/fossils/**",
+  # stage 6: the loop reads host scope through the bound `HostScopeReads`, once per observation;
+  # the demo and toolchain readers are bound; the tests' injection hooks are gone.
+  "packages/trestle-packs/trestle_packs/grant/demo.py",
+  "packages/trestle-packs/trestle_packs/toolchain/host_scope.py",
+  "packages/trestle-env/trestle_env/plugins/_bind.py", "tests/tree/treekit.py", "tests/tree/test_tr3_dispatch.py",
+  "tests/single/workflow/joinkit.py", "tests/single/workflow/test_loop.py",
+  "packages/trestle-env/tests/twin/consumers.py", "packages/trestle-env/tests/twin/local_consumer.py",
+  "packages/trestle-env/tests/twin/test_stale_generation_twin.py",
+  "packages/trestle-env/tests/twin/test_credential_currency_twin.py",
+  "packages/trestle-env/tests/host/test_stale_generation.py",
+  "packages/trestle-env/tests/host/test_credential_currency.py",
+  "packages/trestle-env/tests/stub/test_demo_auth.py", "packages/trestle-env/tests/stub/test_never_capture.py",
 ]
 
 [[gate]]

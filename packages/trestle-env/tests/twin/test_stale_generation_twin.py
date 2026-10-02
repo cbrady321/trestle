@@ -2,7 +2,7 @@
 
 The consumer tree of `twin/consumers.py` runs through the real loop (the tree rig: the real lane
 and services under a manual clock) over `FakeContainerEngine` and `FakeGrant`, with the join's host
-scope read live from the same fake issuer (`LiveScope`: the loop feeds none of its own). The same
+scope read by the loop from the same fake issuer (the bound `DemoHostScope`). The same
 node names as `host/test_stale_generation.py`; only `@stub-twin` labels.
 
 `test_owned_process_older_generation_restarted` (L.RB-9.5.fix1) runs a real local process (the
@@ -22,6 +22,7 @@ from trestle.workflow import codes, ports
 from trestle.workflow.values import CheckResult, Lineage, NodePath
 from trestle_packs.fakes.container import FakeContainerEngine, selector_name
 from trestle_packs.fakes.grant import FakeGrant
+from trestle_packs.grant.host_scope import DemoHostScope
 
 from twin import consumers, local_consumer
 
@@ -87,6 +88,7 @@ def _rig(tmp_path: Path, system: str) -> tuple[tk.TreeRig, ConsumerEngine, FakeG
             ports.ResourceCreate: engine,
             ports.ResourceOwned: engine,
             ports.GrantReads: grant,
+            ports.HostScopeReads: DemoHostScope(grant, now=lambda: kit.NOW),
             ports.GrantDelivery: delivery,
         },
     )
@@ -105,7 +107,7 @@ def test_owned_container_older_generation_recreated(tmp_path: Path) -> None:
     rig, engine, grant, delivery = _rig(tmp_path, "consumer")
     selector = selector_name(Lineage("r_tree_0001", NodePath((UNIT,))))
     _stale(grant, selector)
-    rig.run(consumers.LiveScope(grant, lambda: kit.NOW))
+    rig.run()
     end = rig.ends()[UNIT]
     assert end["condition"] == "satisfied", end
     issues = [r for r in rig.rows() if r.get("path") == UNIT and r["class"] == "issue"]
@@ -123,7 +125,7 @@ def test_found_container_unproven_generation_blocked_untouched(tmp_path: Path) -
     rig, engine, grant, delivery = _rig(tmp_path, FOUND)
     engine.plant_found(FOUND)
     old = _stale(grant, FOUND)
-    rig.run(consumers.LiveScope(grant, lambda: kit.NOW))
+    rig.run()
     end = rig.ends()[UNIT]
     assert (end["condition"], end["code"]) == ("incompatible", codes.CREDENTIAL_STALE), end
     answer = tk.answer_of(rig)

@@ -73,6 +73,7 @@ from trestle.workflow.facets import (
     declared_effect,
 )
 from trestle.workflow.join import join
+from trestle.workflow.ports import HostScopeReads, HostScopeUnreadable
 from trestle.workflow.units import (
     Acted,
     Blocked,
@@ -118,6 +119,7 @@ _EVIDENCE_STEP = "loop_step_evidence"
 _EVIDENCE_UNIT_RAISED = "loop_unit_raised"
 _EVIDENCE_FAILED = "loop_failed_detail"
 _EVIDENCE_UNCOVERED = "loop_precondition_uncovered"
+_EVIDENCE_HOST_SCOPE = "loop_host_scope"
 
 _ESCAPED: object = object()  # `advance` ended in an `EffectRefused` rather than returning
 
@@ -389,6 +391,8 @@ class LeafWalk:
         self._lineage = loop.services.lineage(path)
         self._held: list[StepView] = []  # steps the lane refused to hold, in process (V-4.5)
         self._observation: Observation | None = None
+        self._scope_of: object = None  # the observation `_scope` was read for (V-9.6: once each)
+        self._scope = HostScopeReading(())
         self._refusal_seen = False  # a facet refused or recorded UNKNOWN in the current call
         self._polls = 0  # CONVERGE polls since the last ADVANCE: the backoff exponent (V-14)
         self.verdict: Verdict | None = None
@@ -551,10 +555,17 @@ class LeafWalk:
             self._terms,
             self._observation,
             self.record(),
-            self._loop.host_scope,
+            self._host_scope(),
             self._loop.services.clock(),
         )
         self._postcondition_fact(self.verdict)
+
+    def _host_scope(self) -> HostScopeReading:
+        """The host-scope reading for the current observation, read once per observation."""
+        if self._scope_of is not self._observation:
+            self._scope_of = self._observation
+            self._scope = self._loop.read_host_scope(self._observation, self.path)
+        return self._scope
 
     def _postcondition_fact(self, verdict: Verdict) -> None:
         """`step.postcondition`: the checks the join read (the last observation's postcondition and
@@ -952,7 +963,6 @@ class Loop:
         self.intent = intent
         self.ports: Mapping[type, object] = dict(ports or {})
         self.lane = services.attempts()
-        self.host_scope = HostScopeReading(())  # no host section is declared at one vertex (B2-C8)
         reserve_s, margin_s = 0.0, 0.0
         if isinstance(services, svc.FinalizationBounds):
             reserve_s, margin_s = services.finalization_reserve_s, services.currency_margin_s
@@ -969,6 +979,38 @@ class Loop:
 
     def now(self) -> Instant:
         return self.services.clock().now
+
+    def read_host_scope(self, observation: Observation | None, path: NodePath) -> HostScopeReading:
+        """V-9.6/V-9.7: the reading of every subject the observation's currency facts name, read
+        through the bound `HostScopeReads` facet once per observation. No facet bound, or a
+        subject unreadable, gives that subject no reading (the join then treats the fact as
+        differing, B3-C18), and the one evidence event says so."""
+        subjects = (
+            ()
+            if observation is None
+            else tuple(dict.fromkeys(f.subject for f in observation.currency))
+        )
+        if not subjects:
+            return HostScopeReading(())
+        reader = self.ports.get(HostScopeReads)
+        readings: list[tuple[Any, str, Instant]] = []
+        unread: dict[str, JsonValue] = {}
+        for subject in subjects:
+            got = None if reader is None else reader.read(subject)  # type: ignore[attr-defined]
+            if isinstance(got, tuple):
+                readings.append(got)
+            else:
+                unread[_value(subject)] = got.code if isinstance(got, HostScopeUnreadable) else None
+        # by subject name: the generation read (a name, never a secret, WR-EVID-12) or why not
+        self.services.evidence().event(
+            _EVIDENCE_HOST_SCOPE,
+            {
+                "path": _path_text(path),
+                "read": {_value(s): g for s, g, _ in readings},
+                "unread": unread,
+            },
+        )
+        return HostScopeReading(tuple(readings))
 
     # ------------------------------------------------------------------ the root
 
@@ -1189,7 +1231,8 @@ class Loop:
             path=node,
             currency_margin=self.currency_margin,
         )
-        verdict = join(terms, observation, NodeRecordView(), self.host_scope, self.services.clock())
+        scope = self.read_host_scope(observation, node)
+        verdict = join(terms, observation, NodeRecordView(), scope, self.services.clock())
         return observation, verdict
 
     def _selection_fact(
