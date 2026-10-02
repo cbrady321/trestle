@@ -222,7 +222,9 @@ as one run. Publication refuses a tree the declaration alone shows to be defecti
 its own and no snapshot: `publication.unit_unresolved` (a child or `needs` entry names a unit the
 plugin does not declare), `publication.dependency_cycle`, `publication.declaration_conflict` and
 `publication.plan_precondition_uncovered`; the codes are listed in
-[`agents.md`](agents.md#composite-workflows-trees).
+[`agents.md`](agents.md#composite-workflows-trees). Budgets are not checked at publication but at
+admission, on every run (see Deadline and budgets below). A tree plugin imports
+`trestle.workflow` beside `trestle.plugin`.
 
 The example below runs three steps over the fake marker of `trestle_packs.fakes`: `build` and
 `lint` start together, `package` needs both. It is a complete plugin: publish it as it stands.
@@ -363,10 +365,56 @@ def release(ctx: Context, env: str = "dev") -> dict[str, str]:
 ```
 <!-- /tree-example -->
 
+**Deadline and budgets.** `WorkflowEntry.deadline` is not read in this release. The deadline that
+is admitted and enforced is `@trestle(deadline=)`; keep the two equal (the example does). Budgets
+are checked at admission, on every run, not at publication: a tree whose budgets cannot fit
+publishes, and every `run` of it is then refused `admission.budget_does_not_fit` with a message
+naming the node, before a run id. The rules (each parent holds back a 10 s reserve, and a workflow
+root with a release walk a 10 s release slice):
+
+- the root's budget plus the release slice must be at most the deadline;
+- each child's budget must be at most its parent's budget less the reserve;
+- an `AllDeclaration`'s budget must be at least its longest `needs` chain of child budgets, and at
+  least ceil(children / `concurrency`) × its largest child's budget;
+- every alternative of a `ChoiceNode` must fit, since any one of them may run.
+
+The example fits: 30 + 10 ≤ 60; each leaf's 10 ≤ 30 − 10; the chain `build` → `package` is
+10 + 10 = 20 ≤ 30; ceil(3 / 2) × 10 = 20 ≤ 30. At run time a leaf still working when its carved
+slice ends stops `timed_out` with `execution.carve_exceeded`. The loop checks the slice between
+the unit's calls, so a unit that blocks inside one call is stopped only by the root deadline.
+
+**What a leaf returns.** `advance` and `release` return one of the steps in
+`trestle.workflow.units`:
+
+| Step | Meaning |
+|------|---------|
+| `Acted()` | An effect was issued through a facet (`effects.create(...)`, `effects.owned(...)`). `Acted` from a call that issued nothing is a defect (`execution.unit_raised`) |
+| `NoAction(reason)` | The call issued nothing; `reason` is a stable code |
+| `Blocked(code, human_action, resend)` | A person must act first. The node ends `blocked`; `human_action` (required, at most 1024 bytes) and `resend` (`Resend.SUCCEEDS_AFTER_ACTION`, `WILL_NOT_SUCCEED` or `UNKNOWN`, from `trestle.workflow.values`) reach the agent on `answer.primary` |
+| `Failed(code, detail)` | The node ends `failed` with `code`; the nodes that need it are not started, independent siblings finish |
+
+An exception raised from `observe`, `advance` or `release` ends the node `execution_error` with
+`execution.unit_raised` and stops the whole tree.
+
+**Gates.** `gates` names children that only read. Before the first effect anywhere in the tree,
+each gate is observed once; if it is not satisfied, its composite is stopped with the code the
+gate observed, else `execution.declaration_stale`. `needs` orders siblings at run time; `gates` are
+checked once, up front. A gate must be one of the composite's children
+(`publication.unit_unresolved` otherwise, "a gates entry of '<path>' names none of its children").
+
+**Selecting part of a tree from the request.** Declare the allowed names in an `AllDeclaration`'s
+`identifier_sets` and bind a request argument to one of them with
+`ArgBinding(arg, identifier_set, filters_children)`. Every binding checks the argument's values
+against the set (`admission.unknown_identifier` for a value outside it, before a run id). With
+`filters_children=True` the values also select the children: only the named ones run, together
+with every sibling they `need`.
+
 An `AllDeclaration` root and a `ChoiceNode` root are both admitted (the loop selects one alternative
 of a `ChoiceNode` from what it observes before the first effect). The wire code
 `admission.plan_multi_vertex_unsupported` stays defined but is retired: nothing produces it. The agent-facing behaviour (one
-answer, child views, cancel addressed to the root) is in [`agents.md`](agents.md#composite-workflows-trees).
+answer, child views, cancel addressed to the root) is in [`agents.md`](agents.md#composite-workflows-trees),
+and how an agent runs a tree and reads its answer is in
+[`agents.md` § Large tasks: the tree](agents.md#large-tasks-the-tree).
 
 ## Workflow packs
 

@@ -33,6 +33,14 @@ Need a view name? Read MCP resource `trestle://views` first (not plugin schemas)
 
 Long jobs: pass `completion="terminal"` (with `wait_ms` above zero) so one `run` call returns only a finished run, bounded by the run's deadline plus a margin. `await_runs` is for bounded mode only (the default), to join a `running` frame.
 
+## Large tasks (trees)
+
+- A job with many dependent parts: run a registered tree plugin once (`completion="terminal"`); pass its environment argument explicitly.
+- Read `answer.outcome`, then `answer.primary` (`path`, `code`, `human_action`, `resend`), then `answer.listed`. Not `state` or `outcome.class`: they read `succeeded` / `passed` whenever the plugin returned normally.
+- Full answer: `fetch("<run_id>/answer", {"kind": "head", "count": 1})`. Stop: `cancel` the root run id.
+- Ad-hoc work: `run(wait_ms=0)` per registered plugin, then `await_runs(mode="all")`. Do not `publish_plugin` a one-off tree.
+- Details: [`docs/agents.md` § Large tasks: the tree](../../../docs/agents.md#large-tasks-the-tree).
+
 ## Bootstrap (if catalog empty)
 
 ```bash
@@ -47,12 +55,13 @@ Or `publish_plugin` with `@trestle` Python source. Empty catalog → `admission.
 from trestle.plugin.surface import Context, trestle
 
 @trestle
-def my_tool(ctx: Context, arg: str) -> dict:
+def my_tool(ctx: Context, arg: str) -> dict[str, str]:
     ctx.log("working")
     return {"result": arg}
 ```
 
-PluginSurface only — no Kernel, FastMCP, or ledger imports. Call form for metadata:
+Return a parameterized type (`dict[str, str]`, not bare `dict`): publication refuses an unparameterized generic.
+PluginSurface, plus `trestle.workflow` for a tree workflow — no Kernel, FastMCP, or ledger imports. Call form for metadata:
 `@trestle(deadline=..., packages=[...])` (literals only; `async def` entries are refused). A declared
 `deadline` above 300 s is honoured and shown by `describe_plugin` (`deadline_s`, `deadline_source`);
 above the ceiling it is refused with `admission.budget_does_not_fit`. Declared `packages` are

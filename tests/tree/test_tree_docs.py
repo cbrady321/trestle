@@ -37,6 +37,17 @@ TREE_CODES = (
     "admission.unknown_identifier",
     "execution.declaration_stale",
     "projection.cancel_not_root",
+    # what a tree agent also meets: the carve and bound refusals, the routing refusal, the lease
+    # refusal, and the node codes of a started tree (docs/agents.md § Composite workflows)
+    "admission.bound_exceeded",
+    "admission.budget_does_not_fit",
+    "admission.route_unsupported",
+    "admission.environment_busy",
+    "execution.carve_exceeded",
+    "execution.unit_raised",
+    "execution.postcondition_timeout",
+    "execution.remedy_exhausted",
+    "execution.plan_precondition_uncovered",
 )
 
 # the modules that define a wire code's spelling; a producer is a reference to it elsewhere

@@ -84,6 +84,9 @@ Playbook: [`docs/operator-sessions-telemetry.md`](docs/operator-sessions-telemet
 | [`docs/overview.md`](docs/overview.md) | What Trestle is and is not |
 | [`docs/install.md`](docs/install.md) | System-wide install and host wiring |
 | [`docs/security.md`](docs/security.md) | Local-only lockdown |
+| [`docs/agents.md`](docs/agents.md) | Agent guide, including [large tasks as one tree run](docs/agents.md#large-tasks-the-tree) |
+| [`docs/plugins.md`](docs/plugins.md) | Write and publish plugins, including composite (tree) workflows |
+| [`docs/environment.md`](docs/environment.md) | The reference environment tree workflow |
 
 ## Verify
 
