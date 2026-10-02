@@ -9,6 +9,7 @@ same family, unmodified.
 from __future__ import annotations
 
 import itertools
+import os
 import subprocess
 import sys
 from collections.abc import Callable
@@ -138,12 +139,19 @@ _HOLDER = "import signal; signal.pause()  # trestle proof suite: local process h
 _LISTEN_PORT = "20321"
 
 
+# Every pytest process tags its holders by default: the CK drill's REG runs test_port_suite.py and
+# test_fake_real.py (d8) in concurrent processes, and an untagged holder of one was a found
+# instance of the other (CI run 36927436540 CK-3-4 `absent_before_create`; 36946935622 CK-3-4 d8
+# `1 == 0`). One process keeps one tag, so the fake and real halves of a d8 pair still agree.
+_PROCESS_TAG = f"pid-{os.getpid()}"
+
+
 def _local_spec(tag: str = "") -> ports.ResourceSpec:
-    """`tag` (default none) ends the holder's command line: a suite run in parallel with another
-    (`xdist`, or another suite over the same holder) passes a tag of its own, so the other's
-    processes are not this one's found instances."""
+    """`tag` (default: this process's) ends the holder's command line: a suite run in parallel
+    with another (`xdist`, the drill's REG, or another suite over the same holder) is tagged apart,
+    so the other's processes are not this one's found instances."""
     resolved = ports.Resolved(sys.executable, "3.12", "pin", "adoption")
-    holder = f"{_HOLDER} {tag}" if tag else _HOLDER
+    holder = f"{_HOLDER} {tag or _PROCESS_TAG}"
     command = ports.BoundCommand(
         "app", (sys.executable, "-c", holder), {"PORT": _LISTEN_PORT}, resolved, False
     )

@@ -134,6 +134,9 @@ class Frozen:
     results: dict[str, str]
 
 
+VANISHED = "<listed, then gone before its read>"
+
+
 def freeze(run_dir: Path) -> Frozen:
     evidence = evidence_dir(run_dir)
     lane_bytes = (evidence / "lane.ndjson").read_bytes()
@@ -142,11 +145,18 @@ def freeze(run_dir: Path) -> Frozen:
         grouped.setdefault(row.path if row.path is not None else "<plan>", bytearray()).extend(
             lane_bytes[row.offset : row.end]
         )
-    files = {
-        str(path.relative_to(evidence)): hashlib.sha256(path.read_bytes()).hexdigest()
-        for path in sorted(evidence.rglob("*"))
-        if path.is_file()
-    }
+    files: dict[str, str] = {}
+    for path in sorted(evidence.rglob("*")):
+        # A live writer's temporary file (`.result_<name>.part`, renamed into place) can be listed
+        # and gone before it is read (CI run 36955650845, CK-8). That is a change under the read,
+        # recorded as such, never an error: the negative control counts it, the frozen check fails.
+        try:
+            if path.is_file():
+                files[str(path.relative_to(evidence))] = hashlib.sha256(
+                    path.read_bytes()
+                ).hexdigest()
+        except FileNotFoundError:
+            files[str(path.relative_to(evidence))] = VANISHED
     return Frozen(
         slices={path: hashlib.sha256(data).hexdigest() for path, data in grouped.items()},
         evidence=files,
