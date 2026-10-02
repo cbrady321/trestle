@@ -18,9 +18,22 @@ globs         = [
   "tests/tree/test_tr0_identity.py",
   # The phase's `[phases]` entry.
   "tests/proof/fence.toml",
+  # Product races (delivery-close RACES-REPORT). P1: atomic_write gives each writer its own
+  # temporary.
+  "trestle/common/fsutil.py",
+  # P2: a snapshot's plugin.py is whole or absent, and is the hashed source.
+  "trestle/server/snapshots.py",
+  # P3: registry refreshes are serialized and tolerate removed plugins.
+  "trestle/server/registry.py",
+  # Sever: an admitted run is driven even if its run call is cancelled.
+  "trestle/server/control.py",
+  # P5: test-limit scans are bounded by bytes and counts, not wall time (limits.py had no lane).
+  "trestle/common/limits.py", "trestle/server/projection.py", "trestle/query/fs.py",
+  # The races' proving tests (one deterministic interleaving per race).
+  "tests/core/spine/test_product_races.py",
 ]
 
 [[gate]]
-branch         = "wr/release/version"
-merge          = "REL-VERSION"
+branch         = "wr/release/followups"
+merge          = "REL-FOLLOWUPS"
 requires_merge = []
