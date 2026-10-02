@@ -493,7 +493,10 @@ def _fetch_jsonpath(
 
     if expr in {"$[*]", "$.*"} and index.root_type == "array" and index.array_element_ranges:
         for rec in index.array_element_ranges:
-            if time.monotonic() - started > limits.max_scan_time_ms / 1000.0:
+            if (
+                limits.max_scan_time_ms is not None
+                and time.monotonic() - started > limits.max_scan_time_ms / 1000.0
+            ):
                 truncated = True
                 break
             blob = pread_range(result_path, rec["start"], rec["end"])

@@ -171,13 +171,14 @@ class FilesystemQueryBackend:
         scan_bytes = 0
         scan_truncated = False
         cap = view_defs.RECENCY_CACHE_SIZE
-        deadline = time.monotonic() + (self.limits.max_scan_time_ms / 1000.0)
+        budget_ms = self.limits.max_scan_time_ms
+        deadline = None if budget_ms is None else time.monotonic() + budget_ms / 1000.0
 
         for month_dir in sorted(runs_root.iterdir(), reverse=True):
             if not month_dir.is_dir():
                 continue
             for run_dir in sorted(month_dir.iterdir(), reverse=True):
-                if time.monotonic() > deadline:
+                if deadline is not None and time.monotonic() > deadline:
                     scan_truncated = True
                     break
                 if not run_dir.is_dir():

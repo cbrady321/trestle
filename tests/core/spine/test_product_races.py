@@ -22,6 +22,7 @@ import os
 import shutil
 import stat
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -30,10 +31,12 @@ import pytest
 
 from tests.core.spine import support
 from tests.proof import tolerances
+from trestle.child.serialize import write_result
 from trestle.common import fsutil
+from trestle.common.limits import CaptureLimits
 from trestle.common.types import PublishView, RunView
+from trestle.server import projection, snapshots
 from trestle.server import registry as registry_mod
-from trestle.server import snapshots
 from trestle.server.plugin_schema import schemas_from_source
 from trestle.server.plugin_validate import PluginValidationError
 from trestle.server.registry import Registry
@@ -335,6 +338,37 @@ def test_p3_plugin_removed_mid_refresh_is_dropped(tmp_path: Path, monkeypatch, h
     monkeypatch.setattr(registry_mod, hook, remove_then)
     reg.maybe_refresh()
     assert set(reg.snapshots) == {"echo"}
+
+
+# P5 ------------------------------------------------------------------------------------------
+
+
+class _StalledClock:
+    """`time` for the module under test, whose monotonic clock moves 10 s between readings: a
+    machine stalled at every step."""
+
+    def __init__(self) -> None:
+        self._now = 0.0
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(time, name)
+
+    def monotonic(self) -> float:
+        self._now += 10.0
+        return self._now
+
+
+def test_p5_test_limit_scan_does_not_depend_on_machine_speed(tmp_path: Path, monkeypatch) -> None:
+    """Under the test limits a `$[*]` fetch returns every element however slow the machine is; the
+    production limits keep their wall-clock budget (unchanged)."""
+    monkeypatch.setenv("TRESTLE_TEST_LIMITS", "1")
+    result = tmp_path / "result.json"
+    index = write_result(result, [0, 1, 2, 3, 4])
+    monkeypatch.setattr(projection, "time", _StalledClock())
+    under_test = projection._fetch_jsonpath(result, index, "h", "$[*]", CaptureLimits.from_env())
+    assert (under_test["values"], under_test["truncated"]) == ([0, 1, 2, 3, 4], False)
+    production = projection._fetch_jsonpath(result, index, "h", "$[*]", CaptureLimits())
+    assert production["truncated"] is True
 
 
 # Sever: an admitted run is always driven ------------------------------------------------------
