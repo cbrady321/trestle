@@ -404,7 +404,10 @@ class LeafWalk:
                 # The root is carved nothing: its slice end is the release point, the whole-root
                 # stop (as `_time_out_expired` skips the root). Seeing it first is the goal flip
                 # the release-point flag makes, so the end is `STOPPED` with the last verdict and
-                # no `CARVE_EXCEEDED` step, whichever of the two is seen first.
+                # no `CARVE_EXCEEDED` step, whichever of the two is seen first. The flag goes down
+                # first: the host's own clock may not be there yet, and the flag is what tells it
+                # this run stopped at the release point (a stop row, `timed_out`).
+                self._loop.services.release_point_reached()
                 self._loop.flip_goal()
                 return False
             self._carve_exceeded()

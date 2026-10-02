@@ -355,4 +355,5 @@ def test_single_vertex_deadline_is_a_stop_never_carve_exceeded(tmp_path: Path, f
     assert end["code"] != codes.CARVE_EXCEEDED
     assert not [r for r in rows if r["class"] == "step" and r.get("code") == codes.CARVE_EXCEEDED]
     assert walked.goal is Goal.RELEASE
+    assert cancel.stop is StopCause.RELEASE_POINT, "the release-point flag is up for the host"
     assert rig.marker.paths("stop") == [""], "the release walk gave back what the root made"

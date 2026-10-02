@@ -188,6 +188,13 @@ class RunServices(Protocol):
 
     def cancellation(self) -> CancelSignal: ...
 
+    def release_point_reached(self) -> None:
+        """The root saw its own slice end, which is the release point (P4): raise the
+        release-point stop flag the host reads (B2-C6), before the goal flips. Idempotent. The
+        host's clock may not have reached its release point yet (a different clock, a sleep or
+        a clock step); the flag is what tells it the run stopped there."""
+        ...
+
     def attempts(self) -> AttemptLane: ...
 
     def evidence(self) -> EvidenceSink: ...

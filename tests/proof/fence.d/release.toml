@@ -62,6 +62,12 @@ globs         = [
   # single-vertex loop and polling tests now see the root's stop.
   "tests/tree/test_tr3_slices.py", "tests/single/workflow/test_loop.py",
   "tests/single/workflow/test_polling.py",
+  # P4's clock skew: the root's own slice end raises the release-point flag
+  # (`RunServices.release_point_reached`, the child's flag file and the rig's), and the conductor
+  # reads that flag as well as its own clock, so a child clock ahead of the host's still gives a
+  # stop row and `timed_out`, never `passed`.
+  "trestle/workflow/services.py", "trestle/child/run_services.py", "trestle/server/conductor.py",
+  "tests/single/workflow/loopkit.py",
 ]
 
 [[gate]]

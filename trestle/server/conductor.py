@@ -179,6 +179,7 @@ class Conductor:
             fold.record_stop(run_dir, ledger, cause)
             stop_row_at = time.monotonic()
 
+        release_flag = release_point_flag_path(run_dir)
         try:
             while proc.poll() is None:
                 attribution.observe()
@@ -188,8 +189,10 @@ class Conductor:
                     # a cancel wins when both hold
                     if cancel_flag.exists():
                         record_stop(fold.CAUSE_CANCEL)
-                    elif now >= release_point:
-                        atomic_write(release_point_flag_path(run_dir), b"1")
+                    elif now >= release_point or release_flag.exists():
+                        # the root's own slice end raises the flag too (P4): its clock may be
+                        # ahead of this one (another clock, a sleep, a clock step)
+                        atomic_write(release_flag, b"1")
                         record_stop(fold.CAUSE_RELEASE_POINT)
                 if stop_row_at is not None and now >= stop_row_at + release_slice:
                     # the release slice has elapsed with the root still live: kill (B2-C10)
@@ -199,7 +202,7 @@ class Conductor:
             if stop_row_at is None:  # the exit was observed: check once more, cancel first
                 if cancel_flag.exists():
                     record_stop(fold.CAUSE_CANCEL)
-                elif time.monotonic() >= release_point:
+                elif time.monotonic() >= release_point or release_flag.exists():
                     record_stop(fold.CAUSE_RELEASE_POINT)  # no process is left to read a flag
         finally:
             self.run_registry.unregister(order.run_id)
