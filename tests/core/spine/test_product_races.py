@@ -16,6 +16,7 @@ fixes each test fails on that interleaving every time; after them it passes ever
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import shutil
@@ -27,9 +28,10 @@ from typing import Any
 
 import pytest
 
+from tests.core.spine import support
 from tests.proof import tolerances
 from trestle.common import fsutil
-from trestle.common.types import PublishView
+from trestle.common.types import PublishView, RunView
 from trestle.server import registry as registry_mod
 from trestle.server import snapshots
 from trestle.server.plugin_schema import schemas_from_source
@@ -333,3 +335,79 @@ def test_p3_plugin_removed_mid_refresh_is_dropped(tmp_path: Path, monkeypatch, h
     monkeypatch.setattr(registry_mod, hook, remove_then)
     reg.maybe_refresh()
     assert set(reg.snapshots) == {"echo"}
+
+
+# Sever: an admitted run is always driven ------------------------------------------------------
+
+
+def _terminal_state(kernel: Any, run_id: str) -> str | None:
+    view = kernel.control.project.status(run_id)
+    if isinstance(view, RunView) and view.state not in ("queued", "running"):
+        return view.state
+    return None
+
+
+def _cancel_run_call_at(kernel: Any, reached: threading.Event, go: threading.Event) -> None:
+    """Start a held terminal `run` call, cancel it (as an MCP cancel notification does) once
+    `reached` is set, then open `go`."""
+
+    async def scenario() -> None:
+        call = asyncio.create_task(
+            kernel.control.run_async(
+                plugin="echo", args={"message": "sever"}, wait_ms=10_000, completion="terminal"
+            )
+        )
+        assert await asyncio.to_thread(reached.wait, WAIT_S), "the call never got there"
+        call.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await call
+        go.set()
+
+    asyncio.run(scenario())
+
+
+def test_sever_mid_admit_still_drives_the_run(kernel, monkeypatch) -> None:
+    """The cancel lands while the admit is under way (the run is created, the admit has not
+    returned). The run must still be started and reach its own terminal state."""
+    admission = kernel.control.admission
+    real_admit = admission.admit
+    reached, go = threading.Event(), threading.Event()
+    admitted: list[str] = []
+
+    def admit_then_hold(request: Any) -> Any:
+        result = real_admit(request)
+        admitted.append(result.run_id)
+        reached.set()
+        assert go.wait(WAIT_S)
+        return result
+
+    monkeypatch.setattr(admission, "admit", admit_then_hold)
+    _cancel_run_call_at(kernel, reached, go)
+    (run_id,) = admitted
+    assert support.wait_until(lambda: _terminal_state(kernel, run_id) is not None, RUN_WAIT_S), (
+        "the admitted run was never driven"
+    )
+    assert _terminal_state(kernel, run_id) == "succeeded"
+
+
+def test_sever_mid_hand_off_still_drives_the_run(kernel, monkeypatch) -> None:
+    """The cancel lands after the admit returned, while the run is being handed to the dispatcher.
+    The run must still be started and reach its own terminal state."""
+    control = kernel.control
+    real_work_order = control._work_order
+    reached, go = threading.Event(), threading.Event()
+    handed: list[str] = []
+
+    def work_order_held(run_id: str, *args: Any) -> Any:
+        handed.append(run_id)
+        reached.set()
+        assert go.wait(WAIT_S)
+        return real_work_order(run_id, *args)
+
+    monkeypatch.setattr(control, "_work_order", work_order_held)
+    _cancel_run_call_at(kernel, reached, go)
+    (run_id,) = handed
+    assert support.wait_until(lambda: _terminal_state(kernel, run_id) is not None, RUN_WAIT_S), (
+        "the admitted run was never driven"
+    )
+    assert _terminal_state(kernel, run_id) == "succeeded"
