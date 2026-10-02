@@ -1,0 +1,25 @@
+{
+  "context": {
+    "attributes": {
+      "cancelled": "bool",
+      "deadline": "datetime",
+      "outputs": "Path",
+      "tmp": "Path"
+    },
+    "methods": {
+      "artifact": "(self, name: 'str') -> 'Path'",
+      "attach": "(self, path: 'Path', *, name: 'str') -> 'str'",
+      "log": "(self, message: 'str') -> 'None'",
+      "progress": "(self, message: 'str', *, fraction: 'float | None' = None) -> 'None'"
+    }
+  },
+  "decorator": {
+    "bare": true,
+    "marker_attribute": "__trestle_plugin__",
+    "marks_callable": true,
+    "returns_same_callable": true
+  },
+  "predicate": {
+    "unmarked_is_plugin": false
+  }
+}

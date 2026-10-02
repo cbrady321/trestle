@@ -1,0 +1,15 @@
+{
+  "plugin": "exit2",
+  "version": "0.1.0",
+  "source_sha256": "fb191f26580b5be936c1afdd28d9094b1f0087ee7d6aa8ba90e897a10441c204",
+  "schema_sha256": "99334726611ccf58a148b0814696bfa6fe08c1b2d027e946beccf5a74331c9aa",
+  "declared": {
+    "deadline_s": null,
+    "summary_fields": [],
+    "packages": [],
+    "env_arg": null,
+    "secrets": [],
+    "package_digests": {}
+  },
+  "entry": "exit2"
+}

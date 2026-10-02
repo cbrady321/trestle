@@ -1,0 +1,56 @@
+# tests/proof/fence.d/cz.toml — L.CZ.1
+phase = "cz"
+
+[[lane]]
+name          = "cz"
+branch_prefix = "wr/cz/"
+globs         = ["tests/proof/meta.py", "tests/proof/ckpt/root.py", "tests/proof/differ.py", "tests/proof/divergence.toml",
+                 "tests/proof/row_owners.toml", "tests/proof/k_doc_map.toml", "tests/proof/open_questions.toml",
+                 "tests/proof/temporary.toml", "tests/proof/rollback.toml", "tests/proof/labels.d/cz.toml", "tests/proof/fence.d/cz.toml",
+                 "tests/proof/selftest/test_enforce.py", "tests/proof/selftest/test_audit_rows.py", "tests/proof/selftest/test_kdoc.py",
+                 "tests/proof/selftest/test_divergence_closure.py", "tests/proof/selftest/test_spine_budget.py",
+                 "tests/proof/selftest/spine_budget_check.py",
+                 "tests/proof/selftest/test_mc_locality.py", "tests/proof/selftest/test_open_questions.py",
+                 "tests/proof/selftest/test_register_final.py", "tests/proof/selftest/test_ckpt.py",
+                 # L.CZ.1 also edits these two (the deferral posture gains step "CZ"; the report-mode
+                 # enforce test becomes the --scope ci one); the plan literal omits them (plan gap).
+                 "tests/core/docs/test_cl_d1_deferrals.py", "tests/proof/selftest/test_ledger.py",
+                 # root.py's J-ROOT-7:review reads RV-1..RV-5 root records; reviews.CRITERIA had no RV-2,
+                 # so the validator gains it here (L.CZ.9.fix1), before the J-ROOT lane (fossils and
+                 # reviews only, CM-5) records it.
+                 "tests/proof/reviews.py", "tests/proof/selftest/test_reviews.py",
+                 # J-ROOT's RV-2 and RV-4 root reviews failed on CZ's base and their fixes land here, before the
+                 # J-ROOT lane (fossils and reviews only, CM-5): the WR-ENV-16 jvm-wrapper row text (MC-B-05)
+                 # and the R-O allowlist disclosure in docs/environment.md. Both paths are b-env (RB-13) paths;
+                 # RB-13 is conditional and unordered before CZ, so the up-to-date rule (R3) orders any overlap.
+                 "tests/proof/b/stub_labels.toml",
+                 # L.CZ.4 closes the divergence ledger, so every `differ d1` runs closure; lane C's d1 pin
+                 # (a partial facet file) must switch closure off (L.CZ.rv-fix3). A pins/c_surface path,
+                 # widened here like stub_labels.toml above (plan departure, L.CZ.rv-fix4).
+                 "tests/pins/c_surface/test_goldens.py",
+                 # CI's unpinned mypy moved 2.3.1 -> 2.4.0 while PR #49 was open: reversed() over a list now
+                 # yields Any (no-any-return) and Popen's narrowed pipes made two casts redundant. Typing-only
+                 # restructures, clean under both versions (plan departure, L.CZ.rv-fix5).
+                 "trestle/server/ledger.py", "trestle/wrapper/reactor.py",
+                 # PR #49 CI flaked on three test races (tr3_slices, stop_offset in CK-14, trl_rollup in CK-8),
+                 # each an assertion made before a sibling's work that nothing waited for; tr4_depth and
+                 # landing_loop have the same shape. Each test now waits on the condition (test-only; plan
+                 # departure, L.CZ.rv-fix7). Their lanes (tree, p0-spine, sv-runtime, bundles) landed before CZ.
+                 "tests/tree/test_tr3_slices.py", "tests/tree/test_tr4_depth.py", "tests/tree/host/test_trl_rollup.py",
+                 "tests/proof/spine/test_stop_offset.py", "tests/proof/selftest/test_landing_loop.py",
+                 "docs/*.md", ".github/workflows/ci.yml", ".cursor/skills/trestle/SKILL.md"]
+
+[[lane]]                     # the root checkpoint merge; diff limited to CM-5's checkpoint paths
+name          = "j-root"
+branch_prefix = "wr/j-root/"
+globs         = ["tests/fixtures/fossils/root/**", "tests/proof/reviews/*-root.toml"]
+
+[[gate]]
+branch         = "wr/cz/cz"
+merge          = "CZ"
+requires_merge = ["J-SLICE-B"]
+
+[[gate]]
+branch         = "wr/j-root/j-root"
+merge          = "J-ROOT"
+requires_merge = ["CZ"]

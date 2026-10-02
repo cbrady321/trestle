@@ -1,0 +1,218 @@
+# Slice A fossil-state manifest (L.J-SLICE-A.1; MC-11, CM-5 role 1; J-SLICE-A S10, S8).
+# Every band's producers so far, run by the tree-band head (the J-SLICE-A candidate), one state each:
+# s0/ (P0; core/'s producers are s0's, so core is not repeated), single/ (L.SL-11.2), tree-trl/
+# (L.TR-L.11) and tree-tr5/ (L.TR-5.4). Same schema, producers, `absent` flags and `s0_projection`
+# as the source band, copied verbatim; only the id changes: `<source id>-slice-a`, because a state id
+# may be declared in one MANIFEST only (tests/proof/fossils.py load_states raises otherwise, and
+# differ d2 keys its report by state id). The plan's "keep their ids" (a2-tree.md L.J-SLICE-A.1) is
+# met as far as the loader allows: the source id is kept as the prefix, so `trl-*`/`tr5-*` states
+# still match E-TR-1's `*/trl-views-*`, `*/tr5-views-*` globs (left exactly as written, CM-9) and
+# slice_a.py S10's `^(trl|tr5)-(inflight|terminal)-` pattern. Generated with
+#   python -m tests.proof.fossils generate --checkpoint slice-a --states all --fossils-root <scratch>
+# over a scratch root holding only this band (so `--states all` cannot rewrite another band), then
+# copied here (the J-CORE / J-SINGLE precedent).
+
+# ---- from s0/MANIFEST.toml
+
+[[state]]
+id = "succeeded-slice-a"
+producer = "tests.proof.fossils:produce_succeeded"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "failed-slice-a"
+producer = "tests.proof.fossils:produce_failed"
+absent = false
+s0_projection = { state = "failed", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "failed"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "created-slice-a"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_created"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created"], meta_keys = [] }
+
+[[state]]
+id = "admitted-slice-a"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_admitted"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted"], meta_keys = [] }
+
+[[state]]
+id = "started-slice-a"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_started"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started"], meta_keys = [] }
+
+[[state]]
+id = "execution_ended-slice-a"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_execution_ended"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started", "execution_ended"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "finalized_no_terminal-slice-a"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_finalized_no_terminal"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "cancelled-slice-a"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_cancelled"
+absent = false
+s0_projection = { state = "cancelled", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "cancelled"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "timed_out-slice-a"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_timed_out"
+absent = false
+s0_projection = { state = "timed_out", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "timed_out"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "worker_exit-slice-a"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_worker_exit"
+absent = false
+s0_projection = { state = "worker_exit", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "worker_exit"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "interrupted-slice-a"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_interrupted"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started", "evidence_finalized", "interrupted"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "recovered", "result_state", "run_id"] }
+
+[[state]]
+id = "partial_limits-slice-a"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_partial_limits"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "limit_exceeded", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "too_large-slice-a"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_too_large"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "invalid_synthesized-slice-a"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_invalid_synthesized"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "torn_tail-slice-a"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_torn_tail"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "newline_less_tail-slice-a"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_newline_less_tail"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "artifacts_present-slice-a"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_artifacts_present"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "artifact_available", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "idempotency_keyed-slice-a"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_idempotency_keyed"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = ["artifact_count", "classification", "duration_ms", "limits_exceeded", "result_state", "run_id"] }
+
+[[state]]
+id = "straddle-slice-a"
+producer = "tests.pins.a_lifecycle.fossil_producers:produce_straddle"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started"], meta_keys = [] }
+
+[[state]]
+id = "crashed-slice-a"
+producer = "pending"
+absent = true
+
+# ---- from single/MANIFEST.toml
+
+[[state]]
+id = "inflight-plan-bearing-slice-a"
+producer = "tests.proof.fossil_states.single:produce_inflight_plan_bearing"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "error_record", "evidence_finalized", "interrupted"], meta_keys = [] }
+
+[[state]]
+id = "terminal-passed-slice-a"
+producer = "tests.proof.fossil_states.single:produce_terminal_passed"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = [] }
+
+[[state]]
+id = "terminal-cancelled-slice-a"
+producer = "tests.proof.fossil_states.single:produce_terminal_cancelled"
+absent = false
+s0_projection = { state = "cancelled", kinds = ["created", "admitted", "started", "process_identity", "stop_row", "group_stop", "lane_folded", "error_record", "execution_ended", "evidence_finalized", "cancelled"], meta_keys = [] }
+
+[[state]]
+id = "terminal-timed-out-slice-a"
+producer = "tests.proof.fossil_states.single:produce_terminal_timed_out"
+absent = false
+s0_projection = { state = "timed_out", kinds = ["created", "admitted", "started", "process_identity", "stop_row", "group_stop", "lane_folded", "error_record", "execution_ended", "evidence_finalized", "timed_out"], meta_keys = [] }
+
+[[state]]
+id = "planless-started-slice-a"
+producer = "tests.proof.fossil_states.single:produce_planless_started"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started", "group_stop", "error_record", "evidence_finalized", "interrupted"], meta_keys = [] }
+
+# ---- from tree-trl/MANIFEST.toml
+
+[[state]]
+id = "trl-inflight-readiness_sibling-slice-a"
+producer = "tests.tree.gen_fossils:produce_trl_inflight_readiness_sibling"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "error_record", "evidence_finalized", "interrupted"], meta_keys = [] }
+
+[[state]]
+id = "trl-terminal-exception_branch-slice-a"
+producer = "tests.tree.gen_fossils:produce_trl_terminal_exception_branch"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = [] }
+
+[[state]]
+id = "trl-terminal-upstream_covered-slice-a"
+producer = "tests.tree.gen_fossils:produce_trl_terminal_upstream_covered"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = [] }
+
+[[state]]
+id = "trl-views-exception_branch-slice-a"
+producer = "tests.tree.gen_fossils:produce_trl_views_exception_branch"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = [] }
+
+[[state]]
+id = "trl-views-upstream_covered-slice-a"
+producer = "tests.tree.gen_fossils:produce_trl_views_upstream_covered"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = [] }
+
+# ---- from tree-tr5/MANIFEST.toml
+
+[[state]]
+id = "tr5-inflight-choice_long_running-slice-a"
+producer = "tests.tree.gen_fossils:produce_tr5_inflight_choice_long_running"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "error_record", "evidence_finalized", "interrupted"], meta_keys = [] }
+
+[[state]]
+id = "tr5-terminal-live_state-slice-a"
+producer = "tests.tree.gen_fossils:produce_tr5_terminal_live_state"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = [] }
+
+[[state]]
+id = "tr5-views-live_state-slice-a"
+producer = "tests.tree.gen_fossils:produce_tr5_views_live_state"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = [] }

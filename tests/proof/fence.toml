@@ -1,0 +1,59 @@
+# The fence (CM-2). Base: root B.1's Leave targets, the record exemption
+# (record files are fence-exempt everywhere), and `[phases]` — the branch
+# prefixes each phase owns, used by R4's fragment-ownership clause (a
+# branch may create or edit only the `fence.d` fragment of its own phase).
+#
+# No `leave` glob covers a BFD-28 or BFD-38 target (both Extend in place,
+# root B.1); symbol-level Leaves are covered by d1 facets `tools_list`,
+# `query_row_shapes`, `spec_keys` instead of a file glob.
+
+leave = [
+  "trestle/ops/**",
+  "console/**",
+  "trestle/server/pins.py",
+  "trestle/server/gc.py",
+]
+record_exempt = ["tests/proof/host/host-*/*.json"]
+
+# Phase -> the lane branch prefixes it owns (R4's fragment-ownership
+# clause). Only `p0`'s prefixes are exercised by this merge; the later
+# phases' prefixes are this leaf's best reading of the other phase files'
+# own fence fragments (core.md, a1-single-level.md, a2-tree.md,
+# b-slice-b.md), recorded as a plan-gap since those fragments are written
+# by their own phase's first leaf, not this one.
+[phases]
+p0 = [
+  "wr/p0-spine/",
+  "wr/p0-ckpt/",
+  "wr/p0-lane-a/",
+  "wr/p0-lane-b/",
+  "wr/p0-lane-c/",
+  "wr/p0-lane-d/",
+  "wr/p0-lane-e/",
+]
+core = [
+  "wr/core-spine/",
+  "wr/cl-a/",
+  "wr/cl-b/",
+  "wr/cl-c/",
+  "wr/ck-14/",
+  "wr/cl-d/",
+  "wr/core-ckpt/",
+  "wr/core-bundle/",
+]
+single = [
+  "wr/sv-docs/",
+  "wr/sv-rec/",
+  "wr/sv-con/",
+  "wr/sv-host/",
+  "wr/sv-runtime/",
+  "wr/sl-r/",
+  "wr/sl-h/",
+  "wr/j-single/",
+  "wr/single-bundle/",
+]
+tree = ["wr/tree/", "wr/tree-ckpt/", "wr/tree-bundle/"]
+slice-b = ["wr/b-legacy/", "wr/b-adapters/", "wr/b-env/", "wr/b-ckpt/", "wr/slice-b-bundle/"]
+# cz owns the closure lane `wr/cz/` (L.CZ.1 creates fence.d/cz.toml on
+# `wr/cz/cz`) and the root checkpoint lane `wr/j-root/` (L.P0-0d.33).
+cz = ["wr/cz/", "wr/j-root/"]
