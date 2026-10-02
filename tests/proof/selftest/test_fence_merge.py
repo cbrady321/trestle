@@ -3,6 +3,8 @@ runs in a temp repo with a bare origin, no network, no live repo state."""
 
 from __future__ import annotations
 
+import dataclasses
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -10,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from tests.proof import fence as fence_mod
+from tests.proof.host import record as record_mod
 
 ENV = {
     **os.environ,
@@ -77,6 +80,12 @@ def rig(tmp_path: Path):
     }
 
 
+def _host_record_holds(_cwd: Path, _head: str) -> None:
+    """L1's check stubbed to hold: these planted repos carry no host records
+    (L1 itself is proven by the `test_l1_*` cases below)."""
+    return None
+
+
 def _merge(rig, **kwargs):
     defaults = dict(
         cfg=rig["cfg"],
@@ -86,6 +95,7 @@ def _merge(rig, **kwargs):
         pr_head_sha=rig["head"],
         job_conclusions={},
         required=[],
+        host_record=_host_record_holds,
     )
     defaults.update(kwargs)
     return fence_mod.fence_merge(**defaults)
@@ -300,3 +310,124 @@ def test_landing_trailer_kind_rule(rig):
     _sh(runner, "commit", "-q", "--allow-empty", "-m", "WR-Merge: M1")
     assert fence_mod.landing_trailer_kind("J-SINGLE", "HEAD", runner) == "WR-Merge"
     assert fence_mod.landing_trailer_kind("M1", "HEAD", runner) == "WR-Fix"
+
+
+# ---- L1: the host-docker record is enforced at landing --------------------------------------
+# On a pull_request run G-E2 reports a head with no host-docker record as pending (owner decision
+# 2026-10-02, `record.host_docker_pending`), so the required jobs no longer carry the record.
+# These cases run the REAL check (`fence.host_docker_at_landing`) over the planted repo.
+
+RECORD_GLOB = "tests/proof/host/host-*/*.json"
+
+
+def _plant_record(rig, status: str = "PASSED", live: str = "PASSED") -> str:
+    """A host-docker record for the branch head, committed on the branch as a record-only commit
+    (the shape a host session leaves); the branch is pushed. Returns the new head."""
+    lane = rig["lane"]
+    sha = _sh(lane, "rev-parse", "HEAD")
+    record = {
+        "schema": 1,
+        "gate": "host-docker",
+        "sha": sha,
+        "mode": "run",
+        "python": "3.12.8",
+        "platform": "darwin",
+        "status": status,
+        "results": [{"nodeid": record_mod.LIVE_COMPOSE_NODE, "outcome": live}],
+    }
+    path = lane / "tests" / "proof" / "host" / "host-docker" / f"{sha}.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(record))
+    _sh(lane, "add", str(path.relative_to(lane)))
+    _sh(lane, "commit", "-q", "-m", "host-docker record")
+    _sh(lane, "push", "-q", "origin", "HEAD:refs/heads/wr/x/m1")
+    return _sh(lane, "rev-parse", "HEAD")
+
+
+def _real_l1(rig, head: str, **kwargs):
+    cfg = dataclasses.replace(rig["cfg"], record_exempt=[RECORD_GLOB])
+    return _merge(
+        rig,
+        cfg=cfg,
+        expect_sha=head,
+        pr_head_sha=head,
+        host_record=fence_mod.host_docker_at_landing,
+        **kwargs,
+    )
+
+
+@pytest.mark.parametrize("event", ["", "push", "pull_request"])
+def test_l1_landing_without_a_host_docker_record_is_refused_before_push(
+    rig, monkeypatch: pytest.MonkeyPatch, event: str
+):
+    """Every required job green, no record: refused, nothing pushed. A PR run's `pending` never
+    reaches the landing: the event does not matter here."""
+    monkeypatch.setenv("GITHUB_EVENT_NAME", event)
+    before = _sh(rig["origin"], "rev-parse", "master")
+    exit_code, msg = _real_l1(rig, rig["head"])
+    assert exit_code == fence_mod.FenceMergeExit.VERDICT_REFUSED
+    assert msg == f"L1: {record_mod.NO_HOST_DOCKER_RECORD}"
+    assert _sh(rig["origin"], "rev-parse", "master") == before
+
+
+@pytest.mark.parametrize(
+    ("status", "live", "why"),
+    [
+        ("FAILED", "PASSED", "run/FAILED, not a passing run"),
+        ("PASSED", "SKIPPED", "the live compose node is not PASSED in the record"),
+    ],
+)
+def test_l1_landing_with_a_failing_host_docker_record_is_refused(rig, status, live, why):
+    before = _sh(rig["origin"], "rev-parse", "master")
+    exit_code, msg = _real_l1(rig, _plant_record(rig, status, live))
+    assert exit_code == fence_mod.FenceMergeExit.VERDICT_REFUSED
+    assert msg.startswith("L1: ") and msg.endswith(why), msg
+    assert _sh(rig["origin"], "rev-parse", "master") == before
+
+
+def test_l1_landing_with_a_passing_host_docker_record_lands(rig):
+    head = _plant_record(rig)
+    exit_code, sha = _real_l1(rig, head)
+    assert exit_code == fence_mod.FenceMergeExit.LANDED, sha
+    assert _sh(rig["origin"], "rev-parse", "master") == sha
+
+
+def test_l1_a_code_change_after_the_record_voids_it(rig):
+    """CM-6: any non-record change after the host session makes the record inadmissible, and the
+    landing is refused again."""
+    _plant_record(rig)
+    (rig["lane"] / "a" / "later.txt").write_text("y")
+    _sh(rig["lane"], "add", "a/later.txt")
+    _sh(rig["lane"], "commit", "-q", "-m", "a code change after the record")
+    _sh(rig["lane"], "push", "-q", "origin", "HEAD:refs/heads/wr/x/m1")
+    exit_code, msg = _real_l1(rig, _sh(rig["lane"], "rev-parse", "HEAD"))
+    assert exit_code == fence_mod.FenceMergeExit.VERDICT_REFUSED
+    assert msg == f"L1: {record_mod.NO_HOST_DOCKER_RECORD}"
+
+
+def test_l1_the_real_check_is_the_default(rig, monkeypatch: pytest.MonkeyPatch):
+    """`fence merge` without an injected check, as `fence merge`/`fence land` call it, runs
+    `fence.host_docker_at_landing` on the head."""
+    asked: list[str] = []
+
+    def real(cwd: Path, head: str) -> str:
+        asked.append(head)
+        return "the real check ran"
+
+    monkeypatch.setattr(fence_mod, "host_docker_at_landing", real)
+    defaults = dict(
+        cfg=rig["cfg"],
+        cwd=rig["runner"],
+        branch="wr/x/m1",
+        expect_sha=rig["head"],
+        pr_head_sha=rig["head"],
+        job_conclusions={},
+        required=[],
+    )
+    exit_code, msg = fence_mod.fence_merge(**defaults)
+    assert (exit_code, msg) == (fence_mod.FenceMergeExit.VERDICT_REFUSED, "L1: the real check ran")
+    assert asked == [rig["head"]]
+    assert (
+        fence_mod.LandingDeps(cfg=rig["cfg"], cwd=rig["runner"], state_dir=Path()).host_record
+        is None
+    )

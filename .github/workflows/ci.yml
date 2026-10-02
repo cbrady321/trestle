@@ -17,6 +17,11 @@ concurrency:
 # reads PIP_CONSTRAINT): a new release of a tool or library reaches CI only through a change to
 # that file (mypy 2.4.0 and ruff 0.16.10 turned master red with no code change, 2026-10-01).
 # proof-ledger installs nothing (C2) and is unaffected.
+#
+# G-E2 (tests/pins/e_packs/test_g_e2.py) reads GitHub's GITHUB_EVENT_NAME: on a pull_request run a
+# head with no host-docker record yet is pending (skipped), not failing, so `test`, proof-ledger
+# and the CK drills run before the host session (owner decision 2026-10-02). The record is still
+# required to land (fence rule L1) and at a checkpoint (CM-6).
 env:
   PIP_CONSTRAINT: ${{ github.workspace }}/constraints/ci.txt
 

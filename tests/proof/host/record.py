@@ -7,6 +7,7 @@ implements none of them.
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -117,6 +118,46 @@ def select(gate: str, anchor: str, cwd: Path | None = None) -> dict | None:
         if fence_mod.is_ancestor(cwd, newest["sha"], candidate["sha"]):
             newest = candidate
     return newest
+
+
+# G-E2 (WR-PROOF-2:pack-docker-live): the live compose node, PASSED in a host-docker run record
+# admissible for the head. One reading, two readers: the G-E2 target (tests/pins/e_packs) and the
+# fence's landing rule L1 (`fence.host_docker_at_landing`).
+LIVE_COMPOSE_NODE = (
+    "packages/trestle-packs/tests/test_docker_integration.py::test_stack_runner_live_compose"
+)
+NO_HOST_DOCKER_RECORD = "no host-docker record admissible for HEAD"
+
+
+def host_docker_problem(anchor: str, cwd: Path | None = None) -> str | None:
+    """Why the host-docker evidence for `anchor` does not hold (None when it does): no admissible
+    record, a record that is not a passing run, or the live compose node not PASSED in it."""
+    record = select("host-docker", anchor, cwd=cwd)
+    if record is None:
+        return NO_HOST_DOCKER_RECORD
+    if not (record["mode"] == "run" and record["status"] == "PASSED"):
+        return (
+            f"host-docker record for HEAD is {record['mode']}/{record['status']}, not a passing run"
+        )
+    passed = [
+        r
+        for r in record["results"]
+        if r.get("nodeid") == LIVE_COMPOSE_NODE and r.get("outcome") == "PASSED"
+    ]
+    if not passed:
+        return "the live compose node is not PASSED in the record"
+    return None
+
+
+def host_docker_pending(problem: str | None, event: str | None = None) -> bool:
+    """Owner decision (2026-10-02, FINAL-REPORT section 3 item 4): on a pull_request run, a head
+    with no host-docker record YET is pending, not failing, so the jobs that need the aggregate
+    `test` (proof-ledger) and the CK drills run before the host session. Only that one problem is
+    pending: a record that exists and fails is a failure on every run. The record is still
+    required where it is enforced: at landing (fence rule L1) and at a checkpoint (CM-6).
+    `event` is GitHub's `GITHUB_EVENT_NAME` (read from the environment when omitted)."""
+    event = os.environ.get("GITHUB_EVENT_NAME", "") if event is None else event
+    return problem == NO_HOST_DOCKER_RECORD and event == "pull_request"
 
 
 def paired_docker(proc_record: dict, cwd: Path | None = None) -> dict | None:

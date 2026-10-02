@@ -15,6 +15,7 @@ import re
 import subprocess
 import time as _time
 import tomllib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
@@ -1050,6 +1051,21 @@ class FenceMergeExit(IntEnum):
     HEAD_MISMATCH = 7
 
 
+# L1 (landing rule 1): a landing needs a host-docker record admissible for the landed head in
+# which the live compose node PASSED (G-E2's reading, `record.host_docker_problem`). The PR run's
+# G-E2 target reports a head with no record yet as pending (owner decision 2026-10-02), so the
+# required jobs alone no longer carry the record: this rule does, at every landing.
+HostRecordCheck = Callable[[Path, str], str | None]
+
+
+def host_docker_at_landing(cwd: Path, head: str) -> str | None:
+    """L1's reading over the landing worktree `cwd` (checked out at the merge, whose records are
+    the head's): None when the head's host-docker evidence holds, else why not."""
+    from tests.proof.host import record as record_mod
+
+    return record_mod.host_docker_problem(head, cwd=cwd)
+
+
 def fence_merge(
     cfg: FenceConfig,
     cwd: Path,
@@ -1059,11 +1075,14 @@ def fence_merge(
     job_conclusions: dict[str, str | None] | Exception | None = None,
     push_result: str = "ok",
     required: list[str] | None = None,
+    host_record: HostRecordCheck | None = None,
 ) -> tuple[int, str]:
     """`fence merge <branch> --expect-sha <sha>`, run only by the loop
     (P1). `push_result` lets a test simulate a push refusal without a
     real second writer: "ok" | "non-ff" | "other" | "timeout".
-    Returns `(exit_code, message)`."""
+    `host_record` is L1's check: `host_docker_at_landing` (the real record
+    reading, looked up at call time) unless a test injects one. Returns
+    `(exit_code, message)`."""
     try:
         # Step 1: fetch and check the open PR (P7).
         if pr_head_sha is None or pr_head_sha != expect_sha:
@@ -1118,6 +1137,12 @@ def fence_merge(
             if isinstance(refused, tuple):
                 return refused
             merge_sha = refused
+
+        # Step 5b: L1, before any push. Read on the merge's tree (the head's records), anchored
+        # on the head: a refusal leaves origin/master as it was.
+        problem = (host_record or host_docker_at_landing)(cwd, H)
+        if problem is not None:
+            return FenceMergeExit.VERDICT_REFUSED, f"L1: {problem}"
 
         # Step 6: push, plain and non-force (P1). A bundle pushes its whole run
         # in this one push: any earlier refusal returned before this line.
@@ -1290,6 +1315,7 @@ class LandingDeps:
     rebased_head_sha: str | None = None
     ci_wait_result: int = 0  # the ci_status()-shaped exit this attempt's CI wait returns
     required: list[str] | None = None
+    host_record: HostRecordCheck | None = None  # L1's check; None is the real one
 
     def now(self) -> float:
         return (self.clock or _time.time)()
@@ -1420,6 +1446,7 @@ def attempt_landing(merge_id: str, deps: LandingDeps) -> str:
         job_conclusions=deps.job_conclusions,
         push_result=deps.push_result,
         required=deps.required,
+        host_record=deps.host_record,
     )
     if exit_code == FenceMergeExit.LANDED:
         path.unlink(missing_ok=True)
