@@ -6,7 +6,7 @@
 # usage: scripts/ci_parity.sh TIER [WT] [BASE]
 #   TIER 0  ~30 s      tool versions against constraints/ci.txt, ruff, ruff format, mypy, the shard
 #                      map, the drift rules                                        (every push)
-#   TIER 1  ~8-15 min  + the pins/proof/fence/planted shards, per-file isolation of what the diff
+#   TIER 1  ~25-30 min + the pins/proof/fence/planted shards, per-file isolation of what the diff
 #                      touches, the proof-ledger no-install step, the court's selftests on the
 #                      landing merge (HEAD merged into BASE)                       (every push)
 #   TIER 2  ~45-60 min + every shard, and every CK drill part in a Linux container held to 4 CPUs,
@@ -23,7 +23,8 @@
 #
 # Environment:
 #   PARITY_PY     interpreter holding CI's exact tool set (built with
-#                 `pip install -c constraints/ci.txt -e ".[dev,packs,env]"`; tier 0 checks it)
+#                 `pip install -c constraints/ci.txt -e ".[dev,packs,env]"`; tier 0 checks it and
+#                 fails on any version that differs from constraints/ci.txt)
 #   NOINSTALL_PY  a bare interpreter (pip only): proof-ledger installs nothing (C2)
 #   PARITY_LOCK   optional lock directory taken (mkdir loop) for the whole run, for hosts where
 #                 test runs that bind ports must not overlap
