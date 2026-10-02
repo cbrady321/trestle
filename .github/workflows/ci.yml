@@ -13,6 +13,13 @@ concurrency:
   group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.ref) || format('ci-run-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Every `pip install` in every job installs the exact third-party set in constraints/ci.txt (pip
+# reads PIP_CONSTRAINT): a new release of a tool or library reaches CI only through a change to
+# that file (mypy 2.4.0 and ruff 0.16.10 turned master red with no code change, 2026-10-01).
+# proof-ledger installs nothing (C2) and is unaffected.
+env:
+  PIP_CONSTRAINT: ${{ github.workspace }}/constraints/ci.txt
+
 jobs:
   lint:
     runs-on: ubuntu-latest
