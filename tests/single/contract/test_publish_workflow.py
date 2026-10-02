@@ -23,6 +23,9 @@ ECHO = REPO / "examples" / "plugins" / "echo.py"
 # The snapshot identity of examples/plugins/echo.py as `wr-ckpt/core` (the core bundle head)
 # produces it: no declared tree, so the MC-18 slot is empty and nothing changes for plain plugins.
 ECHO_SNAPSHOT_ID = "snap_625a117d0a2b667b"
+# The runtime version the pinned id was recorded under. The runtime version is an identity
+# ingredient (MC-18), so a release bump moves every id; the pin checks the rest under this one.
+ECHO_SNAPSHOT_RUNTIME = "0.1.0"
 ECHO_MANIFEST_SHA256 = "d14928d3a0aa984e4376fa4ce3fffd4552daaaa13cf3857586674a42cf9987d3"
 PLAIN_SNAPSHOT_FILES = ["manifest.json", "plugin.py", "return_schema.json", "schema.json"]
 
@@ -80,7 +83,10 @@ def _snap_dir(home: Path, snapshot_id: str) -> Path:
     return home / "snapshots" / snapshot_id
 
 
-def test_pin_plain_plugin_snapshot_identity_unchanged(tmp_path: Path) -> None:
+def test_pin_plain_plugin_snapshot_identity_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("trestle.__version__", ECHO_SNAPSHOT_RUNTIME)
     snap = materialize_snapshot(ECHO, "echo", home=tmp_path)
     assert snap.snapshot_id == ECHO_SNAPSHOT_ID
     assert snap.manifest_sha256 == ECHO_MANIFEST_SHA256

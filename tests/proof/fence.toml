@@ -57,3 +57,6 @@ slice-b = ["wr/b-legacy/", "wr/b-adapters/", "wr/b-env/", "wr/b-ckpt/", "wr/slic
 # cz owns the closure lane `wr/cz/` (L.CZ.1 creates fence.d/cz.toml on
 # `wr/cz/cz`) and the root checkpoint lane `wr/j-root/` (L.P0-0d.33).
 cz = ["wr/cz/", "wr/j-root/"]
+# release owns post-release fixes on top of the squashed v0.2.0 release commit (no plan phase
+# remains to own them); its first PR, the version bump, creates fence.d/release.toml.
+release = ["wr/release/"]
