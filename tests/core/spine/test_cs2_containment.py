@@ -235,6 +235,17 @@ def test_wrapper_has_no_timer(tmp_path: Path) -> None:
     assert report["classification"] == "succeeded" and report["exit_code"] == 0
 
 
+def _pid_exists(pid: int) -> bool:
+    """Whether `pid` names a process (a zombie counts: it exists until its parent reaps it)."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def test_sigterm_flushes_a_bounded_console_and_report_without_waiting_on_pipes(
     tmp_path: Path,
 ) -> None:
@@ -251,10 +262,18 @@ def test_sigterm_flushes_a_bounded_console_and_report_without_waiting_on_pipes(
     )
     with support.reaping(order.run_id):
         try:
+            ready = run_dir / "work" / "tmp" / "ready"
             assert support.wait_until(
-                lambda: (run_dir / "work" / "tmp" / "ready").exists(), tolerances.JOIN_WAIT_S
+                lambda: ready.exists() and ready.read_text(encoding="utf-8").isdigit(),
+                tolerances.JOIN_WAIT_S,
             )
-            time.sleep(tolerances.SETTLE_SHORT_S)
+            # The plugin writes `ready` before it returns; the report's exit code is the child's
+            # only once the wrapper has reaped it. Wait for that (the pid gone), not a pause: a
+            # SIGTERM that lands first is recorded as 128+SIGTERM (CI run 36955650845, CK-8).
+            child = int(ready.read_text(encoding="utf-8"))
+            assert support.wait_until(lambda: not _pid_exists(child), tolerances.JOIN_WAIT_S), (
+                "the plugin's process was never reaped"
+            )
             assert wrapper.poll() is None, "the wrapper ended without waiting on the held pipes"
             sent = time.monotonic()
             wrapper.send_signal(signal.SIGTERM)

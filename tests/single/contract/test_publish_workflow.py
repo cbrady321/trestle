@@ -20,9 +20,11 @@ from trestle.server.snapshots import load_declared_tree, materialize_snapshot
 REPO = Path(__file__).resolve().parents[3]
 ECHO = REPO / "examples" / "plugins" / "echo.py"
 
-# The snapshot identity of examples/plugins/echo.py as `wr-ckpt/core` (the core bundle head)
-# produces it: no declared tree, so the MC-18 slot is empty and nothing changes for plain plugins.
-ECHO_SNAPSHOT_ID = "snap_625a117d0a2b667b"
+# The snapshot identity of examples/plugins/echo.py under runtime 0.2.0: no declared tree, so the
+# MC-18 slot is empty and nothing changes for plain plugins. The runtime version is an identity
+# ingredient (MC-18), so a version bump re-pins it; `wr-ckpt/core` (runtime 0.1.0) gave
+# snap_625a117d0a2b667b.
+ECHO_SNAPSHOT_ID = "snap_6f04ffcc9585cf7d"
 ECHO_MANIFEST_SHA256 = "d14928d3a0aa984e4376fa4ce3fffd4552daaaa13cf3857586674a42cf9987d3"
 PLAIN_SNAPSHOT_FILES = ["manifest.json", "plugin.py", "return_schema.json", "schema.json"]
 

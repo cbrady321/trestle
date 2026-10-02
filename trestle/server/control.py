@@ -174,17 +174,24 @@ class ControlSurface:
             return refused
         # The registry refresh and the admit both run on the admission thread (MC-30), so a slow
         # plugin probe or admit never stops the loop answering other calls (G-A4).
-        result = await asyncio.wrap_future(
-            self.submit_admit(
-                AdmitRequest(
-                    plugin=plugin,
-                    args=args or {},
-                    version=version,
-                    idempotency_key=idempotency_key,
-                    caller_session=caller_session,
-                )
+        admitting = self.submit_admit(
+            AdmitRequest(
+                plugin=plugin,
+                args=args or {},
+                version=version,
+                idempotency_key=idempotency_key,
+                caller_session=caller_session,
             )
         )
+        try:
+            result = await asyncio.wrap_future(admitting)
+        except asyncio.CancelledError:
+            # The caller went away (a cancel notification, WR-TERM-6). An admit not yet started is
+            # withdrawn and no run exists; one already started creates its run, which is driven
+            # all the same: a severed call never leaves an admitted run that nothing starts.
+            if not admitting.cancel():
+                admitting.add_done_callback(lambda done: self._hand_off_admitted(done, plugin))
+            raise
         if result.tag == "refused":
             return result.outcome
 
@@ -195,14 +202,30 @@ class ControlSurface:
                 return await self.project.await_terminal_async(result.run_id)
             return await self.project.await_one_async(result.run_id, wait_ms)
 
-        order = await asyncio.to_thread(self._work_order, result.run_id, plugin, result.secrets)
-        await asyncio.to_thread(self._drive_background, order)
+        # Shielded: once admitted, the run is handed to the dispatcher even if the caller goes away
+        # while the hand-off is under way.
+        await asyncio.shield(
+            asyncio.to_thread(self._hand_off, result.run_id, plugin, result.secrets)
+        )
 
         if wait_ms == 0:
             return await asyncio.to_thread(self.project.status, result.run_id)
         if completion == "terminal":
             return await self.project.await_terminal_async(result.run_id)
         return await self.project.await_one_async(result.run_id, wait_ms)
+
+    def _hand_off(self, run_id: str, plugin: str, secrets: dict[str, Any] | None = None) -> None:
+        """Hand a just-admitted run to the dispatcher (its work order, then the FIFO)."""
+        self._drive_background(self._work_order(run_id, plugin, secrets))
+
+    def _hand_off_admitted(self, admitted: Future[AdmitResult], plugin: str) -> None:
+        """The hand-off of an admit whose caller went away mid-admission: a new run is driven; a
+        refusal, a failed admit or an existing run needs nothing."""
+        if admitted.cancelled() or admitted.exception() is not None:
+            return
+        result = admitted.result()
+        if result.tag != "refused" and not result.existing:
+            self._hand_off(result.run_id, plugin, result.secrets)
 
     def _work_order(
         self, run_id: str, plugin: str, secrets: dict[str, Any] | None = None

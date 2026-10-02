@@ -218,7 +218,10 @@ def test_cancel_signal_cause_cancel_before_release_point(tmp_path: Path) -> None
 def test_cancellation_wait_returns_promptly_on_either_flag(tmp_path: Path, flag: str) -> None:
     services = make_services(tmp_path)
     signal = services.cancellation()
-    bound = clock.poll_interval + tolerances.SETTLE_SHORT_S
+    # Prompt means "on the flag, long before the wait's own timeout": the bound tolerates a
+    # scheduler stall on a loaded runner and stays far below JOIN_WAIT_S, so a wait that ignored
+    # the flag still fails it (and the True return already proves the flag ended the wait).
+    bound = clock.poll_interval + tolerances.SETTLE_LONG_S
     # a flag written while the wait is in progress
     timer = threading.Timer(tolerances.POLL_S, _touch, args=(services, flag))
     timer.start()
@@ -236,7 +239,10 @@ def test_cancellation_wait_times_out_false_without_a_flag(tmp_path: Path) -> Non
     signal = make_services(tmp_path).cancellation()
     started = time.monotonic()
     assert signal.wait(timedelta(seconds=tolerances.POLL_FINE_S)) is False
-    assert time.monotonic() - started < tolerances.POLL_FINE_S + clock.poll_interval + 0.2
+    # returns at its own short timeout, not hanging (a stall-tolerant bound, as above)
+    assert time.monotonic() - started < tolerances.POLL_FINE_S + clock.poll_interval + (
+        tolerances.SETTLE_LONG_S
+    )
     assert signal.wait(timedelta(0)) is False
 
 

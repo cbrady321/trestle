@@ -41,6 +41,12 @@ def _gate_toml(gates: list[tuple[str, list[str]]]) -> str:
     return out
 
 
+def _host_record_holds(_cwd: Path, _head: str) -> None:
+    """L1's check stubbed to hold: these planted repos carry no host records (L1 itself is proven
+    in test_fence_merge.py)."""
+    return None
+
+
 @pytest.fixture
 def rig(tmp_path: Path, monkeypatch):
     origin = tmp_path / "origin.git"
@@ -65,6 +71,7 @@ def rig(tmp_path: Path, monkeypatch):
     state = {"pr_head": None, "conclusions": {"lint": "success"}}
     monkeypatch.setattr(fence_mod, "pr_head_via_gh", lambda _b, _c: state["pr_head"])
     monkeypatch.setattr(fence_mod, "job_conclusions_via_gh", lambda _s, _c: state["conclusions"])
+    monkeypatch.setattr(fence_mod, "host_docker_at_landing", _host_record_holds)  # `fence land`
     return {
         "origin": origin,
         "runner": runner,
@@ -108,7 +115,7 @@ def _merge(rig, cfg, head, **kwargs):
         rig["state"]["pr_head"],
         job_conclusions=rig["state"]["conclusions"],
         required=["lint"],
-        **kwargs,
+        **{"host_record": _host_record_holds, **kwargs},
     )
 
 
@@ -704,6 +711,7 @@ def test_attempt_landing_records_the_refusal_message_in_the_entry(rig):
         pr_head_sha=head,
         job_conclusions={"lint": "success"},
         required=["lint"],
+        host_record=_host_record_holds,
     )
 
     assert fence_mod.attempt_landing("B", deps) == "verdict refused"

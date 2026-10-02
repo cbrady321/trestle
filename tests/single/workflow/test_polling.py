@@ -119,7 +119,9 @@ def test_interval_never_passes_the_slice_end(tmp_path: Path) -> None:
     rig.run()
     assert _seconds(rig) == [1.0, 4.0, 1.0], "the third wait is cut to the 1 s the slice has left"
     (end,) = rig.ends()
-    assert end["code"] == codes.CARVE_EXCEEDED, "a node is polled at most until its slice ends"
+    # a node is polled at most until its slice ends; the root's slice end is the release point,
+    # a stop, never `CARVE_EXCEEDED` (P4)
+    assert (end["cut"], end["code"]) == ("stopped", None), end
     assert unit.advances == 1
 
 

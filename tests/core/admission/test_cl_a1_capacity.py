@@ -23,8 +23,6 @@ from trestle.server.scheduler import Scheduler
 # Both capacity knobs at their smallest useful value: one slot, one waiting run.
 SLOTS = 1
 DEPTH = 1
-# A plugin that holds its slot for a couple of settle units.
-HOLD_S = tolerances.SETTLE_LONG_S * 2
 # A run budget of a few settle units, in whole seconds.
 BUDGET_S = int(tolerances.SETTLE_LONG_S * 3)
 # A plugin that outlives the whole test; every run holding a slot is cancelled before it ends.
@@ -54,7 +52,9 @@ def test_over_capacity_queued_then_dispatched_or_refused(
 ) -> None:
     _capacity_env(monkeypatch)
     with mcp_host.McpHost(home=tmp_path / "host-home") as host:
-        first = host.call("run", {"plugin": "slow", "args": {"seconds": HOLD_S}, "wait_ms": 0})
+        # the first run holds its slot until the test frees it (a cancel, below): a timed hold
+        # could end, freeing the slot and the queue place, before the third call is made
+        first = host.call("run", {"plugin": "slow", "args": {"seconds": LONG_S}, "wait_ms": 0})
         second = host.call("run", {"plugin": "echo", "args": {"message": "x"}, "wait_ms": 0})
         assert first["run_id"] != second["run_id"]
         first_dir = _run_dir(host.home, first["run_id"])
@@ -77,12 +77,14 @@ def test_over_capacity_queued_then_dispatched_or_refused(
             [first["run_id"], second["run_id"]]
         )
 
-        # when the slot frees the queued run is dispatched, and runs to its own terminal row
+        # when the slot frees (the first run is cancelled) the queued run is dispatched, and runs
+        # to its own terminal row
+        assert host.call("cancel", {"run_id": first["run_id"]})["code"] == codes.CANCEL_ACCEPTED
         assert support.wait_until(
             lambda: records.node_record(second_dir).terminal is not None,
-            tolerances.HARNESS_WAIT_MS / 1000,
+            clock.stop_bound + clock.poll_interval + tolerances.HARNESS_WAIT_MS / 1000,
         )
-        assert records.node_record(first_dir).terminal == "succeeded"
+        assert records.node_record(first_dir).terminal == "cancelled"
         assert records.node_record(second_dir).terminal == "succeeded"
         assert "started" in records.node_record(second_dir).kinds
         # a slot is free again: a new run is admitted, not refused

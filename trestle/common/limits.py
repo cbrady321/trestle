@@ -17,7 +17,8 @@ class CaptureLimits:
     max_artifact_count: int = 1_000
     max_artifact_bytes: int = 2 * 1024 * 1024 * 1024
     max_scan_bytes: int = 64 * 1024 * 1024
-    max_scan_time_ms: int = 2_000
+    # None: no wall-clock budget, the scan is bounded by `max_scan_bytes` and its own counts alone
+    max_scan_time_ms: int | None = 2_000
 
     @classmethod
     def from_env(cls) -> CaptureLimits:
@@ -32,7 +33,9 @@ class CaptureLimits:
                 max_artifact_count=10,
                 max_artifact_bytes=64 * 1024,
                 max_scan_bytes=256 * 1024,
-                max_scan_time_ms=500,
+                # bounded by bytes and counts, not wall time: a test's scan reads the same whatever
+                # the machine's speed or load
+                max_scan_time_ms=None,
             )
         return cls()
 

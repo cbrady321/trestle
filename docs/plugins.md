@@ -379,9 +379,11 @@ root with a release walk a 10 s release slice):
 - every alternative of a `ChoiceNode` must fit, since any one of them may run.
 
 The example fits: 30 + 10 ≤ 60; each leaf's 10 ≤ 30 − 10; the chain `build` → `package` is
-10 + 10 = 20 ≤ 30; ceil(3 / 2) × 10 = 20 ≤ 30. At run time a leaf still working when its carved
+10 + 10 = 20 ≤ 30; ceil(3 / 2) × 10 = 20 ≤ 30. At run time a carved leaf still working when its
 slice ends stops `timed_out` with `execution.carve_exceeded`. The loop checks the slice between
-the unit's calls, so a unit that blocks inside one call is stopped only by the root deadline.
+the unit's calls, so a unit that blocks inside one call is stopped only by the root deadline. The
+root is carved nothing: a single-vertex plugin still working at its release point is stopped with
+the whole run (`timed_out`, its last verdict's code), never `execution.carve_exceeded`.
 
 **What a leaf returns.** `advance` and `release` return one of the steps in
 `trestle.workflow.units`:

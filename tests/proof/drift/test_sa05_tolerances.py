@@ -140,3 +140,92 @@ def test_bound_resolves_under_its_mc09_name(sa: str, monkeypatch: pytest.MonkeyP
     monkeypatch.setitem(sys.modules, "trestle.common.clock", clock)
     for name, accessor in ACCESSORS.items():
         assert getattr(tolerances, accessor)() == expected[name], name
+
+
+# ---- sleep as synchronisation ------------------------------------------------------------------
+# A `sleep` directly followed by an `assert` stands in for a condition the assert then reads. A
+# positive assertion after a pause is a race on a loaded runner (CI run 36955650845 CK-8:
+# test_cs2_containment `assert 143 == 0`); wait on the condition instead (`wait_until`, a NodeEnd,
+# a pid reaped). An absence-over-window check ("for a while nothing happened") may pause: it can
+# only pass more easily under load, never fail falsely, and is marked `# absence-window` on the
+# sleep's line. The sites below predate the rule; the set may shrink, never grow.
+SLEEP_SYNC_SCOPE = ("tests", "packages/trestle-packs/tests", "packages/trestle-env/tests")
+SLEEP_SYNC_BASELINE = {
+    # positive after a pause: race-shaped, to be fixed (then removed from this set)
+    ("tests/core/spine/test_cs2_clock.py", "test_deadline_vs_cancel_first_cause"),
+    ("tests/proof/selftest/test_ancestry.py", "test_survivors_cli_exit_status"),
+    (
+        "tests/proof/selftest/test_ancestry.py",
+        "test_survivors_cli_accepts_repeated_markers_and_ignores_itself",
+    ),
+    # absence over a window: to be marked `# absence-window` by their lanes (then removed here)
+    (
+        "tests/single/control/mcp/test_sever_rejoin.py",
+        "test_sever_run_continues_bounded_and_cleaned",
+    ),
+    ("tests/single/spine/test_w_a1.py", "test_wait_ends_on_stop_read_from_the_record"),
+    ("tests/tree/test_tr4_lease.py", "test_direct_call_acquires_before_first_effect"),
+}
+
+
+def _sleep_sync_sites(root: Path) -> dict[tuple[str, str], int]:
+    """Every `(file, function)` holding a `sleep(...)` statement directly followed by an `assert`
+    in the same block (not marked `# absence-window`), with the sleep's line."""
+    sites: dict[tuple[str, str], int] = {}
+    for base in SLEEP_SYNC_SCOPE:
+        for path in sorted((root / base).rglob("*.py")):
+            source = path.read_text(encoding="utf-8")
+            lines = source.splitlines()
+            for func in ast.walk(ast.parse(source)):
+                if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                for node in ast.walk(func):
+                    for field in ("body", "orelse", "finalbody"):
+                        block = getattr(node, field, None)
+                        if not isinstance(block, list):
+                            continue
+                        for first, second in zip(block, block[1:], strict=False):
+                            if not (
+                                isinstance(first, ast.Expr)
+                                and isinstance(first.value, ast.Call)
+                                and isinstance(second, ast.Assert)
+                            ):
+                                continue
+                            call = first.value.func
+                            name = call.attr if isinstance(call, ast.Attribute) else ""
+                            name = name or getattr(call, "id", "")
+                            if name != "sleep":
+                                continue
+                            if "# absence-window" in lines[first.lineno - 1]:
+                                continue
+                            sites.setdefault((str(path.relative_to(root)), func.name), first.lineno)
+    return sites
+
+
+@pytest.mark.parametrize("sa", ["SA-05"])
+def test_no_sleep_as_synchronisation(sa: str) -> None:
+    """The ratchet, both ways: no new site, and no baseline entry that is no longer a site (a
+    fixed site leaves the baseline in the same change, so the set only shrinks)."""
+    found = _sleep_sync_sites(ROOT)
+    new = sorted(
+        f"{path}:{line} ({func})"
+        for (path, func), line in found.items()
+        if (path, func) not in SLEEP_SYNC_BASELINE
+    )
+    assert not new, f"{sa}: sleep then assert; wait on the condition instead: {new}"
+    stale = sorted(SLEEP_SYNC_BASELINE - found.keys())
+    assert not stale, f"{sa}: fixed sites still in SLEEP_SYNC_BASELINE (remove them): {stale}"
+
+
+def test_the_sleep_sync_scan_finds_a_planted_site(tmp_path: Path) -> None:
+    """Not vacuous: a planted sleep-then-assert is found, a marked absence window is not."""
+    planted = tmp_path / "tests" / "test_planted.py"
+    planted.parent.mkdir()
+    planted.write_text(
+        "import time\n\n\ndef test_raced():\n    time.sleep(0.1)\n    assert True\n\n\n"
+        "def test_window():\n    time.sleep(0.1)  # absence-window\n    assert True\n",
+        encoding="utf-8",
+    )
+    for base in SLEEP_SYNC_SCOPE[1:]:
+        (tmp_path / base).mkdir(parents=True)
+    assert _sleep_sync_sites(tmp_path) == {("tests/test_planted.py", "test_raced"): 5}

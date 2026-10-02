@@ -46,10 +46,14 @@ def test_short_deadline_stops_tree_in_window() -> None:
     """Deadline D is measured from admission and dispatch is held for a while in the queue:
     the run still ends timed out in [D, D + stop_bound + tolerance], the tree gone and released."""
     kernel = support.spine_kernel()
+    # The queue-time assert below has `hold` less the stop's own time as its slack, so the hold
+    # is most of a doubled deadline (only a stall of about `hold` could fail it), and the deadline
+    # still leaves the dispatched tree room to spawn before it fires.
+    deadline_s = support.SHORT_DEADLINE_S * 2
+    hold = tolerances.SETTLE_LONG_S * 4
     admitted_after = time.time()  # before admission, so the admitted deadline is >= this + D
-    with harness.patch_snapshot(kernel, "tree", timeout_s=support.SHORT_DEADLINE_S):
+    with harness.patch_snapshot(kernel, "tree", timeout_s=deadline_s):
         order = support.admit_order(kernel, "tree", {"seconds": LONG_S})
-    hold = tolerances.SETTLE_LONG_S * 2
     time.sleep(hold)  # dispatch held: queue time
     run_dir = support.run_dir_of(kernel, order.run_id)
     thread = support.drive_in_thread(kernel, order)
@@ -58,13 +62,11 @@ def test_short_deadline_stops_tree_in_window() -> None:
         ended = time.time()
         assert support.kinds(run_dir)[-1] == "timed_out"
         window = ended - admitted_after
-        assert (
-            support.SHORT_DEADLINE_S
-            <= window
-            <= (support.SHORT_DEADLINE_S + clock.stop_bound + tolerances.PROC_WAIT_S)
-        ), window
+        assert deadline_s <= window <= (deadline_s + clock.stop_bound + tolerances.PROC_WAIT_S), (
+            window
+        )
         # the queue time counted: a run given its timeout afresh from spawn would end `hold` later
-        assert window < support.SHORT_DEADLINE_S + hold
+        assert window < deadline_s + hold
         assert not support.marked(order.run_id) or support.wait_until(
             lambda: not support.marked(order.run_id), clock.stop_bound + tolerances.PROC_WAIT_S
         )

@@ -31,6 +31,7 @@ from trestle.child.attempt_lane import AttemptLane as LaneWriter
 from trestle.child.attempt_lane import AttemptTicket as LaneTicket
 from trestle.common import clock as clock_limits
 from trestle.common import lane_format as lf
+from trestle.common.fsutil import atomic_write
 from trestle.common.plan import carving
 from trestle.workflow import services as svc
 from trestle.workflow import units, values
@@ -72,6 +73,11 @@ class FlagCancelSignal:
     @property
     def requested(self) -> bool:
         return self.cause() is not None
+
+    def raise_release_point(self) -> None:
+        """Write the release-point flag (`ChildRunServices.release_point_reached`)."""
+        if not self._release_point.exists():
+            atomic_write(self._release_point, b"1")
 
     def cause(self) -> values.StopCause | None:
         if self._cancel.exists():
@@ -524,6 +530,9 @@ class ChildRunServices:
 
     def cancellation(self) -> values.CancelSignal:
         return self._cancel
+
+    def release_point_reached(self) -> None:
+        self._cancel.raise_release_point()
 
     def attempts(self) -> svc.AttemptLane:
         with self._lane_lock:

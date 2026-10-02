@@ -5,14 +5,14 @@ from __future__ import annotations
 import ast
 import dataclasses
 import hashlib
+import io
 import json
-import shutil
 from pathlib import Path
 
 import trestle
 from trestle.common import codes
 from trestle.common.canonical import canonical_json
-from trestle.common.fsutil import atomic_write, sha256_file
+from trestle.common.fsutil import atomic_write, sha256_bytes
 from trestle.common.ids import DECLARED_TREE_SLOT_EMPTY, generate_snapshot_id
 from trestle.common.plan.declared import DeclaredTree
 from trestle.common.types import DeclaredMetadata, PluginSnapshot
@@ -121,7 +121,10 @@ def materialize_snapshot(
     summary_budget: int = 4096,
     timeout_s: int = 300,
 ) -> PluginSnapshot:
-    source = source_path.read_text(encoding="utf-8")
+    # One read: the bytes hashed into the snapshot id are the bytes the snapshot keeps, whatever
+    # happens to the source file meanwhile. The text is decoded as `read_text` would.
+    raw = source_path.read_bytes()
+    source = io.TextIOWrapper(io.BytesIO(raw), encoding="utf-8").read()
     schema, return_schema = schemas_from_source(source, source_path=source_path)
     declared = declared_from_source(source)
     outcome = validate_and_extract(
@@ -133,13 +136,17 @@ def materialize_snapshot(
         if outcome.code is not None:
             raise PublicationRefused(outcome.error, outcome.code)
         raise PluginValidationError(outcome.error)
+    if source_path.read_bytes() != raw:
+        # The validation child read the file itself: an edit that landed meanwhile would mix two
+        # sources in one snapshot. Nothing is kept; the next refresh sees the edit and starts over.
+        raise PluginValidationError(f"{source_path.name} changed while it was being published")
     package_digests = outcome.package_digests
     tree = outcome.declaration
     declared = dataclasses.replace(declared, package_digests=package_digests)
     schema_bytes = canonical_json(schema)
     return_schema_bytes = canonical_json(return_schema)
     schema_sha256 = schema_digest(schema)
-    source_sha256 = sha256_file(source_path)
+    source_sha256 = sha256_bytes(raw)
     identity_declared = declared.declared_dict()
     del identity_declared["package_digests"]  # the digests enter the identity as their own slot
     snapshot_id = generate_snapshot_id(
@@ -156,7 +163,9 @@ def materialize_snapshot(
     snap_dir.mkdir(parents=True, exist_ok=True)
     dest = snap_dir / "plugin.py"
     if not dest.exists():
-        shutil.copy2(source_path, dest)
+        # Whole or absent: a concurrent materialization or a reader never sees a part-written
+        # plugin.py, and an interrupted copy leaves nothing a later one would skip over.
+        atomic_write(dest, raw, stat_from=source_path)
     # A schema is never rewritten under an existing id: the id already covers both schemas.
     for name, content in (
         ("schema.json", schema_bytes),

@@ -30,6 +30,7 @@ import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -115,6 +116,7 @@ class Stopped:
     request_calls: list[tuple[str, int]] = field(
         default_factory=list
     )  # signals on the request thread
+    answer: dict[str, Any] = field(default_factory=dict)  # the wire answer
 
     @property
     def lane(self) -> LaneRows:
@@ -214,7 +216,61 @@ def run_deadline(directory: Path) -> Stopped:
     with support.reaping(admitted.run_id):
         view = harness.drive_tree(admitted)
     outcome, answer = _answered(view)
-    return Stopped(admitted.run_dir, outcome, answer)
+    return Stopped(admitted.run_dir, outcome, answer, answer=dict(view.to_dict()["answer"]))
+
+
+# The child's wall clock steps ahead mid-run (an NTP step, or a sleep the host's monotonic clock
+# does not count): from the observation after the create, the child's `now`
+# (`ServicesInput.now`, `datetime.now` in `trestle.child.run_services`) reads half a release
+# slice ahead. Under `stall` (the first observation takes the fixture's STALL_S, 6 s) that puts
+# the child past its release point (20 s deadline - 10 s slice) while its wait (max_wait 6 s) is
+# still open, and it exits about 3 s before the conductor's monotonic release point.
+SKEW_INJECT = """
+
+_observations = 0
+
+
+def _skew():
+    global _observations
+    _observations += 1
+    if _observations == 2:  # the first observation after the create
+        import sys
+
+        # the child has loaded it; a plugin may not import it (R-PLUG-6), the test reaches it
+        services = sys.modules["trestle.child.run_services"]
+
+        real = services.datetime
+
+        def ahead(cls, tz=None):
+            return real.now(tz) + timedelta(seconds={skew})
+
+        services.datetime = type("Ahead", (real,), {{"now": classmethod(ahead)}})
+
+
+"""
+OBSERVE_HEAD = "        global _stalled\n"
+
+
+def run_skewed(directory: Path) -> Stopped:
+    """The deadline fixture whose child clock steps ahead once the create is applied: the child
+    reaches its release point, stops and exits before the conductor's monotonic release point."""
+    skew = clock.release_slice / 2
+    source = FIXTURE.read_text(encoding="utf-8")
+    source = source.replace(f"deadline={DECLARED_DEADLINE_S}", f"deadline={SHORT_DEADLINE_S}")
+    source = source.replace(f"seconds={DECLARED_DEADLINE_S}", f"seconds={SHORT_DEADLINE_S}")
+    assert source.count(OBSERVE_HEAD) == 1, "the fixture's observe moved"
+    source = source.replace(OBSERVE_HEAD, OBSERVE_HEAD + "        _skew()\n")
+    entry = "\nENTRY = WorkflowEntry("
+    assert source.count(entry) == 1, "the fixture's entry moved"
+    source = source.replace(entry, SKEW_INJECT.format(skew=skew) + entry)  # before the plugin
+    directory.mkdir(parents=True, exist_ok=True)
+    fixture = directory / FIXTURE.name
+    fixture.write_text(source, encoding="utf-8")
+    admitted = harness.admit_tree(fixture, STALL)
+    with support.reaping(admitted.run_id):
+        view = harness.drive_tree(admitted)
+    outcome, answer = _answered(view)
+    return Stopped(admitted.run_dir, outcome, answer, answer=dict(view.to_dict()["answer"]))
 
 
 @pytest.fixture(scope="module")
@@ -254,15 +310,53 @@ def test_deadline_one_stop_row_class_is_its_cause(timed_out: Stopped) -> None:
     assert verdict.ok and not verdict.vacuous and not verdict.unproven, verdict
 
 
+def test_deadline_root_end_is_stopped_never_carve_exceeded(timed_out: Stopped) -> None:
+    """P4: a single-vertex deadline run ends its root `stopped` (the goal cut it), with exactly
+    one `end` row and no `CARVE_EXCEEDED` step; the answer's primary is `stopped` with the last
+    verdict's code and the root stop is the release point."""
+    rows = timed_out.lane.rows
+    (end,) = [r.entry for r in rows if r.cls == "end"]
+    assert end["cut"] == "stopped", end
+    assert end["code"] != "execution.carve_exceeded", end
+    assert not [
+        r for r in rows if r.cls == "step" and r.entry.get("code") == "execution.carve_exceeded"
+    ]
+    assert timed_out.answer["root_stop"] == "release_point", timed_out.answer
+    primary = timed_out.answer["primary"]
+    assert (primary["listing"], primary["code"]) == ("stopped", end["code"]), primary
+
+
+def _allowed_past_offset(row: Any) -> bool:
+    """What may lie past the stop offset: the release walk (the stop issue and its confirmation,
+    `released`) and the `end`. No `step`: the root is carved nothing, so under the deadline its
+    slice end is the release point and is the goal flip, never a `StepEntry(FAILED,
+    CARVE_EXCEEDED)` (P4); under a cancel no step follows the flag either."""
+    if row.cls in ("released", "end"):
+        return True
+    if row.cls == "step":
+        return False
+    return row.entry.get("effect") == "stop"
+
+
+def test_no_step_may_lie_past_the_offset() -> None:
+    def row(cls: str, **entry: Any) -> SimpleNamespace:
+        return SimpleNamespace(cls=cls, entry=entry)
+
+    assert not _allowed_past_offset(row("step", kind="failed", code="execution.carve_exceeded"))
+    assert not _allowed_past_offset(row("step", kind="failed", code="execution.unit_raised"))
+    assert not _allowed_past_offset(row("issue", effect="up"))
+    assert _allowed_past_offset(row("issue", effect="stop"))
+    assert _allowed_past_offset(row("end"))
+
+
 @pytest.mark.parametrize("which", ["cancelled", "timed_out"])
 def test_the_offset_separates_the_claim_from_the_release(
     which: str, request: pytest.FixtureRequest
 ) -> None:
     """Not a vacuous pass: the create was applied before the recorded offset, and the release
-    walk (the stop issue, its confirmation and `released`) lies past it, all allowed. A `step`
-    may lie past it too: under the deadline the leaf's own slice ends at the release point, and
-    its `StepEntry(FAILED, CARVE_EXCEEDED)` can land after the stop row; a step is a record, not
-    an action start (it has no effect)."""
+    walk (the stop issue, its confirmation and `released`) and the `end` lie past it, all allowed.
+    No step lies past it, the deadline's included: the root's slice end is the release point, the
+    goal flip, so no `StepEntry(FAILED, CARVE_EXCEEDED)` is recorded whichever is seen first."""
     run: Stopped = request.getfixturevalue(which)
     (stop,) = run.stops
     length = stop["lane_committed_length"]
@@ -271,9 +365,7 @@ def test_the_offset_separates_the_claim_from_the_release(
     assert create.entry["status"] == "applied" and create.end <= length
     past = [r for r in rows if r.offset >= length]
     assert [r.cls for r in past if r.cls in ("issue", "confirmation", "released")], past
-    assert all(r.cls in ("released", "end", "step") or r.entry["effect"] == "stop" for r in past), (
-        past
-    )
+    assert all(_allowed_past_offset(r) for r in past), past
 
 
 def test_request_path_emitted_no_signal(cancelled: Stopped) -> None:
@@ -411,3 +503,18 @@ def test_exactly_one_stop_row_is_required(cancelled: Stopped, tmp_path: Path) ->
     releases = release_effects(cancelled.run_dir)
     assert not offset_verdict(lane, [], releases).ok
     assert not offset_verdict(lane, [stop, stop], releases).ok
+
+
+def test_child_clock_ahead_still_answers_timed_out(tmp_path: Path) -> None:
+    """P4 with clock skew: the root's own slice end (its clock) comes before the conductor's
+    release point (the monotonic clock), so the child stops and exits first. The root's flag tells
+    the conductor: exactly one stop row, cause `release_point`, and the run answers `timed_out`
+    with its root `stopped`, never `passed`."""
+    run = run_skewed(tmp_path / "skewed-plugin")
+    (stop,) = run.stops
+    assert stop["cause"] == "release_point"
+    assert run.outcome_class == run.answer_outcome == "timed_out", run.answer
+    assert run.answer["root_stop"] == "release_point", run.answer
+    (end,) = [r.entry for r in run.lane.rows if r.cls == "end"]
+    assert end["cut"] == "stopped", end
+    assert run.answer["primary"]["listing"] == "stopped", run.answer

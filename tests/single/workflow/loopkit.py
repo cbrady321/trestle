@@ -178,6 +178,10 @@ class RigServices:
     def cancellation(self) -> RigCancel:
         return self._cancel
 
+    def release_point_reached(self) -> None:
+        """The child's flag file, in the rig: the release-point stop is up from here."""
+        self._cancel.stop = self._cancel.stop or StopCause.RELEASE_POINT
+
     def attempts(self) -> svc.AttemptLane:
         return self._inner.attempts()
 
@@ -697,6 +701,9 @@ class MemoryServices:
 
     def cancellation(self) -> RigCancel:
         return self.cancel
+
+    def release_point_reached(self) -> None:
+        self.cancel.stop = self.cancel.stop or StopCause.RELEASE_POINT
 
     def attempts(self) -> MemoryLane:
         return self.lane

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import threading
 import time
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -21,12 +22,14 @@ from trestle_packs.fakes import FakeMarker
 
 from tests.core.spine import support
 from tests.proof import ancestry, harness, tolerances
+from tests.single.workflow import loopkit as kit
 from tests.tree import treekit as tk
 from trestle.common import clock
 from trestle.common.outcome import OutcomeClass
 from trestle.server.main import Kernel
+from trestle.workflow import codes
 from trestle.workflow.ports import ResourceCreate, ResourceOwned, ResourceReads
-from trestle.workflow.values import NodePath
+from trestle.workflow.values import Goal, NodePath, StopCause
 
 proves_coop = pytest.mark.proves(
     "WR-UNIT-3", "WR-UNIT-3:coop-child-stopped-at-slice", "A", "tree", "LOGIC+PROC", "BOTH"
@@ -292,3 +295,65 @@ def test_noncoop_grandchild_fixture_publishes_and_grandchild_is_attributable(
         conductor.join(timeout=clock.stop_bound + tolerances.JOIN_WAIT_S)
         assert not conductor.is_alive(), "the run never reached its terminal row"
         assert support.wait_until(lambda: not support.marked(tag), tolerances.JOIN_WAIT_S)
+
+
+# ---- P4: the root is carved nothing (its slice end is the release point) ----------------------
+
+SOLO_DEADLINE_S = 50.0
+SOLO_SLOW_OBSERVE_S = 15.0  # the first observation takes this long: the attempt starts late and
+# the release point (40 s) comes before its max_wait ends (15 + 30 s)
+
+
+def _solo_never_ready(clocks: list[kit.ManualClock]) -> kit.Unit:
+    """A one-vertex root whose marker appears once created and is never ready; its declaration
+    fits its budget and deadline, and its max_wait runs past the release point because its first
+    observation is slow (`SOLO_SLOW_OBSERVE_S` on the clock `clocks` holds)."""
+    decl = replace(
+        kit.declaration(effects=kit.MARKER_EFFECTS, max_attempts=1, max_wait_s=30.0, budget_s=40.0),
+        unit="solo",
+    )
+    base = tk.leaf_unit("solo", declaration=decl)
+
+    def observe(unit: kit.Unit, params: Any, reads: Any, ctx: Any) -> Any:
+        if len(clocks) == 1:
+            clocks.pop().advance(SOLO_SLOW_OBSERVE_S)
+        seen = reads.read(ResourceReads).observe(kit.SPEC, ctx.lineage, tk.EFFECT)
+        return kit.observation(selector_present=seen.selector_present, ready=False)
+
+    return kit.Unit(base.decl, observe, base._advance, base._release)
+
+
+@pytest.mark.parametrize("first", ["slice_end", "release_flag"])
+def test_single_vertex_deadline_is_a_stop_never_carve_exceeded(tmp_path: Path, first: str) -> None:
+    """P4, both orderings of the one instant, made deterministic under the manual clock: the walk
+    reaches the release point with a non-terminal verdict and either sees its slice end first (no
+    flag is up: the carve-delay ordering that used to record `StepEntry(FAILED, CARVE_EXCEEDED)`)
+    or sees the release-point flag first. Either way the record is the same: exactly one `end`,
+    `cut=stopped`, the last verdict's condition, and no `CARVE_EXCEEDED` step or code."""
+    clocks: list[kit.ManualClock] = []
+    rig = tk.tree_rig(tmp_path, _solo_never_ready(clocks), {}, deadline_s=SOLO_DEADLINE_S)
+    clocks.append(rig.rig.clock)
+    release_point = kit.NOW + timedelta(seconds=SOLO_DEADLINE_S - rig.plan.release_slice)
+    assert rig.rig.services.slice_end(NodePath(())) == release_point  # the root has no carve
+    cancel = rig.rig.cancel
+    if first == "release_flag":
+        plain = cancel.wait
+
+        def wait(timeout: timedelta) -> bool:
+            stopped = plain(timeout)
+            if not stopped and rig.rig.clock.now >= release_point:
+                cancel.stop = StopCause.RELEASE_POINT  # the flag lands at the same instant
+            return stopped
+
+        cancel.wait = wait  # type: ignore[method-assign]
+    walked = rig.rig.loop()
+    walked.run()
+    assert rig.rig.clock.now >= release_point, "the wait ended before the release point"
+    rows = rig.rows()
+    (end,) = [row for row in rows if row["class"] == "end"]
+    assert (end["path"], end["cut"], end["condition"]) == ("", "stopped", "converging"), end
+    assert end["code"] != codes.CARVE_EXCEEDED
+    assert not [r for r in rows if r["class"] == "step" and r.get("code") == codes.CARVE_EXCEEDED]
+    assert walked.goal is Goal.RELEASE
+    assert cancel.stop is StopCause.RELEASE_POINT, "the release-point flag is up for the host"
+    assert rig.marker.paths("stop") == [""], "the release walk gave back what the root made"

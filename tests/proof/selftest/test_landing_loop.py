@@ -103,6 +103,12 @@ def _mark_ready(rig, merge_id="M1", marked_at=1.0):
     )
 
 
+def _host_record_holds(_cwd: Path, _head: str) -> None:
+    """L1's check stubbed to hold: these planted repos carry no host records (L1 itself is proven
+    in test_fence_merge.py)."""
+    return None
+
+
 def _deps(rig, **kwargs):
     defaults = dict(
         cfg=rig["cfg"],
@@ -111,6 +117,7 @@ def _deps(rig, **kwargs):
         pr_head_sha=rig["head"],
         job_conclusions={},
         required=[],
+        host_record=_host_record_holds,
     )
     defaults.update(kwargs)
     return fence_mod.LandingDeps(**defaults)
@@ -618,6 +625,7 @@ def test_p8_push_succeeded_but_exit_5_no_second_landing(rig):
         rig["head"],
         job_conclusions={},
         required=[],
+        host_record=_host_record_holds,
     )
     assert exit_code == fence_mod.FenceMergeExit.LANDED
     found = fence_mod.landed_merge_check("M1", rig["head"], rig["runner"])
@@ -634,6 +642,7 @@ def test_p8_killed_mid_merge_landed_merge_found_before_exit_3_return(rig):
         rig["head"],
         job_conclusions={},
         required=[],
+        host_record=_host_record_holds,
     )
     # a second loop instance, unaware the push already landed, must find it
     # via landed_merge_check before returning "master moved outside fence merge"

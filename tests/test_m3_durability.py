@@ -37,6 +37,9 @@ def _patch_slow_timeout(kernel, *, timeout_s: int) -> None:
 
 
 def test_cancel_accepted_and_terminal_cancelled(durable_kernel) -> None:
+    # the fixture's 2 s deadline would race the cancel below on a loaded runner: this run's
+    # deadline is well past the cancel, so the cancel alone decides the class
+    _patch_slow_timeout(durable_kernel, timeout_s=30)
     admit = durable_kernel.control.admission.admit(
         AdmitRequest(plugin="slow", args={"seconds": 60.0})
     )

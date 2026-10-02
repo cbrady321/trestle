@@ -142,7 +142,7 @@ def test_env_key_field_must_match_declared_env_arg(tmp_path: Path) -> None:
 
 
 def test_plugin_without_ports_needs_no_env_arg(tmp_path: Path) -> None:
-    # a plain plugin publishes with the identity it has at wr-ckpt/core
+    # a plain plugin publishes with its pinned identity (the env check leaves it unchanged)
     plain = materialize_snapshot(ECHO, "echo", home=tmp_path / "plain")
     assert plain.snapshot_id == ECHO_SNAPSHOT_ID
     # a workflow plugin that neither imports ports nor names an environment publishes
