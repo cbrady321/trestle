@@ -186,6 +186,8 @@ Then `await_runs(timeout_ms=600000)`. The stack is stopped exactly once on every
 
 `teardown: none` means no effect on every path.
 
+`integration_pipeline` is one plain plugin that runs its stages in sequence and reports one class. A declared tree plugin instead gives each part its own verdict in one answer, runs independent parts in parallel (`needs`, `concurrency`), and checks every part's time budget at admission, before a run id exists. For a large task with many parts, see [`agents.md` § Large tasks: the tree](agents.md#large-tasks-the-tree).
+
 ---
 
 ## Agent workflow

@@ -13,7 +13,8 @@ Evidence stays on disk, and agents pull small slices only when they need them. T
 ## How it works
 
 - The **foundation** (server, wrapper, child runtime, ledger, projection) wraps **scripts** — one Python callable per plugin.
-- Plugin authors use **PluginSurface only** (`Context`, `@trestle`). They do not import Kernel, FastMCP, or ledger internals.
+- Plugin authors use **PluginSurface** (`Context`, `@trestle`), and a tree workflow also imports `trestle.workflow` (its declarations, `run_tree` and ports). They do not import Kernel, FastMCP, or ledger internals.
+- A large task with many dependent parts runs as **one declared tree**: one `run`, one answer. See [Large tasks: the tree](agents.md#large-tasks-the-tree).
 - Agents see **ten frozen MCP tools**. Plugin names are not MCP tools; always `run(plugin="…")`.
 - Admission refusals are not runs — they have no `run_id`.
 - `fetch` uses opaque handles (`r_…`, `art_…`, `{run_id}/result`), never filesystem paths.
