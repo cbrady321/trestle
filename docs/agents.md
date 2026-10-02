@@ -150,6 +150,7 @@ Live catalog: MCP resource **`trestle://views`** (when to pick each named view v
 | Question | Tool | View / target |
 |----------|------|---------------|
 | What did the plugin return? | `fetch` | `{run_id}/result` + `jsonpath` or `range` |
+| What did a workflow decide? | `RunView.answer`, then `fetch` | `answer.outcome` / `answer.primary`; the rest at `{run_id}/answer` + `head` |
 | Why did it fail? | `RunView.error`, or `query` | `last_error` + `{run_id}` |
 | Wrapper stdout lines? | `query` | `run_tail` + `{run_id}` (post-finalize) |
 | Run metadata? | `query` | `run` + `{run_id}` |
@@ -181,8 +182,13 @@ Every `BoundedView` includes `backend`, `as_of`, `items`, `truncated`, `next_cur
 | Handle | Permitted `window.kind` |
 |--------|-------------------------|
 | `{run_id}/result` | `jsonpath`, `range`, `head`, `tail`, `grep` |
+| `{run_id}/answer` (the full terminal answer, `answer.detail`) | `range`, `head`, `tail`, `grep` (not `jsonpath`) |
 | `summary.handle` (array continuation) | `jsonpath`, `range` |
 | `art_…` (text artifact) | `range`, `head`, `tail`, `grep` |
+
+The full answer is stored as one JSON line, so `{"kind": "head", "count": 1}` returns all of it and
+`grep` returns at most its first 512 characters. `trestle://views` does not list `{run_id}/answer`
+in this release; the handle works all the same.
 
 ---
 
@@ -223,7 +229,7 @@ abnormally is `worker_exit`; a run whose server died is `interrupted`.
 
 **`completion` (optional, default `"bounded"`, which is everything above unchanged).** Pass `completion="terminal"` to make one `run` call return only a finished run: the response follows the run's finalized terminal row (evidence finalized, then `succeeded`, `failed`, `cancelled`, `timed_out` or `interrupted`), never a `running` frame. The call is bounded by the run's own deadline plus a published finalization margin, not by `wait_ms`: a `wait_ms` above zero is accepted and ignored, and `wait_ms=0` (or below) is refused `admission.invalid_args` because a terminal call has to wait; so is any `completion` value other than `bounded` or `terminal`. If the run is somehow not terminal by that bound, the call answers `projection.terminal_wait_exceeded` (a refusal, not a run state; the run itself is unaffected and `await_runs` still joins it). While a `terminal` call is held, other calls (`cancel`, `query`, `await_runs`) are still answered.
 
-**One class per finished run.** A finished `RunView` carries `outcome: {class, code, identity, recovered}`. `class` is one of `passed`, `cancelled`, `timed_out`, `execution_error` (a plain plugin reaches these four; `failed` and `blocked` are reserved for workflow results). `code` is the `execution.*` code for an `execution_error` and `null` for the others; `state` keeps its meaning underneath. A finished run also carries one `answer` (the terminal answer: outcome, the deciding node as `primary`, `cleanup`, and the rest of the nodes in `listed`, bounded by the run's summary budget with the remainder behind `answer.detail`); see `docs/agent-console-mcp.md`.
+**One class per finished run.** A finished run carries one `answer` (the terminal answer: outcome, the deciding node as `primary`, `cleanup`, and the rest of the nodes in `listed`, bounded by the run's summary budget with the remainder behind `answer.detail`); see `docs/agent-console-mcp.md`. `answer.outcome` is the run's class, one of `passed`, `failed`, `blocked`, `cancelled`, `timed_out`, `execution_error`. A finished `RunView` also carries `outcome: {class, code, identity, recovered}`. Its `class` is classified from how the plugin process ended, so it is one of `passed`, `cancelled`, `timed_out`, `execution_error` and never reads `failed` or `blocked` in this release. `code` is the `execution.*` code for an `execution_error` and `null` for the others; `state` keeps its meaning underneath. For a plain plugin `outcome.class` and `answer.outcome` agree. For a workflow plugin (one that calls `run_tree`) they can disagree: read `answer.outcome` (see [Large tasks: the tree](#large-tasks-the-tree)).
 
 <!-- K-8 -->
 ### A succeeded run leaves no attributable process or run-created container behind (K-8)
@@ -332,6 +338,139 @@ example ([Composite workflows](plugins.md#composite-workflows)). You run a tree 
 other plugin: `run(plugin="…", args={…}, wait_ms=<above zero>, completion="terminal")` admits the
 whole tree as **one run** with **one run id**, and returns one answer for all of it.
 
+### Large tasks: the tree
+
+When a job has many parts (bring up several services, then migrate, then test; a build matrix;
+checks that depend on each other), use a registered tree plugin instead of driving the parts one
+`run` at a time. The plugin's author declared the parts, their order (`needs`), how many run at
+once (`concurrency`) and each part's time budget. Trestle checks the whole declaration and every
+budget at admission, before a run id exists, runs independent parts in parallel inside the one
+run, and returns one answer for all of them. A request cannot add or reshape nodes. It can only
+select among the declared ones when the plugin offers a selector argument (for example
+`services: ["postgres"]`); a value outside the declared set is refused
+`admission.unknown_identifier`, with no run id.
+
+1. **Discover.** `describe_plugin(plugin_id="…")`. The selector arguments and the environment
+   argument are in `input_schema`; `deadline_s` is the deadline the whole tree runs under. Give
+   the environment argument a value even when the schema shows a default: admission does not read
+   the default and refuses `admission.lease_set_undecidable` without it.
+2. **Run once.** `run(plugin="release", args={"env": "dev"}, wait_ms=1000, completion="terminal")`
+   returns when the whole tree has finished, bounded by the plugin's deadline plus the
+   finalization margin.
+3. **Read `answer`, not `state`.**
+
+   > For any plugin that calls `run_tree` (a single leaf or a tree), the verdict is `answer.outcome`.
+   > `state` and `outcome.class` describe the plugin process: they read `succeeded` / `passed`
+   > whenever the plugin returned normally, even when `answer.outcome` is `failed` or `blocked`.
+   > `outcome.class` never reads `failed` or `blocked` in this release. `await_runs(mode="first_failure")`
+   > keys on `state`, so it does not wake on a workflow's `failed` or `blocked` answer; join such
+   > runs with `mode="all"` and read each `answer.outcome`.
+
+   `answer.outcome` is one of `passed`, `failed`, `blocked`, `timed_out`, `cancelled`,
+   `execution_error`. `answer.primary` is the node that decided it: `path` lists the node names
+   from the root (`[]` is the root itself), and `code`, `human_action` and `resend`
+   (`succeeds_after_action`, `will_not_succeed` or `unknown`) say what to do next. Node classes rank
+   `execution_error`, `unencodable_result`, `failed`, `timed_out`, `exhausted` (reported as
+   `blocked`), `blocked`, `repaired` (reported as `passed`), `passed`; the deciding node is the
+   highest-ranked one, ties broken by the plan's fixed order, so the order in which nodes finished
+   never changes it. `answer.root_stop` is set (`cancel`, `release_point` for the deadline,
+   `restart`) when the whole tree was stopped from outside. `answer.cleanup` says whether what the
+   run created was released (`clean`).
+4. **Read the other nodes.** `answer.listed` holds every other node, each with a `listing`:
+   `candidate` (it ended on its own), `rolled_up` (a composite, classed from its children),
+   `stopped`, `not_started` (it never ran: something it needs did not pass, or the tree stopped
+   first) or `unended`. When `listed_count` is larger than `listed`, the rest is behind
+   `answer.detail`, the handle `<run_id>/answer`:
+   `fetch("<run_id>/answer", {"kind": "head", "count": 1})` returns the full answer as one JSON
+   line (window kinds `range`, `head`, `tail`, `grep`; not `jsonpath`).
+5. **Fix, then run again.** Do what `primary.human_action` says; do not re-send unchanged when
+   `resend` is `will_not_succeed`. Then `run` again with the same arguments. Each leaf observes
+   before it acts, so a leaf whose postcondition already holds does not act again; a resource with
+   run lifetime (like the markers in the example below) is released at the end of every run, so
+   its leaf acts again.
+6. **Stop.** `cancel("<root run_id>")` stops every node and releases everything the run created;
+   the answer reads `cancelled` with `root_stop: "cancel"`. A cancel addressed to a child is
+   refused (see below).
+
+**Worked example.** The `release` tree in [plugins.md](plugins.md#composite-workflows) runs `build`
+and `lint` in parallel, and `package` needs both. Here `lint` returns
+`Failed("demo.lint_failed", …)` (abridged):
+
+```text
+run → {"run_id": "r_…", "state": "succeeded",
+       "outcome": {"class": "passed", "code": null, …},     # the plugin process: not the verdict
+       "answer": {"outcome": "failed", "root_stop": null,
+         "primary": {"path": ["lint"], "listing": "candidate", "node_class": "failed",
+                     "condition": "failed", "code": "demo.lint_failed", "human_action": null, …},
+         "cleanup": {"clean": true, "released": 2, "unknown": 0, …},
+         "detail": "r_…/answer", "listed_count": 3,
+         "listed": [
+           {"path": ["build"],   "listing": "candidate",   "node_class": "passed", "disposition": "started", …},
+           {"path": [],          "listing": "rolled_up",   "node_class": "failed", "code": "demo.lint_failed", …},
+           {"path": ["package"], "listing": "not_started", "node_class": null, …}], …}}
+```
+
+`state` and `outcome.class` say the plugin returned normally; `answer.outcome` says the tree
+failed. `lint` decided it, `build` passed and what it created was released, and `package` never
+started because it needs `lint`. Had `lint` returned `Blocked(code, human_action, resend)`, the
+answer would read `blocked`, with that `human_action` and `resend` on `primary`. Had `lint` raised
+an exception, the answer would read `execution_error` with `execution.unit_raised`, and every
+other node would be listed `not_started` or `stopped`; `state` would still read `succeeded`.
+
+**Failure handling.** A node that fails or blocks stops only the nodes that need it; independent
+siblings finish. An exception in any node (`execution.unit_raised`), a `cancel` of the root, or the
+root's deadline stops the whole tree. A crash of the worker process ends every node at once
+(`execution.worker_exit`).
+
+**Limits and budgets.**
+- At most 1024 nodes in the selected scope (`admission.bound_exceeded`).
+- The deadline the tree runs under is the plugin's `@trestle(deadline=)` (`deadline_s`, at most
+  3600 s). `WorkflowEntry.deadline` in the plugin source is not read in this release.
+- Budgets are checked on every run, at admission: a tree whose budgets do not fit its deadline is
+  refused `admission.budget_does_not_fit`, naming the node, before a run id. Publication does not
+  check budgets, so such a plugin publishes and is then refused on every run; the fix is the
+  author's. A started tree can also stop `blocked` with the same code when time spent queued left
+  it less than its worst case.
+- A node still working when its carved slice ends stops `timed_out` with
+  `execution.carve_exceeded`; the nodes below a timed-out composite only release. The slice is
+  checked between a unit's calls, so a unit stuck inside one call runs on until the root deadline.
+- Two runs that give the same environment value never run at once: the second waits in the queue,
+  or is refused `admission.environment_busy` (retryable, no run id) when the holder's deadline
+  leaves it too little time. A plugin that declares no environment is not excluded.
+- A composite may declare `gates`: children that only read, checked once before anything in the
+  tree acts. A gate that is not satisfied stops its composite with the code it observed, or
+  `execution.declaration_stale`.
+
+**Child handles.** No response carries a child handle in this release, so an agent cannot address
+a child view. Everything a child view holds (its `path`, `node_class`, `code`, `human_action`,
+`resend`) is in `answer.primary` and `answer.listed`, and the full list is behind
+`fetch("<run_id>/answer")` (window kinds `range`, `head`, `tail`, `grep`; not `jsonpath`). A handle
+per node may be added to the answer later as an additive field.
+
+**Ad-hoc large work: fan out registered plugins.** For work that no registered tree covers, start
+independent runs with `run(plugin="…", args={…}, wait_ms=0)` (each returns its `run_id` at once,
+`queued` or `running`) and join them with `await_runs(run_ids=[…], mode=…, timeout_ms=…)`:
+- `mode="all"` returns when every run is terminal;
+- `mode="any"` returns when at least one is;
+- `mode="first_failure"` returns when any run's `state` is terminal and not `succeeded`, or when
+  all are terminal. It reads `state`, not `answer`, so it misses a workflow's `failed` or
+  `blocked`; use `all` for workflow runs and read each `answer.outcome`.
+
+When `timeout_ms` passes first, the call returns the views as they are (some still running): call
+it again. An unknown id fails the whole call. Cancel runs one `run_id` at a time. The service runs
+at most `max_running_runs` at once and queues up to `queue_depth` more (see
+[Run capacity](#run-capacity)); past both, `run` is refused `admission.queue_full`.
+
+Do not author a tree with `publish_plugin` for a one-off task. A tree is a registered workflow:
+its author declares what each node may touch, its budgets and its environment, and that
+declaration is what admission checks. For ad-hoc work, start independent runs of registered
+plugins with `wait_ms=0` and join them with `await_runs`; if the same decomposition recurs, ask
+for it to be registered as a tree plugin (`plugins.md`). `publish_plugin` is absent under the
+restricted profile (`security.md`). Whatever you publish runs as your user with no sandbox, so a
+tree written moments before it runs has had no review of what it touches.
+
+### How a tree run behaves
+
 - **One answer.** The answer has one `outcome` class for the whole tree and one `primary` node
   (its `path` names where in the tree the deciding condition arose). The order in which the
   children finished never changes it, and a shared node starts once. A child that failed only
@@ -343,12 +482,13 @@ whole tree as **one run** with **one run id**, and returns one answer for all of
   stop. The run then ends `worker_exit` and its answer is `execution_error` with
   `execution.worker_exit`; the host releases what the run record names from the record alone, with
   no plugin code. A failure in one backend system's unit is felt by every unit of the tree.
-- **Child views.** Every node below the root has a view of its own. `await_runs` accepts a child
-  handle (the root's run id, then `~`, then a digest of the node's path) as well as a run id; the
-  view names its `root_run_id` and its `path`. A child view's `state` is the root's state, so it is
-  non-terminal while the root is live, and its `answer` is that node's account, the same one the
-  root's answer holds. Under the restricted profile a child view is read only by the session that
-  admitted its root (`projection.not_owner` otherwise).
+- **Child views.** Every node below the root has a view of its own, which `await_runs` resolves by
+  its child handle: the view names its `root_run_id` and its `path`, its `state` is the root's
+  state, and its `answer` is that node's account, the same one the root's answer holds. No response
+  carries a child handle in this release, so an agent cannot address a child view; read the node
+  accounts in `answer.primary`, `answer.listed` and `fetch("<run_id>/answer")` instead. Under the
+  restricted profile a child view is read only by the session that admitted its root
+  (`projection.not_owner` otherwise).
 - **Cancel is addressed to the root.** `cancel` on a child handle is refused with
   `projection.cancel_not_root`; nothing is written and the root runs on. Cancel the root's run id
   instead. This is **open question OQ-27** (what a cancel addressed to a child view should do while
@@ -357,7 +497,8 @@ whole tree as **one run** with **one run id**, and returns one answer for all of
 - **Root-entry eligibility is open (OQ-31).** Whether a unit whose preconditions only a sibling
   could satisfy may be published as a root is undecided. What is shipped is `admit_and_stop`: such
   a root is admitted and stopped by the loop's own in-node refusal before any effect. That is the
-  pre-existing in-node stop, not a decision on the question.
+  pre-existing in-node stop, not a decision on the question. Such a run is admitted, takes a run
+  id, and ends `failed` with `execution.plan_precondition_uncovered` before any effect.
 - **`ChoiceNode` roots select one alternative.** A root (or any node) may be a `ChoiceNode`: the
   loop observes every eligible alternative before the first effect, picks the first one that is
   present (else the declared `fallback`), and records the choice and the plan identity before any
@@ -367,8 +508,9 @@ whole tree as **one run** with **one run id**, and returns one answer for all of
   instance, a missing toolchain) stops that node with one class and a code that names the
   identifier. `admission.plan_multi_vertex_unsupported` is retired: no path produces it any more.
 
-The refusal and stop codes a tree adds (none has a `run_id` unless it is an `execution.*` code on a
-started run):
+The refusal and stop codes a tree run can give (none has a `run_id` unless it is a node's code in a
+started run's answer: every `execution.*` code, and `admission.budget_does_not_fit` or
+`admission.route_unsupported` when a started tree stops a node with it):
 
 | Code | Meaning | Fix |
 |------|---------|-----|
@@ -381,6 +523,15 @@ started run):
 | `admission.declaration_conflict` | The admitted declaration binds one node twice | Republish the plugin |
 | `admission.lease_set_undecidable` | The request gives no value for the root's environment field, or a node declares an environment that does not match the root's | Pass the environment argument; declare one environment |
 | `admission.unknown_identifier` | A request value names no identifier in the declared set (the refusal lists the valid ones) | Use a listed value |
+| `admission.bound_exceeded` | The selected part of the tree has more than 1024 nodes | Select fewer nodes with the selector arguments |
+| `admission.budget_does_not_fit` | The tree's budgets do not fit: a child's budget is over its parent's less the 10 s reserve, a composite's budget is under its longest `needs` chain or under ceil(children / `concurrency`) × its largest child, or the root's budget plus the release slice is over the deadline (the message names the node). On a started tree, a `blocked` stop when time spent queued left it less than its worst case | Ask the plugin's author to fix the budgets or the deadline; for the started-tree stop, run again when the environment is free |
+| `admission.route_unsupported` | A `ChoiceNode` has no eligible alternative, or a node that needs a choice cannot reach the alternative it would get | Change the selection argument; otherwise ask the author |
+| `admission.environment_busy` | Another run holds the environment and its deadline leaves this request too little time (retryable, no run id) | Run again after that run ends |
+| `execution.carve_exceeded` | A node's carved time slice ended before it reached its condition; class `timed_out`, and the nodes below a timed-out composite only release | Ask the author for a larger budget, or find why the node is slow |
+| `execution.unit_raised` | A unit raised an exception, or broke its contract (for example `Acted` with no effect issued); class `execution_error`, and the whole tree stops | A plugin defect: report it to the author |
+| `execution.postcondition_timeout` | A node acted but its postcondition did not hold within its wait; class `exhausted`, reported as `blocked` | Find from the node's evidence why it did not become ready |
+| `execution.remedy_exhausted` | A node's declared repair was spent without success; class `blocked` | Find from the node's evidence why the repair did not work |
+| `execution.plan_precondition_uncovered` | A root entry needs a precondition only a sibling could cover (the shipped OQ-31 stop); class `failed`, nothing ran | Ask the author to publish the unit inside a composite that covers the precondition |
 | `execution.declaration_stale` | The declaration the run was admitted with no longer matches what the plugin declares (or the admitted plan does not verify); nothing ran | Run again; republish if it repeats |
 | `projection.cancel_not_root` | `cancel` was addressed to a child | Cancel the root's run id |
 

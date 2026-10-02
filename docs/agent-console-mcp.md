@@ -194,6 +194,16 @@ Filesystem drop-in (copy to `plugins/`) still works and uses the same hot-reload
 
 Long jobs: call `run(..., wait_ms=<above zero>, completion="terminal")`; one call returns the finished run, bounded by the run's deadline plus a margin (see `completion` below). Polling is for bounded mode only: with the default `completion="bounded"`, a `running` frame is joined with `await_runs`.
 
+### `await_runs` modes
+
+`await_runs(run_ids=[…], mode=…, timeout_ms=…)` (default `mode="all"`, `timeout_ms=2000`) joins run ids it is given and returns their views in the same order:
+
+- `all`: when every run is terminal;
+- `any`: when at least one run is terminal;
+- `first_failure`: when any run's `state` is terminal and not `succeeded`, or when all are terminal. It reads `state`, not `answer`, so it does not wake on a workflow's `failed` or `blocked` answer; join workflow runs with `all` and read each `answer.outcome`.
+
+When `timeout_ms` passes first, the views come back as they are, some still `queued` or `running`; call again. Any other `mode` is refused `projection.invalid_args`.
+
 ### Run states
 
 A run is `queued`, `running`, or one terminal state: `succeeded`, `failed`,
@@ -208,7 +218,7 @@ is listed in [`agents.md`](agents.md) (Run states).
 - The bound is the run's admitted deadline plus `clock.finalization_margin` (which covers the stop's grace and kill), not `wait_ms`; `wait_ms` above zero is accepted and ignored, `wait_ms<=0` is refused `admission.invalid_args`, and so is an unknown `completion` value. Nothing is admitted on a refusal.
 - Past that bound the call answers `projection.terminal_wait_exceeded` (`origin: projection`, not retryable); the run continues and `await_runs` joins it.
 - The wait runs off the server's event loop, so `cancel`, `query` and `fetch` on other runs (or the same one) are answered while a `terminal` call is held.
-- A finished run's `RunView` carries `outcome` (`class`, `code`, `identity`, `recovered`): one class from `passed | cancelled | timed_out | execution_error | failed | blocked`; a plain plugin reaches the first four.
+- A finished run's `RunView` carries `outcome` (`class`, `code`, `identity`, `recovered`): one class from `passed | cancelled | timed_out | execution_error`, classified from how the plugin process ended. It never reads `failed` or `blocked` in this release; those appear only in `answer.outcome`. For a workflow plugin (one that calls `run_tree`) the verdict is `answer.outcome`: `state` and `outcome.class` read `succeeded` / `passed` whenever the plugin returned normally, even when `answer.outcome` is `failed` or `blocked`. See [`agents.md` § Large tasks: the tree](agents.md#large-tasks-the-tree).
 - A finished run's `RunView` (and so the `run` and `await_runs` terminal responses) also carries `answer`, the one terminal answer, beside `state` and `outcome`; a run that has not ended has none. Its decisive keys are always present (`null`, never omitted): `outcome`, `root_stop`, `recovered`, `primary` (the node that decided, with its `code`, `human_action` and `resend`), `incomplete`, `error`, `cleanup` (`clean`, counts per disposition, `group_confirmed_gone`, `helpers_disclosed`, `lease_ended_unconfirmed`), `test_counts` and `detail`, then `listed_count` and `unconfirmed_count` (the full lengths) and the `listed` and `unconfirmed` entries that fit the run's summary budget. What does not fit is behind `detail`, a handle (`<run_id>/answer`) that `fetch` resolves to the full answer. The answer is recomputed from the run's durable record, never stored as a second authority.
 
 ### Evidence finalization (R-QB-28)
@@ -301,8 +311,11 @@ Handles are opaque — never filesystem paths.
 | Handle source | Permitted `window.kind` |
 |---------------|-------------------------|
 | `{run_id}/result` | `jsonpath`, `range`, `head`, `tail`, `grep` |
+| `{run_id}/answer` (the full terminal answer, `answer.detail`) | `range`, `head`, `tail`, `grep` |
 | `summary.handle` (array continuation) | `jsonpath`, `range` |
 | `art_…` (text artifact) | `range`, `head`, `tail`, `grep` |
+
+The full answer is one JSON line: `{ "kind": "head", "count": 1 }` returns it whole, and `grep` returns at most its first 512 characters. `trestle://views` does not list `{run_id}/answer` in this release.
 
 Wrong kind → `projection.invalid_args`. Path-shaped target → `projection.invalid_handle`.
 
