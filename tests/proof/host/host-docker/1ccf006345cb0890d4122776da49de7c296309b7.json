@@ -1,0 +1,605 @@
+{
+  "schema": 1,
+  "gate": "host-docker",
+  "sha": "1ccf006345cb0890d4122776da49de7c296309b7",
+  "mode": "run",
+  "python": "3.12.8",
+  "platform": "darwin",
+  "results": [
+    {
+      "nodeid": "packages/trestle-packs/tests/container/test_conformance.py::test_container_port_suite[real]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-7:b-identity-not-port-occupancy-adapter@host",
+        "WR-ENV-2:route-refused-adapter@host",
+        "WR-OWN-4:b-port-stop-never-removes-volume@host",
+        "WR-PROOF-4:b-descriptor-before-effect@host",
+        "WR-PROOF-4:b-docker-real-equals-fake",
+        "WR-VERIFY-8:b-docker-real-read-facets"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/container/test_conformance.py::test_compose_resolver_suite[real]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-1:closure-from-compose-adapter@host",
+        "WR-PROOF-4:b-docker-real-equals-fake",
+        "WR-VERIFY-8:b-docker-real-read-facets"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/container/test_conformance.py::test_d8_container_pair[real]",
+      "outcome": "PASSED",
+      "labels": []
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/container/test_conformance.py::test_d8_compose_pair[real]",
+      "outcome": "PASSED",
+      "labels": []
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/container/test_engine_codes.py::test_cli_missing_vs_engine_unreachable_distinct_codes[real-unreachable-endpoint]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-VERIFY-3:adapter-codes@host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/grant/test_conformance.py::test_grant_delivery_suite[real]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-13:channel-not-env-var@host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/provision/test_conformance.py::test_provision_suite[real]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-PROOF-4:b-provision-suite@host",
+        "WR-ENV-4:authoritative-probe-read-only@host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/test_docker_integration.py::test_stack_runner_live_compose",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-PROOF-2:pack-docker-live"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_b_spine.py::test_one_call_passed_healthy_machine",
+      "outcome": "PASSED",
+      "labels": [
+        "B8.2",
+        "B1.1",
+        "WR-ENV-10:one-request-dispositions-match-snapshot"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_b_spine.py::test_wrong_postgres_password_never_ready",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-10:readiness-authenticated-postgres"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_cancel_readiness.py::test_cancel_during_readiness_owned_and_created_gone_found_untouched",
+      "outcome": "PASSED",
+      "labels": [
+        "B6.1",
+        "WR-OWN-2:b-cancel-path",
+        "WR-CANCEL-4:b-created-gone-found-untouched"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_cleanup_beside_primary_docker.py::test_cleanup_failure_beside_primary_matches_docker_inventory",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-6:docker-inventory"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_closure_host.py::test_started_set_equals_closure",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-1:started-set-equals-closure"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_closure_host.py::test_compose_file_only_stack_works",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-1:compose-file-only-works"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_credential_currency.py::test_readiness_requires_in_container_authenticated_call",
+      "outcome": "PASSED",
+      "labels": [
+        "B4.4"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_credential_currency.py::test_invalid_demo_credential_not_ready",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-VERIFY-6:invalid-credential-not-ready"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_credential_currency.py::test_rotation_refreshed_in_place_no_recreate[container]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-13:refresh-in-place-container"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_credential_currency.py::test_rotation_refreshed_in_place_no_recreate[local_app]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-13:refresh-in-place-local-app"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_engine_diagnosis.py::test_unreachable_endpoint_diagnosed_distinct_from_cli_missing",
+      "outcome": "PASSED",
+      "labels": [
+        "B4.2",
+        "WR-ENV-6:host-engine-unchanged"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_foreign.py::test_foreign_occupant_blocked_never_signalled[container]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-7:b-foreign-blocked-not-killed"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_foreign.py::test_unhealthy_found_blocked_not_repaired",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-10:b-unhealthy-found-blocked"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_healthy_machine_full.py::test_one_call_reused_started_repaired_found_untouched_no_volume_removed",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-10:dispositions-complete"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_k6_docs.py::test_documented_removal_sets_equal_observed",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-4:docs-equal-observed-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_k6_entry_points.py::test_no_volume_deleted_by_any_registered_teardown[docker_stack-down]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-4:registered-entry-points-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_k6_entry_points.py::test_no_volume_deleted_by_any_registered_teardown[docker_stack-stop]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-4:registered-entry-points-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_k6_entry_points.py::test_no_volume_deleted_by_any_registered_teardown[docker_stack-none]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-4:registered-entry-points-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_k6_entry_points.py::test_no_volume_deleted_by_any_registered_teardown[integration_pipeline-down]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-4:registered-entry-points-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_k6_entry_points.py::test_no_volume_deleted_by_any_registered_teardown[integration_pipeline-stop]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-4:registered-entry-points-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_k6_entry_points.py::test_no_volume_deleted_by_any_registered_teardown[integration_pipeline-none]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-4:registered-entry-points-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_k6_entry_points.py::test_no_volume_deleted_by_any_registered_teardown[reference_env-release]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-4:registered-entry-points-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_local_override.py::test_override_docker_container_never_exists",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-2:override-container-never-exists"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_local_override.py::test_missing_repo_blocked_no_docker_start",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-2:missing-repo-no-docker-fallback"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_own3_container_half.py::test_passed_run_leaves_no_created_container",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-3:created-container-stopped-on-success"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_pipeline_k15.py::test_pipeline_stops_stack_once[success]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-11:entry-points-callable-host",
+        "WR-ENV-11:pipeline-one-teardown-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_pipeline_k15.py::test_pipeline_stops_stack_once[pytest_failure]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-11:entry-points-callable-host",
+        "WR-ENV-11:pipeline-one-teardown-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_pipeline_k15.py::test_pipeline_stops_stack_once[up_failure]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-11:entry-points-callable-host",
+        "WR-ENV-11:pipeline-one-teardown-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_provisioning.py::test_probe_first_submit_once_verified_by_db",
+      "outcome": "PASSED",
+      "labels": [
+        "B3.1",
+        "WR-ENV-5:after-provisioning"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_provisioning.py::test_second_equivalent_run_reuses_no_submit",
+      "outcome": "PASSED",
+      "labels": [
+        "B3.2",
+        "WR-ENV-5:after-provisioning"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_provisioning.py::test_system_test_after_provisioning_postcondition",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-5:after-provisioning"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_readiness.py::test_dependent_starts_after_http_readiness_pass",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-10:readiness-authoritative-http",
+        "WR-VERIFY-2:b-host-ordering"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_restart_docker.py::test_server_killed_restart_recovery_releases_created_container",
+      "outcome": "PASSED",
+      "labels": [
+        "B8.5",
+        "WR-OWN-1:created-container-released",
+        "WR-UNIT-5:b-server-restart"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_restart_docker.py::test_recovery_remove_failure_reports_unknown",
+      "outcome": "PASSED",
+      "labels": []
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_reuse.py::test_prestarted_postgres_reused_untouched[passed]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-10:b-cleanup-never-found",
+        "WR-OWN-2:b-found-untouched-all-paths",
+        "WR-OWN-1:b-dispositions-reused-started",
+        "B8.1"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_reuse.py::test_prestarted_postgres_reused_untouched[failed]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-10:b-cleanup-never-found",
+        "WR-OWN-2:b-found-untouched-all-paths",
+        "WR-OWN-1:b-dispositions-reused-started",
+        "B8.1"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_reuse.py::test_prestarted_postgres_reused_untouched[cancelled]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-10:b-cleanup-never-found",
+        "WR-OWN-2:b-found-untouched-all-paths",
+        "WR-OWN-1:b-dispositions-reused-started",
+        "B8.1"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_stage_budget.py::test_readiness_ends_at_stage_budget_names_stage_and_service",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-9:stage-k-named-found-untouched",
+        "B5.1"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_stale_generation.py::test_owned_container_older_generation_recreated",
+      "outcome": "PASSED",
+      "labels": [
+        "B8.3"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_stale_generation.py::test_found_container_unproven_generation_blocked_untouched",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-9:not-owned-blocked-untouched"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_stale_generation.py::test_owned_process_older_generation_restarted",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-9:owned-process-restarted"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_system_test.py::test_test_starts_after_every_readiness_pass",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-VERIFY-2:b-test-after-readiness"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_unit5_docker.py::test_child_container_released_by_root[passed]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-5:b-passed-released",
+        "B8.5"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_unit5_docker.py::test_child_container_released_by_root[sibling_failure]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-5:b-sibling-failure"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_unit5_docker.py::test_child_container_released_by_root[child_exception]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-5:b-child-exception"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_unit6_docker.py::test_after_root_stop_no_child_container_remains[cancel]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-5:b-root-cancel",
+        "WR-UNIT-6:b-no-action-after-stop",
+        "B6.3"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_unit6_docker.py::test_after_root_stop_no_child_container_remains[deadline]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-5:b-root-deadline",
+        "WR-UNIT-6:b-no-action-after-stop",
+        "B6.3"
+      ]
+    }
+  ],
+  "status": "PASSED",
+  "engine": {
+    "cli_path": "/usr/local/bin/docker",
+    "endpoint": "unix:///Users/colinbrady/.docker/run/docker.sock",
+    "server_version": "29.8.0",
+    "reachable_before": true,
+    "reachable_after": true
+  },
+  "images": {
+    "alpine": "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+    "postgres": "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+    "http_support": "nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10"
+  },
+  "inventory_before": {
+    "engine": {
+      "reachable": true,
+      "server_version": "29.8.0",
+      "id": "919ccb47-c78e-4210-ab6b-fb5bc3890988"
+    },
+    "containers": [],
+    "images": [
+      {
+        "id": "sha256:ef738a34a8651d11b2bace81c55c7e2187f786b484add6c83070884340074368",
+        "repository": "postgres",
+        "tag": "16-alpine"
+      },
+      {
+        "id": "sha256:ab3fe4defd29ba6231229a4d41440ac8bde8218e85870e53876277faa24b35c4",
+        "repository": "alpine",
+        "tag": "3.20"
+      },
+      {
+        "id": "sha256:96868d9fa38f469a86d2f25787e43ee9ad330339d30be260aa9f5a338bb03751",
+        "repository": "nginx",
+        "tag": "1.27-alpine"
+      }
+    ],
+    "volumes": [],
+    "networks": [
+      {
+        "id": "aee5518a41487b2e4d63ea8831f62d3a404a4a21592731f067d5eb3e8ef324cb",
+        "name": "bridge",
+        "labels": {}
+      },
+      {
+        "id": "c8c30ec5ce1c0546380890ea0f39618309f8ecf65215d8ab6dca30fed75ded2d",
+        "name": "host",
+        "labels": {}
+      },
+      {
+        "id": "e14261cbd9aa919f92ab23f2a7eaf65f9ce2b38163c1df7433a737d120b956b2",
+        "name": "none",
+        "labels": {}
+      }
+    ]
+  },
+  "inventory_after": {
+    "engine": {
+      "reachable": true,
+      "server_version": "29.8.0",
+      "id": "919ccb47-c78e-4210-ab6b-fb5bc3890988"
+    },
+    "containers": [
+      {
+        "id": "79e61f90b73e2c9bbfdf28f2f0d8cec37863ed5758301b62ebcbe270315186d0",
+        "names": [
+          "trwr-r_aaaadih2m5tjwxotlzu-backend.helper"
+        ],
+        "image": "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2"
+        }
+      },
+      {
+        "id": "63ac3479af4cf6c28eba62892d7d46985dc1a0ae9ccf1272859000cc0c207df5",
+        "names": [
+          "trwr-r_aaaadih2m5tjwxotlzu-backend.postgres"
+        ],
+        "image": "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2",
+          "desktop.docker.io/ports/5432/tcp": "127.0.0.1:"
+        }
+      },
+      {
+        "id": "8052185b683a207d88be64c7002683e0103c2caeebe29ecaf94e6bf33d517b82",
+        "names": [
+          "trwr-r_aaaadih2mvb7ulzlof2-backend.helper"
+        ],
+        "image": "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2"
+        }
+      },
+      {
+        "id": "f8a76370f8a2c92c93a4427d89ed63a59d41de8e9ae332379e682ddb0053bd0c",
+        "names": [
+          "trwr-r_aaaadih2mvb7ulzlof2-backend.postgres"
+        ],
+        "image": "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2",
+          "desktop.docker.io/ports/5432/tcp": "127.0.0.1:"
+        }
+      }
+    ],
+    "images": [
+      {
+        "id": "sha256:ef738a34a8651d11b2bace81c55c7e2187f786b484add6c83070884340074368",
+        "repository": "postgres",
+        "tag": "16-alpine"
+      },
+      {
+        "id": "sha256:ab3fe4defd29ba6231229a4d41440ac8bde8218e85870e53876277faa24b35c4",
+        "repository": "alpine",
+        "tag": "3.20"
+      },
+      {
+        "id": "sha256:96868d9fa38f469a86d2f25787e43ee9ad330339d30be260aa9f5a338bb03751",
+        "repository": "nginx",
+        "tag": "1.27-alpine"
+      }
+    ],
+    "volumes": [],
+    "networks": [
+      {
+        "id": "aee5518a41487b2e4d63ea8831f62d3a404a4a21592731f067d5eb3e8ef324cb",
+        "name": "bridge",
+        "labels": {}
+      },
+      {
+        "id": "c8c30ec5ce1c0546380890ea0f39618309f8ecf65215d8ab6dca30fed75ded2d",
+        "name": "host",
+        "labels": {}
+      },
+      {
+        "id": "e14261cbd9aa919f92ab23f2a7eaf65f9ce2b38163c1df7433a737d120b956b2",
+        "name": "none",
+        "labels": {}
+      }
+    ]
+  },
+  "diff": {
+    "unattributed": [],
+    "engine_state_changed": false
+  },
+  "residue": [
+    {
+      "kind": "containers",
+      "change": "added",
+      "id": "79e61f90b73e2c9bbfdf28f2f0d8cec37863ed5758301b62ebcbe270315186d0",
+      "name": "trwr-r_aaaadih2m5tjwxotlzu-backend.helper",
+      "removed": true
+    },
+    {
+      "kind": "containers",
+      "change": "added",
+      "id": "63ac3479af4cf6c28eba62892d7d46985dc1a0ae9ccf1272859000cc0c207df5",
+      "name": "trwr-r_aaaadih2m5tjwxotlzu-backend.postgres",
+      "removed": true
+    },
+    {
+      "kind": "containers",
+      "change": "added",
+      "id": "8052185b683a207d88be64c7002683e0103c2caeebe29ecaf94e6bf33d517b82",
+      "name": "trwr-r_aaaadih2mvb7ulzlof2-backend.helper",
+      "removed": true
+    },
+    {
+      "kind": "containers",
+      "change": "added",
+      "id": "f8a76370f8a2c92c93a4427d89ed63a59d41de8e9ae332379e682ddb0053bd0c",
+      "name": "trwr-r_aaaadih2mvb7ulzlof2-backend.postgres",
+      "removed": true
+    }
+  ]
+}
