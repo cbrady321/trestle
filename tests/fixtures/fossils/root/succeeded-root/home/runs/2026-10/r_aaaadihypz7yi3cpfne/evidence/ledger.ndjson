@@ -1,0 +1,9 @@
+{"seq":1,"kind":"created","at":"2026-10-01T17:23:54Z","run_id":"r_aaaadihypz7yi3cpfne","spec_hash":"b318cb9bb570444d45a1f48001d82e27c220c7fed6c5c3a4790d59e56ff449d9","service_epoch":"epoch_cnvcisskwq7du","plugin":"echo","version":"0.1.0","snapshot_id":"snap_fc8e4c74faa71ce4","args_hash":"b31e7c537926c29725303ebaeec481a9e18502446b0a6e73738a81588ee829ab","caller_session":null}
+{"seq":2,"kind":"admitted","at":"2026-10-01T17:23:54Z","run_id":"r_aaaadihypz7yi3cpfne","snapshot_id":"snap_fc8e4c74faa71ce4"}
+{"seq":3,"kind":"started","at":"2026-10-01T17:23:54Z","run_id":"r_aaaadihypz7yi3cpfne"}
+{"seq":4,"kind":"process_identity","at":"2026-10-01T17:23:54Z","run_id":"r_aaaadihypz7yi3cpfne","pid":38353,"boot":"18B0BDCC-FF28-4ADE-B1F7-AE3DDCF65D2D","start":"1790875434886474","group":38353,"leader":true}
+{"seq":5,"kind":"process_identity","at":"2026-10-01T17:23:54Z","run_id":"r_aaaadihypz7yi3cpfne","pid":38354,"boot":"18B0BDCC-FF28-4ADE-B1F7-AE3DDCF65D2D","start":"1790875434918519","group":38353,"leader":false}
+{"seq":6,"kind":"group_stop","at":"2026-10-01T17:23:55Z","run_id":"r_aaaadihypz7yi3cpfne","confirmed_gone":true,"method":"exit"}
+{"seq":7,"kind":"execution_ended","at":"2026-10-01T17:23:55Z","run_id":"r_aaaadihypz7yi3cpfne","classification":"succeeded","exit_code":0,"duration_ms":167}
+{"seq":8,"kind":"evidence_finalized","at":"2026-10-01T17:23:55Z","run_id":"r_aaaadihypz7yi3cpfne","completeness":"complete","result_state":"complete","event_count":1}
+{"seq":9,"kind":"succeeded","at":"2026-10-01T17:23:55Z","run_id":"r_aaaadihypz7yi3cpfne"}
