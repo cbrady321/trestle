@@ -96,6 +96,8 @@ def rig(tmp_path: Path, monkeypatch):
 
     monkeypatch.setattr(fence_mod, "pr_head_via_gh", pr_head)
     monkeypatch.setattr(fence_mod, "job_conclusions_via_gh", conclusions)
+    # L1 held: the planted repo carries no host records (`test_merge_cli_refuses_*` runs it real)
+    monkeypatch.setattr(fence_mod, "host_docker_at_landing", lambda _cwd, _head: None)
     return {"origin": origin, "runner": runner, "head": head, "state": state}
 
 
@@ -114,6 +116,25 @@ def test_merge_cli_lands_with_plain_push_and_one_trailer(rig):
     assert code == 0
     assert _master_log(rig).count("WR-Merge: M1") == 1
     assert _sh(rig["origin"], "rev-parse", "master^2") == rig["head"]
+
+
+def test_merge_cli_refuses_a_head_without_a_host_docker_record(rig, monkeypatch, capsys):
+    """L1 on the real CLI path: every required job green on a PR run (where G-E2 is pending), no
+    host-docker record for the head: `fence merge` exits 2 and pushes nothing."""
+    monkeypatch.undo()  # back to the real L1 check; the rig's other stubs are set again below
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    monkeypatch.setattr(fence_mod, "ROOT", rig["runner"])
+    tmp = rig["origin"].parent
+    monkeypatch.setattr(fence_mod, "FENCE_PATH", tmp / "fence.toml")
+    monkeypatch.setattr(fence_mod, "FENCE_D_DIR", tmp / "fence.d")
+    monkeypatch.setattr(fence_mod, "CI_YML_PATH", tmp / "ci.yml")
+    monkeypatch.setattr(fence_mod, "pr_head_via_gh", lambda _b, _c: rig["head"])
+    monkeypatch.setattr(fence_mod, "job_conclusions_via_gh", lambda _s, _c: dict(ALL_OK))
+    before = _sh(rig["origin"], "rev-parse", "master")
+    code = fence_mod.main(["merge", "wr/x/m1", "--expect-sha", rig["head"]])
+    assert code == fence_mod.FenceMergeExit.VERDICT_REFUSED
+    assert "fence merge: L1: no host-docker record admissible for HEAD" in capsys.readouterr().out
+    assert _sh(rig["origin"], "rev-parse", "master") == before
 
 
 def test_merge_cli_exit_7_without_open_pr_or_on_moved_head(rig):
