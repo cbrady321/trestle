@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
+import shutil
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -16,15 +18,29 @@ def fsync_dir(path: Path) -> None:
         os.close(fd)
 
 
-def atomic_write(path: Path, data: bytes) -> None:
-    """tmp → fsync file → rename → fsync dir (R-STORE-8)."""
+def atomic_write(path: Path, data: bytes, *, stat_from: Path | None = None) -> None:
+    """tmp → fsync file → rename → fsync dir (R-STORE-8).
+
+    The temporary file is this call's own (a fresh name beside `path`, created exclusively), so
+    writers racing on one path never share it: each rename publishes one whole write, and the last
+    rename wins. A failed write removes its temporary. The name keeps the `.tmp` suffix that
+    recovery sweeps (`sweep_tmp_partial`), and the file is created with the mode an `open(..., "w")`
+    gives (0o666 less the umask). `stat_from` copies that file's mode and times onto the
+    temporary before the rename, as `shutil.copy2` would."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("wb") as fh:
-        fh.write(data)
-        fh.flush()
-        os.fsync(fh.fileno())
-    os.replace(tmp, path)
+    tmp = path.with_name(f"{path.name}.{secrets.token_hex(8)}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        if stat_from is not None:
+            shutil.copystat(stat_from, tmp)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     fsync_dir(path.parent)
 
 
