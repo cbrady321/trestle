@@ -9,6 +9,10 @@ branch_prefix = "wr/v03/"
 globs         = [
   # stage 1: the phase's `[phases]` entry, this file, and CI lints every script (C-5).
   "tests/proof/fence.toml", "tests/proof/fence.d/v03.toml", ".github/workflows/ci.yml", "scripts/*.py",
+  # stage 2: the test kit's one wait on the record, the slow-host skip, torn-safe results, SA-05's
+  # lane-poll ratchet.
+  "tests/proof/records.py", "tests/core/spine/support.py", "tests/proof/results.py",
+  "tests/proof/drift/test_sa05_tolerances.py", "tests/proof/selftest/test_await_record.py",
 ]
 
 [[gate]]
