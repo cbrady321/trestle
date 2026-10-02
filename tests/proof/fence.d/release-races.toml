@@ -1,0 +1,28 @@
+# tests/proof/fence.d/release-races.toml — REL-RACES: the product races P1, P2, P3, P5 and the
+# severed-admission race (delivery-close RACES-REPORT), on top of the v0.2.0 release.
+phase = "release"
+
+[[lane]]
+name          = "release-races"
+branch_prefix = "wr/release/"
+globs         = [
+  # P1: atomic_write gives each writer its own temporary.
+  "trestle/common/fsutil.py",
+  # P2: a snapshot's plugin.py is whole or absent, and is the hashed source.
+  "trestle/server/snapshots.py",
+  # P3: registry refreshes are serialized and tolerate removed plugins.
+  "trestle/server/registry.py",
+  # Sever: an admitted run is driven even if its run call is cancelled.
+  "trestle/server/control.py",
+  # P5: test-limit scans are bounded by bytes and counts, not wall time (limits.py had no lane).
+  "trestle/common/limits.py", "trestle/server/projection.py", "trestle/query/fs.py",
+  # The proving tests (one deterministic interleaving per race).
+  "tests/core/spine/test_product_races.py",
+  # This fragment.
+  "tests/proof/fence.d/release-races.toml",
+]
+
+[[gate]]
+branch         = "wr/release/races"
+merge          = "REL-RACES"
+requires_merge = []
