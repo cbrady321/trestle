@@ -101,6 +101,11 @@ class Registry:
     _scan_signature: tuple[tuple[str, int, int], ...] | None = field(default=None, init=False)
     # why the last refresh refused each plugin that has its own publication code
     _refusals: dict[str, PublicationRefused] = field(default_factory=dict, init=False)
+    # One refresh at a time. Refreshes come from the admission thread, the `tools/list` hook and
+    # the plugin tools, which fastmcp runs on worker threads: unserialized, a refresh that read the
+    # plugin directory earlier could overwrite a later one's `snapshots`, and a publish could read
+    # back another refresh's result. Re-entrant: `maybe_refresh` and `publish_source` refresh.
+    _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
 
     def _scan_signature_now(self) -> tuple[tuple[str, int, int], ...]:
         entries: list[tuple[str, int, int]] = []
@@ -110,18 +115,29 @@ class Registry:
             for path in sorted(plugin_dir.glob("*.py")):
                 if path.name.startswith("_"):
                     continue
-                stat = path.stat()
+                try:
+                    stat = path.stat()
+                except FileNotFoundError:
+                    continue  # removed since the listing: it is not there to publish
                 entries.append((str(path), stat.st_mtime_ns, stat.st_size))
         return tuple(entries)
 
     def maybe_refresh(self) -> None:
-        signature = self._scan_signature_now()
-        if signature == self._scan_signature:
-            return
-        self.refresh()
-        self._scan_signature = signature
+        with self._lock:
+            signature = self._scan_signature_now()
+            if signature == self._scan_signature:
+                return
+            self.refresh()
+            self._scan_signature = signature
 
     def refresh(self) -> None:
+        with self._lock:
+            self._refresh()
+
+    def _refresh(self) -> None:
+        # The directory as this refresh found it: a file that changes while the refresh runs leaves
+        # the recorded signature behind, so the next `maybe_refresh` takes the change up.
+        signature = self._scan_signature_now()
         paths: list[tuple[Path, str]] = []
         claimed: set[str] = set()
         for plugin_dir in self.plugin_dirs:
@@ -132,6 +148,8 @@ class Registry:
                     continue
                 try:
                     plugin_id = discover_plugin_name(path)
+                except FileNotFoundError:
+                    continue  # removed since the listing: it is not there to publish
                 except SyntaxError as exc:
                     log_plugin_warning(
                         self.home,
@@ -156,8 +174,10 @@ class Registry:
                 self.registry_version += 1
             self.snapshots = seen
             self._refusals = refusals
-            self._scan_signature = self._scan_signature_now()
+            self._scan_signature = signature
             return
+
+        vanished: set[str] = set()
 
         def promote(entry: tuple[Path, str]) -> tuple[str, PluginSnapshot | None]:
             path, plugin_id = entry
@@ -165,6 +185,9 @@ class Registry:
             try:
                 try:
                     snap = materialize_snapshot(path, plugin_id, home=self.home)
+                except FileNotFoundError:
+                    vanished.add(plugin_id)  # removed since the listing: not published
+                    return plugin_id, None
                 except (SchemaError, PluginValidationError) as exc:
                     if isinstance(exc, PublicationRefused):
                         refusals[plugin_id] = exc
@@ -182,7 +205,7 @@ class Registry:
             for plugin_id, snap in pool.map(promote, paths):
                 if snap is None:
                     previous = self.snapshots.get(plugin_id)
-                    if previous is not None:
+                    if previous is not None and plugin_id not in vanished:
                         seen[plugin_id] = previous
                     continue
                 seen[plugin_id] = snap
@@ -191,7 +214,7 @@ class Registry:
             self.registry_version += 1
         self.snapshots = seen
         self._refusals = refusals
-        self._scan_signature = self._scan_signature_now()
+        self._scan_signature = signature
 
     def get(self, plugin_id: str) -> PluginSnapshot | None:
         return self.snapshots.get(plugin_id)
@@ -237,7 +260,10 @@ class Registry:
             for path in sorted(plugin_dir.glob("*.py")):
                 if path.name.startswith("_"):
                     continue
-                plugin_id = discover_plugin_name(path)
+                try:
+                    plugin_id = discover_plugin_name(path)
+                except FileNotFoundError:
+                    continue
                 if plugin_id is None:
                     plugin_id = path.stem
                 if plugin_id in claimed:
@@ -338,7 +364,12 @@ class Registry:
                 retryable=False,
                 origin="publication",
             )
-        plugin_name = discovered
+        # The write, its refresh and the read-back are one step: no other refresh lands between
+        # them, so the outcome reported is this source's.
+        with self._lock:
+            return self._write_and_publish(discovered, encoded)
+
+    def _write_and_publish(self, plugin_name: str, encoded: bytes) -> PublishView | RequestOutcome:
         plugin_dir = self.writable_plugin_dir()
         plugin_dir.mkdir(parents=True, exist_ok=True)
         path = plugin_dir / f"{plugin_name}.py"

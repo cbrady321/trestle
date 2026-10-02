@@ -29,6 +29,8 @@ import pytest
 
 from tests.proof import tolerances
 from trestle.common import fsutil
+from trestle.common.types import PublishView
+from trestle.server import registry as registry_mod
 from trestle.server import snapshots
 from trestle.server.plugin_schema import schemas_from_source
 from trestle.server.plugin_validate import PluginValidationError
@@ -247,3 +249,87 @@ def test_p2_moving_source_is_refused_not_published(tmp_path: Path, monkeypatch) 
     monkeypatch.setattr(snapshots, "validate_and_extract", validate_then_edit)
     with pytest.raises(PluginValidationError, match="changed while"):
         snapshots.materialize_snapshot(source, "racer", home=tmp_path / "home")
+
+
+# P3 ------------------------------------------------------------------------------------------
+
+
+class _LockWatch:
+    """The registry's lock, reporting each time the `publisher` thread asks for it."""
+
+    def __init__(self, inner: Any, asked: threading.Event) -> None:
+        self._inner = inner
+        self._asked = asked
+
+    def __enter__(self) -> Any:
+        if threading.current_thread().name == "publisher":
+            self._asked.set()
+        return self._inner.__enter__()
+
+    def __exit__(self, *exc: Any) -> Any:
+        return self._inner.__exit__(*exc)
+
+
+def test_p3_older_refresh_never_overwrites_a_newer_publish(tmp_path: Path, monkeypatch) -> None:
+    """Refresh R has made its snapshot of source A and not yet installed it; meanwhile a publish
+    of source B runs (or, serialized, asks to). Whatever the order, once both are done the registry
+    serves B, and the publish reported B."""
+    source = _plugin(tmp_path)
+    reg = Registry(home=tmp_path / "home", plugin_dirs=[source.parent])
+    real_materialize = registry_mod.materialize_snapshot
+    r_holds, release = threading.Event(), threading.Event()
+    first = [True]
+
+    def materialize_then_hold(*args: Any, **kwargs: Any) -> Any:
+        snap = real_materialize(*args, **kwargs)
+        if first:
+            first.clear()
+            r_holds.set()
+            assert release.wait(WAIT_S), "refresh R was never released"
+        return snap
+
+    monkeypatch.setattr(registry_mod, "materialize_snapshot", materialize_then_hold)
+    if hasattr(reg, "_lock"):  # serialized: R is released once the publish asks for the lock
+        reg._lock = _LockWatch(reg._lock, release)  # type: ignore[assignment]
+    published: list[Any] = []
+
+    def publish() -> None:
+        try:
+            published.append(reg.publish_source(SOURCE_B))
+        finally:
+            release.set()
+
+    refresher = threading.Thread(target=reg.refresh, name="refresher")
+    refresher.start()
+    assert r_holds.wait(WAIT_S), "refresh R never made its snapshot"
+    publisher = threading.Thread(target=publish, name="publisher")
+    publisher.start()
+    publisher.join(WAIT_S)
+    refresher.join(WAIT_S)
+    (view,) = published
+    assert isinstance(view, PublishView), view
+    assert view.source_sha256 == _sha(SOURCE_B.encode("utf-8"))
+    snap = reg.get("racer")
+    assert snap is not None and snap.source_sha256 == view.source_sha256, "a stale refresh won"
+
+
+@pytest.mark.parametrize("hook", ["discover_plugin_name", "materialize_snapshot"])
+def test_p3_plugin_removed_mid_refresh_is_dropped(tmp_path: Path, monkeypatch, hook: str) -> None:
+    """A plugin file is removed after the refresh listed the directory (before its name is read,
+    or before its snapshot is made). The refresh completes, without it, and serves the others."""
+    gone = _plugin(tmp_path)
+    (gone.parent / "echo.py").write_text(SOURCE_A.replace("racer", "echo"), encoding="utf-8")
+    reg = Registry(home=tmp_path / "home", plugin_dirs=[gone.parent])
+    reg.refresh()
+    assert set(reg.snapshots) == {"racer", "echo"}
+    gone.write_text(SOURCE_A + "\n# edited\n", encoding="utf-8")  # the next refresh rereads it
+    real = getattr(registry_mod, hook)
+
+    def remove_then(path: Path, *args: Any, **kwargs: Any) -> Any:
+        if path == gone:
+            path.unlink(missing_ok=True)
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(registry_mod, hook, remove_then)
+    reg.maybe_refresh()
+    assert set(reg.snapshots) == {"echo"}
