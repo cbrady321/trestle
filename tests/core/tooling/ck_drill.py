@@ -843,16 +843,7 @@ REG_SERIAL_NODES = (
     "tests/pins/c_surface/test_g_c4.py::test_pin_index_coarsened_summary_is_field_count",
     "tests/proof/spine/test_stop_offset.py::"
     "test_stop_seen_and_releases_past_the_offset_are_not_counted",
-    "tests/proof/selftest/test_landing_loop.py::"
-    "test_p1_new_land_starts_after_first_dies_without_reclaim",
-    # Race-shaped: a stop raised on one sibling thread's progress, then an assertion that another,
-    # concurrent, sibling had already got somewhere. Under 4-way load on CI's 4-vCPU runner the
-    # trigger came first (run 36866235573, CK-1 and CK-14): the cancel on `independent`'s marker
-    # found `broken` not yet failed (`not_started`). It passes serially. (test_reuse_twin's
-    # `cancelled` case had the same shape; its stop now waits for the sibling's end, so it runs
-    # in parallel again.)
-    "tests/tree/host/test_trl_rollup.py::test_root_stop_after_ordinary_failure",
-    # The same stop-at-the-n-th-wait shape over a real app on a free port, with a wall-clock bound.
+    # A stop raised at the n-th wait over a real app on a free port, with a wall-clock bound.
     "packages/trestle-env/tests/proc/test_readiness_cancel.py::"
     "test_cancel_during_readiness_wait_prompt",
 )
