@@ -9,11 +9,10 @@ from pathlib import Path
 
 from tests.proof import records, tolerances
 
-FOSSIL = (
-    Path(__file__).resolve().parents[2]
-    / "fixtures/fossils/tree-trl/trl-terminal-exception_branch/home/runs/2026-09"
-    / "r_aaaadihrynbukesypuo/evidence"
-)
+# the one run of a finalized exception_branch fossil (its run id changes when it is re-recorded)
+(FOSSIL,) = (
+    Path(__file__).resolve().parents[2] / "fixtures/fossils/tree-trl/trl-terminal-exception_branch"
+).glob("home/runs/*/*/evidence")
 
 
 def _lane_lines() -> list[str]:

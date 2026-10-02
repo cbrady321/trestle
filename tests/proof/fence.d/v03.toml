@@ -27,6 +27,9 @@ globs         = [
   "trestle/workflow/loop.py", "tests/single/workflow/loopkit.py", "tests/single/workflow/test_wait_for.py",
   "tests/fixtures/trees/wait_interface.py", "tests/tree/test_tr3_wait_interface.py",
   "tests/tree/test_fixtures.py",
+  # stage 5: L-10, the raiser waits for its siblings' markers through `wait_for`, not a pause; its
+  # six fossil states re-recorded over the changed fixture.
+  "tests/fixtures/trees/exception_branch.py", "tests/fixtures/fossils/**",
 ]
 
 [[gate]]
