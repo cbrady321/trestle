@@ -10,9 +10,12 @@ recreated or started."""
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from tests.core.spine import support
+from tests.proof import tolerances
 from tests.tree import treekit as tk
 from trestle.common.plan.vocabulary import ResourceDisposition
 
@@ -34,6 +37,29 @@ def untouched(engine: SupportEngine) -> None:
     assert [e for e in engine.effects if e[1] == FOUND] == []
 
 
+def stop_once_found_reused(rig: tk.TreeRig, on_wait: int) -> None:
+    """Raise the stop during the `on_wait`-th wait (the supporting node's: the found Postgres is
+    ready at its first read and never waits), but only once the found Postgres's NodeEnd is in the
+    lane. The backends are sibling threads: a stop raised on the wait count alone, on a loaded
+    host, came before the sibling had been observed (run 36866235573, CK-1 and CK-14:
+    `None == 'satisfied'`). The stop waits on the condition the test then reads, never a pause;
+    the lane is read mid-run, so a torn last line is "not yet". Bounded: on a miss the stop is
+    raised anyway and the `satisfied` assertion below names the failure."""
+    cancel = rig.rig.cancel
+    plain = cancel.wait
+
+    def reused() -> bool:
+        return any(r.cls == "end" and r.path == tree.POSTGRES_UNIT for r in rig.rig.lane().rows)
+
+    def wait(timeout: timedelta) -> bool:
+        if cancel.stop is None and len(cancel.waits) + 1 >= on_wait:
+            support.wait_until(reused, tolerances.JOIN_WAIT_S)
+            cancel.stop = cancel.stop_cause
+        return plain(timeout)
+
+    cancel.wait = wait  # type: ignore[method-assign]
+
+
 @pytest.mark.stub_proven("WR-OWN-1:b-dispositions-reused-started@stub-twin")
 @pytest.mark.stub_proven("WR-OWN-2:b-found-untouched-all-paths@stub-twin")
 @pytest.mark.stub_proven("WR-OWN-10:b-cleanup-never-found@stub-twin")
@@ -43,7 +69,7 @@ def test_prestarted_postgres_reused_untouched(tmp_path: Path, path: str) -> None
     engine.plant_found(FOUND)
     rig = rig_over(tmp_path, engine)
     if path == "cancelled":
-        rig.rig.cancel.stop_on_wait = 2  # a stop is raised during the supporting node's wait
+        stop_once_found_reused(rig, on_wait=2)  # a stop during the supporting node's wait
     rig.run()
     if path == "cancelled":  # the rig has no supervisor to write the stop row: read the lane
         assert rig.rig.cancel.requested

@@ -847,10 +847,10 @@ REG_SERIAL_NODES = (
     "test_p1_new_land_starts_after_first_dies_without_reclaim",
     # Race-shaped: a stop raised on one sibling thread's progress, then an assertion that another,
     # concurrent, sibling had already got somewhere. Under 4-way load on CI's 4-vCPU runner the
-    # trigger came first (run 36866235573, CK-1 and CK-14): the stop at the supporting node's 2nd
-    # wait found Postgres not yet observed (`None == 'satisfied'`); the cancel on `independent`'s
-    # marker found `broken` not yet failed (`not_started`). Both pass serially.
-    "packages/trestle-env/tests/twin/test_reuse_twin.py::test_prestarted_postgres_reused_untouched",
+    # trigger came first (run 36866235573, CK-1 and CK-14): the cancel on `independent`'s marker
+    # found `broken` not yet failed (`not_started`). It passes serially. (test_reuse_twin's
+    # `cancelled` case had the same shape; its stop now waits for the sibling's end, so it runs
+    # in parallel again.)
     "tests/tree/host/test_trl_rollup.py::test_root_stop_after_ordinary_failure",
     # The same stop-at-the-n-th-wait shape over a real app on a free port, with a wall-clock bound.
     "packages/trestle-env/tests/proc/test_readiness_cancel.py::"

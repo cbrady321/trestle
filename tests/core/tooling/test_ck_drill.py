@@ -399,27 +399,35 @@ def test_reg_partition_deals_whole_files_and_keeps_the_serial_tail() -> None:
     assert not any(p.startswith("packages/") for c in chunks for p in c.paths)
 
 
-def test_reg_partition_moves_a_package_node_to_the_serial_tail() -> None:
+def test_reg_partition_moves_a_package_node_to_the_serial_tail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A race-shaped package node runs in the serial tail by its node id; its package's process
     keeps the testpaths root and deselects it, also when it is its file's only node (the root
-    collects that file all the same): still every node exactly once."""
+    collects that file all the same): still every node exactly once. test_reuse_twin's
+    `cancelled` case is no longer serial (its stop waits for the sibling's end): it stays in its
+    package's process."""
     raced = (
-        "packages/trestle-env/tests/twin/test_reuse_twin.py::"
-        "test_prestarted_postgres_reused_untouched[cancelled]"
-    )
-    other = "packages/trestle-env/tests/twin/test_reuse_twin.py::test_found_is_kept"
-    alone = (
         "packages/trestle-env/tests/proc/test_readiness_cancel.py::"
         "test_cancel_during_readiness_wait_prompt"
     )
-    nodes = [*SERIAL_NODES, other, raced, alone]
+    other = "packages/trestle-env/tests/proc/test_readiness_cancel.py::test_found_is_kept"
+    # a planted serial node, the only node of its file
+    alone = "packages/trestle-env/tests/twin/test_alone.py::test_raced_alone"
+    monkeypatch.setattr(ck_drill, "REG_SERIAL_NODES", (*ck_drill.REG_SERIAL_NODES, alone))
+    reused = (
+        "packages/trestle-env/tests/twin/test_reuse_twin.py::"
+        "test_prestarted_postgres_reused_untouched[cancelled]"
+    )
+    nodes = [*SERIAL_NODES, other, raced, alone, reused]
     plan = ck_drill.reg_partition(nodes, workers=4)
     dealt = [n for g in [*plan.chunks, *plan.packages, plan.tail, *plan.readers] for n in g.nodes]
     assert sorted(dealt) == sorted(nodes)
     assert {raced, alone} <= set(plan.tail.paths) and {raced, alone} <= set(plan.tail.nodes)
     (env,) = [g for g in plan.packages if g.paths == ["packages/trestle-env/tests"]]
-    assert env.deselect == [raced, alone] and other in env.nodes
+    assert env.deselect == [raced, alone] and {other, reused} <= set(env.nodes)
     assert not {raced, alone} & set(env.nodes)
+    assert reused not in plan.tail.nodes
 
 
 def test_reg_workers_leave_a_core_free(monkeypatch: pytest.MonkeyPatch) -> None:
