@@ -4,7 +4,11 @@ Trestle is a **local execution ledger** with a thin MCP control surface. Coding 
 
 ## Why it exists
 
-Agents need to run CLI tools and scripts. Naive stdout, logs, and return values flood the context window and make those tools unusable. Trestle contains that flood: evidence stays on disk, and agents retrieve small honest answers when they need them.
+Agents need to run CLI tools and scripts, and each round trip costs a model turn, tokens, and latency. Driving a multi-stage task one command at a time (run a step, read the output, decide, run the next) multiplies that cost, and raw stdout and logs fill the context window along the way.
+
+Trestle cuts the round trips. A script captures the whole objective (the steps, the branching between them, the retries, and the final check) and executes it in **one call**. The agent states the goal once with `run(plugin="…")` and gets back **one bounded, final, truthful answer** instead of a trail of intermediate output.
+
+Evidence stays on disk, and agents pull small slices only when they need them. That keeps the agent's context free for its own decisions.
 
 ## How it works
 
