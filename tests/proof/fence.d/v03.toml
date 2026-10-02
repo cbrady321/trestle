@@ -1,0 +1,17 @@
+# tests/proof/fence.d/v03.toml — v0.3 preparation on top of e4dba393: the wait interface
+# (DEFERRED-DECISIONS.md section 1), host scope fed by the loop, the selectable local realization,
+# and the remaining RACES-REPORT leads. One branch, one gate, one host session.
+phase = "v03"
+
+[[lane]]
+name          = "v03"
+branch_prefix = "wr/v03/"
+globs         = [
+  # stage 1: the phase's `[phases]` entry, this file, and CI lints every script (C-5).
+  "tests/proof/fence.toml", "tests/proof/fence.d/v03.toml", ".github/workflows/ci.yml", "scripts/*.py",
+]
+
+[[gate]]
+branch         = "wr/v03/wait-interface"
+merge          = "V03-WAIT"
+requires_merge = []

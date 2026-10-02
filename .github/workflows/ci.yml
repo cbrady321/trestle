@@ -36,8 +36,8 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - run: pip install -e ".[dev]"
-      - run: ruff check trestle tests packages/trestle-packs packages/trestle-env conftest.py scripts/smoke_packs.py scripts/demo_pack_workflows.py
-      - run: ruff format --check trestle tests packages/trestle-packs packages/trestle-env conftest.py scripts/smoke_packs.py scripts/demo_pack_workflows.py
+      - run: ruff check trestle tests packages/trestle-packs packages/trestle-env conftest.py scripts/*.py
+      - run: ruff format --check trestle tests packages/trestle-packs packages/trestle-env conftest.py scripts/*.py
 
   # K-14 (L.CK-14.1): mypy at zero errors. It needs `.[dev,packs]`: with `.[dev]` alone
   # trestle_packs is absent and its py.typed marker cannot fix `import-not-found`. The job

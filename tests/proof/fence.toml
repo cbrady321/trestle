@@ -60,3 +60,6 @@ cz = ["wr/cz/", "wr/j-root/"]
 # release owns post-release fixes on top of the squashed v0.2.0 release commit (no plan phase
 # remains to own them); its first PR, the version bump, creates fence.d/release.toml.
 release = ["wr/release/"]
+# v03 prepares v0.3 on top of the release: the wait interface and the remaining race leads
+# (delivery-close PR-PLAN-wait-interface.md); its one PR creates fence.d/v03.toml.
+v03 = ["wr/v03/"]
