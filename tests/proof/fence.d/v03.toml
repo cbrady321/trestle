@@ -21,6 +21,12 @@ globs         = [
   "packages/trestle-env/tests/twin/test_reuse_twin.py",
   "tests/test_m2_bounding.py", "tests/test_m6_extending.py", "tests/core/tooling/ck_drill.py",
   "tests/core/tooling/test_ck_drill.py",
+  # stage 4: the unit's one wait on a state (`CancelSignal.wait_for`, `WaitOutcome`), the walking
+  # call's node signal that also wakes on the root goal's flip, and the fail-fast latency proof.
+  "trestle/workflow/values.py", "trestle/workflow/__init__.py", "trestle/child/run_services.py",
+  "trestle/workflow/loop.py", "tests/single/workflow/loopkit.py", "tests/single/workflow/test_wait_for.py",
+  "tests/fixtures/trees/wait_interface.py", "tests/tree/test_tr3_wait_interface.py",
+  "tests/tree/test_fixtures.py",
 ]
 
 [[gate]]

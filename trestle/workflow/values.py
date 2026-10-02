@@ -14,7 +14,8 @@ record view built from them by field name (A1c2-11). Names are the vocabulary's,
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -64,6 +65,14 @@ class StopCause(StrEnum):
     RELEASE_POINT = "release_point"
 
 
+class WaitOutcome(StrEnum):
+    """What ended a `CancelSignal.wait_for` (the unit's one wait on a state)."""
+
+    CONDITION = "condition"  # the condition held
+    INTERRUPTED = "interrupted"  # a stop flag, or the root goal's flip (a raise anywhere)
+    TIMED_OUT = "timed_out"  # the caller's bound elapsed
+
+
 class CancelSignal(Protocol):
     @property
     def requested(self) -> bool: ...
@@ -71,6 +80,30 @@ class CancelSignal(Protocol):
     def cause(self) -> StopCause | None: ...
 
     def wait(self, timeout: timedelta) -> bool: ...
+
+    def wait_for(self, condition: Callable[[], bool], timeout: timedelta) -> WaitOutcome: ...
+
+
+def wait_for_condition(
+    signal: CancelSignal, condition: Callable[[], bool], timeout: timedelta, poll_s: float
+) -> WaitOutcome:
+    """The one implementation of `wait_for` every signal shares: the condition is read before
+    each wait and at most once per `poll_s`; a stop returns INTERRUPTED at once; the bound
+    returns TIMED_OUT only after one last read of the condition. The bound is spent as the
+    signal's own waits report it (a signal over a manual clock spends it without sleeping) and
+    never past the wall clock's `timeout` (a slow condition does not stretch it)."""
+    budget = max(timeout.total_seconds(), 0.0)
+    end = time.monotonic() + budget
+    while True:
+        if condition():
+            return WaitOutcome.CONDITION
+        remaining = min(budget, end - time.monotonic())
+        if remaining <= 0:
+            return WaitOutcome.CONDITION if condition() else WaitOutcome.TIMED_OUT
+        step = min(poll_s, remaining)
+        if signal.wait(timedelta(seconds=step)):
+            return WaitOutcome.INTERRUPTED
+        budget -= step
 
 
 class EvidenceSink(Protocol):

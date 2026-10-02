@@ -101,7 +101,10 @@ from trestle.workflow.values import (
     RemedyGrant,
     Resend,
     StepKind,
+    StopCause,
     Verdict,
+    WaitOutcome,
+    wait_for_condition,
 )
 
 ROOT = NodePath(())
@@ -204,15 +207,61 @@ class _UnitEvidence:
             self._sink.event(event_kind, fields)
 
 
+class _NodeSignal:
+    """The `CancelSignal` a walking unit call sees (B1-C2): the root's flags, and also the root's
+    goal, which is not a flag file: it is RELEASE once a cancel, the release point or a raise
+    anywhere flipped it, so a unit blocked in a wait wakes when a sibling raises. `cause()` keeps
+    its flag-only meaning (B2-C15). A composite above the node that timed out, and the node's own
+    slice end, are not wakes: the walk reads them when the call returns, as before. On a root
+    deadline the run's stop must stay the release point's (the host classes it `timed_out`); a
+    unit woken at a carved slice first would end the run before it. The walk's own stop check
+    never uses this object.
+
+    A wait is spent as the root signal's waits report it, in `WATCH_INTERVAL_S` pieces, so a
+    signal over a manual clock spends it without sleeping."""
+
+    __slots__ = ("_goal", "_root")
+
+    def __init__(self, root: CancelSignal, goal: Callable[[], Goal]) -> None:
+        self._root = root
+        self._goal = goal
+
+    @property
+    def requested(self) -> bool:
+        return self._root.requested or self._goal() is Goal.RELEASE
+
+    def cause(self) -> StopCause | None:
+        return self._root.cause()
+
+    def wait(self, timeout: timedelta) -> bool:
+        budget = max(timeout.total_seconds(), 0.0)
+        end = time.monotonic() + budget
+        while not self.requested:
+            remaining = min(budget, end - time.monotonic())
+            if remaining <= 0:
+                return False
+            step = min(WATCH_INTERVAL_S, remaining)
+            if self._root.wait(timedelta(seconds=step)):
+                return True
+            budget -= step
+        return True
+
+    def wait_for(self, condition: Callable[[], bool], timeout: timedelta) -> WaitOutcome:
+        return wait_for_condition(self, condition, timeout, WATCH_INTERVAL_S)
+
+
 @dataclass(frozen=True, slots=True)
 class _CallContext:
     """`ObserveContext` / `ActContext` for one unit call (B1-C2, B1-C3): the lineage, the one clock
     read fresh at each access, the cancel signal, the evidence sink, and the remedy the loop
-    granted for this call (`advance` only)."""
+    granted for this call (`advance` only). A walking call (`goal` given) sees the node's own
+    signal (`_NodeSignal`); a release-pass call sees the root's flags alone, since the release
+    goes on whatever stopped the walk."""
 
     lineage: Lineage
     services: svc.RunServices
     remedy: RemedyGrant | None = None
+    goal: Callable[[], Goal] | None = None
 
     @property
     def clock(self) -> ClockReading:
@@ -220,7 +269,8 @@ class _CallContext:
 
     @property
     def cancellation(self) -> CancelSignal:
-        return self.services.cancellation()
+        root = self.services.cancellation()
+        return root if self.goal is None else _NodeSignal(root, self.goal)
 
     @property
     def evidence(self) -> EvidenceSink:
@@ -373,6 +423,10 @@ class LeafWalk:
         that holds for a node shared by two parents when either parent's subtree timed out
         (F-13(a)), whatever the other parent is doing."""
         return Goal.RELEASE if self._subtree_stopped() else self._loop.goal
+
+    def _root_goal(self) -> Goal:
+        """The root's goal alone (what a waiting unit wakes on, `_NodeSignal`)."""
+        return self._loop.goal
 
     def _stopped(self) -> bool:
         """A cancel or the release point (`CancelSignal.requested`, B2-C6) flips the goal to
@@ -549,7 +603,11 @@ class LeafWalk:
         and gives None. `first` marks the walk's opening observation, the last thing that happens
         before the first claim: a declared precondition it carries no check for stops the node
         there instead (`_stop_uncovered`)."""
-        context = _CallContext(self._lineage, self._loop.services)
+        context = (
+            _CallContext(self._lineage, self._loop.services)
+            if handle is not None  # a release-pass observation
+            else _CallContext(self._lineage, self._loop.services, None, self._root_goal)
+        )
         try:
             observation = self._unit.observe(self._params, ReadBinder(self._facets(None)), context)
         except Exception as exc:  # noqa: BLE001 (plugin code: any raise is the unit's, B1-E6)
@@ -687,7 +745,7 @@ class LeafWalk:
         marked = self._mark()
         self._refusal_seen = False
         self._polls = 0  # a new attempt starts a new wait
-        context = _CallContext(self._lineage, self._loop.services, verdict.remedy)
+        context = _CallContext(self._lineage, self._loop.services, verdict.remedy, self._root_goal)
         facets = EffectBinder(self._facets(verdict.remedy))
         returned: object = _ESCAPED
         try:

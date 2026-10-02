@@ -57,6 +57,8 @@ from trestle.workflow.values import (
     SelectorRef,
     StopCause,
     Verdict,
+    WaitOutcome,
+    wait_for_condition,
 )
 
 NOW = datetime(2026, 9, 30, 12, 0, 0, tzinfo=UTC)
@@ -64,6 +66,7 @@ DEADLINE_S = 300.0
 RESERVE_S = 10.0
 MARGIN_S = 20.0
 RELEASE_SLICE_S = 10.0
+POLL_S = 0.01  # `RigCancel.wait_for`'s read interval: its waits only move the manual clock
 SPEC = ports.ResourceSpec("marker", RealizationKind.AGENT_LAUNCHED_PROJECT, "marker-entry", None)
 EFFECT = "up"
 STOP_EFFECT = "stop"
@@ -107,6 +110,9 @@ class RigCancel:
             return True
         self._clock.advance(timeout.total_seconds())
         return False
+
+    def wait_for(self, condition: Callable[[], bool], timeout: timedelta) -> WaitOutcome:
+        return wait_for_condition(self, condition, timeout, POLL_S)
 
 
 class Sink:
