@@ -26,7 +26,7 @@ def test_one_call_reused_started_repaired_found_untouched_no_volume_removed(
     # no password in its environment: every exec check (identity, configuration, readiness) holds
     planted = {"name": FOUND, "state": "running", "port": _bind.POSTGRES_PORT, "environment": {}}
     state.write_text(json.dumps({"containers": [planted], "volumes": [VOLUME]}), encoding="utf-8")
-    environ, log, port = healthy_case.app_environ(tmp_path)
+    environ, log = healthy_case.app_environ(tmp_path)
     for name, value in {**harness.twin_environ(state), **environ}.items():
         if value is None:
             monkeypatch.delenv(name, raising=False)
@@ -34,7 +34,7 @@ def test_one_call_reused_started_repaired_found_untouched_no_volume_removed(
             monkeypatch.setenv(name, value)
     monkeypatch.setenv("PYTHONPATH", harness.plugin_pythonpath())
     kernel = healthy_case.kernel(tmp_path)
-    done, pid = healthy_case.run_and_kill(kernel, "healthy-twin", log, port)
+    done, pid, port = healthy_case.run_and_kill(kernel, "healthy-twin", log)
     healthy_case.assert_repaired(kernel, done, pid, log, port, FOUND)
     after = fake_binding.read_state(state)
     prefix = harness.selector_prefix(done.run_id)

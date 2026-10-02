@@ -1,5 +1,6 @@
-"""L.RB-8.1: the stdlib override app fixture (`tests/fixtures/apps/override_app.py`) answers on its
-declared port, says `start` and `stop` in its event log, and ends on SIGTERM."""
+"""L.RB-8.1: the stdlib override app fixture (`tests/fixtures/apps/override_app.py`) answers on the
+port it chose (`PORT=0`, reported through `TRESTLE_ENDPOINT_FILE`), says `start` and `stop` in its
+event log, and ends on SIGTERM."""
 
 from __future__ import annotations
 
@@ -25,28 +26,32 @@ def get(port: int, path: str) -> tuple[int, bytes]:
         return error.code, error.read()
 
 
-def started(port: int) -> None:
+def reported(endpoint: Path) -> int:
+    """The port the app reported in its endpoint file (`127.0.0.1:<port>`)."""
     deadline = time.monotonic() + tolerances.JOIN_WAIT_S
     while time.monotonic() < deadline:
-        try:
-            get(port, "/health")
-            return
-        except OSError:
-            time.sleep(tolerances.POLL_FINE_S)
-    raise AssertionError("the override app never answered")
+        if endpoint.exists():
+            return int(endpoint.read_text().rsplit(":", 1)[1])
+        time.sleep(tolerances.POLL_FINE_S)
+    raise AssertionError("the override app never reported its port")
 
 
 def test_the_override_app_answers_health_and_root_and_ends_on_sigterm(tmp_path: Path) -> None:
-    port, log = rig.free_port(), tmp_path / "events.log"
+    log, endpoint = tmp_path / "events.log", tmp_path / "app.endpoint"
     app = subprocess.Popen(  # noqa: S603 - the fixture under test
         [sys.executable, str(rig.APP)],
-        env={"PORT": str(port), "APP_EVENT_LOG": str(log), "PATH": "/usr/bin:/bin"},
+        env={
+            "PORT": "0",
+            "TRESTLE_ENDPOINT_FILE": str(endpoint),
+            "APP_EVENT_LOG": str(log),
+            "PATH": "/usr/bin:/bin",
+        },
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
     try:
-        started(port)
+        port = reported(endpoint)
         assert get(port, "/health") == (200, b"ok")
         status, body = get(port, "/")
         assert status == 200 and json.loads(body) == {"app": "override", "pid": app.pid}

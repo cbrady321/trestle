@@ -22,6 +22,14 @@
 - **check** `ready` holds when the recorded instance is alive; **endpoint** for `HOST` is
   `127.0.0.1:<PORT>` where `PORT` is the bound command's declared environment value, else
   `RouteRefused`; from a container it is `RouteRefused(ROUTE_UNSUPPORTED)` (B3-C2, D-4).
+- **the endpoint contract for `PORT=0`** (RACES-REPORT L-17): a bound command that declares
+  `PORT=0` chooses its own port. The port adds `TRESTLE_ENDPOINT_FILE` to its environment, naming a
+  file under the port's endpoint directory; the process writes its bound address there,
+  `127.0.0.1:<port>`, atomically (a temporary beside it, then `os.replace`), once it accepts
+  connections. `create` (and a restart's relaunch) returns only once that file is there, within
+  `LISTEN_WAIT_S`; a process that exits first or never writes it is ended and the creation is
+  `UNKNOWN` (it started, so something changed). `endpoint` then reads the address from the file,
+  so no caller ever guesses a free port the process might not get.
 
 Every instance is a child of this port object: a fresh port object holds none, and sees an earlier
 attempt's process as found. Executor-chosen values (the contract names none): the selector spelling
@@ -33,11 +41,14 @@ the SIGTERM-to-SIGKILL grace, and `launch_policy` = `DISABLED_BY_CONFIGURATION` 
 from __future__ import annotations
 
 import hashlib
+import shutil
 import subprocess
-from collections.abc import Mapping
+import tempfile
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from pathlib import Path
+from typing import Any, Final
 
 from trestle.workflow.declarations import EffectId, Lifetime, RealizationKind, Vantage
 from trestle.workflow.ports import (
@@ -74,6 +85,10 @@ RESOURCE_KIND = "local_process"
 FOUND_MAX = 16  # V-13
 PORT_ENV = "PORT"
 _GRACE_S = 2.0  # SIGTERM to SIGKILL
+ENDPOINT_FILE_ENV: Final = "TRESTLE_ENDPOINT_FILE"
+ENDPOINT_DIR_PREFIX: Final = "trestle-local-endpoints-"  # under the process's TMPDIR
+LISTEN_WAIT_S: Final = 10.0  # how long a `PORT=0` launch may take to report its endpoint
+_LISTEN_POLL_S = 0.05
 
 type Target = CreatedHandle | OwnedHandle | FoundRef | SelectorRef
 
@@ -112,19 +127,33 @@ def declared_port(spec: ResourceSpec) -> int | None:
     return int(raw) if raw is not None and raw.isdigit() else None
 
 
+def _reported(path: Path | None) -> int | None:
+    """The port a `PORT=0` process reported in its endpoint file, or None while it has not."""
+    if path is None:
+        return None
+    try:
+        host, _, port = path.read_text(encoding="utf-8").strip().rpartition(":")
+    except OSError:
+        return None
+    return int(port) if host and port.isdigit() else None
+
+
 @dataclass
 class _Instance:
     selector: str
     spec: ResourceSpec
     proc: subprocess.Popen[bytes]
     start: int | None
+    endpoint_file: Path | None = None
 
 
 class LocalProcessPort:
     """`ResourceReads` + `ResourceCreate` + `ResourceOwned` over local child processes."""
 
-    def __init__(self) -> None:
+    def __init__(self, endpoint_dir: Path | None = None) -> None:
         self._instances: dict[str, _Instance] = {}
+        self._endpoint_dir = endpoint_dir
+        self._owns_endpoint_dir = False  # made on the first `PORT=0` launch, removed by `close`
 
     # ------------------------------------------------------------------ lifecycle of the port
 
@@ -133,6 +162,9 @@ class LocalProcessPort:
         for instance in list(self._instances.values()):
             self._end(instance)
         self._instances.clear()
+        if self._owns_endpoint_dir and self._endpoint_dir is not None:
+            shutil.rmtree(self._endpoint_dir, ignore_errors=True)
+            self._endpoint_dir, self._owns_endpoint_dir = None, False
 
     def inventory(self) -> dict[str, frozenset[str]]:
         """What exists, by category, for the suite's engine-inventory reach (B3-C17)."""
@@ -191,6 +223,11 @@ class LocalProcessPort:
         port = None if instance is None else declared_port(instance.spec)
         if port is None:
             return RouteRefused(ROUTE_UNSUPPORTED, "The bound command declares no PORT to reach.")
+        if port == 0:
+            assert instance is not None
+            port = _reported(instance.endpoint_file)
+            if port is None:  # only reachable when a caller bypassed `create`
+                return RouteRefused(ROUTE_UNSUPPORTED, "The process has not reported its endpoint.")
         return Endpoint("http", "127.0.0.1", port)
 
     # ------------------------------------------------------------------ ResourceCreate
@@ -248,14 +285,19 @@ class LocalProcessPort:
     def _launch(self, selector: str, spec: ResourceSpec) -> Confirmation:
         command = spec.command
         assert command is not None
-        env: Mapping[str, str] = {
+        env: dict[str, str] = {
             **command.environment,
             "PATH": scrubbed_path(command.resolved.executable),
         }
+        endpoint_file = None
+        if declared_port(spec) == 0:
+            endpoint_file = self._endpoints() / f"{selector}.endpoint"
+            endpoint_file.unlink(missing_ok=True)
+            env[ENDPOINT_FILE_ENV] = str(endpoint_file)
         try:
             proc = subprocess.Popen(
                 tuple(command.argv),
-                env=dict(env),
+                env=env,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -263,8 +305,27 @@ class LocalProcessPort:
             )  # the caller's process group and session: never detached
         except (FileNotFoundError, PermissionError, NotADirectoryError):
             return Confirmation(ConfirmationStatus.NOT_APPLIED, TOOLCHAIN_MISSING, None)
-        self._instances[selector] = _Instance(selector, spec, proc, identity.start_time(proc.pid))
+        instance = _Instance(selector, spec, proc, identity.start_time(proc.pid), endpoint_file)
+        if endpoint_file is not None and not self._await_endpoint(instance):
+            self._end(instance)  # started and ended: something changed, so never NOT_APPLIED
+            return Confirmation(ConfirmationStatus.UNKNOWN, None, None)
+        self._instances[selector] = instance
         return Confirmation(ConfirmationStatus.APPLIED, None, selector)
+
+    def _endpoints(self) -> Path:
+        if self._endpoint_dir is None:
+            self._endpoint_dir = Path(tempfile.mkdtemp(prefix=ENDPOINT_DIR_PREFIX))
+            self._owns_endpoint_dir = True
+        return self._endpoint_dir
+
+    def _await_endpoint(self, instance: _Instance) -> bool:
+        """Until the process reports its endpoint (True), exits, or `LISTEN_WAIT_S` passes."""
+        end = time.monotonic() + LISTEN_WAIT_S
+        while _reported(instance.endpoint_file) is None:
+            if instance.proc.poll() is not None or time.monotonic() >= end:
+                return False
+            time.sleep(_LISTEN_POLL_S)
+        return True
 
     def _relaunch(self, target: OwnedHandle) -> Confirmation:
         instance = self._instances.pop(target.selector, None)

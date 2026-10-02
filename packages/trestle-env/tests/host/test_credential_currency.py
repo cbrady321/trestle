@@ -58,7 +58,7 @@ from trestle_packs.grant.delivery import CHANNEL_FILE
 from trestle_packs.grant.host_scope import DemoHostScope
 from trestle_packs.process.command import CommandPort
 from trestle_packs.process.local import LocalProcessPort
-from twin import consumers, local_app, local_consumer
+from twin import consumers, local_consumer
 
 pytestmark = pytest.mark.docker_host
 
@@ -308,10 +308,8 @@ def _rotation_local_app(tmp_path: Path, issuer: Any) -> None:
     )
     grant = DemoGrant(issuer.url, probe=probe)
     log = tmp_path / "app-events.log"
-    command = local_consumer.app_command(local_app.free_port(), log)
-    # start-up is the harness's to wait for (`local_app.AwaitListening`), as in the twin
-    launcher = local_app.AwaitListening(LocalProcessPort(), log)
-    watched = local_consumer.Watched(launcher, selector, rotate=issuer.state.advance)
+    command = local_consumer.app_command(log)  # `PORT=0`, as in the twin
+    watched = local_consumer.Watched(LocalProcessPort(), selector, rotate=issuer.state.advance)
     before = issuer.state.current()
     rig = tk.tree_rig(
         tmp_path,

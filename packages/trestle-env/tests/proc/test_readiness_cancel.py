@@ -42,35 +42,6 @@ APP = Path(__file__).resolve().parents[4] / "tests" / "fixtures" / "apps" / "htt
 CANCEL_AT = 3  # the flag goes up during the loop's third readiness wait
 
 
-def free_port() -> int:
-    import socket
-
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return int(probe.getsockname()[1])
-
-
-class AwaitListening:
-    """The create facet of the local port, returning once the app says it is listening (process
-    start-up is the harness's to wait for; the readiness contract is the read facet's)."""
-
-    def __init__(self, inner: LocalProcessPort, log: Path) -> None:
-        self._inner = inner
-        self._log = log
-
-    def create(self, spec: ports.ResourceSpec, ticket: Any) -> Any:
-        confirmation = self._inner.create(spec, ticket)
-        deadline = time.monotonic() + tolerances.JOIN_WAIT_S
-        while time.monotonic() < deadline:
-            if self._log.exists() and "listening" in self._log.read_text().splitlines():
-                return confirmation
-            time.sleep(tolerances.POLL_FINE_S)
-        raise AssertionError("the app never said it was listening")
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._inner, name)
-
-
 class Flagged:
     """Wraps the rig's cancel signal. When the flag first goes up it notes the wall-clock moment,
     the stop-row offset (how many lane rows and evidence events the run had written by then) and
@@ -106,12 +77,12 @@ def health(log: Path) -> int:
     "WR-DEADLINE-4", "WR-DEADLINE-4:b-readiness-cancel-prompt", "B", "B", "PROC", "BOTH"
 )
 def test_cancel_during_readiness_wait_prompt(tmp_path: Path) -> None:
-    port, log = free_port(), tmp_path / "app-events.log"
+    log = tmp_path / "app-events.log"
     resolved = ports.Resolved(sys.executable, "3.12", "pin", "adoption")
     command = ports.BoundCommand(
         "app",
         (sys.executable, str(APP), "never"),
-        {"PORT": str(port), "APP_EVENT_LOG": str(log), "PATH": "/usr/bin:/bin"},
+        {"PORT": "0", "APP_EVENT_LOG": str(log), "PATH": "/usr/bin:/bin"},
         resolved,
         False,
     )
@@ -136,7 +107,7 @@ def test_cancel_during_readiness_wait_prompt(tmp_path: Path) -> None:
         },
         port_impl={
             ports.ResourceReads: HttpReadinessReads(local, tree.HTTP_READINESS, alive="ready"),
-            ports.ResourceCreate: AwaitListening(local, log),
+            ports.ResourceCreate: local,
             ports.ResourceOwned: local,
         },
         deadline_s=tree.DEADLINE_S,

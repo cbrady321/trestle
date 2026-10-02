@@ -129,6 +129,9 @@ def test_a_missing_repository_a_missing_mise_and_an_unmet_pin_block(tmp_path: Pa
         _local.LocalOverrides(catalog, environ(tmp_path)).command_for("nope")
 
 
-def test_a_free_port_is_a_loopback_port_nothing_listens_on() -> None:
-    port = _local.free_port()
-    assert 1024 <= port <= 65535
+def test_without_a_port_the_command_chooses_its_own(tmp_path: Path) -> None:
+    bound = _local.LocalOverrides(load_reference(), environ(tmp_path)).command_for(
+        "http_support_local"
+    )
+    assert isinstance(bound, BoundCommand)
+    assert dict(bound.environment) == {"PORT": "0"}  # the endpoint contract, never a guessed port

@@ -20,7 +20,7 @@ from trestle.workflow.declarations import (
     RealizationKind,
 )
 from trestle_packs.process.local import LocalProcessPort
-from twin.local_app import APP, REFUSED, AwaitListening, free_port
+from twin.local_app import APP, REFUSED
 from twin.twin_engine import TEST_NODE, Probe, entry_with_test
 
 from trestle_env import schema, tree
@@ -28,12 +28,12 @@ from trestle_env.plugins._http import HttpReadinessReads
 
 
 def rig_over_local_app(tmp_path: Path, mode: tuple[str, ...]) -> tuple[tk.TreeRig, Probe, Path]:
-    port, log = free_port(), tmp_path / "app-events.log"
+    log = tmp_path / "app-events.log"
     resolved = ports.Resolved(sys.executable, "3.12", "pin", "adoption")
     command = ports.BoundCommand(
         "app",
         (sys.executable, str(APP), *mode),
-        {"PORT": str(port), "APP_EVENT_LOG": str(log), "PATH": "/usr/bin:/bin"},
+        {"PORT": "0", "APP_EVENT_LOG": str(log), "PATH": "/usr/bin:/bin"},
         resolved,
         False,
     )
@@ -41,7 +41,6 @@ def rig_over_local_app(tmp_path: Path, mode: tuple[str, ...]) -> tuple[tk.TreeRi
         tree.HTTP_SUPPORT_SERVICE, RealizationKind.AGENT_LAUNCHED_PROJECT, "http-app", command
     )
     local = LocalProcessPort()
-    creating = AwaitListening(local, log)
     reads = HttpReadinessReads(local, tree.HTTP_READINESS, alive="ready")
     saw: list[list[str]] = []
     dependent = Probe(TEST_NODE, lambda: saw.append(log.read_text().split("\n")))
@@ -63,7 +62,7 @@ def rig_over_local_app(tmp_path: Path, mode: tuple[str, ...]) -> tuple[tk.TreeRi
         units,
         port_impl={
             ports.ResourceReads: reads,
-            ports.ResourceCreate: creating,
+            ports.ResourceCreate: local,
             ports.ResourceOwned: local,
         },
         deadline_s=tree.DEADLINE_S,

@@ -42,6 +42,15 @@ globs         = [
   "packages/trestle-env/tests/host/test_stale_generation.py",
   "packages/trestle-env/tests/host/test_credential_currency.py",
   "packages/trestle-env/tests/stub/test_demo_auth.py", "packages/trestle-env/tests/stub/test_never_capture.py",
+  # stage 7: L-17, a local process started with PORT=0 reports its own endpoint; every free-port
+  # guess in the tests (and in the local-override composition) is gone.
+  "packages/trestle-packs/trestle_packs/process/local.py", "packages/trestle-env/trestle_env/plugins/_local.py",
+  "tests/fixtures/apps/http_app.py", "tests/fixtures/apps/override_app.py",
+  "packages/trestle-env/tests/twin/*.py", "packages/trestle-env/tests/proc/*.py",
+  "packages/trestle-env/tests/host/test_cancel_readiness.py",
+  "packages/trestle-env/tests/host/test_healthy_machine_full.py",
+  "packages/trestle-env/tests/unit/test_local_composition.py",
+  "packages/trestle-packs/tests/process/*.py", "packages/trestle-packs/tests/conformance/process_restart_cases.py",
 ]
 
 [[gate]]

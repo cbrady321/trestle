@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 import signal
-import socket
 import subprocess
 import sys
 import time
@@ -28,12 +27,6 @@ from trestle_packs.process.local import LocalProcessPort, found_selector, same_c
 ROOT = Path(__file__).resolve().parents[4]
 APP = ROOT / "tests" / "fixtures" / "apps" / "override_app.py"
 START_WAIT_S = tolerances.JOIN_WAIT_S  # an app that has not said `start` by then never will
-
-
-def free_port() -> int:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return int(probe.getsockname()[1])
 
 
 def spec_for(
@@ -94,7 +87,7 @@ def real_restart(
         interpreter = directory / "python"  # a path this case can remove: the bound command's exe
         os.symlink(sys.executable, interpreter)
         log = directory / "events.log"
-        env = {"PORT": str(free_port()), "APP_EVENT_LOG": str(log)}
+        env = {"PORT": "0", "APP_EVENT_LOG": str(log)}
         spec = spec_for(str(interpreter), str(APP), env, f"--instance={directory}")
         assert spec.command is not None
         argv = spec.command.argv
@@ -103,10 +96,10 @@ def real_restart(
 
         def plant_found(system: str) -> str:
             # a process that runs the spec's command line and is not this port's: found. It listens
-            # on another port and logs nothing to the app's event log.
+            # on a port of its own and logs nothing to the app's event log.
             helper = subprocess.Popen(  # noqa: S603 - the suite's own fixed program
                 argv,
-                env={"PORT": str(free_port()), "PATH": "/usr/bin:/bin"},
+                env={"PORT": "0", "PATH": "/usr/bin:/bin"},
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,

@@ -238,10 +238,7 @@ def test_the_sleep_sync_scan_finds_a_planted_site(tmp_path: Path) -> None:
 # bespoke copy of that wait (RACES-REPORT L-1..L-5). The set may shrink, never grow.
 LANE_POLL_READERS = {"lane_rows", "ledger_rows", "node_record", "lane"}
 LANE_POLL_HOME = "tests/proof/records.py"
-LANE_POLL_BASELINE: set[tuple[str, str]] = {
-    # predates the rule: the twin's mid-readiness wait reads the lane and the app's log together
-    ("packages/trestle-env/tests/twin/cancel_case.py", "mid_wait"),
-}
+LANE_POLL_BASELINE: set[tuple[str, str]] = set()
 
 
 def _call_name(node: ast.Call) -> str:

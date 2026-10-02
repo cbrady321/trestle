@@ -8,7 +8,8 @@ until the created container is confirmed and the owned app has answered at least
 request (so the run is mid-wait), cancel the root, and await the terminal answer. The facts:
 
 * the answer is the cancel's (`root_stop == "cancel"`), within MC-09's stop bound of the cancel;
-* the owned process is gone: it logged `stop` and its port no longer accepts a connection;
+* the owned process is gone: it logged `stop` and its port no longer accepts a connection (the
+  app runs with `PORT=0` and the test reads the port it reported, `reported_port`);
 * past the stop row's offset (the ledger's `stop_row`, its `lane_committed_length`) the lane
   holds no effect but releases (`issue`/`confirmation` of the declared release effect,
   `released`); the found container is never the subject of any row;
@@ -26,6 +27,8 @@ from typing import Any
 from tests.proof import records, tolerances
 from trestle.common.types import RunView
 from trestle.server.main import Kernel, create_kernel
+from trestle.workflow.values import Lineage, NodePath
+from trestle_packs.process.local import ENDPOINT_DIR_PREFIX, run_scoped_selector
 
 from trestle_env import tree
 
@@ -36,23 +39,32 @@ PLUGIN_NAME = "cancel_readiness"
 APP_UNIT = "backend.app"
 
 
-def free_port() -> int:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return int(probe.getsockname()[1])
-
-
-def app_environ(tmp_path: Path) -> tuple[dict[str, str], Path, int]:
-    port, log = free_port(), tmp_path / "app-events.log"
+def app_environ(tmp_path: Path) -> tuple[dict[str, str], Path]:
+    """The plugin's environment: the app takes `PORT=0` (it chooses and reports its own port)."""
+    log = tmp_path / "app-events.log"
     return (
         {
-            "TRESTLE_K10_APP_PORT": str(port),
+            "TRESTLE_K10_APP_PORT": "0",
             "TRESTLE_K10_APP_LOG": str(log),
             "TRESTLE_K10_HTTP_APP": str(HTTP_APP),
         },
         log,
-        port,
     )
+
+
+def reported_port(kernel_: Kernel, run_id: str) -> int | None:
+    """The port the run's owned app reported (`127.0.0.1:<port>`), or None if there is no such file
+    (yet, or any more). The plugin's local process port keeps one endpoint file per owned process,
+    named by its run-scoped selector, in a directory of its own under the run's temp dir
+    (`work/tmp`, the child's `TMPDIR`)."""
+    where = run_dir(kernel_, run_id)
+    if where is None:
+        return None
+    selector = run_scoped_selector(Lineage(run_id, NodePath((APP_UNIT,))), tree.UP)
+    found = list((where / "work" / "tmp").glob(f"{ENDPOINT_DIR_PREFIX}*/{selector}.endpoint"))
+    if len(found) != 1:
+        return None
+    return int(found[0].read_text().strip().rsplit(":", 1)[1])
 
 
 def kernel(tmp_path: Path) -> Kernel:
@@ -82,37 +94,46 @@ def health(log: Path) -> int:
 
 
 def mid_wait(kernel_: Kernel, run_id: str, log: Path) -> None:
-    """Until the created container is confirmed and the app has been asked once for readiness."""
-    deadline = time.monotonic() + tolerances.JOIN_WAIT_S * 6
-    while time.monotonic() < deadline:
-        where = run_dir(kernel_, run_id)
-        written = where is not None and (where / "evidence" / "lane.ndjson").exists()
-        rows = lane(where) if written and where is not None else []
-        created = [
-            e
-            for e in rows
-            if e["class"] == "confirmation"
-            and e.get("path") == tree.HTTP_SUPPORT_UNIT
-            and e.get("effect") == tree.UP
-            and e.get("status") == "applied"
-        ]
-        if created and health(log) >= 1:
-            return
-        time.sleep(tolerances.POLL_S)
-    raise AssertionError("the run never reached its readiness wait with the container created")
+    """Until the created container is confirmed and the app has been asked once for readiness
+    (the record's wait, `records.await_confirmations`, with the app's own log read alongside)."""
+    bound = tolerances.JOIN_WAIT_S * 6
+    deadline = time.monotonic() + bound
+    while (where := run_dir(kernel_, run_id)) is None and time.monotonic() < deadline:
+        time.sleep(tolerances.POLL_S)  # admission names the run directory first
+    assert where is not None, "the run never got a run directory"
+    created = records.await_record(
+        where,
+        lambda lane, _: (
+            health(log) >= 1
+            and any(
+                r.cls == "confirmation"
+                and r.path == tree.HTTP_SUPPORT_UNIT
+                and r.entry["effect"] == tree.UP
+                and r.entry["status"] == "applied"
+                for r in lane.rows
+            )
+        ),
+        bound_s=max(deadline - time.monotonic(), 0.0),
+    )
+    assert created.why == "condition", (
+        f"the run never reached its readiness wait with the container created ({created.why})"
+    )
 
 
-def cancel_mid_readiness(kernel_: Kernel, env: str, log: Path) -> tuple[RunView, float]:
-    """Start, wait until mid-readiness, cancel; the terminal view and the cancel-to-end time."""
+def cancel_mid_readiness(kernel_: Kernel, env: str, log: Path) -> tuple[RunView, float, int]:
+    """Start, wait until mid-readiness, cancel; the terminal view, the cancel-to-end time and the
+    port the app reported."""
     started = kernel_.control.run(plugin=PLUGIN_NAME, args={"env": env}, wait_ms=0)
     assert isinstance(started, RunView), started
     mid_wait(kernel_, started.run_id, log)
+    port = reported_port(kernel_, started.run_id)
+    assert port is not None, "the app is answering readiness, so it has reported its port"
     asked = time.monotonic()
     kernel_.control.cancel(started.run_id)
     done = kernel_.control.project.await_terminal(started.run_id)
     elapsed = time.monotonic() - asked
     assert isinstance(done, RunView), done
-    return done, elapsed
+    return done, elapsed, port
 
 
 def assert_cancel_facts(
