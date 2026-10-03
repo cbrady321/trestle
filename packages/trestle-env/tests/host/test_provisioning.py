@@ -6,7 +6,7 @@ The published reference plugin runs on the real binding over the operator's dock
 images) with the stub toolchain (`twin.toolchain_seam.real_docker_stub_toolchain_ports`; the real
 mise is unverified, OPEN-MISE-HOST) and the catalog of `twin.provisioning_case` (one test marked
 `provision`). The environment's own Postgres is the pre-started fixture container `postgres`
-(`fixtures/reuse-postgres`): `backend.postgres` reuses it (L.RB-3.1) and the operator names it as
+(`fixtures/reuse-postgres`): `postgres` reuses it (L.RB-3.1) and the operator names it as
 the record store (`TRESTLE_ENV_RECORD_STORE`, L.RB-6.2.fix1), so the durable record outlives a run
 and a second equivalent run can find it. The record is counted with an authenticated `SELECT` over
 the container's own non-loopback address (as L.RB-6.1's probe), never a socket or loopback.

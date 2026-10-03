@@ -30,11 +30,10 @@ SELECTED = [tree.POSTGRES_SERVICE]
 
 
 def service_of(path: str) -> str:
-    """The logical service a service node's path names: `backend.<service>` (the tree's naming,
-    `tree.POSTGRES_UNIT` = `backend.postgres` for the service `postgres`)."""
-    prefix, dot, service = path.partition(".")
-    assert dot and service, f"{path!r} is not a service node's path"
-    return service
+    """The logical service a service node's path names: the service child is named by its catalog
+    id (`tree.build_entry`), so the path IS the service (`postgres`)."""
+    assert path and "/" not in path, f"{path!r} is not a service node's path"
+    return path
 
 
 def environ(base: dict[str, str | None]) -> dict[str, str | None]:

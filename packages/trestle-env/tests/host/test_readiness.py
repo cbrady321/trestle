@@ -87,9 +87,9 @@ def test_dependent_starts_after_http_readiness_pass(kernel: Kernel) -> None:
         )
 
     # the supporting service's readiness pass (the declared response) precedes the dependent's start
-    assert rows[end(tree.HTTP_SUPPORT_UNIT)]["condition"] == "satisfied"
-    assert end(tree.HTTP_SUPPORT_UNIT) < first(TEST_NODE)
-    assert end(tree.POSTGRES_UNIT) < first(TEST_NODE)
+    assert rows[end(tree.HTTP_SUPPORT_SERVICE)]["condition"] == "satisfied"
+    assert end(tree.HTTP_SUPPORT_SERVICE) < first(TEST_NODE)
+    assert end(tree.POSTGRES_SERVICE) < first(TEST_NODE)
     assert rows[end(TEST_NODE)]["condition"] == "satisfied"
     # released with the run: no container of this run is left on the engine
     assert containers_named(view.run_id) == []

@@ -60,9 +60,13 @@ def test_the_published_declaration_is_the_reference_tree(published) -> None:  # 
     assert declared.root == tree.ROOT_UNIT
     assert declared.nodes[""]["env_key_field"] == schema.ENV_ARG
     assert [c["name"] for c in declared.nodes[""]["children"]] == [
-        tree.HTTP_SUPPORT_UNIT,
-        tree.POSTGRES_UNIT,
+        tree.HTTP_SUPPORT_SERVICE,
+        tree.POSTGRES_SERVICE,
     ]
-    # the backends are independent siblings: only a test node (the operator's catalog) needs them
-    assert all(c["binding"]["needs"] == [] for c in declared.nodes[""]["children"])
-    assert declared.nodes[tree.POSTGRES_UNIT]["postcondition"] == tree.POSTGRES_READY
+    # a backend's needs are the catalog's depends_on (the reference Compose `depends_on`)
+    needs = {c["name"]: c["binding"]["needs"] for c in declared.nodes[""]["children"]}
+    assert needs == {
+        tree.HTTP_SUPPORT_SERVICE: [],
+        tree.POSTGRES_SERVICE: [tree.HTTP_SUPPORT_SERVICE],
+    }
+    assert declared.nodes[tree.POSTGRES_SERVICE]["postcondition"] == tree.POSTGRES_READY

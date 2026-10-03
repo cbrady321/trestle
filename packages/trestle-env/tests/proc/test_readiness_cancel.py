@@ -128,7 +128,7 @@ def test_cancel_during_readiness_wait_prompt(tmp_path: Path) -> None:
 
     rows = rig.rows()
     ends = rig.ends()
-    support = ends[tree.HTTP_SUPPORT_UNIT]
+    support = ends[tree.HTTP_SUPPORT_SERVICE]
     assert (support["condition"], support["cut"]) == ("converging", "stopped")
     assert dependent.observed == 0, "the dependent never started"
     assert ends[TEST_NODE]["cut"] == "not_started"

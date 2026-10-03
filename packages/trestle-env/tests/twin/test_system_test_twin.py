@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from trestle_env import tree
 from twin import harness
 from twin.toolchain_world import World, call
 
@@ -28,5 +29,5 @@ def test_test_starts_after_every_readiness_pass(tmp_path: Path) -> None:
     ended = {e["path"]: n for n, e in enumerate(entries) if e["class"] == "end"}
     first = next(n for n, e in enumerate(entries) if e.get("path") == NODE)
     assert entries[first]["class"] == "issue"  # the test's start is its ticket
-    for backend in ("backend.http_support", "backend.postgres"):
+    for backend in (tree.HTTP_SUPPORT_SERVICE, tree.POSTGRES_SERVICE):
         assert ended[backend] < first, backend

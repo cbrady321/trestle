@@ -69,7 +69,7 @@ def test_system_test_starts_after_local_http_readiness_pass(tmp_path: Path) -> N
     rig.run()
     rows = rig.rows()
     ends = rig.ends()
-    for node in (tree.HTTP_SUPPORT_UNIT, tree.POSTGRES_UNIT, TEST_NODE):
+    for node in (tree.HTTP_SUPPORT_SERVICE, tree.POSTGRES_SERVICE, TEST_NODE):
         assert ends[node]["condition"] == "satisfied", (node, ends[node])
 
     def first(path: str) -> int:
@@ -82,8 +82,8 @@ def test_system_test_starts_after_local_http_readiness_pass(tmp_path: Path) -> N
 
     # every readiness pass precedes the test node's start entry (its ticket)
     assert rows[first(TEST_NODE)]["class"] == "issue"
-    assert end(tree.HTTP_SUPPORT_UNIT) < first(TEST_NODE)
-    assert end(tree.POSTGRES_UNIT) < first(TEST_NODE)
+    assert end(tree.HTTP_SUPPORT_SERVICE) < first(TEST_NODE)
+    assert end(tree.POSTGRES_SERVICE) < first(TEST_NODE)
     # the readiness pass was the declared response after REFUSED refusals: the app said so itself
     health = [e for e in log.read_text().splitlines() if e.startswith("health")]
     assert health == ["health 503"] * REFUSED + ["health 200"]

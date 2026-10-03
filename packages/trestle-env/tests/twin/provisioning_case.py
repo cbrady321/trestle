@@ -2,7 +2,7 @@
 `host/test_provisioning.py` and their twins `twin/test_provisioning_twin.py`.
 
 The operator's catalog (built by `toolchain_world.World`) lists one test marked `provision`, so the
-published reference plugin's tree gains `provision.postgres` (after `backend.postgres`) and the
+published reference plugin's tree gains `provision.postgres` (after `postgres`) and the
 test node needs it. One MCP call names the test. What is read, for both bindings:
 
 * the lane: how many submits the provisioning node issued (its `submit` tickets), that no run

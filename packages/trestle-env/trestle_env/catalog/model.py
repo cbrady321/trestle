@@ -10,6 +10,10 @@ tests, selectors and local overrides a request may name. Everything is closed:
   (never a path) and whose remaining entries are literals; a test or an override names a task by
   id, never an argv, and an unknown key in the file is refused, so no free-form executable is
   representable (WR-AUTH-3's catalog half);
+* a `Service` may declare `depends_on`, the catalog services it needs started first (the user's own
+  Compose `depends_on`, as data the plan is compiled from: a `services` selection admits its
+  dependency closure, C-3); a dependency that is not a catalog service, on itself, or in a cycle is
+  refused;
 * a `RemediationPair` declares, as data, which stable code the loop may answer with which effect,
   and the budget of that repair (attempts, total time, cooldown; V-14): the pair is the catalog's,
   the bound and the recording are the runtime's;
@@ -24,7 +28,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Self
@@ -157,6 +161,7 @@ CLOSED_TYPES: tuple[type[Closed], ...] = (
 class Service:
     id: ServiceId
     selector: SelectorId
+    depends_on: tuple[ServiceId, ...] = ()  # started before this one (Compose `depends_on`)
 
 
 @dataclass(frozen=True)
@@ -229,7 +234,8 @@ class RemediationPair:
 
 _TOP = ("schema", "env_key", "services", "projects", "tests", "overrides", "remediation")
 _REMEDIATION = ("code", "effect", "attempts", "total_s", "cooldown_s")
-_SERVICE = ("id", "selector")
+_SERVICE = ("id", "selector", "depends_on")
+_SERVICE_OPTIONAL = ("depends_on",)
 _PROJECT = ("id", "pin", "tasks")
 _TASK = ("id", "argv", "reports_tests")
 _TASK_OPTIONAL = ("reports_tests",)
@@ -308,12 +314,50 @@ class Catalog:
             "override": {str(o.id): o for o in self.overrides},
         }
         object.__setattr__(self, "_index", index)
+        self._check_dependencies()
         for test in self.tests:
             self._check_task(test.project, test.task, str(test.id))
         for override in self.overrides:
             if str(override.service) not in index["service"]:
                 raise CatalogError("unknown_reference", str(override.service), str(override.id))
             self._check_task(override.project, override.task, str(override.id))
+
+    def _check_dependencies(self) -> None:
+        """Every `depends_on` names another catalog service, and the dependencies are acyclic."""
+        known = self._index["service"]
+        for service in self.services:
+            _unique(list(service.depends_on))
+            for dependency in service.depends_on:
+                if str(dependency) not in known:
+                    raise CatalogError("unknown_reference", str(dependency), str(service.id))
+                if dependency == service.id:
+                    raise CatalogError("invalid", str(service.id), "a service depends on itself")
+        done: set[str] = set()
+
+        def visit(name: str, path: tuple[str, ...]) -> None:
+            if name in path:
+                raise CatalogError("invalid", name, f"a dependency cycle: {' -> '.join(path)}")
+            if name in done:
+                return
+            for dependency in known[name].depends_on:
+                visit(str(dependency), (*path, name))
+            done.add(name)
+
+        for service in self.services:
+            visit(str(service.id), ())
+
+    def dependency_closure(self, selected: Iterable[str]) -> frozenset[str]:
+        """`selected` and every service it depends on, transitively."""
+        chosen: set[str] = set()
+        work = [str(s) for s in selected]
+        while work:
+            name = work.pop()
+            if name in chosen:
+                continue
+            chosen.add(name)
+            found = self.service(name)
+            work.extend(str(d) for d in (found.depends_on if found else ()))
+        return frozenset(chosen)
 
     def _check_task(self, project: ProjectId, task: TaskId, owner: str) -> None:
         found = self._index["project"].get(str(project))
@@ -366,8 +410,15 @@ class Catalog:
         if top["schema"] != SCHEMA_VERSION or isinstance(top["schema"], bool):
             raise CatalogError("invalid", str(top["schema"])[:ID_MAX], "unsupported schema version")
         services = tuple(
-            Service(ServiceId(o["id"]), SelectorId(o["selector"]))
-            for o in (_keys(o, _SERVICE, "a service") for o in _items(top["services"], "services"))
+            Service(
+                ServiceId(o["id"]),
+                SelectorId(o["selector"]),
+                tuple(ServiceId(d) for d in _items(o.get("depends_on", []), "depends_on")),
+            )
+            for o in (
+                _keys(o, _SERVICE, "a service", optional=_SERVICE_OPTIONAL)
+                for o in _items(top["services"], "services")
+            )
         )
         projects = tuple(
             _project(_keys(o, _PROJECT, "a project"))

@@ -4,7 +4,7 @@ binding (STUB · CI). The CI twins of `host/test_foreign.py`, same node names.
 The tree's own units run through the loop on `twin.twin_engine.SupportEngine` holding a found
 container named as the logical system: one whose identity does not check out (foreign), and one
 whose identity and configuration do but whose readiness never passes (unhealthy). Each ends BLOCKED
-on `backend.postgres` with its stable code and a human action (B4-T2 row 10, V-11.1), and no effect
+on `postgres` with its stable code and a human action (B4-T2 row 10, V-11.1), and no effect
 ever acts on the found container (never signalled, adopted or repaired). Registers only
 `@stub-twin` labels.
 """
@@ -28,7 +28,7 @@ def _blocked_untouched(tmp_path: Path, engine: SupportEngine, code: str) -> None
     rig.run()
     answer = tk.answer_of(rig)
     assert answer.outcome == "blocked"
-    assert answer.primary.path == (tree.POSTGRES_UNIT,)
+    assert answer.primary.path == (tree.POSTGRES_SERVICE,)
     assert answer.primary.code == code
     assert answer.primary.human_action  # V-11.1: what a person does, then re-send
     assert FOUND in engine.inventory()["containers"]

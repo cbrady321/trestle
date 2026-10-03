@@ -88,10 +88,10 @@ def test_dependent_starts_after_local_http_readiness_pass(tmp_path: Path) -> Non
         )
 
     ends = rig.ends()
-    assert ends[tree.HTTP_SUPPORT_UNIT]["condition"] == "satisfied"
+    assert ends[tree.HTTP_SUPPORT_SERVICE]["condition"] == "satisfied"
     assert ends[TEST_NODE]["condition"] == "satisfied"
     # the readiness pass (the supporting node's satisfied end) precedes the dependent's first entry
-    assert end(tree.HTTP_SUPPORT_UNIT) < first(TEST_NODE)
+    assert end(tree.HTTP_SUPPORT_SERVICE) < first(TEST_NODE)
     # and the app itself had answered the declared response by the time the dependent was started
     assert dependent.saw and dependent.saw[0][-3:-1] == ["health 503", "health 200"]  # then a `""`
     # the app saw exactly the polls the contract needed: REFUSED refusals, then the pass

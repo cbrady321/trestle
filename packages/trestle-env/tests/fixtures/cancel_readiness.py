@@ -114,7 +114,7 @@ ENTRY = WorkflowEntry(
 )
 
 
-@trestle(deadline=120, env_arg="env", packages=("trestle_env", "trestle_packs"))
+@trestle(deadline=160, env_arg="env", packages=("trestle_env", "trestle_packs"))
 def cancel_readiness(ctx: Context, env: str) -> dict[str, str]:
     """Bring up a created container, a found one and an owned process; the caller cancels."""
     UNIT.bind(os.environ)

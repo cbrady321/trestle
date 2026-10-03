@@ -10,10 +10,12 @@ Five stages, each reported where it happens:
   (`plugins/_bind.derive_closure`; the resolver's V-11 code unchanged).
 * `readiness`, `provisioning`, `test`: a work node of the tree failed. A node's canonical path
   is `<stage prefix>.<service>`, so the answer's `primary.path` IS the stage and the service:
-  `backend.postgres` is the readiness stage of the postgres service, `provision.<service>` the
-  provisioning stage, `test.<name>` the system test. `failure_at` reads it back.
+  `postgres` (a service child, named by catalog id) is the readiness stage of the postgres
+  service, `provision.<service>` the provisioning stage, `test.<name>` the system test.
+  `failure_at` reads it back.
 
-The stage a node belongs to is its unit-name prefix and nothing else: no code decides a stage, so a
+The stage a node belongs to is its path's prefix (or, for a service child, its being one) and
+nothing else: no code decides a stage, so a
 V-11 code is never redefined here (no environment code is involved).
 """
 
@@ -39,6 +41,10 @@ NODE_PREFIXES: Final[dict[str, Stage]] = {
 }
 """The unit-name prefix of each node stage; `<prefix>.<service>` is a node's canonical path."""
 
+SERVICE_CHILDREN: Final = frozenset({"http_support", "postgres"})
+"""The reference tree's service children (`tree.HTTP_SUPPORT_SERVICE`, `tree.POSTGRES_SERVICE`):
+each is pathed by its catalog id and is a readiness node."""
+
 PATH_SEPARATOR: Final = "/"  # a node below the root is one segment; nesting joins with `/`
 
 
@@ -55,8 +61,11 @@ class StageFailure:
 
 def failure_at(path: str, code: str) -> StageFailure | None:
     """The stage and service a node path names, or None when the path is no stage node (the
-    root, or a node whose prefix is not one of `NODE_PREFIXES`). The last segment decides."""
+    root, or a node whose prefix is not one of `NODE_PREFIXES`). The last segment decides. A
+    reference tree's service child is pathed by its catalog id (`postgres`): its readiness."""
     leaf = path.rsplit(PATH_SEPARATOR, 1)[-1]
+    if leaf in SERVICE_CHILDREN:
+        return StageFailure(Stage.READINESS, leaf, code)
     prefix, dot, service = leaf.partition(".")
     stage = NODE_PREFIXES.get(prefix)
     if not dot or not service or stage is None:

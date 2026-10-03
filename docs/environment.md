@@ -22,7 +22,7 @@ The plugin reaches the machine only through the operator's environment, never th
 | `TRESTLE_DOCKER_ENDPOINT` | The engine endpoint, passed to every docker command as `--host` (the `default` context's socket may be absent; use the active context's). |
 | `TRESTLE_IMAGE_<ROLE>` | The digest-pinned image of each role (`POSTGRES`, `HTTP_SUPPORT`), as `<repo>@sha256:<hex>`. Images are named by role, never pulled. |
 | `TRESTLE_ENV_COMPOSE_FILE` | Absolute path of the Compose definition the dependency closure is derived from. |
-| `TRESTLE_ENV_RECORD_STORE` | Optional: the container name of the environment's own Postgres that holds the durable fixture record. Unset: the run's `backend.postgres` container, which goes with the run. |
+| `TRESTLE_ENV_RECORD_STORE` | Optional: the container name of the environment's own Postgres that holds the durable fixture record. Unset: the run's `postgres` container, which goes with the run. |
 
 `python -m tests.proof.host.docker_gate run` exports the image pins and the endpoint for the proof
 gate; an operator sets them once for a real deployment.
@@ -63,8 +63,8 @@ Every container the plugin creates is named for the run (`trwr-<run id>-<node pa
 pinned image without a pull, keeps its data on tmpfs (a Docker volume is never created) and is
 stopped and removed with the run. A service is treated as ready only when its declared check
 passes, never after a sleep or when its port is open: the supporting service
-(`backend.http_support`) when `GET /health` answers `200` with exactly `ok`, and the backend
-(`backend.postgres`, which starts only after the supporting service is ready) when an authenticated
+(`http_support`) when `GET /health` answers `200` with exactly `ok`, and the backend
+(`postgres`, which starts only after the supporting service is ready) when an authenticated
 `SELECT 1` succeeds over TCP.
 
 ### Reusing what is already running
@@ -80,7 +80,7 @@ containers the run created are released.
 
 A failure names the stage and the service. A service that never becomes ready ends when its declared
 wait elapses: the answer is `blocked`, `primary.code` is `execution.postcondition_timeout`, and
-`primary.path` is the node (`backend.postgres` is the readiness stage of the `postgres` service),
+`primary.path` is the node (`postgres` is the readiness stage of the `postgres` service),
 with the human action and the re-send advice V-11 gives that code. An unknown identifier fails the
 catalog stage (before any run id); a Compose closure that cannot be derived fails the closure stage
 before anything starts. Whatever the run did not create (a container you started yourself, a
@@ -112,14 +112,15 @@ before the task starts. If the pin cannot be resolved the node ends `blocked` wi
 Trestle installs, refreshes and downloads nothing.
 
 A catalog test marked `provision` needs the environment's fixture record: a `provision.postgres`
-node (after `backend.postgres`) submits it to the Postgres store exactly once and the test starts
+node (after `postgres`) submits it to the Postgres store exactly once and the test starts
 only after it. The submit is not safe to resubmit: a store whose read lags an accepted submit is
 polled, never written twice, and an accepted submit is not reported as the record being there. The
 record is durable; no run removes it, and a second equivalent run finds it and submits nothing when
 the store outlives the run (`TRESTLE_ENV_RECORD_STORE`; the run's own container does not).
 
-A test node starts only after EVERY readiness pass: it needs both backends (`backend.http_support`
-and `backend.postgres`, which are independent of each other), so a test never runs against a service
+A test node starts only after EVERY readiness pass: it needs both backends (`http_support`
+and `postgres`, which starts after `http_support` as the catalog's `depends_on` says), so a test
+never runs against a service
 that is not ready. A catalog task marked `reports_tests` is a pytest selector: its counts come from
 the JUnit report it writes, never from console text, and an exit status that disagrees with the
 report is a contract violation, not a pass. A suite that only errors (a fixture that fails at
@@ -200,6 +201,11 @@ other), and `services`, `tests` and `overrides` are sets of catalog identifiers.
 {"env": "checkout-dev", "services": ["postgres"]}
 ```
 
+`services` selects the catalog services the run walks, with everything they depend on: a service's
+`depends_on` in the catalog (your Compose file's `depends_on`, written into the catalog) is part of
+the plan, so `["postgres"]` walks `http_support` and then `postgres`, and a service outside that
+closure is not part of the run at all. With no `services` the run walks every catalog service.
+
 An identifier the catalog does not hold is refused before a run id exists, with
 `admission.unknown_identifier`, the identifier and where the valid ones are listed
 (`identifier_sets.services`, `.tests` or `.overrides` of the declared plan). A repeated identifier is
@@ -209,4 +215,6 @@ created, no command is run.
 When the operator configures a Compose definition (`TRESTLE_ENV_COMPOSE_FILE`), the plugin derives
 the dependency closure of the selection from it before anything starts; a service the catalog does
 not hold, or a definition Compose cannot read, ends the run with the resolver's own code and no
-container created.
+container created. The definition must agree with the catalog's `depends_on`: if its closure of the
+selection differs from the one the plan walks, the run ends with
+`adapter.compose_definition_invalid`, naming both sets, so you can bring the catalog in line.

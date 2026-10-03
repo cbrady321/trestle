@@ -10,11 +10,9 @@ recreated or started."""
 
 from __future__ import annotations
 
-from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from tests.proof import records
 from tests.tree import treekit as tk
 from trestle.common.plan.vocabulary import ResourceDisposition
 
@@ -36,26 +34,6 @@ def untouched(engine: SupportEngine) -> None:
     assert [e for e in engine.effects if e[1] == FOUND] == []
 
 
-def stop_once_found_reused(rig: tk.TreeRig, on_wait: int) -> None:
-    """Raise the stop during the `on_wait`-th wait (the supporting node's: the found Postgres is
-    ready at its first read and never waits), but only once the found Postgres's NodeEnd is in the
-    lane. The backends are sibling threads: a stop raised on the wait count alone, on a loaded
-    host, came before the sibling had been observed (run 36866235573, CK-1 and CK-14:
-    `None == 'satisfied'`). The stop waits on the condition the test then reads, never a pause;
-    the lane is read mid-run, so a torn last line is "not yet". Bounded: on a miss the stop is
-    raised anyway and the `satisfied` assertion below names the failure."""
-    cancel = rig.rig.cancel
-    plain = cancel.wait
-
-    def wait(timeout: timedelta) -> bool:
-        if cancel.stop is None and len(cancel.waits) + 1 >= on_wait:
-            records.await_node_end(rig.run_dir, tree.POSTGRES_UNIT)
-            cancel.stop = cancel.stop_cause
-        return plain(timeout)
-
-    cancel.wait = wait  # type: ignore[method-assign]
-
-
 @pytest.mark.stub_proven("WR-OWN-1:b-dispositions-reused-started@stub-twin")
 @pytest.mark.stub_proven("WR-OWN-2:b-found-untouched-all-paths@stub-twin")
 @pytest.mark.stub_proven("WR-OWN-10:b-cleanup-never-found@stub-twin")
@@ -65,27 +43,29 @@ def test_prestarted_postgres_reused_untouched(tmp_path: Path, path: str) -> None
     engine.plant_found(FOUND)
     rig = rig_over(tmp_path, engine)
     if path == "cancelled":
-        stop_once_found_reused(rig, on_wait=2)  # a stop during the supporting node's wait
+        rig.rig.cancel.stop_on_wait = 2  # a stop during the supporting node's readiness wait
     rig.run()
     if path == "cancelled":  # the rig has no supervisor to write the stop row: read the lane
         assert rig.rig.cancel.requested
         ends = rig.ends()
-        assert ends[tree.HTTP_SUPPORT_UNIT]["cut"] == "stopped"  # cut mid-wait by the stop
-        # the backends are siblings: the found Postgres was observed and reused before the stop
-        assert ends[tree.POSTGRES_UNIT]["condition"] == "satisfied"
+        assert ends[tree.HTTP_SUPPORT_SERVICE]["cut"] == "stopped"  # cut mid-wait by the stop
+        # Postgres depends on the supporting service (the catalog's depends_on): the stop came
+        # before it could start, and the found Postgres is untouched all the same
+        assert ends[tree.POSTGRES_SERVICE]["cut"] == "not_started"
         untouched(engine)
         assert engine.inventory()["containers"] == frozenset({FOUND})  # the run's own released
-        assert engine.asked.count(tree.POSTGRES_READY) >= 1  # it really was read
         return
     answer = tk.answer_of(rig)
     if path == "passed":
         assert answer.outcome == "passed"
         shown = dispositions(answer)
-        assert shown[tree.POSTGRES_UNIT] == ResourceDisposition.REUSED
-        assert shown[tree.HTTP_SUPPORT_UNIT] == ResourceDisposition.STARTED
+        assert shown[tree.POSTGRES_SERVICE] == ResourceDisposition.REUSED
+        assert shown[tree.HTTP_SUPPORT_SERVICE] == ResourceDisposition.STARTED
         # reused is reported, and nothing was created for it: no ticket for the found node
         rows = rig.rows()
-        assert not any(r.get("path") == tree.POSTGRES_UNIT and r["class"] == "issue" for r in rows)
+        assert not any(
+            r.get("path") == tree.POSTGRES_SERVICE and r["class"] == "issue" for r in rows
+        )
         # the reuse proof was read from the found resource
         assert {tree.POSTGRES_IDENTITY, tree.POSTGRES_CONFIGURATION, tree.POSTGRES_READY} <= set(
             engine.asked
@@ -106,6 +86,6 @@ def test_a_found_postgres_without_proven_identity_is_never_reused(tmp_path: Path
     rig.run()
     answer = tk.answer_of(rig)
     assert answer.outcome == "blocked"
-    assert answer.primary.path == (tree.POSTGRES_UNIT,)
+    assert answer.primary.path == (tree.POSTGRES_SERVICE,)
     assert answer.primary.code == "execution.found_incompatible"
     untouched(engine)

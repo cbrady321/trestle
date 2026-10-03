@@ -55,6 +55,15 @@ globs         = [
   # REG_SERIAL_FILES is empty.
   "trestle/server/main.py", "trestle/cli.py", "tests/test_mcp_http_smoke.py", "docs/install.md",
   "tests/core/admission/test_cl_a2_profile.py", "tests/proof/baseline.json",
+  # stage 9: C-3, the service children are named by catalog id and `services` filters them; the
+  # catalog's `depends_on` is their `needs`, so a selection admits its dependency closure; the
+  # Compose definition must agree with it; the reference budgets hold the longer chain.
+  "packages/trestle-env/trestle_env/catalog/model.py", "packages/trestle-env/trestle_env/catalog/reference.json",
+  "packages/trestle-env/trestle_env/tree.py", "packages/trestle-env/trestle_env/closure.py",
+  "packages/trestle-env/trestle_env/stages.py", "packages/trestle-env/trestle_env/plugins/reference_env.py",
+  "packages/trestle-env/tests/unit/*.py", "packages/trestle-env/tests/host/*.py",
+  "packages/trestle-env/tests/fixtures/cancel_readiness.py", "packages/trestle-env/tests/fixtures/owned_restart.py",
+  "docs/environment.md",
 ]
 
 [[gate]]

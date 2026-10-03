@@ -39,6 +39,7 @@ from trestle_env.catalog import Catalog, Override, OverrideId, ProjectId, Servic
 UNKNOWN_IDENTIFIER: Final = "admission.unknown_identifier"
 BOUND_EXCEEDED: Final = "admission.bound_exceeded"
 INVALID_ARGS: Final = "admission.invalid_args"
+COMPOSE_DEFINITION_INVALID: Final = "adapter.compose_definition_invalid"  # the resolver's code
 SELECT_MAX: Final = 100  # WR-ENV-12 (hld-wr-environment): an answer selects at most 100 services
 
 

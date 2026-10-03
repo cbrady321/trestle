@@ -32,12 +32,12 @@ def test_dependent_starts_after_http_readiness_pass(tmp_path: Path) -> None:
     rig.run()
     rows = rig.rows()
     ends = rig.ends()
-    assert ends[tree.HTTP_SUPPORT_UNIT]["condition"] == "satisfied"
-    assert ends[tree.POSTGRES_UNIT]["condition"] == "satisfied"
+    assert ends[tree.HTTP_SUPPORT_SERVICE]["condition"] == "satisfied"
+    assert ends[tree.POSTGRES_SERVICE]["condition"] == "satisfied"
     assert ends[TEST_NODE]["condition"] == "satisfied"
     # the readiness pass precedes the dependent's first entry (its ticket is issued after it)
-    assert end_row(rows, tree.HTTP_SUPPORT_UNIT) < first_row(rows, TEST_NODE)
-    assert end_row(rows, tree.POSTGRES_UNIT) < first_row(rows, TEST_NODE)
+    assert end_row(rows, tree.HTTP_SUPPORT_SERVICE) < first_row(rows, TEST_NODE)
+    assert end_row(rows, tree.POSTGRES_SERVICE) < first_row(rows, TEST_NODE)
     # the pass is the answer to the declared check, polled REFUSED + 1 times on the declared wait
     assert engine.asked.count(tree.HTTP_SUPPORT_READY) == REFUSED + 1
     polls = [w for w in rig.rig.cancel.waits if w == timedelta(seconds=tree.READY_POLL_S)]
@@ -56,7 +56,7 @@ def test_a_running_support_container_without_the_declared_response_starts_no_dep
     rig.run()
     rows = rig.rows()
     ends = rig.ends()
-    assert ends[tree.HTTP_SUPPORT_UNIT]["condition"] != "satisfied"
+    assert ends[tree.HTTP_SUPPORT_SERVICE]["condition"] != "satisfied"
     assert ends[TEST_NODE]["cut"] == "not_started"
     assert not any(row.get("path") == TEST_NODE and row["class"] == "issue" for row in rows)
     assert engine.inventory()["containers"] == frozenset()  # what it created is released
