@@ -844,9 +844,6 @@ REG_SERIAL_NODES = (
     "tests/pins/c_surface/test_g_c4.py::test_pin_index_coarsened_summary_is_field_count",
     "tests/proof/spine/test_stop_offset.py::"
     "test_stop_seen_and_releases_past_the_offset_are_not_counted",
-    # A stop raised at the n-th wait over a real app on a free port, with a wall-clock bound.
-    "packages/trestle-env/tests/proc/test_readiness_cancel.py::"
-    "test_cancel_during_readiness_wait_prompt",
 )
 # Nodes that read the session's own proof results (`ledger.render()` over tests/proof/results):
 # in the serial step each sees exactly the records of the nodes before it. Each runs alone after
