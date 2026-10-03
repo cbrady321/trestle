@@ -64,6 +64,8 @@ globs         = [
   "packages/trestle-env/tests/unit/*.py", "packages/trestle-env/tests/host/*.py",
   "packages/trestle-env/tests/fixtures/cancel_readiness.py", "packages/trestle-env/tests/fixtures/owned_restart.py",
   "docs/environment.md",
+  # stage 11: the agent and plugin guides, `wait_for` and `--port 0` and the selection closure.
+  "docs/plugins.md", "docs/agents.md",
 ]
 
 [[gate]]

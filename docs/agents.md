@@ -62,6 +62,10 @@ trestle serve --plugin-dir ./tools --plugin-dir examples/packs
 
 Or persist paths in `$TRESTLE_HOME/config.toml` under `[plugins].paths`.
 
+**Streamable HTTP** — for a host that cannot hold stdio, `trestle serve --transport streamable-http
+--port 0` picks a free loopback port and prints `trestle: listening 127.0.0.1:<port>` on stderr;
+connect to `http://127.0.0.1:<port>/mcp` ([`install.md`](install.md#4-optional-streamable-http)).
+
 ### 3. Verify
 
 - Host shows **ten** tools (see table below).
@@ -348,7 +352,9 @@ budget at admission, before a run id exists, runs independent parts in parallel 
 run, and returns one answer for all of them. A request cannot add or reshape nodes. It can only
 select among the declared ones when the plugin offers a selector argument (for example
 `services: ["postgres"]`); a value outside the declared set is refused
-`admission.unknown_identifier`, with no run id.
+`admission.unknown_identifier`, with no run id. A selection runs the named parts together with
+everything they depend on (`reference_env`'s `services: ["postgres"]` also brings up
+`http_support`, which postgres depends on); parts outside that closure are not in the run.
 
 1. **Discover.** `describe_plugin(plugin_id="…")`. The selector arguments and the environment
    argument are in `input_schema`; `deadline_s` is the deadline the whole tree runs under. Give

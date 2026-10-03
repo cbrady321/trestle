@@ -404,6 +404,24 @@ gate observed, else `execution.declaration_stale`. `needs` orders siblings at ru
 checked once, up front. A gate must be one of the composite's children
 (`publication.unit_unresolved` otherwise, "a gates entry of '<path>' names none of its children").
 
+**Waiting inside a unit.** A unit never pauses for a fixed time. To wait for a state (a sibling's
+resource to exist, a file to appear), call `ctx.cancellation.wait_for(condition, bound)` with a
+no-argument predicate and a `timedelta` bound. It returns a `WaitOutcome` (from
+`trestle.workflow`): `condition` when the predicate held, `interrupted` when the run is stopping (a
+cancel, the release point, or a unit anywhere in the tree raised), or `timed_out` when the bound
+passed, after one last read of the predicate. On `interrupted`, return at once without acting: the
+tree is releasing. `needs` orders when siblings start; `wait_for` waits for a state while a unit
+runs. The node's own slice end and a timed-out parent are not wakes: the loop reads those when the
+call returns.
+
+```python
+def observe(self, params, reads, ctx):
+    # wait (bounded, cancellably) until both siblings have created their markers
+    outcome = ctx.cancellation.wait_for(both_siblings_created, timedelta(seconds=8))
+    if outcome is WaitOutcome.INTERRUPTED:
+        ...  # the run is stopping: observe and return, act on nothing
+```
+
 **Selecting part of a tree from the request.** Declare the allowed names in an `AllDeclaration`'s
 `identifier_sets` and bind a request argument to one of them with
 `ArgBinding(arg, identifier_set, filters_children)`. Every binding checks the argument's values
