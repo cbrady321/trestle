@@ -241,3 +241,73 @@ def test_restart_is_of_the_owned_process_only(tmp_path: Path) -> None:
         assert effects == [], effects  # neither created over, restarted, nor stopped
         assert not events(found_log), "the run's own app was never started beside the found one"
         assert tk.answer_of(found_rig).outcome is not OutcomeClass.PASSED
+
+
+def reference_rig(tmp_path: Path) -> tuple[tk.TreeRig, LocalProcessPort]:
+    """The SHIPPED reference tree (V03 stage 10): `overrides=[http_support_local]` with
+    `services=[http_support]`, so the `http_support` CHOICE's local alternative is the only node
+    that runs. Its command is bound by the plugin's own local router (`_local.LocalOverrides`
+    over the mise-shaped stub, the repository this checkout); the container side is the twin
+    engine, which nothing here reaches."""
+    from twin import overrides
+    from twin.twin_engine import SupportEngine
+
+    from trestle_env.plugins import _local
+
+    local = LocalProcessPort()
+    engine = SupportEngine()
+    environ = {
+        k: v for k, v in overrides.operator_environ(tmp_path / "operator").items() if v is not None
+    }
+    bound = _local.local_ports(
+        {
+            ports.ResourceReads: engine,
+            ports.ResourceCreate: engine,
+            ports.ResourceOwned: engine,
+        },
+        local,
+        _local.LocalOverrides(tree.CATALOG, environ),
+    )
+    entry = tree.ENTRY
+    rig = tk.tree_rig(
+        tmp_path,
+        entry.units[tree.ROOT_UNIT],  # type: ignore[arg-type]
+        {name: unit for name, unit in entry.units.items() if name != tree.ROOT_UNIT},
+        port_impl=bound,
+        deadline_s=tree.DEADLINE_S,
+        request={
+            "env": "owned-restart-ref",
+            "services": [tree.HTTP_SUPPORT_SERVICE],
+            "overrides": [overrides.OVERRIDE],
+        },
+    )
+    return rig, local
+
+
+@pytest.mark.proves("WR-ENV-7", "B7.1", "B", "B", "PROC", "BOTH")
+@pytest.mark.proves("WR-ENV-7", "WR-ENV-7:restart-within-budget-repaired", "B", "B", "PROC", "BOTH")
+def test_reference_tree_owned_restart(tmp_path: Path) -> None:
+    rig, local = reference_rig(tmp_path)
+    kill = KillOnce(rig, local)
+    rig.rig.services._cancel = kill  # noqa: SLF001  (the signal the loop reads)
+    try:
+        rig.run()
+    finally:
+        local.close()
+    assert len(kill.killed) == 1, "the owned override app was killed once"
+    answer = tk.answer_of(rig)
+    path = (tree.HTTP_SUPPORT_SERVICE, "http_support_local")
+    assert answer.outcome is OutcomeClass.PASSED, answer
+    assert answer.primary.path == path
+    assert answer.primary.node_class is NodeClass.REPAIRED
+    assert answer.primary.disposition is ResourceDisposition.REPAIRED
+    node = [r for r in rig.rows() if r.get("path") == "/".join(path)]
+    issued = [r["effect"] for r in node if r["class"] == "issue" and r["effect"] != tree.STOP]
+    assert issued == [tree.UP, tree.RESTART], issued
+    applied = {
+        r["effect"]: r.get("identity")
+        for r in node
+        if r["class"] == "confirmation" and r["status"] == "applied"
+    }
+    assert applied[tree.UP] == applied[tree.RESTART]  # the same handle, never a new create
+    assert rig.rig.clock.now - loopkit.NOW <= timedelta(seconds=tree.LEAF_BUDGET_S)

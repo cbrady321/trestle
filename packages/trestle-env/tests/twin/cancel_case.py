@@ -22,7 +22,7 @@ import shutil
 import socket
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from tests.proof import records, tolerances
 from trestle.common.types import RunView
@@ -166,3 +166,90 @@ def assert_cancel_facts(
     assert {tree.HTTP_SUPPORT_UNIT, APP_UNIT} <= released, released
     assert all(str(e.get("identity", "")) != found for e in entries)  # the found one: no row
     return entries
+
+
+# The same cancel on the SHIPPED reference tree (V03 stage 10; L.RB-10.1): `overrides=
+# [http_support_local]` makes the supporting service an owned local process, and Postgres (a
+# container the run creates) never gets ready (the binding plants a wrong password), so the cancel
+# lands during Postgres's readiness wait with the owned process running.
+LOCAL_PATH: Final = (tree.HTTP_SUPPORT_SERVICE, "http_support_local")
+
+
+def _local_port(where: Path, run_id: str) -> int | None:
+    selector = run_scoped_selector(Lineage(run_id, NodePath(LOCAL_PATH)), tree.UP)
+    found = list((where / "work" / "tmp").glob(f"{ENDPOINT_DIR_PREFIX}*/{selector}.endpoint"))
+    return int(found[0].read_text().strip().rsplit(":", 1)[1]) if len(found) == 1 else None
+
+
+def listening(port: int) -> bool:
+    with socket.socket() as probe:
+        return probe.connect_ex(("127.0.0.1", port)) == 0
+
+
+def reference_cancel(
+    tmp_path: Path, monkeypatch: Any, environ: dict[str, str | None], env: str
+) -> tuple[RunView, list[dict[str, Any]]]:
+    """Run `reference_env` with the override, cancel it during Postgres's readiness wait, and
+    assert the facts: cancelled; the owned process stops listening within `PROC_WAIT_S`; past the
+    stop row only releases; both the process and the created container released."""
+    from trestle_env.plugins import reference_env
+
+    for name, value in {**environ, "PYTHONPATH": harness_pythonpath()}.items():
+        if value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, value)
+    plugins = Path(reference_env.__file__).resolve().parent
+    kernel_ = create_kernel(home=tmp_path / "home", plugin_dirs=[plugins], skip_recovery=True)
+    kernel_.registry.refresh()
+    started = kernel_.control.run(
+        plugin="reference_env", args={"env": env, "overrides": [LOCAL_PATH[1]]}, wait_ms=0
+    )
+    assert isinstance(started, RunView), started
+    deadline = time.monotonic() + tolerances.JOIN_WAIT_S * 6
+    while (where := run_dir(kernel_, started.run_id)) is None:
+        assert time.monotonic() < deadline, "the run never got a run directory"
+        time.sleep(tolerances.POLL_S)
+    local = "/".join(LOCAL_PATH)
+    waiting = records.await_record(  # both up: the local app ready, Postgres in its readiness wait
+        where,
+        lambda lane, _: (
+            {
+                r.path
+                for r in lane.rows
+                if r.cls == "confirmation"
+                and r.entry["effect"] == tree.UP
+                and r.entry["status"] == "applied"
+            }
+            >= {local, tree.POSTGRES_SERVICE}
+        ),
+        bound_s=max(deadline - time.monotonic(), 0.0),
+    )
+    assert waiting.why == "condition", waiting.why
+    port = _local_port(where, started.run_id)
+    assert port is not None and listening(port), "the owned override app answers"
+    kernel_.control.cancel(started.run_id)
+    done = kernel_.control.project.await_terminal(started.run_id)
+    assert isinstance(done, RunView) and done.answer is not None, done
+    assert done.answer["outcome"] == "cancelled", done.answer
+    gone = time.monotonic() + tolerances.PROC_WAIT_S
+    while listening(port):
+        assert time.monotonic() < gone, "the owned override app still listens"
+        time.sleep(tolerances.POLL_FINE_S)
+    entries = lane(where)
+    stops = [r for r in records.ledger_rows(where).rows if r.get("kind") == "stop_row"]
+    assert stops and stops[0]["cause"] == "cancel", stops
+    offset = stops[0]["lane_committed_length"]
+    raw = (where / "evidence" / "lane.ndjson").read_bytes()
+    after = entries[raw[:offset].count(b"\n") :]
+    effects = [e.get("effect") for e in after if e["class"] in ("issue", "confirmation")]
+    assert all(effect == tree.STOP for effect in effects), effects  # releases only
+    released = {e["path"] for e in after if e["class"] == "released"}
+    assert {local, tree.POSTGRES_SERVICE} <= released, released
+    return done, entries
+
+
+def harness_pythonpath() -> str:
+    from twin import harness
+
+    return harness.plugin_pythonpath()

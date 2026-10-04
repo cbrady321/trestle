@@ -71,3 +71,52 @@ def test_missing_repo_blocked_no_docker_start(tmp_path: Path) -> None:
     # no fallback: the engine was never asked to create (or even read) the Docker node
     after = fake_binding.read_state(state)
     assert after == {"containers": [], "created": [], "volumes": [], "calls": []}
+
+
+@pytest.mark.stub_proven("WR-ENV-2:override-container-never-exists@stub-twin")
+def test_reference_tree_local_override(tmp_path: Path) -> None:
+    """The shipped reference tree: the override replaces http_support's Docker node, Postgres is
+    still created in the (fake) engine (V-7.2 step 1 pins its CHOICE-free child as before)."""
+    state = tmp_path / "engine.json"
+    environ = {**harness.twin_environ(state), **overrides.operator_environ(tmp_path / "operator")}
+    with harness.reference_host(tmp_path / "home", environ) as host:
+        answer = harness.run_terminal(host, "override-ref-twin", overrides=[overrides.OVERRIDE])
+        assert answer["state"] == "succeeded", answer
+        assert answer["answer"]["outcome"] == "passed", answer
+        run_dir = harness.run_dir(host, answer["run_id"])
+        entries = harness.lane(run_dir)
+        launches = overrides.launch_events(run_dir)
+    created = {
+        e["path"]: str(e["identity"])
+        for e in entries
+        if e["class"] == "confirmation" and e["effect"] == "up"
+    }
+    local = f"{overrides.LOGICAL}/{overrides.OVERRIDE}"
+    assert sorted(created) == [local, "postgres"]
+    assert created[local].startswith("proc-")  # a local process, not `trwr-<run>-`
+    after = fake_binding.read_state(state)
+    docker_selector = f"{harness.selector_prefix(answer['run_id'])}{overrides.LOGICAL}."
+    assert not [c for c in after["calls"] if str(c.get("selector", "")).startswith(docker_selector)]
+    (launch,) = launches
+    argv0 = overrides.unredacted(launch["payload"]["argv0"])
+    assert argv0 == sys.executable and Path(argv0).is_absolute()
+
+
+@pytest.mark.stub_proven("WR-ENV-2:missing-repo-no-docker-fallback@stub-twin")
+def test_reference_tree_override_unbound_blocks(tmp_path: Path) -> None:
+    state = tmp_path / "engine.json"
+    operator = overrides.operator_environ(tmp_path / "operator", repository=None)
+    with harness.reference_host(
+        tmp_path / "home", {**harness.twin_environ(state), **operator}
+    ) as host:
+        answer = harness.run_terminal(
+            host, "override-ref-twin-missing", overrides=["http_support_local"]
+        )
+        entries = harness.lane(harness.run_dir(host, answer["run_id"]))
+    assert answer["answer"]["outcome"] == "blocked", answer
+    node = answer["answer"]["primary"]
+    assert node["path"] == [overrides.LOGICAL, overrides.OVERRIDE]
+    assert (node["condition"], node["code"]) == ("blocked", "environment.repository_missing")
+    assert not [e for e in entries if e["class"] == "issue"]  # blocked before any effect
+    after = fake_binding.read_state(state)
+    assert not [c for c in after["calls"] if c["member"] == "create"]  # no Docker fallback

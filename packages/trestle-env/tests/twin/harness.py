@@ -95,14 +95,20 @@ def host_environ(seam: str | None = None) -> dict[str, str | None]:
 
 
 def run_terminal(
-    host: mcp_host.McpHost, env: str, services: list[str] | None = None
+    host: mcp_host.McpHost,
+    env: str,
+    services: list[str] | None = None,
+    overrides: list[str] | None = None,
 ) -> dict[str, Any]:
     """THE one call: `run(reference_env, completion="terminal")`; MC-12 counts it once. With no
-    `services` the request names none: the run walks every catalog service (C-3)."""
+    `services` the request names none: the run walks every catalog service (C-3). `overrides`
+    names catalog overrides (a service's local realization in place of its Docker one)."""
     sent = host.request_count()
     args: dict[str, Any] = {"env": env}
     if services is not None:
         args["services"] = services
+    if overrides is not None:
+        args["overrides"] = overrides
     answer = host.call(
         "run",
         {
