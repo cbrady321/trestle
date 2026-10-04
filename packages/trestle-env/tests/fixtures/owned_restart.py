@@ -1,18 +1,12 @@
 """The owned-restart test plugin (L.RB-8.3; B7.1, WR-ENV-7, WR-ENV-10, WR-REMEDY-4; never a product
 plugin, never collected).
 
-DEVIATION (recorded in B-HOST2-RETURN, orchestrator decision): the published reference
-`tree.ServiceUnit` declares no owned-restart remedy (`remedies=()`), so a killed owned app never
-gets a repair: measured on a rig over the real local process port, the node ends `failed` with
-`execution.postcondition_timeout` and the answer is `blocked`. This plugin proves the end-to-end
-claim on a test-defined unit instead of changing `tree.py`:
-
-    OwnedRestartUnit   the reference service unit over an agent-launched spec, plus one declared
-                       effect `restart` (OWNED) and one remedy: `execution.postcondition_timeout`
-                       is repaired by `restart` of the node's own handle, once. That is the whole
-                       remedy, so a node that is not owned (found, never created by this run) is
-                       never granted it (J-20: a found node's timeout is INCOMPATIBLE, no remedy),
-                       and the port refuses a selector it does not hold with no signal.
+The owned-restart remedy is the product's: `tree.LocalServiceUnit` (the reference tree's local
+realization, V03 stage 10 decision C) declares one effect `restart` (OWNED) and one remedy,
+`execution.postcondition_timeout` repaired by `restart` of the node's own handle, once. A node that
+is not owned (found, never created by this run) is never granted it (J-20), and the port refuses a
+selector it does not hold with no signal. `OwnedRestartUnit` here is that product unit over a
+test-bound spec (the stdlib app), the PROC twin of the reference-tree proof.
 
     healthy_machine (all-of), the same composition as `cancel_readiness`, with the app restartable:
       +-- backend.http_support   the reference Docker unit: a container this run CREATES  (started)
@@ -30,7 +24,6 @@ twin sets) wrapped by `_local.local_ports`.
 
 from __future__ import annotations
 
-import dataclasses
 import os
 import sys
 from datetime import timedelta
@@ -42,20 +35,13 @@ from trestle.workflow import (
     ChildBinding,
     CompletionSource,
     Compose,
-    EffectDeclaration,
-    EffectFacetClass,
-    LeafDeclaration,
-    Lifetime,
     LoopFlags,
     RealizationKind,
     Repeat,
     WorkflowEntry,
 )
-from trestle.workflow.declarations import RemedyDeclaration
 from trestle.workflow.loop import run_tree
-from trestle.workflow.ports import BoundCommand, Resolved, ResourceOwned, ResourceSpec
-from trestle.workflow.units import ActContext, Acted, EffectFacets, Step
-from trestle.workflow.values import Verdict
+from trestle.workflow.ports import BoundCommand, Resolved, ResourceSpec
 
 from trestle_env import tree
 from trestle_env.plugins import _bind, _local
@@ -63,7 +49,7 @@ from trestle_env.plugins import _bind, _local
 ROOT: Final = "healthy_machine"
 APP_UNIT: Final = "backend.app"
 APP: Final = "app"
-RESTART: Final = "restart"
+RESTART: Final = tree.RESTART
 # `trestle.workflow.codes.POSTCONDITION_TIMEOUT`: a plugin may import only `trestle.workflow`'s
 # public surface (R-PLUG-6), so the spelling is repeated here and pinned by the PROC test
 POSTCONDITION_TIMEOUT: Final = "execution.postcondition_timeout"
@@ -71,46 +57,20 @@ PORT_ENV: Final = "TRESTLE_B7_APP_PORT"
 LOG_ENV: Final = "TRESTLE_B7_APP_LOG"
 APP_PATH_ENV: Final = "TRESTLE_B7_HTTP_APP"  # the absolute path of tests/fixtures/apps/http_app.py
 REFUSALS: Final = "5"  # the app answers /health 503 this many times, per process, before 200
-WAIT_S: Final = 10  # the readiness wait, and so the moment a killed app is repaired (test-local)
-REMEDY_TOTAL_S: Final = 15  # the remedy's own bound: attempts, time, cooldown (V-14)
+WAIT_S: Final = tree.LOCAL_READY_WAIT_S  # the readiness wait: when a killed app is repaired
+REMEDY_TOTAL_S: Final = tree.RESTART_TOTAL_S  # the remedy's own bound (V-14)
 REMEDY_ATTEMPTS: Final = 1
 
 
-class OwnedRestartUnit(tree.ServiceUnit):
-    """The reference service unit with the owned-restart remedy the reference tree does not
-    declare (see the module docstring's deviation)."""
+class OwnedRestartUnit(tree.LocalServiceUnit):
+    """The product local leaf, with its owned-restart remedy, over a spec the test binds."""
 
-    def declare(self) -> LeafDeclaration:
-        base = super().declare()
-        release = timedelta(seconds=tree.RELEASE_TIMEOUT_S)
-        effects = (
-            *base.effects,
-            EffectDeclaration(
-                RESTART, EffectFacetClass.OWNED, "", Lifetime.RUN, frozenset(), release
-            ),
-        )
-        return dataclasses.replace(
-            base,
-            effects=effects,
-            remedies=(
-                RemedyDeclaration(
-                    POSTCONDITION_TIMEOUT,
-                    RESTART,
-                    REMEDY_ATTEMPTS,
-                    timedelta(seconds=REMEDY_TOTAL_S),
-                    timedelta(0),
-                ),
-            ),
-            wait=dataclasses.replace(base.wait, max_wait=timedelta(seconds=WAIT_S)),
-        )
-
-    def advance(self, params: Any, state: Verdict, effects: EffectFacets, ctx: ActContext) -> Step:
-        if state.remedy is not None and state.owned:
-            # the repair is one `restart` of the run's own handle, never a new create and never
-            # a signal to a process this run does not hold
-            effects.owned(ResourceOwned).restart(state.owned[-1], state.remedy.effect)
-            return Acted()
-        return super().advance(params, state, effects, ctx)
+    def __init__(
+        self, unit: str, service: str, readiness: str, spec: ResourceSpec | None = None
+    ) -> None:
+        super().__init__(unit, service, readiness)
+        if spec is not None:
+            self._spec = spec
 
 
 def app_command(port: str, log: str, http_app: str, refusals: str = REFUSALS) -> BoundCommand:

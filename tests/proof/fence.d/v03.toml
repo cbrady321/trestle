@@ -31,6 +31,9 @@ globs         = [
   "packages/trestle-env/trestle_env/plugins/reference_env.py",
   "packages/trestle-env/tests/twin/*.py", "packages/trestle-env/tests/proc/*.py",
   "packages/trestle-env/tests/unit/*.py", "packages/trestle-env/tests/host/*.py",
+  # commit 5: the owned restart on the local realization only (decision C); the test plugin's
+  # unit collapses onto it.
+  "packages/trestle-env/tests/fixtures/owned_restart.py",
 ]
 
 [[lane]]

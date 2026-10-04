@@ -29,6 +29,7 @@ adapter is bound by the composition root (`plugins/reference_env.py`), never her
 
 from __future__ import annotations
 
+import dataclasses
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -55,7 +56,7 @@ from trestle.workflow import (
     WaitPolicy,
     WorkflowEntry,
 )
-from trestle.workflow.codes import CREDENTIAL_LIFETIME_INSUFFICIENT
+from trestle.workflow.codes import CREDENTIAL_LIFETIME_INSUFFICIENT, POSTCONDITION_TIMEOUT
 from trestle.workflow.ports import (
     BoundCommand,
     ExecutionPort,
@@ -141,6 +142,8 @@ CONCURRENCY: Final = 2
 # = 10 + 15 + 2 = 27 <= LEAF_BUDGET_S. The CHOICE's budget is its largest alternative plus the
 # carve's finalization reserve (40 + 10).
 LOCAL_READY_WAIT_S: Final = 10
+RESTART: Final = "restart"  # the local leaf's owned repair: one restart of its own process
+RESTART_TOTAL_S: Final = 15  # the remedy's own bound (V-14)
 CHOICE_BUDGET_S: Final = 50
 CHOICE_SUFFIX: Final = ".choice"  # a service's CHOICE unit is `<service id>.choice`
 
@@ -414,7 +417,13 @@ class LocalServiceUnit(ServiceUnit):
     the operator's project directory and toolchain). An override that cannot be bound is a
     could-not-observe reading carrying the bind code: the node reports nothing present and `advance`
     blocks with that code and its human action, before any effect. It never falls back to Docker:
-    admission already pinned the CHOICE to it."""
+    admission already pinned the CHOICE to it.
+
+    Owned restart (decision C, L.RB-8.3; WR-ENV-7): the local leaf alone declares one `restart`
+    of its own handle as the remedy for `POSTCONDITION_TIMEOUT`, once. A process this run launched
+    that died (J-23) or never got ready (J-20) is restarted on the same handle, never recreated;
+    a restart that does not help ends `REMEDY_EXHAUSTED` (J-3). A Docker leaf declares no remedy,
+    so no Docker outcome changes. Stage budget: wait + remedy total + release = 10 + 15 + 2."""
 
     wait_s = LOCAL_READY_WAIT_S
 
@@ -426,7 +435,23 @@ class LocalServiceUnit(ServiceUnit):
             ResourceSpec(service, RealizationKind.AGENT_LAUNCHED_PROJECT, override, None),
         )
 
+    def declare(self) -> LeafDeclaration:
+        base = super().declare()
+        release = timedelta(seconds=RELEASE_TIMEOUT_S)
+        restart = EffectDeclaration(
+            RESTART, EffectFacetClass.OWNED, "", Lifetime.RUN, frozenset(), release
+        )
+        remedy = RemedyDeclaration(
+            POSTCONDITION_TIMEOUT, RESTART, 1, timedelta(seconds=RESTART_TOTAL_S), timedelta(0)
+        )
+        return dataclasses.replace(base, effects=(*base.effects, restart), remedies=(remedy,))
+
     def advance(self, params: Any, state: Verdict, effects: EffectFacets, ctx: ActContext) -> Step:
+        if state.remedy is not None and state.owned:
+            # the repair is one `restart` of the run's own handle: never a new create, never a
+            # signal to a process this run does not hold
+            effects.owned(ResourceOwned).restart(state.owned[-1], state.remedy.effect)
+            return Acted()
         seen = effects.read(ResourceReads).observe(self._spec, ctx.lineage, UP)
         if seen.code is not None:
             stage = f"{self._unit} ({self._spec.logical_system})"
