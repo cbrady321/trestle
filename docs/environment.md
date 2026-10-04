@@ -206,6 +206,10 @@ other), and `services`, `tests` and `overrides` are sets of catalog identifiers.
 the plan, so `["postgres"]` walks `http_support` and then `postgres`, and a service outside that
 closure is not part of the run at all. With no `services` the run walks every catalog service.
 
+`overrides` names catalog overrides: a service's local realization in place of its Docker one. The
+reference catalog declares one, `http_support_local` (the override app run as a local process); a
+service whose override the request does not name stays in Docker.
+
 An identifier the catalog does not hold is refused before a run id exists, with
 `admission.unknown_identifier`, the identifier and where the valid ones are listed
 (`identifier_sets.services`, `.tests` or `.overrides` of the declared plan). A repeated identifier is

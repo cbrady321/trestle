@@ -22,6 +22,8 @@ globs         = [
   "trestle/common/plan/compiler.py",
   "packages/trestle-env/tests/unit/test_two_overrides_plan_determinism.py",
   "packages/trestle-env/tests/fixtures/two-overrides/catalog.json",
+  # commit 3: the reference catalog drops `postgres_local` (decision B).
+  "packages/trestle-env/trestle_env/catalog/reference.json", "docs/environment.md",
 ]
 
 [[lane]]
