@@ -18,6 +18,10 @@ globs         = [
   "packages/trestle-env/tests/twin/local_consumer.py",
   "packages/trestle-env/tests/host/test_credential_currency.py",
   "packages/trestle-env/tests/host/test_stale_generation.py",
+  # commit 2: V-7.2 step 1, a choice the request names none of pins its fallback (decision A).
+  "trestle/common/plan/compiler.py",
+  "packages/trestle-env/tests/unit/test_two_overrides_plan_determinism.py",
+  "packages/trestle-env/tests/fixtures/two-overrides/catalog.json",
 ]
 
 [[lane]]

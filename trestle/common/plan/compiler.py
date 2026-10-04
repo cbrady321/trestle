@@ -398,7 +398,13 @@ def _select_refs(path: str, node: Mapping[str, Any], request: Mapping[str, Any])
         if value is _ABSENT:
             return refs
         named = set(_values(value))
-        return [r for r in refs if r.unit in named]
+        selected = [r for r in refs if r.unit in named]
+        fallback = node["choice"]["fallback"]
+        if not selected and fallback is not None:
+            # V-7.2 step 1: the request supplies `select_arg` but names none of THIS choice's
+            # alternatives, so the fallback alone is eligible (one override among several CHOICEs)
+            return [r for r in refs if r.unit == fallback]
+        return selected
     if node["compose"] != "all":
         return refs
     named_ids: set[Any] | None = None
