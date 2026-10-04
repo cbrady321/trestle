@@ -1,14 +1,10 @@
-"""A credential consumer that is a LOCAL app, and the delivery that refreshes it in place
-(L.RB-9.4.fix1; WR-ENV-13:refresh-in-place-local-app; not a test module).
+"""A credential consumer that is a LOCAL app (L.RB-9.4.fix1; WR-ENV-13:refresh-in-place-local-app;
+not a test module).
 
-DEVIATION (recorded in B-HOST2-RETURN, orchestrator decision): the product `ChannelDelivery`
-addresses only run-scoped container selectors (`trwr-...`, `channel_directory` refuses anything
-else), and a local process's selector is `proc-<hex>`, so nothing in the product can refresh a local
-app's credential in place. The `[local_app]` case is proved on a rig with a test-defined delivery
-binding, `LocalAppDelivery`, that does what `ChannelDelivery` does for a local process: it rewrites
-the app's credentials file in place (temporary file, atomic rename, the pack's own `write_channel`)
-with the issuer's CURRENT token. It addresses an owned `proc-` selector only, so a found process is
-never delivered to. A product delivery for local processes would replace it.
+The product `ChannelDelivery` refreshes a local app in place: its channel directory is the one the
+owned process's `proc-<16 hex>` selector names (`channel_directory`), and the app is told where it
+is through `TRESTLE_CHANNEL_DIR` (`channel_env`). The test-defined `LocalAppDelivery` that stood in
+for it (B-HOST2-RETURN's deviation) is gone (V03 stage 10, decision D).
 
 `LocalConsumerUnit` is L.RB-9.5's `ConsumerUnit` over an agent-launched spec (a real
 `LocalProcessPort` process, the stdlib app in `never` mode: it only has to stay alive), declared
@@ -27,7 +23,6 @@ restarts it, and the relaunched process holds the current generation.
 from __future__ import annotations
 
 import dataclasses
-import re
 import sys
 from collections.abc import Callable
 from datetime import timedelta
@@ -38,19 +33,14 @@ from tests.single.workflow import loopkit as kit
 from tests.tree import treekit as tk
 from trestle.workflow import EffectDeclaration, EffectFacetClass, Lifetime, codes, ports
 from trestle.workflow.declarations import LeafDeclaration, RealizationKind, RemedyDeclaration
-from trestle.workflow.ports import BoundCommand, Resolved, ResourceSpec, as_descriptor
-from trestle.workflow.services import AttemptTicket
+from trestle.workflow.ports import BoundCommand, Resolved, ResourceSpec
 from trestle.workflow.units import ActContext, Acted, EffectFacets, Step
 from trestle.workflow.values import (
-    Confirmation,
-    ConfirmationStatus,
     Lineage,
     NodePath,
-    OwnedHandle,
     Verdict,
 )
-from trestle_packs.grant import CHANNEL_FILE, IssuerClient, write_channel
-from trestle_packs.grant.demo import GRANT_ISSUER_UNREACHABLE, IssuerUnreachable, IssuerUnreadable
+from trestle_packs.grant import CHANNEL_FILE
 from trestle_packs.grant.host_scope import DemoHostScope
 from trestle_packs.process.local import LocalProcessPort, run_scoped_selector
 
@@ -61,7 +51,6 @@ from twin.local_app import APP
 UNIT: Final = "consumer.current"
 STALE_UNIT: Final = "consumer.stale"
 RESTART: Final = "restart"
-_OWNED_PROCESS: Final = re.compile(r"proc-[0-9a-f]{16}")
 
 
 def selector_for(run_id: str, unit: str = UNIT) -> str:
@@ -93,42 +82,6 @@ class LocalConsumerUnit(consumers.ConsumerUnit):
         return dataclasses.replace(
             super().declare(), resource_kind=kind, may_touch=frozenset({kind})
         )
-
-
-class LocalAppDelivery:
-    """`GrantDelivery` for an owned local process: the credentials file at
-    `<channels>/<selector>/credentials`, rewritten in place with the issuer's current token."""
-
-    def __init__(self, issuer_url: str, channels: Path) -> None:
-        self._client = IssuerClient(issuer_url)
-        self._channels = channels
-        self.delivered: list[str] = []
-
-    def channel(self, selector: str) -> Path:
-        if not _OWNED_PROCESS.fullmatch(selector):
-            raise ValueError(f"{selector!r} is not an owned local process: it names no channel")
-        return self._channels / selector
-
-    def release_descriptor(self, call: Any) -> Any:
-        if call.member != "deliver":
-            raise ValueError(f"the grant delivery port has no effect {call.member!r} (B3-C11)")
-        return as_descriptor(call.arguments["consumer"].release)
-
-    def deliver(self, consumer: OwnedHandle, ticket: AttemptTicket) -> Confirmation:
-        if not isinstance(consumer, OwnedHandle):
-            raise ValueError("deliver takes the owned handle of the consumer, nothing else")
-        directory = self.channel(consumer.selector)
-        if not directory.is_dir():
-            return Confirmation(ConfirmationStatus.NOT_APPLIED, None, None)
-        try:
-            token = self._client.get("/credential").get("token")
-        except (IssuerUnreachable, IssuerUnreadable):
-            return Confirmation(ConfirmationStatus.NOT_APPLIED, GRANT_ISSUER_UNREACHABLE, None)
-        if not isinstance(token, str) or not token:
-            return Confirmation(ConfirmationStatus.NOT_APPLIED, GRANT_ISSUER_UNREACHABLE, None)
-        write_channel(directory, token)
-        self.delivered.append(consumer.selector)
-        return Confirmation(ConfirmationStatus.APPLIED, None, consumer.selector)
 
 
 class Watched:
@@ -316,7 +269,6 @@ def assert_restarted(case: StaleRestart) -> None:
 __all__ = [
     "CHANNEL_FILE",
     "LaunchCredential",
-    "LocalAppDelivery",
     "LocalConsumerUnit",
     "RestartingConsumerUnit",
     "StaleRestart",

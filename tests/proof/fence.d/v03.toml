@@ -3,6 +3,23 @@
 # and the remaining RACES-REPORT leads. One branch, one gate, one host session.
 phase = "v03"
 
+# The selectable local realization (V03 stage 10, C-2; DESIGN-stage10-local-realization.md): its
+# own lane and gate after V03-WAIT landed. Listed first: a lane is the first whose prefix matches.
+[[lane]]
+name          = "v03-local"
+branch_prefix = "wr/v03/local-"
+globs         = [
+  # commit 1: the local credential channel (`proc-` selectors, `channel_env`, decision D).
+  "tests/proof/fence.d/v03.toml",
+  "packages/trestle-packs/trestle_packs/grant/delivery.py",
+  "packages/trestle-packs/trestle_packs/grant/__init__.py",
+  "packages/trestle-packs/tests/grant/test_delivery.py",
+  "packages/trestle-packs/tests/grant/test_conformance.py",
+  "packages/trestle-env/tests/twin/local_consumer.py",
+  "packages/trestle-env/tests/host/test_credential_currency.py",
+  "packages/trestle-env/tests/host/test_stale_generation.py",
+]
+
 [[lane]]
 name          = "v03"
 branch_prefix = "wr/v03/"
@@ -74,3 +91,8 @@ globs         = [
 branch         = "wr/v03/wait-interface"
 merge          = "V03-WAIT"
 requires_merge = []
+
+[[gate]]
+branch         = "wr/v03/local-realization"
+merge          = "V03-LOCAL"
+requires_merge = ["V03-WAIT"]

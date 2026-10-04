@@ -30,6 +30,7 @@ from grant.conftest import load_stub
 from trestle_packs.container import ContainerDefinition, bind
 from trestle_packs.container.effects import BindMount
 from trestle_packs.grant import (
+    CHANNEL_ENV,
     CHANNEL_FILE,
     CHANNEL_MOUNT,
     ArgvRunner,
@@ -37,6 +38,7 @@ from trestle_packs.grant import (
     ContainerExecProbe,
     LocalAppProbe,
     channel_directory,
+    channel_env,
     channel_mount,
     provision_channel,
     write_channel,
@@ -161,6 +163,36 @@ def test_a_channel_selector_cannot_leave_the_channels_root(tmp_path: Path) -> No
     for bad in ("../escape", "trwr-x/../../y", "found-container", "trwr-", "/etc"):
         with pytest.raises(ValueError, match="run-scoped selector"):
             channel_directory(tmp_path, bad)
+    for bad in ("proc-", "proc-0123456789abcdef0", "proc-0123456789ABCDEF", "proc-../../etc"):
+        with pytest.raises(ValueError, match="run-scoped selector"):
+            channel_directory(tmp_path, bad)
+
+
+PROC_SELECTOR = "proc-0123456789abcdef"  # the shape of `process.local.run_scoped_selector`
+
+
+def test_an_owned_local_process_has_a_channel_named_by_its_selector(tmp_path: Path) -> None:
+    """A local process's channel is the directory its `proc-` selector names; it is told where
+    through `TRESTLE_CHANNEL_DIR` (a directory, never a credential), and nothing mounts it."""
+    assert channel_directory(tmp_path, PROC_SELECTOR) == tmp_path / PROC_SELECTOR
+    assert channel_env(tmp_path, PROC_SELECTOR) == {CHANNEL_ENV: str(tmp_path / PROC_SELECTOR)}
+    with pytest.raises(ValueError, match="container selector"):
+        channel_mount(tmp_path, PROC_SELECTOR)
+    with pytest.raises(ValueError, match="local process selector"):
+        channel_env(tmp_path, SELECTOR)
+
+
+def test_a_delivery_refreshes_an_owned_local_process_channel_in_place(
+    issuer: Any, tmp_path: Path
+) -> None:
+    directory = provision_channel(tmp_path, PROC_SELECTOR)
+    write_channel(directory, issuer.state.token())
+    issuer.state.advance()
+    lineage = container_cases.lineage("consumer")
+    handle = CreatedHandle(lineage, "up", PROC_SELECTOR, ports.InRunGroup())
+    done = ChannelDelivery(issuer.url, tmp_path).deliver(handle, owned_ticket())
+    assert (done.status, done.identity) == (ConfirmationStatus.APPLIED, PROC_SELECTOR)
+    assert issuer.state.current() in (directory / CHANNEL_FILE).read_text(encoding="utf-8")
 
 
 # ------------------------------------------------------------------------------- the probes
