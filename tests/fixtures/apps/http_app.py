@@ -9,7 +9,8 @@ first command-line argument:
   later one 200 `ok`, so a poller sees `n` refusals before the pass;
 * `never`: `/health` is always 503; the service listens but never becomes ready (L.RB-2.3).
 
-`PORT` (environment, required) is the loopback port it listens on. `APP_EVENT_LOG` (environment,
+`PORT` (environment, required) is the loopback port it listens on (`0`: a free one, reported through
+`TRESTLE_ENDPOINT_FILE`, the local process port's endpoint contract). `APP_EVENT_LOG` (environment,
 optional) is a file it appends `listening` to once it accepts connections, `health <status>` after
 each `/health` request and `stop` when told to end (SIGTERM or SIGINT), so a test reads the order
 of what the app saw from the app itself. Any other path is 404. Imports only the standard library;
@@ -81,6 +82,18 @@ def handler_for(readiness: Readiness) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
+def report_endpoint(server: ThreadingHTTPServer) -> None:
+    """With `PORT=0` the app picked its own port: it writes its bound address to the file
+    `TRESTLE_ENDPOINT_FILE` names, atomically (the local process port's endpoint contract)."""
+    target = os.environ.get("TRESTLE_ENDPOINT_FILE")
+    if os.environ.get("PORT") != "0" or not target:
+        return
+    partial = target + ".partial"
+    with open(partial, "w", encoding="utf-8") as sink:
+        sink.write(f"127.0.0.1:{server.server_address[1]}")
+    os.replace(partial, target)
+
+
 def main() -> int:
     readiness = parse(sys.argv[1:])
     server = ThreadingHTTPServer(("127.0.0.1", int(os.environ["PORT"])), handler_for(readiness))
@@ -90,6 +103,7 @@ def main() -> int:
 
     signal.signal(signal.SIGTERM, end)
     signal.signal(signal.SIGINT, end)
+    report_endpoint(server)
     note("listening")
     try:
         server.serve_forever()

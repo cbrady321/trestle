@@ -54,18 +54,6 @@ class RigGrant(FakeGrant):
         return generation
 
 
-class LiveScope:
-    """A `HostScopeReading` that asks the issuer at each join (duck-typed: the join reads
-    `.readings`)."""
-
-    def __init__(self, grant: FakeGrant) -> None:
-        self._scope = DemoHostScope(grant, now=lambda: kit.NOW)
-
-    @property
-    def readings(self) -> Any:
-        return self._scope.readings().readings
-
-
 def rig_over(tmp_path: Path, grant: FakeGrant) -> tk.TreeRig:
     root = tk.group(
         "environment",
@@ -78,14 +66,17 @@ def rig_over(tmp_path: Path, grant: FakeGrant) -> tk.TreeRig:
         {tree.CREDENTIAL_UNIT: tree.CredentialUnit(), DEPENDENT: tk.leaf_unit(DEPENDENT)},
         marker,
         deadline_s=DEADLINE_S,
-        port_impl={**tk.port_map(marker), ports.GrantReads: grant, ports.GrantRefresh: grant},
+        port_impl={
+            **tk.port_map(marker),
+            ports.GrantReads: grant,
+            ports.GrantRefresh: grant,
+            ports.HostScopeReads: DemoHostScope(grant, now=lambda: kit.NOW),  # read at each join
+        },
     )
 
 
 def run(rig: tk.TreeRig, grant: FakeGrant) -> dict[str, dict[str, Any]]:
-    walked = rig.rig.loop()
-    walked.host_scope = LiveScope(grant)
-    walked.run()
+    rig.run()
     return rig.ends()
 
 

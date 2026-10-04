@@ -62,14 +62,14 @@ def test_declared_tree_admitted_one_root_one_child() -> None:
     # (the name is L.RB-0.2's: the tree began as one root over one child and has grown since;
     # what it pins is that the declared tree compiles to an admitted plan with the env key)
     plan = compiled(tree.ENTRY, {schema.ENV_ARG: PROJECT})
-    assert [v.path for v in plan.vertices] == ["", tree.HTTP_SUPPORT_UNIT, tree.POSTGRES_UNIT]
+    assert [v.path for v in plan.vertices] == ["", tree.HTTP_SUPPORT_SERVICE, tree.POSTGRES_SERVICE]
     assert [v.unit for v in plan.vertices] == [
         tree.ROOT_UNIT,
         tree.HTTP_SUPPORT_UNIT,
         tree.POSTGRES_UNIT,
     ]
-    assert plan.vertex("").children == (tree.HTTP_SUPPORT_UNIT, tree.POSTGRES_UNIT)
-    assert plan.vertex(tree.POSTGRES_UNIT).compose == "leaf"
+    assert plan.vertex("").children == (tree.HTTP_SUPPORT_SERVICE, tree.POSTGRES_SERVICE)
+    assert plan.vertex(tree.POSTGRES_SERVICE).compose == "leaf"
     # the environment key is the Compose project the request names (opaque bytes to the host)
     root = tree.ENTRY.units[tree.ROOT_UNIT]
     assert isinstance(root, AllDeclaration)
@@ -151,17 +151,22 @@ def test_the_tree_module_binds_no_adapter() -> None:
     assert trestle_env.__file__ is not None
 
 
-def test_a_catalog_test_node_needs_every_readiness_node_and_backends_are_siblings() -> None:
+def test_a_catalog_test_node_needs_every_readiness_node_and_backends_follow_the_catalog() -> None:
     from twin.twin_engine import TEST_NODE, entry_with_test
 
     entry = entry_with_test()
     root = entry.units[tree.ROOT_UNIT]
     assert isinstance(root, AllDeclaration)
     needs = {c.unit: c.needs for c in root.children}
-    assert needs[tree.HTTP_SUPPORT_UNIT] == () and needs[tree.POSTGRES_UNIT] == ()
-    assert set(needs[TEST_NODE]) == {tree.HTTP_SUPPORT_UNIT, tree.POSTGRES_UNIT}
+    # a backend's needs are the catalog's depends_on: postgres after http_support (C-3)
+    assert needs[tree.HTTP_SUPPORT_UNIT] == ()
+    assert needs[tree.POSTGRES_UNIT] == (tree.HTTP_SUPPORT_SERVICE,)
+    assert set(needs[TEST_NODE]) == {tree.HTTP_SUPPORT_SERVICE, tree.POSTGRES_SERVICE}
     plan = compiled(entry, {schema.ENV_ARG: PROJECT})
-    assert set(plan.vertex(TEST_NODE).needs) == {tree.HTTP_SUPPORT_UNIT, tree.POSTGRES_UNIT}
+    assert set(plan.vertex(TEST_NODE).needs) == {
+        tree.HTTP_SUPPORT_SERVICE,
+        tree.POSTGRES_SERVICE,
+    }
     # the reference catalog lists no test: the default tree is the two backends
     assert [c.unit for c in tree.ENTRY.units[tree.ROOT_UNIT].children] == [  # type: ignore[union-attr]
         tree.HTTP_SUPPORT_UNIT,

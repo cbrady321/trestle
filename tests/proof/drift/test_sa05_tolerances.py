@@ -229,3 +229,91 @@ def test_the_sleep_sync_scan_finds_a_planted_site(tmp_path: Path) -> None:
     for base in SLEEP_SYNC_SCOPE[1:]:
         (tmp_path / base).mkdir(parents=True)
     assert _sleep_sync_sites(tmp_path) == {("tests/test_planted.py", "test_raced"): 5}
+
+
+# ---- lane polling outside the test kit ---------------------------------------------------------
+# A test that waits on a run's record waits through `tests.proof.records.await_record` (or its
+# shapes `await_node_end` / `await_confirmations`): it returns on the condition, on the root's
+# terminal row, or at its bound, and says which. A local loop over the lane or ledger is a second,
+# bespoke copy of that wait (RACES-REPORT L-1..L-5). The set may shrink, never grow.
+LANE_POLL_READERS = {"lane_rows", "ledger_rows", "node_record", "lane"}
+LANE_POLL_HOME = "tests/proof/records.py"
+LANE_POLL_BASELINE: set[tuple[str, str]] = set()
+
+
+def _call_name(node: ast.Call) -> str:
+    func = node.func
+    return (func.attr if isinstance(func, ast.Attribute) else "") or getattr(func, "id", "")
+
+
+def _reads_record(node: ast.AST) -> bool:
+    return any(
+        isinstance(n, ast.Call) and _call_name(n) in LANE_POLL_READERS for n in ast.walk(node)
+    )
+
+
+def _lane_poll_sites(root: Path) -> dict[tuple[str, str], int]:
+    """Every `(file, function)` outside `records.py` that polls the record: it holds a loop (a
+    `while`, or a `wait_until(` call) and calls a record reader (`lane_rows`, `ledger_rows`,
+    `node_record`, or a rig's `lane`) inside that loop or inside a nested function or lambda it
+    defines (the loop's predicate). A read after the loop is not a poll. With the function's
+    line; nested helpers count toward their encloser."""
+    sites: dict[tuple[str, str], int] = {}
+    for base in SLEEP_SYNC_SCOPE:
+        for path in sorted((root / base).rglob("*.py")):
+            rel = str(path.relative_to(root))
+            if rel == LANE_POLL_HOME:
+                continue
+            for func in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                inner = [n for n in ast.walk(func) if n is not func]
+                loops = [
+                    n
+                    for n in inner
+                    if isinstance(n, ast.While)
+                    or (isinstance(n, ast.Call) and _call_name(n) == "wait_until")
+                ]
+                if not loops:
+                    continue
+                nested = [
+                    n
+                    for n in inner
+                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))
+                ]
+                if any(_reads_record(n) for n in [*loops, *nested]):
+                    sites.setdefault((rel, func.name), func.lineno)
+    return sites
+
+
+@pytest.mark.parametrize("sa", ["SA-05"])
+def test_no_lane_polling_outside_records(sa: str) -> None:
+    """The ratchet, both ways, as `test_no_sleep_as_synchronisation`."""
+    found = _lane_poll_sites(ROOT)
+    new = sorted(
+        f"{path}:{line} ({func})"
+        for (path, func), line in found.items()
+        if (path, func) not in LANE_POLL_BASELINE
+    )
+    assert not new, f"{sa}: a local poll of the record; use records.await_record: {new}"
+    stale = sorted(LANE_POLL_BASELINE - found.keys())
+    assert not stale, f"{sa}: fixed sites still in LANE_POLL_BASELINE (remove them): {stale}"
+
+
+def test_the_lane_poll_scan_finds_a_planted_site(tmp_path: Path) -> None:
+    """Not vacuous: a planted local poll of the lane is found, a read with no loop is not, and
+    the test kit's own home is exempt."""
+    planted = tmp_path / "tests" / "test_planted.py"
+    planted.parent.mkdir()
+    planted.write_text(
+        "from tests.proof import records\n\n\ndef test_polls(run_dir):\n"
+        "    while not records.lane_rows(run_dir).rows:\n        pass\n\n\n"
+        "def test_reads(run_dir):\n    assert records.node_record(run_dir).terminal\n",
+        encoding="utf-8",
+    )
+    home = tmp_path / LANE_POLL_HOME
+    home.parent.mkdir(parents=True)
+    home.write_text("def await_record(d):\n    while True:\n        lane_rows(d)\n")
+    for base in SLEEP_SYNC_SCOPE[1:]:
+        (tmp_path / base).mkdir(parents=True)
+    assert _lane_poll_sites(tmp_path) == {("tests/test_planted.py", "test_polls"): 4}

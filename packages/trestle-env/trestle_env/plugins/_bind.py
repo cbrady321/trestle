@@ -20,7 +20,7 @@ comes from the operator's environment, never from a request:
   request that names none is unaffected. `TRESTLE_ENV_ENVELOPE` and `TRESTLE_ENV_DISTRIBUTIONS`
   optionally name the resolver's cache directory and the Gradle distribution store;
 * `TRESTLE_ENV_RECORD_STORE` - optional: the container name of the environment's own Postgres
-  that holds the durable provisioning record (else the run's `backend.postgres` container);
+  that holds the durable provisioning record (else the run's `postgres` container);
 * `TRESTLE_ENV_PORTS` - `module:callable` (or `/abs/file.py:callable`), a binding seam for proof
   harnesses: when set, the named callable is given the environment and returns the port map
   INSTEAD of this module's own binding (how a stub twin runs the same tree on a fake engine
@@ -50,10 +50,11 @@ from trestle_packs.process.command import CommandPort
 from trestle_packs.provision import ProvisionPort, RecordStore
 from trestle_packs.testrun import PytestJunitRunner
 from trestle_packs.toolchain import MiseToolchainResolver
+from trestle_packs.toolchain.host_scope import ToolchainHostScope
 from trestle_packs.toolchain.tasks import ProjectTasks, TaskDeclaration, TaskRunner
 
 from trestle_env import tree
-from trestle_env.closure import ClosurePlan, Refused, closure
+from trestle_env.closure import COMPOSE_DEFINITION_INVALID, ClosurePlan, Refused, closure
 from trestle_env.plugins._http import HttpReadinessReads
 from trestle_env.plugins._route import RealizationRouter
 from trestle_env.plugins._tasks import TaskExecution
@@ -180,6 +181,9 @@ def reference_ports(
     resolver, tasks = toolchain_ports(env, runner, artifacts=artifacts)
     if resolver is not None:
         mapping[ports.ToolchainResolver] = resolver
+        # the toolchain's host-scope reader (Q3): bound with no target until a leaf emits a
+        # TOOLCHAIN_INSTALLS currency fact, so the subject reads as unreadable (V-9.7)
+        mapping[ports.HostScopeReads] = ToolchainHostScope(resolver)
     routed: Any = bound.containers
     if tree.PROVISION_UNIT in tree.ENTRY.units:
         # the tree provisions a fixture record: its `PROVISIONED` resource goes to the record store
@@ -248,7 +252,7 @@ def toolchain_ports(
 
 def provision_port(env: Mapping[str, str], execution: ports.ExecutionPort) -> ProvisionPort:
     """The provisioning adapter over the reference Postgres: every statement is an authenticated
-    `psql` inside the container of the run's `backend.postgres` node (the run-scoped selector), or,
+    `psql` inside the container of the run's `postgres` node (the run-scoped selector), or,
     when the operator names one (`TRESTLE_ENV_RECORD_STORE`, a container name), inside that
     environment's own Postgres, which outlives any one run: the durable record (`Durable
     (ENVIRONMENT)`) is then there for the next equivalent run to find (L.RB-6.3)."""
@@ -271,7 +275,7 @@ def provision_port(env: Mapping[str, str], execution: ports.ExecutionPort) -> Pr
 
 def _postgres_lineage(lineage: Lineage) -> Lineage:
     """The lineage of the Postgres node of the run `lineage` belongs to."""
-    return Lineage(lineage.root_run_id, NodePath((tree.POSTGRES_UNIT,)))
+    return Lineage(lineage.root_run_id, NodePath((tree.POSTGRES_SERVICE,)))
 
 
 def bind_evidence(bound: Mapping[type, object], sink: Any) -> None:
@@ -303,8 +307,10 @@ def derive_closure(
     With a Compose definition bound, the resolver's closure of `selected` (default: every catalog
     service) goes through `closure()`: a service the catalog does not hold, a definition the
     resolver refuses and a selection over the bound are refused here with their V-11 codes, so the
-    run ends with no container created. Returns the `ClosurePlan` (the services the selection
-    starts, with the realization each runs as), or None when no definition is bound."""
+    run ends with no container created. The admitted plan walks the selection's closure over the
+    catalog's `depends_on` (C-3); a Compose definition whose closure differs is
+    `COMPOSE_DEFINITION_INVALID`, naming both sets. Returns the `ClosurePlan` (the services the
+    selection starts, with the realization each runs as), or None when no definition is bound."""
     resolver = bound.get(ports.ComposeResolver)
     if resolver is None:
         return None
@@ -317,6 +323,16 @@ def derive_closure(
     plan = closure(tree.CATALOG, derived, names, overrides)
     if isinstance(plan, Refused):
         raise ClosureRefusedError(plan.code, plan.identifier)
+    walked = tree.CATALOG.dependency_closure(names)
+    if plan.services != walked:
+        # the plan was admitted from the catalog's `depends_on`; the user's Compose definition
+        # must agree with it, or the run would start what the plan never walks (or the reverse)
+        raise ClosureRefusedError(
+            COMPOSE_DEFINITION_INVALID,
+            "the catalog's depends_on disagrees with the Compose definition: it walks "
+            f"{', '.join(sorted(walked))}, the definition's closure is "
+            f"{', '.join(sorted(plan.services))}; make the catalog's depends_on match",
+        )
     return plan
 
 

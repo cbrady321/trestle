@@ -63,9 +63,9 @@ def test_terminal_response_follows_terminal_row(tmp_path: Path) -> None:
         bounded = host.call("run", {"plugin": "slow", "args": {"seconds": WORK_S}})
         assert bounded["state"] == "running", bounded
         bounded_dir = _run_dir(host, bounded["run_id"])
-        assert support.wait_until(
-            lambda: records.node_record(bounded_dir).terminal is not None,
-            tolerances.HARNESS_WAIT_MS / 1000,
+        assert (
+            records.await_terminal(bounded_dir, bound_s=tolerances.HARNESS_WAIT_MS / 1000).why
+            == "condition"
         )
 
         started = time.monotonic()
@@ -186,9 +186,9 @@ def test_wait_past_the_bound_is_the_named_code_never_running(
     assert "running" not in answer.to_dict()
     # the run is still there and reaches its terminal row on its own
     (run_dir,) = sorted(kernel.home.glob("runs/*/r_*"))
-    assert support.wait_until(
-        lambda: records.node_record(run_dir).terminal is not None,
-        tolerances.HARNESS_WAIT_MS / 1000,
+    assert (
+        records.await_terminal(run_dir, bound_s=tolerances.HARNESS_WAIT_MS / 1000).why
+        == "condition"
     )
 
 
@@ -233,9 +233,7 @@ def test_cancel_and_query_answer_while_terminal_call_held(tmp_path: Path) -> Non
         # the cancel takes effect within the stop bound, the supervisor's poll and a tolerance
         other_dir = _run_dir(host, other)
         bound = clock.stop_bound + clock.poll_interval + tolerances.SETTLE_LONG_S
-        assert support.wait_until(
-            lambda: records.node_record(other_dir).terminal is not None, bound
-        )
+        assert records.await_terminal(other_dir, bound_s=bound).why == "condition"
         assert time.monotonic() - cancelled_at <= bound
         assert records.node_record(other_dir).terminal == "cancelled"
 

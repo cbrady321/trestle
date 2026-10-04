@@ -72,7 +72,7 @@ def test_a_catalog_test_that_needs_provisioning_adds_the_node_before_the_test() 
     entry = tree.build_entry(Catalog.from_data(data))
     root = entry.units[tree.ROOT_UNIT]
     needs = {c.unit: c.needs for c in root.children}  # type: ignore[union-attr]
-    assert needs[tree.PROVISION_UNIT] == (tree.POSTGRES_UNIT,)
+    assert needs[tree.PROVISION_UNIT] == (tree.POSTGRES_SERVICE,)
     assert tree.PROVISION_UNIT in needs["test.system"]
     assert tree.PROVISION_UNIT not in needs["test.demo-version"]
     assert tree.PROVISION_UNIT in entry.units

@@ -114,14 +114,15 @@ POSTGRES_FIXTURE_PASSWORD: Final = "trestle-fixture-password"
 # Declared timings, in seconds. The wait is the readiness stage's own budget (hld-wr-environment
 # Provisioning & System Test: a stage that never passes ends at its declared wait); the leaf budget
 # holds the wait plus the release timeout (B2-C5); every level leaves the reserve the carve
-# demands, the root budget holds the longest `needs` chain of leaf budgets (two leaves, one after
-# the other), and the plugin's deadline holds the root budget plus the release slice. The release
+# demands, the root budget holds the longest `needs` chain of leaf budgets (the two backends in
+# their catalog order, then provisioning and a test), and the plugin's deadline holds the root
+# budget plus the release slice. The release
 # timeout bounds each descriptor command (observe, stop, remove) and is small on purpose: admission
 # refuses a root whose worst-case finalization, `grace + kill + 5 * release_timeout` per release
 # rank (B2-C2 (5)), exceeds the operator's finalization margin (35 s by default), so every rank of
 # create-run effects a tree declares costs `5 * RELEASE_TIMEOUT_S` of that margin.
-DEADLINE_S: Final = 120
-ROOT_BUDGET_S: Final = 100
+DEADLINE_S: Final = 160
+ROOT_BUDGET_S: Final = 140
 LEAF_BUDGET_S: Final = 40
 READY_POLL_S: Final = 1
 READY_WAIT_S: Final = 30
@@ -699,7 +700,15 @@ def build_entry(catalog: Catalog) -> WorkflowEntry:
         assert project is not None and task is not None  # the catalog checked its references
         return TaskUnit(test, project, task)
 
-    backends = (HTTP_SUPPORT_UNIT, POSTGRES_UNIT)
+    # the service children are named (and so pathed) by catalog id: a `services` selection names
+    # them, and their `needs` are the catalog's `depends_on`, so the compiler admits a selection's
+    # dependency closure (`compiler._select_refs` keeps a selected child's needs, C-3)
+    backends = (HTTP_SUPPORT_SERVICE, POSTGRES_SERVICE)
+
+    def depends(service: str) -> tuple[str, ...]:
+        found = catalog.service(service)
+        return tuple(str(d) for d in found.depends_on) if found is not None else ()
+
     provisioned = any(t.provision for t in tests)  # a test that needs the fixture record
     return WorkflowEntry(
         root=ROOT_UNIT,
@@ -708,10 +717,20 @@ def build_entry(catalog: Catalog) -> WorkflowEntry:
                 unit=ROOT_UNIT,
                 flags=LoopFlags(Compose.ALL, CompletionSource.OBSERVED, Repeat.SAFE),
                 children=(
-                    ChildBinding(unit=HTTP_SUPPORT_UNIT, params={}, needs=()),
-                    ChildBinding(unit=POSTGRES_UNIT, params={}, needs=()),
+                    ChildBinding(
+                        unit=HTTP_SUPPORT_UNIT,
+                        params={},
+                        needs=depends(HTTP_SUPPORT_SERVICE),
+                        name=HTTP_SUPPORT_SERVICE,
+                    ),
+                    ChildBinding(
+                        unit=POSTGRES_UNIT,
+                        params={},
+                        needs=depends(POSTGRES_SERVICE),
+                        name=POSTGRES_SERVICE,
+                    ),
                     *(
-                        (ChildBinding(unit=PROVISION_UNIT, params={}, needs=(POSTGRES_UNIT,)),)
+                        (ChildBinding(unit=PROVISION_UNIT, params={}, needs=(POSTGRES_SERVICE,)),)
                         if provisioned
                         else ()
                     ),
@@ -732,7 +751,9 @@ def build_entry(catalog: Catalog) -> WorkflowEntry:
                 # (B2-C2 (1)) with UNKNOWN_IDENTIFIER, naming it and where valid ones are listed
                 identifier_sets=identifier_sets(catalog),
                 arg_bindings=(
-                    ArgBinding(SERVICES_ARG, SERVICES_SET, False),
+                    # `services` selects the service children the run walks, with their
+                    # dependency closure (C-3)
+                    ArgBinding(SERVICES_ARG, SERVICES_SET, True),
                     ArgBinding(TESTS_ARG, TESTS_SET, False),
                     ArgBinding(OVERRIDES_ARG, OVERRIDES_SET, False),
                 ),
@@ -752,5 +773,6 @@ def build_entry(catalog: Catalog) -> WorkflowEntry:
 
 
 ENTRY = build_entry(CATALOG)
-"""The reference tree over the operator's catalog: `reference_env` over `backend.http_support` and
-`backend.postgres`, and one `test.<test id>` per catalog test, after both."""
+"""The reference tree over the operator's catalog: `reference_env` over the services `http_support`
+and `postgres` (units `backend.http_support`, `backend.postgres`), and one `test.<test id>` per
+catalog test, after both."""

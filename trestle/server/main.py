@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import socket
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -137,6 +139,26 @@ def attach_registry_version_mirror(mcp: Any, kernel: Kernel) -> None:
     mcp._list_tools_mcp = list_tools_with_registry_version
 
 
+LISTENING_PREFIX = "trestle: listening "
+
+
+def _serve_http_on_a_free_port(mcp: Any) -> None:
+    """`serve --port 0` (RACES-REPORT L-18): bind a loopback socket on a port the OS picks, say
+    which on stderr (`trestle: listening 127.0.0.1:<port>`) once it accepts connections, and
+    serve on that very socket, so a caller never guesses a free port another process may take."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((LOOPBACK_HOST, 0))
+    sock.listen(128)
+    bound = sock.getsockname()[1]
+    print(f"{LISTENING_PREFIX}{LOOPBACK_HOST}:{bound}", file=sys.stderr, flush=True)
+    asyncio.run(
+        mcp.run_http_async(
+            transport="streamable-http", host=LOOPBACK_HOST, port=bound, sockets=[sock]
+        )
+    )
+
+
 def run_server(
     *,
     transport: str = "stdio",
@@ -265,7 +287,10 @@ def run_server(
     if transport == "stdio":
         mcp.run(transport="stdio")
     elif transport == "streamable-http":
-        mcp.run(transport="streamable-http", host=LOOPBACK_HOST, port=port)
+        if port == 0:
+            _serve_http_on_a_free_port(mcp)
+        else:
+            mcp.run(transport="streamable-http", host=LOOPBACK_HOST, port=port)
     else:
         raise SystemExit(f"unsupported MCP transport: {transport}")
     return 0

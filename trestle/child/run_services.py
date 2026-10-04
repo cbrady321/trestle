@@ -97,6 +97,10 @@ class FlagCancelSignal:
                 return False
             time.sleep(min(self._poll, remaining))
 
+    def wait_for(self, condition: Callable[[], bool], timeout: timedelta) -> values.WaitOutcome:
+        """Until `condition` holds, a flag exists, or `timeout` elapses (V-2 `wait_for`)."""
+        return values.wait_for_condition(self, condition, timeout, self._poll)
+
 
 # ------------------------------------------------------------------------------- evidence sink
 

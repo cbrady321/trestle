@@ -137,7 +137,8 @@ def restart_identity_is_the_recorded_command_and_never_port_occupancy(
     with read(built, "ResourceReads.endpoint"):
         endpoint = built.impl.endpoint(seen.selector_ref, Vantage.HOST)
     declared = int(_spec(built).command.environment["PORT"])
-    assert (endpoint.host, endpoint.port) == ("127.0.0.1", declared)  # the recorded endpoint
+    # the recorded endpoint: the declared port, or (`PORT=0`) the one the process reported
+    assert endpoint.host == "127.0.0.1" and endpoint.port == (declared or endpoint.port) > 0
 
 
 def restart_of_a_selector_the_port_does_not_hold_is_not_applied(built: core.Implementation) -> None:

@@ -5,7 +5,7 @@ Before the run the TEST starts one profile of `fixtures/foreign/compose.yaml`: a
 exactly as the tree's logical system (`postgres`), fixture-labelled, so the run finds it.
 
 * `[container]` - another image (alpine): the reuse proof cannot prove its identity, so
-  `backend.postgres` ends INCOMPATIBLE with `FOUND_INCOMPATIBLE` (J-12);
+  `postgres` ends INCOMPATIBLE with `FOUND_INCOMPATIBLE` (J-12);
 * unhealthy - the reference identity and the pinned Postgres, with a password the reference
   readiness call does not present: identity and configuration proven, readiness never passes,
   so it ends INCOMPATIBLE with `FOUND_UNHEALTHY` (J-14).
@@ -13,7 +13,7 @@ exactly as the tree's logical system (`postgres`), fixture-labelled, so the run 
 Both are classed BLOCKED (B4-T2 row 10) with V-11.1's human action. The found container is never
 signalled (its main process keeps its pid and start time, it keeps running and never restarted),
 never adopted (no ticket of the run names it) and never repaired; the run creates nothing for
-`backend.postgres`. One MCP `run` per case, through the reference plugin on the operator's docker.
+`postgres`. One MCP `run` per case, through the reference plugin on the operator's docker.
 The CI twins are `twin/test_foreign_twin.py` (same node names).
 """
 
@@ -101,7 +101,7 @@ def _blocked(answer: dict[str, Any], code: str) -> None:
     body = answer["answer"]
     assert body["outcome"] == "blocked", answer
     primary = body["primary"]
-    assert primary["path"] == [tree.POSTGRES_UNIT], primary
+    assert primary["path"] == [tree.POSTGRES_SERVICE], primary
     assert primary["code"] == code, primary
     assert primary["condition"] == "incompatible" or primary["node_class"] == "blocked", primary
     assert primary["human_action"], primary  # V-11.1: what a person does, then re-send
@@ -116,7 +116,9 @@ def _run_blocked(tmp_path: Path, env: str) -> tuple[dict[str, Any], list[dict[st
 
 def _untouched(before: dict[str, Any], entries: list[dict[str, Any]]) -> None:
     assert _found_state() == before  # same container, same process, still running, no restart
-    assert not [e for e in entries if e.get("path") == tree.POSTGRES_UNIT and e["class"] == "issue"]
+    assert not [
+        e for e in entries if e.get("path") == tree.POSTGRES_SERVICE and e["class"] == "issue"
+    ]
     assert not [e for e in entries if e.get("identity") == FOUND]  # nothing acted on it
 
 

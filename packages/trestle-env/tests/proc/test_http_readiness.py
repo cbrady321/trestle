@@ -20,7 +20,7 @@ from trestle.workflow.declarations import (
     RealizationKind,
 )
 from trestle_packs.process.local import LocalProcessPort
-from twin.local_app import APP, REFUSED, AwaitListening, free_port
+from twin.local_app import APP, REFUSED
 from twin.twin_engine import TEST_NODE, Probe, entry_with_test
 
 from trestle_env import schema, tree
@@ -28,12 +28,12 @@ from trestle_env.plugins._http import HttpReadinessReads
 
 
 def rig_over_local_app(tmp_path: Path, mode: tuple[str, ...]) -> tuple[tk.TreeRig, Probe, Path]:
-    port, log = free_port(), tmp_path / "app-events.log"
+    log = tmp_path / "app-events.log"
     resolved = ports.Resolved(sys.executable, "3.12", "pin", "adoption")
     command = ports.BoundCommand(
         "app",
         (sys.executable, str(APP), *mode),
-        {"PORT": str(port), "APP_EVENT_LOG": str(log), "PATH": "/usr/bin:/bin"},
+        {"PORT": "0", "APP_EVENT_LOG": str(log), "PATH": "/usr/bin:/bin"},
         resolved,
         False,
     )
@@ -41,7 +41,6 @@ def rig_over_local_app(tmp_path: Path, mode: tuple[str, ...]) -> tuple[tk.TreeRi
         tree.HTTP_SUPPORT_SERVICE, RealizationKind.AGENT_LAUNCHED_PROJECT, "http-app", command
     )
     local = LocalProcessPort()
-    creating = AwaitListening(local, log)
     reads = HttpReadinessReads(local, tree.HTTP_READINESS, alive="ready")
     saw: list[list[str]] = []
     dependent = Probe(TEST_NODE, lambda: saw.append(log.read_text().split("\n")))
@@ -63,7 +62,7 @@ def rig_over_local_app(tmp_path: Path, mode: tuple[str, ...]) -> tuple[tk.TreeRi
         units,
         port_impl={
             ports.ResourceReads: reads,
-            ports.ResourceCreate: creating,
+            ports.ResourceCreate: local,
             ports.ResourceOwned: local,
         },
         deadline_s=tree.DEADLINE_S,
@@ -89,10 +88,10 @@ def test_dependent_starts_after_local_http_readiness_pass(tmp_path: Path) -> Non
         )
 
     ends = rig.ends()
-    assert ends[tree.HTTP_SUPPORT_UNIT]["condition"] == "satisfied"
+    assert ends[tree.HTTP_SUPPORT_SERVICE]["condition"] == "satisfied"
     assert ends[TEST_NODE]["condition"] == "satisfied"
     # the readiness pass (the supporting node's satisfied end) precedes the dependent's first entry
-    assert end(tree.HTTP_SUPPORT_UNIT) < first(TEST_NODE)
+    assert end(tree.HTTP_SUPPORT_SERVICE) < first(TEST_NODE)
     # and the app itself had answered the declared response by the time the dependent was started
     assert dependent.saw and dependent.saw[0][-3:-1] == ["health 503", "health 200"]  # then a `""`
     # the app saw exactly the polls the contract needed: REFUSED refusals, then the pass

@@ -20,7 +20,7 @@ from tests.tree import treekit as tk
 from trestle.workflow import ports
 from trestle.workflow.declarations import RealizationKind
 from trestle_packs.process.local import LocalProcessPort
-from twin.local_app import APP, REFUSED, AwaitListening, free_port
+from twin.local_app import APP, REFUSED
 from twin.twin_engine import TEST_NODE, Probe, entry_with_test
 
 from trestle_env import schema, tree
@@ -30,12 +30,12 @@ from trestle_env.plugins._tasks import TaskExecution
 
 @pytest.mark.proves("WR-VERIFY-2", "B4.1", "B", "B", "PROC", "BOTH")
 def test_system_test_starts_after_local_http_readiness_pass(tmp_path: Path) -> None:
-    port, log = free_port(), tmp_path / "app-events.log"
+    log = tmp_path / "app-events.log"
     resolved = ports.Resolved(sys.executable, "3.12", "pin", "adoption")
     command = ports.BoundCommand(
         "app",
         (sys.executable, str(APP), "ready-after", str(REFUSED)),
-        {"PORT": str(port), "APP_EVENT_LOG": str(log), "PATH": "/usr/bin:/bin"},
+        {"PORT": "0", "APP_EVENT_LOG": str(log), "PATH": "/usr/bin:/bin"},
         resolved,
         False,
     )
@@ -59,7 +59,7 @@ def test_system_test_starts_after_local_http_readiness_pass(tmp_path: Path) -> N
         },
         port_impl={
             ports.ResourceReads: HttpReadinessReads(local, tree.HTTP_READINESS, alive="ready"),
-            ports.ResourceCreate: AwaitListening(local, log),
+            ports.ResourceCreate: local,
             ports.ResourceOwned: local,
             ports.ExecutionPort: TaskExecution(None, None),
         },
@@ -69,7 +69,7 @@ def test_system_test_starts_after_local_http_readiness_pass(tmp_path: Path) -> N
     rig.run()
     rows = rig.rows()
     ends = rig.ends()
-    for node in (tree.HTTP_SUPPORT_UNIT, tree.POSTGRES_UNIT, TEST_NODE):
+    for node in (tree.HTTP_SUPPORT_SERVICE, tree.POSTGRES_SERVICE, TEST_NODE):
         assert ends[node]["condition"] == "satisfied", (node, ends[node])
 
     def first(path: str) -> int:
@@ -82,8 +82,8 @@ def test_system_test_starts_after_local_http_readiness_pass(tmp_path: Path) -> N
 
     # every readiness pass precedes the test node's start entry (its ticket)
     assert rows[first(TEST_NODE)]["class"] == "issue"
-    assert end(tree.HTTP_SUPPORT_UNIT) < first(TEST_NODE)
-    assert end(tree.POSTGRES_UNIT) < first(TEST_NODE)
+    assert end(tree.HTTP_SUPPORT_SERVICE) < first(TEST_NODE)
+    assert end(tree.POSTGRES_SERVICE) < first(TEST_NODE)
     # the readiness pass was the declared response after REFUSED refusals: the app said so itself
     health = [e for e in log.read_text().splitlines() if e.startswith("health")]
     assert health == ["health 503"] * REFUSED + ["health 200"]

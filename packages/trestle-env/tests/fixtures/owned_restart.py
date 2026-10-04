@@ -175,7 +175,7 @@ ENTRY = WorkflowEntry(
 )
 
 
-@trestle(deadline=120, env_arg="env", packages=("trestle_env", "trestle_packs"))
+@trestle(deadline=160, env_arg="env", packages=("trestle_env", "trestle_packs"))
 def healthy_machine(ctx: Context, env: str) -> dict[str, str]:
     """Bring up a created container, reuse a found one and run a restartable owned process."""
     UNIT.bind(os.environ)

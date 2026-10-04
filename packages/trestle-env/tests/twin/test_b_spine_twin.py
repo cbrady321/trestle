@@ -15,8 +15,8 @@ import pytest
 from trestle_env import tree
 from twin import fake_binding, harness
 
-POSTGRES = tree.POSTGRES_UNIT
-SUPPORT = tree.HTTP_SUPPORT_UNIT
+POSTGRES = tree.POSTGRES_SERVICE
+SUPPORT = tree.HTTP_SUPPORT_SERVICE
 
 
 @pytest.mark.spine  # the B-spine twin joins the spine gate (MC-29)

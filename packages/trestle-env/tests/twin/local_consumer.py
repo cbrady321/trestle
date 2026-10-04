@@ -29,13 +29,11 @@ from __future__ import annotations
 import dataclasses
 import re
 import sys
-import time
 from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Final
 
-from tests.proof import tolerances
 from tests.single.workflow import loopkit as kit
 from tests.tree import treekit as tk
 from trestle.workflow import EffectDeclaration, EffectFacetClass, Lifetime, codes, ports
@@ -53,11 +51,12 @@ from trestle.workflow.values import (
 )
 from trestle_packs.grant import CHANNEL_FILE, IssuerClient, write_channel
 from trestle_packs.grant.demo import GRANT_ISSUER_UNREACHABLE, IssuerUnreachable, IssuerUnreadable
+from trestle_packs.grant.host_scope import DemoHostScope
 from trestle_packs.process.local import LocalProcessPort, run_scoped_selector
 
 from trestle_env import tree
 from twin import consumers
-from twin.local_app import APP, AwaitListening, free_port
+from twin.local_app import APP
 
 UNIT: Final = "consumer.current"
 STALE_UNIT: Final = "consumer.stale"
@@ -70,11 +69,11 @@ def selector_for(run_id: str, unit: str = UNIT) -> str:
     return run_scoped_selector(Lineage(run_id, NodePath((unit,))), consumers.UP)
 
 
-def app_command(port: int, log: Path) -> BoundCommand:
+def app_command(log: Path) -> BoundCommand:
     return BoundCommand(
         "consumer",
         (sys.executable, str(APP), "never"),
-        {"PORT": str(port), "APP_EVENT_LOG": str(log), "PATH": "/usr/bin:/bin"},
+        {"PORT": "0", "APP_EVENT_LOG": str(log), "PATH": "/usr/bin:/bin"},
         Resolved(sys.executable, "3.12", "pin", "adoption"),
         False,
     )
@@ -139,7 +138,7 @@ class Watched:
 
     def __init__(
         self,
-        inner: LocalProcessPort | AwaitListening | LaunchCredential,
+        inner: LocalProcessPort | LaunchCredential,
         selector: str,
         rotate: Any = None,
     ) -> None:
@@ -178,6 +177,7 @@ def port_map(watched: Watched, grant: Any, delivery: Any) -> dict[type, object]:
         ports.ResourceCreate: watched,
         ports.ResourceOwned: watched,
         ports.GrantReads: grant,
+        ports.HostScopeReads: DemoHostScope(grant, now=lambda: kit.NOW),
         ports.GrantDelivery: delivery,
     }
 
@@ -236,37 +236,22 @@ class RestartingConsumerUnit(LocalConsumerUnit):
 class LaunchCredential:
     """The local port with the credential a process takes at start: every launch (`create`,
     `restart`) first calls `issue(selector)`, which puts the issuer's CURRENT credential where the
-    app reads it, then returns once the new process has said `listening` (start-up is the
-    harness's to wait for, `local_app.AwaitListening`). Every other member is the port's own."""
+    app reads it, then is the port's own launch (it returns once the new process has reported its
+    endpoint). Every other member is the port's own."""
 
-    def __init__(self, inner: LocalProcessPort, issue: Callable[[str], None], log: Path) -> None:
-        self._inner, self._issue, self._log = inner, issue, log
+    def __init__(self, inner: LocalProcessPort, issue: Callable[[str], None]) -> None:
+        self._inner, self._issue = inner, issue
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._inner, name)
 
-    def _listened(self) -> int:
-        if not self._log.exists():
-            return 0
-        return self._log.read_text().splitlines().count("listening")
-
-    def _launched(self, before: int, answer: Any) -> Any:
-        deadline = time.monotonic() + tolerances.JOIN_WAIT_S
-        while time.monotonic() < deadline:
-            if self._listened() > before:
-                return answer
-            time.sleep(tolerances.POLL_FINE_S)
-        raise AssertionError("the launched app never said it was listening")
-
     def create(self, spec: Any, ticket: Any) -> Any:
-        before = self._listened()
         self._issue(run_scoped_selector(ticket.lineage, ticket.effect))
-        return self._launched(before, self._inner.create(spec, ticket))
+        return self._inner.create(spec, ticket)
 
     def restart(self, target: Any, ticket: Any) -> Any:
-        before = self._listened()
         self._issue(target.selector)
-        return self._launched(before, self._inner.restart(target, ticket))
+        return self._inner.restart(target, ticket)
 
 
 @dataclasses.dataclass
@@ -292,8 +277,8 @@ def stale_restart_case(
     moves the issuer on right after the first launch."""
     selector = selector_for(run_id, STALE_UNIT)
     log = tmp_path / "app-events.log"
-    command = app_command(free_port(), log)
-    launcher = LaunchCredential(LocalProcessPort(), issue, log)
+    command = app_command(log)
+    launcher = LaunchCredential(LocalProcessPort(), issue)
     watched = Watched(launcher, selector, rotate=rotate)
     rig = tk.tree_rig(
         tmp_path,
@@ -303,7 +288,7 @@ def stale_restart_case(
         run_id=run_id,
         port_impl=port_map(watched, grant, delivery),
     )
-    rig.run(consumers.LiveScope(grant, lambda: kit.NOW))
+    rig.run()
     return StaleRestart(rig, watched, log, selector)
 
 

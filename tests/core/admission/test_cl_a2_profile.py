@@ -9,11 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import re
-import socket
 import subprocess
-import sys
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -181,25 +178,10 @@ def test_profile_config_is_validated_and_defaults_to_full(tmp_path: Path) -> Non
             load_config(home)
 
 
-def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
-
-
 @contextmanager
 def _http_server(home: Path) -> Iterator[str]:
     """`trestle serve` over loopback streamable HTTP on `home`; yields the MCP url."""
-    port = _free_port()
-    env = os.environ.copy()
-    env["TRESTLE_HOME"] = str(home)
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "trestle.cli", "serve", "--transport", "streamable-http"]
-        + ["--port", str(port)],
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    proc, port = mcp_host.serve_http(home)  # `--port 0`: the port it bound, never a guess
     url = f"http://127.0.0.1:{port}/mcp"
     try:
         asyncio.run(_wait_ready(url))

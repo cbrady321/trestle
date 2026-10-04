@@ -36,8 +36,10 @@ def test_nodeids_are_187_unique() -> None:
 def test_meta_baseline_exits_1_on_unexplained_field(tmp_path: Path) -> None:
     data = json.loads(BASELINE_PATH.read_text())
     # Plant an unexplained mismatch: EV-01 says 173, nothing will ever measure
-    # 999999, and no explanation entry names root_passed.
+    # 999999, and the explanation entries that name root_passed are dropped.
     data["ev01"]["root_passed"] = 999999
+    ci = data["ci_312"]
+    ci["explanations"] = [e for e in ci["explanations"] if "root_passed" not in e["field"]]
     planted = tmp_path / "planted_baseline.json"
     planted.write_text(json.dumps(data))
 

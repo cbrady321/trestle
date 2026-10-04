@@ -50,6 +50,7 @@ from trestle.workflow.ports import (
     GrantObservation,
     GrantReads,
     GrantRefresh,
+    HostScopeReads,
     ReleaseDescriptor,
 )
 from trestle.workflow.services import AttemptTicket
@@ -61,6 +62,8 @@ from trestle.workflow.values import (
     OwnedHandle,
     SelectorRef,
 )
+
+from trestle_packs.grant.host_scope import DemoHostScope
 
 CREDENTIAL_STALE: Final = workflow_codes.CREDENTIAL_STALE
 CREDENTIAL_INTERACTIVE: Final = workflow_codes.CREDENTIAL_INTERACTIVE
@@ -207,7 +210,7 @@ class DemoGrant:
 
     def as_map(self) -> dict[type, object]:
         """Protocol type -> the one implementation, the map `FacetContext.ports` takes."""
-        return {GrantReads: self, GrantRefresh: self}
+        return {GrantReads: self, GrantRefresh: self, HostScopeReads: DemoHostScope(self)}
 
     # ---- GrantReads
 

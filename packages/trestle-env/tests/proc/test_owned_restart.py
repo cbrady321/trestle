@@ -45,7 +45,7 @@ from trestle.common.outcome import OutcomeClass
 from trestle.common.plan.vocabulary import NodeClass, ResourceDisposition
 from trestle.workflow import codes, ports
 from trestle_packs.process.local import LocalProcessPort
-from twin.local_app import APP, AwaitListening, free_port
+from twin.local_app import APP
 
 from trestle_env import tree
 from trestle_env.plugins._http import HttpReadinessReads
@@ -90,10 +90,10 @@ class KillOnce:
         return getattr(self._inner, name)
 
 
-def rig_for(tmp_path: Path, refusals: str = "2") -> tuple[tk.TreeRig, Path, int, LocalProcessPort]:
+def rig_for(tmp_path: Path, refusals: str = "2") -> tuple[tk.TreeRig, Path, LocalProcessPort]:
     module = plugin()
-    port, log = free_port(), tmp_path / "app-events.log"
-    spec = module.app_spec(module.app_command(str(port), str(log), str(APP), refusals))
+    log = tmp_path / "app-events.log"
+    spec = module.app_spec(module.app_command("0", str(log), str(APP), refusals))
     local = LocalProcessPort()
     unit = module.OwnedRestartUnit(
         tree.HTTP_SUPPORT_UNIT, tree.HTTP_SUPPORT_SERVICE, tree.HTTP_SUPPORT_READY, spec
@@ -104,12 +104,12 @@ def rig_for(tmp_path: Path, refusals: str = "2") -> tuple[tk.TreeRig, Path, int,
         {tree.HTTP_SUPPORT_UNIT: unit},
         port_impl={
             ports.ResourceReads: HttpReadinessReads(local, tree.HTTP_READINESS, alive="ready"),
-            ports.ResourceCreate: AwaitListening(local, log),
-            ports.ResourceOwned: AwaitListening(local, log),  # a restart waits for the new app
+            ports.ResourceCreate: local,  # launch and restart return once the app reported its port
+            ports.ResourceOwned: local,
         },
         deadline_s=600,
     )
-    return rig, log, port, local
+    return rig, log, local
 
 
 def events(log: Path) -> list[str]:
@@ -119,7 +119,7 @@ def events(log: Path) -> list[str]:
 @pytest.mark.proves("WR-ENV-7", "B7.1", "B", "B", "PROC", "BOTH")
 @pytest.mark.proves("WR-ENV-7", "WR-ENV-7:restart-within-budget-repaired", "B", "B", "PROC", "BOTH")
 def test_killed_owned_app_restarted_reported_repaired(tmp_path: Path) -> None:
-    rig, log, _, local = rig_for(tmp_path)
+    rig, log, local = rig_for(tmp_path)
     kill = KillOnce(rig, local)
     rig.rig.services._cancel = kill  # noqa: SLF001  (the signal the loop reads)
     rig.run()
@@ -175,7 +175,7 @@ class Stranger:
     def start(self) -> None:
         self.proc = subprocess.Popen(  # noqa: S603 - the test's own stand-in
             [sys.executable, str(APP), "ready-after", "2"],
-            env={"PORT": str(free_port()), "APP_EVENT_LOG": str(self.log), "PATH": "/usr/bin:/bin"},
+            env={"PORT": "0", "APP_EVENT_LOG": str(self.log), "PATH": "/usr/bin:/bin"},
             stdin=subprocess.DEVNULL,
         )
         deadline = time.monotonic() + tolerances.JOIN_WAIT_S
@@ -214,7 +214,7 @@ def test_restart_is_of_the_owned_process_only(tmp_path: Path) -> None:
     owned, found = tmp_path / "owned", tmp_path / "found"
     owned.mkdir()
     found.mkdir()
-    rig, log, _, local = rig_for(owned)
+    rig, log, local = rig_for(owned)
     with stranger(owned) as other:
         kill = KillOnce(rig, local, then=other.start)
         rig.rig.services._cancel = kill  # noqa: SLF001
@@ -229,7 +229,7 @@ def test_restart_is_of_the_owned_process_only(tmp_path: Path) -> None:
         ]
         assert len(restarted) == 1, restarted
 
-    found_rig, found_log, _, found_local = rig_for(found)
+    found_rig, found_log, found_local = rig_for(found)
     with stranger(found) as other:
         other.start()
         found_rig.rig.services._cancel = KillOnce(found_rig, found_local)

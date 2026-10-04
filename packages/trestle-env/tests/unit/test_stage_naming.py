@@ -36,7 +36,11 @@ def closure_failure() -> stages.StageFailure:
 CASES = {
     "catalog": (catalog_failure, Stage.CATALOG, "mongo"),
     "closure": (closure_failure, Stage.CLOSURE, "mystery"),
-    "readiness": (lambda: stages.failure_at("backend.postgres", CODE), Stage.READINESS, "postgres"),
+    "readiness": (
+        lambda: stages.failure_at(tree.POSTGRES_SERVICE, CODE),
+        Stage.READINESS,
+        "postgres",
+    ),
     "provisioning": (
         lambda: stages.failure_at("provision.postgres", CODE),
         Stage.PROVISIONING,
@@ -60,8 +64,8 @@ def test_each_stage_failure_named(stage: str) -> None:
 
 def test_every_declared_node_names_its_stage_and_a_catalog_service() -> None:
     services = tree.identifier_sets(tree.CATALOG)[tree.SERVICES_SET]
-    for unit in (tree.HTTP_SUPPORT_UNIT, tree.POSTGRES_UNIT):
-        failure = stages.failure_at(unit, CODE)
+    for service in (tree.HTTP_SUPPORT_SERVICE, tree.POSTGRES_SERVICE):
+        failure = stages.failure_at(service, CODE)
         assert failure is not None and failure.stage is Stage.READINESS
         assert failure.service in services  # the service the failure names is a catalog identifier
 
@@ -70,6 +74,6 @@ def test_a_path_that_is_no_stage_node_names_no_stage() -> None:
     for path in ("", "reference_env", "other.postgres", "backend.", ".postgres"):
         assert stages.failure_at(path, CODE) is None, path
     # a nested node is named by its last segment
-    assert stages.failure_at("group/backend.postgres", CODE) == stages.StageFailure(
+    assert stages.failure_at(f"group/{tree.POSTGRES_SERVICE}", CODE) == stages.StageFailure(
         Stage.READINESS, "postgres", CODE
     )

@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.proof import tolerances
 from trestle.common import codes
 from trestle.common.types import RequestOutcome, RunView
 from trestle.server.pins import PinStore
@@ -117,7 +118,9 @@ def test_hostile_plugin_limits_and_control_plane_responsive(bounded_kernel) -> N
     start = time.monotonic()
     catalog = bounded_kernel.control.list_plugins()
     elapsed_ms = (time.monotonic() - start) * 1000
-    assert elapsed_ms < 500
+    # a liveness bound: the catalog answers while the flood's limits are applied; the latency
+    # measurement is test_us08 (serial)
+    assert elapsed_ms < tolerances.PROC_WAIT_S * 1000
     assert "items" in catalog
 
     status = bounded_kernel.control.run(

@@ -49,6 +49,7 @@ from trestle.workflow.units import (
     WorkUnit,
 )
 from trestle.workflow.values import (
+    CancelSignal,
     CheckResult,
     Condition,
     Confirmation,
@@ -66,6 +67,7 @@ from trestle.workflow.values import (
     Resend,
     SelectorRef,
     Verdict,
+    WaitOutcome,
 )
 
 # Submodules a plugin may import from (`import trestle.workflow.<m>`); every other module of the
@@ -118,6 +120,7 @@ __all__ = [
     "Ticketed",
     "WorkUnit",
     # values (V-1..V-4)
+    "CancelSignal",
     "CheckResult",
     "Condition",
     "Confirmation",
@@ -135,4 +138,5 @@ __all__ = [
     "Resend",
     "SelectorRef",
     "Verdict",
+    "WaitOutcome",
 ]

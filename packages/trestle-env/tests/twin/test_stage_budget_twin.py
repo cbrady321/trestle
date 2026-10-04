@@ -33,10 +33,10 @@ def test_readiness_ends_at_stage_budget_names_stage_and_service(tmp_path: Path) 
     assert primary.node_class == vocabulary.NodeClass.EXHAUSTED
     assert primary.human_action and primary.resend is not None  # B4-C5
     # the answer names the readiness stage and the failing service
-    assert primary.path == (tree.POSTGRES_UNIT,)
+    assert primary.path == (tree.POSTGRES_SERVICE,)
     named = stages.failure_at("/".join(primary.path), primary.code or "")
     assert named == stages.StageFailure(stages.Stage.READINESS, "postgres", primary.code or "")
-    assert "backend.postgres" in primary.human_action
+    assert tree.POSTGRES_SERVICE in primary.human_action
     # it ended when its declared wait elapsed (plus the supporting node's own polls and the margin)
     budget = tree.READY_WAIT_S + (REFUSED + 1) * tree.READY_POLL_S + kit.MARGIN_S
     assert rig.rig.clock.now - kit.NOW <= timedelta(seconds=budget)

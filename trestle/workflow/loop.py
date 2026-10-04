@@ -73,6 +73,7 @@ from trestle.workflow.facets import (
     declared_effect,
 )
 from trestle.workflow.join import join
+from trestle.workflow.ports import HostScopeReads, HostScopeUnreadable
 from trestle.workflow.units import (
     Acted,
     Blocked,
@@ -101,7 +102,10 @@ from trestle.workflow.values import (
     RemedyGrant,
     Resend,
     StepKind,
+    StopCause,
     Verdict,
+    WaitOutcome,
+    wait_for_condition,
 )
 
 ROOT = NodePath(())
@@ -115,6 +119,7 @@ _EVIDENCE_STEP = "loop_step_evidence"
 _EVIDENCE_UNIT_RAISED = "loop_unit_raised"
 _EVIDENCE_FAILED = "loop_failed_detail"
 _EVIDENCE_UNCOVERED = "loop_precondition_uncovered"
+_EVIDENCE_HOST_SCOPE = "loop_host_scope"
 
 _ESCAPED: object = object()  # `advance` ended in an `EffectRefused` rather than returning
 
@@ -204,15 +209,61 @@ class _UnitEvidence:
             self._sink.event(event_kind, fields)
 
 
+class _NodeSignal:
+    """The `CancelSignal` a walking unit call sees (B1-C2): the root's flags, and also the root's
+    goal, which is not a flag file: it is RELEASE once a cancel, the release point or a raise
+    anywhere flipped it, so a unit blocked in a wait wakes when a sibling raises. `cause()` keeps
+    its flag-only meaning (B2-C15). A composite above the node that timed out, and the node's own
+    slice end, are not wakes: the walk reads them when the call returns, as before. On a root
+    deadline the run's stop must stay the release point's (the host classes it `timed_out`); a
+    unit woken at a carved slice first would end the run before it. The walk's own stop check
+    never uses this object.
+
+    A wait is spent as the root signal's waits report it, in `WATCH_INTERVAL_S` pieces, so a
+    signal over a manual clock spends it without sleeping."""
+
+    __slots__ = ("_goal", "_root")
+
+    def __init__(self, root: CancelSignal, goal: Callable[[], Goal]) -> None:
+        self._root = root
+        self._goal = goal
+
+    @property
+    def requested(self) -> bool:
+        return self._root.requested or self._goal() is Goal.RELEASE
+
+    def cause(self) -> StopCause | None:
+        return self._root.cause()
+
+    def wait(self, timeout: timedelta) -> bool:
+        budget = max(timeout.total_seconds(), 0.0)
+        end = time.monotonic() + budget
+        while not self.requested:
+            remaining = min(budget, end - time.monotonic())
+            if remaining <= 0:
+                return False
+            step = min(WATCH_INTERVAL_S, remaining)
+            if self._root.wait(timedelta(seconds=step)):
+                return True
+            budget -= step
+        return True
+
+    def wait_for(self, condition: Callable[[], bool], timeout: timedelta) -> WaitOutcome:
+        return wait_for_condition(self, condition, timeout, WATCH_INTERVAL_S)
+
+
 @dataclass(frozen=True, slots=True)
 class _CallContext:
     """`ObserveContext` / `ActContext` for one unit call (B1-C2, B1-C3): the lineage, the one clock
     read fresh at each access, the cancel signal, the evidence sink, and the remedy the loop
-    granted for this call (`advance` only)."""
+    granted for this call (`advance` only). A walking call (`goal` given) sees the node's own
+    signal (`_NodeSignal`); a release-pass call sees the root's flags alone, since the release
+    goes on whatever stopped the walk."""
 
     lineage: Lineage
     services: svc.RunServices
     remedy: RemedyGrant | None = None
+    goal: Callable[[], Goal] | None = None
 
     @property
     def clock(self) -> ClockReading:
@@ -220,7 +271,8 @@ class _CallContext:
 
     @property
     def cancellation(self) -> CancelSignal:
-        return self.services.cancellation()
+        root = self.services.cancellation()
+        return root if self.goal is None else _NodeSignal(root, self.goal)
 
     @property
     def evidence(self) -> EvidenceSink:
@@ -339,6 +391,8 @@ class LeafWalk:
         self._lineage = loop.services.lineage(path)
         self._held: list[StepView] = []  # steps the lane refused to hold, in process (V-4.5)
         self._observation: Observation | None = None
+        self._scope_of: object = None  # the observation `_scope` was read for (V-9.6: once each)
+        self._scope = HostScopeReading(())
         self._refusal_seen = False  # a facet refused or recorded UNKNOWN in the current call
         self._polls = 0  # CONVERGE polls since the last ADVANCE: the backoff exponent (V-14)
         self.verdict: Verdict | None = None
@@ -373,6 +427,10 @@ class LeafWalk:
         that holds for a node shared by two parents when either parent's subtree timed out
         (F-13(a)), whatever the other parent is doing."""
         return Goal.RELEASE if self._subtree_stopped() else self._loop.goal
+
+    def _root_goal(self) -> Goal:
+        """The root's goal alone (what a waiting unit wakes on, `_NodeSignal`)."""
+        return self._loop.goal
 
     def _stopped(self) -> bool:
         """A cancel or the release point (`CancelSignal.requested`, B2-C6) flips the goal to
@@ -497,10 +555,17 @@ class LeafWalk:
             self._terms,
             self._observation,
             self.record(),
-            self._loop.host_scope,
+            self._host_scope(),
             self._loop.services.clock(),
         )
         self._postcondition_fact(self.verdict)
+
+    def _host_scope(self) -> HostScopeReading:
+        """The host-scope reading for the current observation, read once per observation."""
+        if self._scope_of is not self._observation:
+            self._scope_of = self._observation
+            self._scope = self._loop.read_host_scope(self._observation, self.path)
+        return self._scope
 
     def _postcondition_fact(self, verdict: Verdict) -> None:
         """`step.postcondition`: the checks the join read (the last observation's postcondition and
@@ -549,7 +614,11 @@ class LeafWalk:
         and gives None. `first` marks the walk's opening observation, the last thing that happens
         before the first claim: a declared precondition it carries no check for stops the node
         there instead (`_stop_uncovered`)."""
-        context = _CallContext(self._lineage, self._loop.services)
+        context = (
+            _CallContext(self._lineage, self._loop.services)
+            if handle is not None  # a release-pass observation
+            else _CallContext(self._lineage, self._loop.services, None, self._root_goal)
+        )
         try:
             observation = self._unit.observe(self._params, ReadBinder(self._facets(None)), context)
         except Exception as exc:  # noqa: BLE001 (plugin code: any raise is the unit's, B1-E6)
@@ -687,7 +756,7 @@ class LeafWalk:
         marked = self._mark()
         self._refusal_seen = False
         self._polls = 0  # a new attempt starts a new wait
-        context = _CallContext(self._lineage, self._loop.services, verdict.remedy)
+        context = _CallContext(self._lineage, self._loop.services, verdict.remedy, self._root_goal)
         facets = EffectBinder(self._facets(verdict.remedy))
         returned: object = _ESCAPED
         try:
@@ -894,7 +963,6 @@ class Loop:
         self.intent = intent
         self.ports: Mapping[type, object] = dict(ports or {})
         self.lane = services.attempts()
-        self.host_scope = HostScopeReading(())  # no host section is declared at one vertex (B2-C8)
         reserve_s, margin_s = 0.0, 0.0
         if isinstance(services, svc.FinalizationBounds):
             reserve_s, margin_s = services.finalization_reserve_s, services.currency_margin_s
@@ -911,6 +979,38 @@ class Loop:
 
     def now(self) -> Instant:
         return self.services.clock().now
+
+    def read_host_scope(self, observation: Observation | None, path: NodePath) -> HostScopeReading:
+        """V-9.6/V-9.7: the reading of every subject the observation's currency facts name, read
+        through the bound `HostScopeReads` facet once per observation. No facet bound, or a
+        subject unreadable, gives that subject no reading (the join then treats the fact as
+        differing, B3-C18), and the one evidence event says so."""
+        subjects = (
+            ()
+            if observation is None
+            else tuple(dict.fromkeys(f.subject for f in observation.currency))
+        )
+        if not subjects:
+            return HostScopeReading(())
+        reader = self.ports.get(HostScopeReads)
+        readings: list[tuple[Any, str, Instant]] = []
+        unread: dict[str, JsonValue] = {}
+        for subject in subjects:
+            got = None if reader is None else reader.read(subject)  # type: ignore[attr-defined]
+            if isinstance(got, tuple):
+                readings.append(got)
+            else:
+                unread[_value(subject)] = got.code if isinstance(got, HostScopeUnreadable) else None
+        # by subject name: the generation read (a name, never a secret, WR-EVID-12) or why not
+        self.services.evidence().event(
+            _EVIDENCE_HOST_SCOPE,
+            {
+                "path": _path_text(path),
+                "read": {_value(s): g for s, g, _ in readings},
+                "unread": unread,
+            },
+        )
+        return HostScopeReading(tuple(readings))
 
     # ------------------------------------------------------------------ the root
 
@@ -1131,7 +1231,8 @@ class Loop:
             path=node,
             currency_margin=self.currency_margin,
         )
-        verdict = join(terms, observation, NodeRecordView(), self.host_scope, self.services.clock())
+        scope = self.read_host_scope(observation, node)
+        verdict = join(terms, observation, NodeRecordView(), scope, self.services.clock())
         return observation, verdict
 
     def _selection_fact(

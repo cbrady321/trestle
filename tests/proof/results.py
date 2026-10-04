@@ -86,9 +86,16 @@ def read_records(results_dir: Path = RESULTS_DIR) -> list[dict[str, object]]:
     if not results_dir.exists():
         return records
     for path in sorted(results_dir.glob("*.jsonl")):
-        for line in path.read_text().splitlines():
-            if line.strip():
+        lines = path.read_text().splitlines()
+        for index, line in enumerate(lines):
+            if not line.strip():
+                continue
+            try:
                 records.append(json.loads(line))
+            except json.JSONDecodeError:
+                if index == len(lines) - 1:
+                    continue  # a parallel writer's line in flight (RACES-REPORT #16)
+                raise
     return records
 
 

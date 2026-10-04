@@ -72,7 +72,16 @@ def test_registry_version_monotonic_without_changes(kernel) -> None:
     assert second["registry_version"] == first["registry_version"]
 
 
-def test_registry_version_increments_when_plugin_removed(kernel, plugin_dir: Path) -> None:
+def test_registry_version_increments_when_plugin_removed(
+    trestle_home: Path, tmp_path: Path
+) -> None:
+    """Over its own copy of the plugin directory: the shared fixture directory is read by every
+    parallel worker, and a plugin briefly present there leaks into their catalogs."""
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    echo_src = Path(__file__).resolve().parent / "fixtures" / "plugins" / "echo.py"
+    (plugin_dir / "echo.py").write_text(echo_src.read_text(encoding="utf-8"), encoding="utf-8")
+    kernel = create_kernel(home=trestle_home, plugin_dirs=[plugin_dir], skip_recovery=True)
     extra = plugin_dir / "temp_extra.py"
     extra.write_text(
         textwrap.dedent(

@@ -831,9 +831,10 @@ def _reg_workers() -> int:
 
 REG_WORKERS = _reg_workers()
 REG_CHUNKS_PER_WORKER = 6  # whole-file chunks per worker: enough to balance, few enough to start
-# Shared resources: the only writer into tests/fixtures/plugins, and the fixed port 18792 (its
-# client has no timeout, so two suites on one host hang each other).
-REG_SERIAL_FILES = ("tests/test_m6_extending.py", "tests/test_mcp_http_smoke.py")
+# Files a shared resource holds to the serial tail: none now (the HTTP smoke serves on `--port 0`
+# and test_m6_extending builds over private plugin directories). A file added here runs whole,
+# after the chunks.
+REG_SERIAL_FILES: tuple[str, ...] = ()
 # Timing-sensitive nodes: each passes alone and has failed on a loaded host.
 REG_SERIAL_NODES = (
     "tests/test_mcp_stdio_smoke.py::test_stdio_run_returns_running_on_short_wait_ms",
@@ -843,18 +844,6 @@ REG_SERIAL_NODES = (
     "tests/pins/c_surface/test_g_c4.py::test_pin_index_coarsened_summary_is_field_count",
     "tests/proof/spine/test_stop_offset.py::"
     "test_stop_seen_and_releases_past_the_offset_are_not_counted",
-    "tests/proof/selftest/test_landing_loop.py::"
-    "test_p1_new_land_starts_after_first_dies_without_reclaim",
-    # Race-shaped: a stop raised on one sibling thread's progress, then an assertion that another,
-    # concurrent, sibling had already got somewhere. Under 4-way load on CI's 4-vCPU runner the
-    # trigger came first (run 36866235573, CK-1 and CK-14): the cancel on `independent`'s marker
-    # found `broken` not yet failed (`not_started`). It passes serially. (test_reuse_twin's
-    # `cancelled` case had the same shape; its stop now waits for the sibling's end, so it runs
-    # in parallel again.)
-    "tests/tree/host/test_trl_rollup.py::test_root_stop_after_ordinary_failure",
-    # The same stop-at-the-n-th-wait shape over a real app on a free port, with a wall-clock bound.
-    "packages/trestle-env/tests/proc/test_readiness_cancel.py::"
-    "test_cancel_during_readiness_wait_prompt",
 )
 # Nodes that read the session's own proof results (`ledger.render()` over tests/proof/results):
 # in the serial step each sees exactly the records of the nodes before it. Each runs alone after

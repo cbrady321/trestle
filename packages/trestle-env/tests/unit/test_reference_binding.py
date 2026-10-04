@@ -81,7 +81,7 @@ def ticket(lineage: Lineage) -> AttemptTicket:
     )
 
 
-LINEAGE = Lineage("r_test", NodePath((tree.POSTGRES_UNIT,)))
+LINEAGE = Lineage("r_test", NodePath((tree.POSTGRES_SERVICE,)))
 
 
 def test_the_port_map_binds_the_container_ports_and_the_execution_port(tmp_path: Path) -> None:
@@ -119,21 +119,21 @@ def test_create_runs_the_declared_definition_from_the_pinned_role_image(tmp_path
     assert "--tmpfs" in argv and _bind.POSTGRES_DATA in argv
     assert f"POSTGRES_PASSWORD={tree.POSTGRES_FIXTURE_PASSWORD}" in argv
     name = argv[argv.index("--name") + 1]
-    assert name == "trwr-r_test-backend.postgres"
+    assert name == "trwr-r_test-postgres"
 
 
 def test_readiness_check_execs_the_declared_authenticated_call(tmp_path: Path) -> None:
     recorder = Recorder()
     bound = _bind.reference_ports(make_env(tmp_path), execution=recorder)
     reads = bound[ports.ResourceReads]
-    target = SelectorRef(LINEAGE, tree.UP, "trwr-r_test-backend.postgres", datetime.now(UTC))
+    target = SelectorRef(LINEAGE, tree.UP, "trwr-r_test-postgres", datetime.now(UTC))
     result = reads.check(tree.POSTGRES_READY, target)  # type: ignore[attr-defined]
     assert result.satisfied
     exec_argv = next(a for a in recorder.argvs if "exec" in a)
     at = exec_argv.index("exec")
     declared = tree.POSTGRES_READINESS
     assert exec_argv[at + 1 : at + 3] == ("-e", f"PGPASSWORD={tree.POSTGRES_FIXTURE_PASSWORD}")
-    assert exec_argv[at + 3] == "trwr-r_test-backend.postgres"
+    assert exec_argv[at + 3] == "trwr-r_test-postgres"
     assert exec_argv[at + 4 :] == declared.argv
 
 
@@ -143,7 +143,7 @@ def test_a_planted_readiness_password_reaches_only_the_exec_environment(tmp_path
     bound = _bind.reference_ports(
         make_env(tmp_path), execution=recorder, readiness_environment=planted
     )
-    target = SelectorRef(LINEAGE, tree.UP, "trwr-r_test-backend.postgres", datetime.now(UTC))
+    target = SelectorRef(LINEAGE, tree.UP, "trwr-r_test-postgres", datetime.now(UTC))
     bound[ports.ResourceReads].check(tree.POSTGRES_READY, target)  # type: ignore[attr-defined]
     exec_argv = next(a for a in recorder.argvs if "exec" in a)
     assert "PGPASSWORD=planted-wrong-password" in exec_argv

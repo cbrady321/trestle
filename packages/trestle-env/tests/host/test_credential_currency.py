@@ -8,8 +8,8 @@ no credential consumer of its own, a deviation recorded in B-HOST2-RETURN) runs 
 loop (the tree rig) over the real container adapter on the operator's docker, `DemoGrant` with the
 `ContainerExecProbe` (one authenticated call from inside the consumer, to the stub issuer through
 `host.docker.internal`), `ChannelDelivery` (the mounted refreshable file) and the stub issuer on
-loopback. The loop feeds no host-scope readings of its own (lane-close's caveat), so every run sets
-`walked.host_scope` to a live `DemoHostScope` over the same issuer (`consumers.LiveScope`).
+loopback. The loop reads its host scope through the bound `HostScopeReads`, a `DemoHostScope` over
+the same issuer, once per observation.
 
 `test_rotation_refreshed_in_place_no_recreate[local_app]` (L.RB-9.4.fix1, DEVIATION): the product
 `ChannelDelivery` addresses only run-scoped container selectors (`trwr-...`) and a local process's
@@ -55,9 +55,10 @@ from trestle_packs.grant import (
     write_channel,
 )
 from trestle_packs.grant.delivery import CHANNEL_FILE
+from trestle_packs.grant.host_scope import DemoHostScope
 from trestle_packs.process.command import CommandPort
 from trestle_packs.process.local import LocalProcessPort
-from twin import consumers, local_app, local_consumer
+from twin import consumers, local_consumer
 
 pytestmark = pytest.mark.docker_host
 
@@ -212,13 +213,14 @@ class Case:
                 ports.ResourceCreate: self.containers,
                 ports.ResourceOwned: bound.containers,
                 ports.GrantReads: self.grant,
+                ports.HostScopeReads: DemoHostScope(self.grant, now=lambda: kit.NOW),
                 ports.GrantDelivery: self.delivery,
             },
         )
 
     def run(self) -> dict[str, Any]:
         try:
-            self.rig.run(consumers.LiveScope(self.grant, lambda: kit.NOW))
+            self.rig.run()
         finally:
             listed = _docker("ps", "-aq", "--filter", f"name=^/trwr-{self.run_id}-")
             for cid in listed.stdout.split():
@@ -306,10 +308,8 @@ def _rotation_local_app(tmp_path: Path, issuer: Any) -> None:
     )
     grant = DemoGrant(issuer.url, probe=probe)
     log = tmp_path / "app-events.log"
-    command = local_consumer.app_command(local_app.free_port(), log)
-    # start-up is the harness's to wait for (`local_app.AwaitListening`), as in the twin
-    launcher = local_app.AwaitListening(LocalProcessPort(), log)
-    watched = local_consumer.Watched(launcher, selector, rotate=issuer.state.advance)
+    command = local_consumer.app_command(log)  # `PORT=0`, as in the twin
+    watched = local_consumer.Watched(LocalProcessPort(), selector, rotate=issuer.state.advance)
     before = issuer.state.current()
     rig = tk.tree_rig(
         tmp_path,
@@ -319,7 +319,7 @@ def _rotation_local_app(tmp_path: Path, issuer: Any) -> None:
         run_id=run_id,
         port_impl=local_consumer.port_map(watched, grant, delivery),
     )
-    rig.run(consumers.LiveScope(grant, lambda: kit.NOW))
+    rig.run()
     assert rig.ends()[UNIT]["condition"] == "satisfied", rig.ends()[UNIT]
     assert issuer.state.current() != before  # the host rotated while the run waited
     assert len(local_consumer.stale_remedy_rows(rig.rows())) == 1

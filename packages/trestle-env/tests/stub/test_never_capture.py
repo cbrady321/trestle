@@ -60,7 +60,7 @@ from trestle.workflow import (
 )
 from trestle.workflow.loop import Loop
 from trestle_env import tree
-from trestle_packs.grant import DemoGrant, DemoHostScope
+from trestle_packs.grant import DemoGrant
 
 ISSUER = "@ISSUER@"
 
@@ -83,25 +83,12 @@ ENTRY = WorkflowEntry(
 )
 
 
-class _Live:
-    """The host scope, read from the issuer at each join (duck-typed `HostScopeReading`)."""
-
-    def __init__(self, scope: DemoHostScope) -> None:
-        self._scope = scope
-
-    @property
-    def readings(self):
-        return self._scope.readings().readings
-
-
 @trestle(deadline=120, env_arg="env", packages=("trestle_env", "trestle_packs"))
 def credential_env(ctx: Context, env: str) -> Mapping[str, str]:
     grant = DemoGrant(ISSUER)
     with urllib.request.urlopen(ISSUER + "/credential") as reply:  # the ONE route with the secret
         os.environ["AWS_DEMO_SESSION_TOKEN"] = json.load(reply)["token"]
-    loop = Loop(ctx.run_services, ENTRY, {"env": env}, grant.as_map())
-    loop.host_scope = _Live(DemoHostScope(grant))
-    loop.run()
+    Loop(ctx.run_services, ENTRY, {"env": env}, grant.as_map()).run()  # binds DemoHostScope
     return {"env": env}
 '''
 

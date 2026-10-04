@@ -40,16 +40,17 @@ APP_UNIT = "backend.app"
 HTTP_APP = cancel_case.HTTP_APP
 
 
-def app_environ(tmp_path: Path) -> tuple[dict[str, str], Path, int]:
-    port, log = cancel_case.free_port(), tmp_path / "app-events.log"
+def app_environ(tmp_path: Path) -> tuple[dict[str, str], Path]:
+    """The plugin's environment: the app takes `PORT=0` and reports its own port (see
+    `cancel_case.reported_port`)."""
+    log = tmp_path / "app-events.log"
     return (
         {
-            "TRESTLE_B7_APP_PORT": str(port),
+            "TRESTLE_B7_APP_PORT": "0",
             "TRESTLE_B7_APP_LOG": str(log),
             "TRESTLE_B7_HTTP_APP": str(HTTP_APP),
         },
         log,
-        port,
     )
 
 
@@ -117,17 +118,20 @@ def proc_listeners(port: int) -> list[int]:
     return sorted(pids)
 
 
-def run_and_kill(kernel_: Kernel, env: str, log: Path, port: int) -> tuple[RunView, int]:
-    """Start the run, kill the app once mid-readiness; the terminal view and the killed pid."""
+def run_and_kill(kernel_: Kernel, env: str, log: Path) -> tuple[RunView, int, int]:
+    """Start the run, kill the app once mid-readiness; the terminal view, the killed pid and the
+    port the killed app had reported."""
     started = kernel_.control.run(plugin=PLUGIN_NAME, args={"env": env}, wait_ms=0)
     assert isinstance(started, RunView), started
     cancel_case.mid_wait(kernel_, started.run_id, log)
     assert cancel_case.health(log) >= 1 and "health 200" not in log.read_text().splitlines()
+    port = cancel_case.reported_port(kernel_, started.run_id)
+    assert port is not None, "the app is answering readiness, so it has reported its port"
     pid = listener(port)
     os.kill(pid, signal.SIGKILL)  # the owned app dies inside its readiness wait
     done = kernel_.control.project.await_terminal(started.run_id)
     assert isinstance(done, RunView), done
-    return done, pid
+    return done, pid, port
 
 
 def assert_repaired(

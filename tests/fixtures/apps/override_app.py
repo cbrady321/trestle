@@ -2,7 +2,8 @@
 """A stdlib HTTP app: the agent-launched Python project of the override realization (L.RB-8.1;
 B3-C4, B3-C21, hld-wr-environment "Gradle or Python, through the toolchain port").
 
-`PORT` (environment, required) is the loopback port it listens on; `GET /health` answers 200 `ok`
+`PORT` (environment, required) is the loopback port it listens on (`0`: a free one, reported through
+`TRESTLE_ENDPOINT_FILE`); `GET /health` answers 200 `ok`
 and `GET /` answers 200 with `{"app": "override", "pid": <pid>}` (a restart is visible as a new
 pid); anything else is 404. `APP_EVENT_LOG` (environment, optional) is a file it appends `start`
 to once it listens and `stop` to when it is told to end (SIGTERM or SIGINT), so a test can read the
@@ -45,6 +46,18 @@ class Handler(BaseHTTPRequestHandler):
         return None
 
 
+def report_endpoint(server: ThreadingHTTPServer) -> None:
+    """With `PORT=0` the app picked its own port: it writes its bound address to the file
+    `TRESTLE_ENDPOINT_FILE` names, atomically (the local process port's endpoint contract)."""
+    target = os.environ.get("TRESTLE_ENDPOINT_FILE")
+    if os.environ.get("PORT") != "0" or not target:
+        return
+    partial = target + ".partial"
+    with open(partial, "w", encoding="utf-8") as sink:
+        sink.write(f"127.0.0.1:{server.server_address[1]}")
+    os.replace(partial, target)
+
+
 def main() -> int:
     server = ThreadingHTTPServer(("127.0.0.1", int(os.environ["PORT"])), Handler)
 
@@ -53,6 +66,7 @@ def main() -> int:
 
     signal.signal(signal.SIGTERM, end)
     signal.signal(signal.SIGINT, end)
+    report_endpoint(server)
     note("start")
     try:
         server.serve_forever()

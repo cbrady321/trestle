@@ -15,14 +15,13 @@ older (`CREDENTIAL_STALE`). The join does the rest:
 
 A found consumer's identity is read from inside it (`CONSUMER_IDENTITY`, an exec check that its
 channel file is there), never assumed from its name. The loop feeds no host-scope readings of its
-own, so a proof run sets `walked.host_scope` to a live scope over the same issuer (`LiveScope`, as
-L.RB-9.3's proof does); without it every current fact would read as stale.
+own: it reads the host scope through the bound `HostScopeReads` (`DemoHostScope` over the same
+issuer, as `DemoGrant.as_map()` binds it); without one every current fact would read as stale.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Final
 
 from trestle.workflow import (
@@ -150,17 +149,3 @@ class ConsumerUnit:
     def release(self, params: Any, handle: CreatedHandle, effects: Any, ctx: ActContext) -> Step:
         effects.owned(ResourceOwned).stop(handle, STOP)
         return Acted()
-
-
-class LiveScope:
-    """The host scope the join compares a consumer's generation with, read live from the issuer
-    at each join (`DemoHostScope`; duck-typed: the join reads `.readings`)."""
-
-    def __init__(self, grant: Any, now: Callable[[], datetime]) -> None:
-        from trestle_packs.grant import DemoHostScope
-
-        self._scope = DemoHostScope(grant, now=now)
-
-    @property
-    def readings(self) -> Any:
-        return self._scope.readings().readings

@@ -8,14 +8,14 @@ court's oracle) and the wire answer. Each node's CI twin is `twin/test_b_spine_t
 name, the fake binding).
 
 * passed: MC-12 counts one request; the answer is `passed`; the dispositions equal what the
-  snapshot before the call implies (no Postgres was there, so `backend.postgres` was `started`);
+  snapshot before the call implies (no Postgres was there, so `postgres` was `started`);
   the create's claim precedes its confirmation (MC-10); RunView.cleanup reports the container
   released and no container with the run's selector prefix exists afterwards (released means
   observed absent, which implies stopped, V-10.4).
 * wrong password: the real binding with a planted wrong `PGPASSWORD` in the readiness exec
   environment. The authenticated `SELECT 1` over TCP to the container's own non-loopback address
   never passes (the image trusts loopback and sockets without a password, KDD 2), so the answer is
-  not `passed`, `backend.postgres` is never `started`, and the recorded check argv never names a
+  not `passed`, `postgres` is never `started`, and the recorded check argv never names a
   loopback address or a socket.
 """
 
@@ -34,7 +34,7 @@ from trestle_env import tree
 
 pytestmark = pytest.mark.docker_host
 
-POSTGRES = tree.POSTGRES_UNIT
+POSTGRES = tree.POSTGRES_SERVICE
 
 
 def _engine() -> tuple[str, str | None]:
@@ -53,11 +53,8 @@ def _expected(before: list[str]) -> dict[str, Any]:
     """What the snapshot implies: a service found running under its logical name would be
     reused; none there means the run starts one (the supporting service and Postgres alike)."""
     return {
-        unit: "reused" if service in before else "started"
-        for unit, service in (
-            (tree.HTTP_SUPPORT_UNIT, tree.HTTP_SUPPORT_SERVICE),
-            (POSTGRES, tree.POSTGRES_SERVICE),
-        )
+        service: "reused" if service in before else "started"
+        for service in (tree.HTTP_SUPPORT_SERVICE, POSTGRES)
     }
 
 
@@ -80,7 +77,7 @@ def test_one_call_passed_healthy_machine(tmp_path: Path) -> None:
     assert harness.claim_precedes_create(entries)
     prefix = harness.selector_prefix(run_id)
     confirmed = [e for e in entries if e["class"] == "confirmation" and e["effect"] == tree.UP]
-    assert {e["path"] for e in confirmed} == {tree.HTTP_SUPPORT_UNIT, POSTGRES}
+    assert {e["path"] for e in confirmed} == {tree.HTTP_SUPPORT_SERVICE, POSTGRES}
     for entry in confirmed:
         assert str(entry["identity"]).startswith(prefix), entry  # this run created each
     assert harness.container_released(answer)

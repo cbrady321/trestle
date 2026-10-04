@@ -139,7 +139,7 @@ def dispositions(answer: dict[str, Any]) -> dict[str, str | None]:
 
 def wait_created(run_id: str) -> None:
     """Until the run has created its supporting container (so a cancel lands mid-wait)."""
-    name = f"trwr-{run_id}-{tree.HTTP_SUPPORT_UNIT}"
+    name = f"trwr-{run_id}-{tree.HTTP_SUPPORT_SERVICE}"
     deadline = time.monotonic() + tolerances.JOIN_WAIT_S * 3
     while time.monotonic() < deadline:
         if docker("ps", "-a", "--format", "{{.Names}}", "--filter", f"name=^/{name}$"):
@@ -179,8 +179,8 @@ def test_prestarted_postgres_reused_untouched(
     if path == "passed":
         assert answer["outcome"] == "passed", answer
         shown = dispositions(answer)
-        assert shown[tree.POSTGRES_UNIT] == "reused"
-        assert shown[tree.HTTP_SUPPORT_UNIT] == "started"
+        assert shown[tree.POSTGRES_SERVICE] == "reused"
+        assert shown[tree.HTTP_SUPPORT_SERVICE] == "started"
     elif path == "failed":
         assert answer["outcome"] == "blocked", answer
     else:

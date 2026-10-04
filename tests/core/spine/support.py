@@ -7,6 +7,7 @@ Every timing bound comes from `tests.proof.tolerances` (SA-05); no timing litera
 
 from __future__ import annotations
 
+import json
 import os
 import signal
 import threading
@@ -14,8 +15,11 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 from tests.proof import ancestry, harness, records, tolerances
 from trestle.common.types import AdmitRequest, RequestOutcome, WorkOrder
@@ -94,9 +98,28 @@ def rows_of(run_dir: Path, kind: str) -> list[dict[str, Any]]:
 
 
 def wait_ready(run_dir: Path) -> None:
+    """Wait for the plugin's ready file. If the run ended before the plugin was ready because
+    start-up alone passed the admitted deadline, this host is too slow to exercise the spawned
+    path: skip with the reason, never assert the wrong path (RACES-REPORT L-7)."""
     ready = run_dir / "work" / "tmp" / "ready"
-    assert wait_until(ready.exists, tolerances.JOIN_WAIT_S), "the plugin never became ready"
-    time.sleep(tolerances.SETTLE_SHORT_S)
+    awaited = records.await_record(run_dir, lambda _lane, _node: ready.exists())
+    if awaited.why == "terminal" and not ready.exists():
+        deadline = _admitted_deadline(run_dir)
+        if deadline is not None and datetime.now(UTC) >= deadline:
+            pytest.skip("start-up passed the admitted deadline before the plugin was ready")
+    assert ready.exists(), "the plugin never became ready"
+    time.sleep(tolerances.SETTLE_SHORT_S)  # absence-window
+
+
+def _admitted_deadline(run_dir: Path) -> datetime | None:
+    """`spec.deadline` (B2-C5) as an aware instant, read as the conductor reads it; None when the
+    spec is unreadable or carries no deadline."""
+    try:
+        spec = json.loads((run_dir / "evidence" / "spec.json").read_text(encoding="utf-8"))
+        fixed = datetime.fromisoformat(spec["deadline"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return fixed if fixed.tzinfo is not None else fixed.replace(tzinfo=UTC)
 
 
 def marked(marker: str) -> set[ancestry.ProcInfo]:

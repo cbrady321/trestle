@@ -98,7 +98,7 @@ def test_one_call_reused_started_repaired_found_untouched_no_volume_removed(
 ) -> None:
     docker_path = shutil.which("docker")
     assert docker_path is not None
-    environ, log, port = healthy_case.app_environ(tmp_path)
+    environ, log = healthy_case.app_environ(tmp_path)
     for name, value in environ.items():
         monkeypatch.setenv(name, value)
     monkeypatch.setenv(_bind.DOCKER_PATH_ENV, docker_path)
@@ -106,7 +106,7 @@ def test_one_call_reused_started_repaired_found_untouched_no_volume_removed(
     monkeypatch.setenv("PYTHONPATH", harness.plugin_pythonpath())
     before = snapshot()
     kernel = healthy_case.kernel(tmp_path)
-    done, pid = healthy_case.run_and_kill(kernel, "healthy-host", log, port)
+    done, pid, port = healthy_case.run_and_kill(kernel, "healthy-host", log)
     healthy_case.assert_repaired(kernel, done, pid, log, port, FOUND)
     left = docker("ps", "-a", "--format", "{{.Names}}", "--filter", f"name=trwr-{done.run_id}-")
     assert left == "", left  # the created container: observed absent

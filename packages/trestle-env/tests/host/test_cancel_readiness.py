@@ -100,7 +100,7 @@ def test_cancel_during_readiness_owned_and_created_gone_found_untouched(
 ) -> None:
     docker_path = shutil.which("docker")
     assert docker_path is not None
-    environ, log, port = cancel_case.app_environ(tmp_path)
+    environ, log = cancel_case.app_environ(tmp_path)
     for name, value in environ.items():
         monkeypatch.setenv(name, value)
     monkeypatch.setenv(_bind.DOCKER_PATH_ENV, docker_path)
@@ -108,7 +108,7 @@ def test_cancel_during_readiness_owned_and_created_gone_found_untouched(
     monkeypatch.setenv("PYTHONPATH", harness.plugin_pythonpath())
     before = snapshot()
     kernel = cancel_case.kernel(tmp_path)
-    done, elapsed = cancel_case.cancel_mid_readiness(kernel, "cancel-host", log)
+    done, elapsed, port = cancel_case.cancel_mid_readiness(kernel, "cancel-host", log)
     cancel_case.assert_cancel_facts(kernel, done, elapsed, log, port, FOUND)
     left = docker("ps", "-a", "--format", "{{.Names}}", "--filter", f"name=trwr-{done.run_id}-")
     assert left == "", left  # the created container: observed absent

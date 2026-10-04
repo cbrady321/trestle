@@ -20,7 +20,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import threading
-import time
 from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
@@ -29,7 +28,7 @@ from typing import Any
 import pytest
 
 from tests.fixtures.trees import generators
-from tests.proof import tolerances
+from tests.proof import records, tolerances
 from tests.tree import runs
 from tests.tree import treekit as tk
 from trestle.common import lane_format as lf
@@ -178,14 +177,9 @@ def stopped_answer(
     runner.start()
     try:
         assert tk.wait_for(held), "the depth-two node never held"
-        deadline = time.monotonic() + tolerances.JOIN_WAIT_S
-        while time.monotonic() < deadline:  # read mid-run: a torn last line is "not yet"
-            done = {r.path for r in rig.rig.lane().rows if r.cls == "end"}
-            if set(ended) <= done:
-                break
-            time.sleep(tolerances.POLL_FINE_S)
-        else:
-            raise AssertionError(f"{ended} never ended")
+        if ended:
+            awaited = records.await_node_end(rig.run_dir, *ended)
+            assert awaited.why == "condition", f"{ended} never ended ({awaited.why})"
         rig.rig.cancel.stop = cause
         offset = rig.rig.services.attempts().committed_length()
     finally:

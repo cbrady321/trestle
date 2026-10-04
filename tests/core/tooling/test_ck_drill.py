@@ -347,7 +347,7 @@ def test_regression_runs_the_declined_tree_and_skips_the_baseline_file(
     assert "--deselect=tests/proof/selftest/test_baseline.py" in pytest_cmd
 
 
-# A planted serial collection: plain files of uneven size, the two shared-resource files, one
+# A planted serial collection: plain files of uneven size, the formerly shared-resource files, one
 # timing-sensitive node inside an otherwise parallel file, the results reader inside its own file,
 # and the packages' test files.
 FLAKY = "tests/test_user_stories.py::test_us08_hostile_plugin_control_plane_responsive"
@@ -380,9 +380,13 @@ def test_reg_partition_deals_whole_files_and_keeps_the_serial_tail() -> None:
             assert a is b or not (_files(a.nodes) & _files(b.nodes))
     assert [len(c.nodes) for c in chunks] == sorted((len(c.nodes) for c in chunks), reverse=True)
     assert 1 < len(chunks) <= 4 * ck_drill.REG_CHUNKS_PER_WORKER
-    # the shared-resource files and the timing-sensitive node run serially, after the chunks
-    assert set(tail.paths) == {"tests/test_m6_extending.py", "tests/test_mcp_http_smoke.py", FLAKY}
-    assert FLAKY in tail.nodes and len(tail.nodes) == 6
+    # the timing-sensitive node runs serially, after the chunks; no file is held there whole
+    assert ck_drill.REG_SERIAL_FILES == ()
+    assert set(tail.paths) == {FLAKY}
+    assert tail.nodes == [FLAKY]
+    assert any("tests/test_mcp_http_smoke.py" in c.paths for c in chunks)
+    # test_m6_extending builds its kernels over private plugin directories: dealt like any file
+    assert any("tests/test_m6_extending.py" in c.paths for c in chunks)
     (stories,) = [c for c in chunks if "tests/test_user_stories.py" in c.paths]
     assert stories.deselect == [FLAKY] and FLAKY not in stories.nodes
     # the results reader runs alone; its file's other node stays in a chunk
@@ -405,29 +409,31 @@ def test_reg_partition_moves_a_package_node_to_the_serial_tail(
     """A race-shaped package node runs in the serial tail by its node id; its package's process
     keeps the testpaths root and deselects it, also when it is its file's only node (the root
     collects that file all the same): still every node exactly once. test_reuse_twin's
-    `cancelled` case is no longer serial (its stop waits for the sibling's end): it stays in its
+    `cancelled` case and test_readiness_cancel's prompt cancel are no longer serial (the stop
+    waits for the sibling's end; the app reports its own port, L-17): they stay in their
     package's process."""
-    raced = (
+    # planted serial nodes: one beside a parallel node of its file, one its file's only node
+    raced = "packages/trestle-env/tests/proc/test_planted.py::test_raced"
+    other = "packages/trestle-env/tests/proc/test_planted.py::test_kept"
+    alone = "packages/trestle-env/tests/twin/test_alone.py::test_raced_alone"
+    monkeypatch.setattr(ck_drill, "REG_SERIAL_NODES", (*ck_drill.REG_SERIAL_NODES, raced, alone))
+    prompt = (
         "packages/trestle-env/tests/proc/test_readiness_cancel.py::"
         "test_cancel_during_readiness_wait_prompt"
     )
-    other = "packages/trestle-env/tests/proc/test_readiness_cancel.py::test_found_is_kept"
-    # a planted serial node, the only node of its file
-    alone = "packages/trestle-env/tests/twin/test_alone.py::test_raced_alone"
-    monkeypatch.setattr(ck_drill, "REG_SERIAL_NODES", (*ck_drill.REG_SERIAL_NODES, alone))
     reused = (
         "packages/trestle-env/tests/twin/test_reuse_twin.py::"
         "test_prestarted_postgres_reused_untouched[cancelled]"
     )
-    nodes = [*SERIAL_NODES, other, raced, alone, reused]
+    nodes = [*SERIAL_NODES, other, raced, alone, reused, prompt]
     plan = ck_drill.reg_partition(nodes, workers=4)
     dealt = [n for g in [*plan.chunks, *plan.packages, plan.tail, *plan.readers] for n in g.nodes]
     assert sorted(dealt) == sorted(nodes)
     assert {raced, alone} <= set(plan.tail.paths) and {raced, alone} <= set(plan.tail.nodes)
     (env,) = [g for g in plan.packages if g.paths == ["packages/trestle-env/tests"]]
-    assert env.deselect == [raced, alone] and {other, reused} <= set(env.nodes)
+    assert env.deselect == [raced, alone] and {other, reused, prompt} <= set(env.nodes)
     assert not {raced, alone} & set(env.nodes)
-    assert reused not in plan.tail.nodes
+    assert reused not in plan.tail.nodes and prompt not in plan.tail.nodes
 
 
 def test_reg_workers_leave_a_core_free(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -25,7 +25,7 @@ def test_cancel_during_readiness_owned_and_created_gone_found_untouched(
     planted = {"name": FOUND, "state": "running", "port": _bind.POSTGRES_PORT}
     planted["environment"] = {"POSTGRES_PASSWORD": tree.POSTGRES_FIXTURE_PASSWORD}
     state.write_text(json.dumps({"containers": [planted]}), encoding="utf-8")
-    environ, log, port = cancel_case.app_environ(tmp_path)
+    environ, log = cancel_case.app_environ(tmp_path)
     for name, value in {**harness.twin_environ(state), **environ}.items():
         if value is None:
             monkeypatch.delenv(name, raising=False)
@@ -33,7 +33,7 @@ def test_cancel_during_readiness_owned_and_created_gone_found_untouched(
             monkeypatch.setenv(name, value)
     monkeypatch.setenv("PYTHONPATH", harness.plugin_pythonpath())
     kernel = cancel_case.kernel(tmp_path)
-    done, elapsed = cancel_case.cancel_mid_readiness(kernel, "cancel-twin", log)
+    done, elapsed, port = cancel_case.cancel_mid_readiness(kernel, "cancel-twin", log)
     cancel_case.assert_cancel_facts(kernel, done, elapsed, log, port, FOUND)
     after = fake_binding.read_state(state)
     prefix = harness.selector_prefix(done.run_id)

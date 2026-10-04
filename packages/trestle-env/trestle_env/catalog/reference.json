@@ -2,7 +2,7 @@
   "schema": 1,
   "env_key": "env",
   "services": [
-    {"id": "postgres", "selector": "postgres"},
+    {"id": "postgres", "selector": "postgres", "depends_on": ["http_support"]},
     {"id": "http_support", "selector": "http_support"}
   ],
   "projects": [

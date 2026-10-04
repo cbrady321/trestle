@@ -25,14 +25,14 @@ class FixedResolver:
 
 
 def test_the_closure_of_the_selection_is_derived_before_any_effect() -> None:
-    resolver = FixedResolver(Closure(frozenset({"postgres"}), frozenset(), "fp-1"))
-    plan = derive_closure({ports.ComposeResolver: resolver}, ["postgres"])
+    resolver = FixedResolver(Closure(frozenset({"http_support"}), frozenset(), "fp-1"))
+    plan = derive_closure({ports.ComposeResolver: resolver}, ["http_support"])
     assert plan is not None
     assert [(n.service, n.realization) for n in plan.nodes] == [
-        ("postgres", RealizationKind.DOCKER_SERVICE)
+        ("http_support", RealizationKind.DOCKER_SERVICE)
     ]
     assert plan.definition_fingerprint == "fp-1"
-    assert resolver.asked == [("reference", frozenset({"postgres"}))]
+    assert resolver.asked == [("reference", frozenset({"http_support"}))]
 
 
 def test_no_selection_means_every_catalog_service() -> None:

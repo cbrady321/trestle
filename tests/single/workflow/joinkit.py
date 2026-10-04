@@ -4,7 +4,9 @@ defaults that hide a field a row reads."""
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
+from trestle.common.plan.vocabulary import HOST_SCOPE_UNREADABLE
 from trestle.workflow import codes
 from trestle.workflow.declarations import (
     CompletionSource,
@@ -17,6 +19,7 @@ from trestle.workflow.declarations import (
     Repeat,
     WaitPolicy,
 )
+from trestle.workflow.ports import HostScopeUnreadable
 from trestle.workflow.units import NodeRecordView, StepView, TicketView
 from trestle.workflow.values import (
     CheckResult,
@@ -208,6 +211,20 @@ def readings(*items: tuple[HostScopeRef, str]) -> HostScopeReading:
 
 
 NO_READINGS = HostScopeReading(())
+
+
+class StaticScope:
+    """A `HostScopeReads` that answers fixed generations (a subject it does not hold is
+    unreadable), for a loop that reads its host scope itself."""
+
+    def __init__(self, *items: tuple[HostScopeRef, str]) -> None:
+        self._generations = dict(items)
+
+    def read(self, subject: HostScopeRef) -> Any:
+        if subject not in self._generations:
+            return HostScopeUnreadable(subject, HOST_SCOPE_UNREADABLE)
+        return (subject, self._generations[subject], at(0))
+
 
 TIMEOUT = codes.POSTCONDITION_TIMEOUT
 UNCONFIRMED = codes.EFFECT_UNCONFIRMED

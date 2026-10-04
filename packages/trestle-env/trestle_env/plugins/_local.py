@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import json
 import os
-import socket
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final
@@ -78,13 +77,6 @@ def _json_object(environ: Mapping[str, str], name: str) -> dict[str, str]:
     return loaded
 
 
-def free_port() -> int:
-    """A loopback port nothing listens on now (the launch command's `PORT`)."""
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return int(probe.getsockname()[1])
-
-
 class LocalOverrides:
     """Binds the launch command of an override from the operator's environment."""
 
@@ -131,7 +123,7 @@ class LocalOverrides:
             self.execution,
             {
                 str(project.id): ProjectTasks(
-                    directory, tasks, {PORT_VAR: str(free_port() if port is None else port)}
+                    directory, tasks, {PORT_VAR: "0" if port is None else str(port)}
                 )
             },
         )

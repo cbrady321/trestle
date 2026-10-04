@@ -252,11 +252,8 @@ class TreeRig:
     def plan(self) -> compiler.AdmittedPlan:
         return self.rig.plan
 
-    def run(self, host_scope: Any = None) -> None:
-        walked = self.rig.loop()
-        if host_scope is not None:
-            walked.host_scope = host_scope  # the host sections' current readings (V-3.1)
-        walked.run()
+    def run(self) -> None:
+        self.rig.loop().run()
 
     def rows(self) -> list[dict[str, Any]]:
         lane = self.rig.lane()

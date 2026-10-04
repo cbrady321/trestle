@@ -48,8 +48,9 @@ def fake_binding(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _late_source() -> str:
     source = PLUGIN.read_text(encoding="utf-8")
-    assert source.count("deadline=120") == 1 and source.count("def reference_env(") == 1
-    late = source.replace("deadline=120", f"deadline={LATE_DEADLINE_S}")
+    declared = f"deadline={tree.DEADLINE_S}"
+    assert source.count(declared) == 1 and source.count("def reference_env(") == 1
+    late = source.replace(declared, f"deadline={LATE_DEADLINE_S}")
     return late.replace("def reference_env(", "def reference_env_late(")
 
 

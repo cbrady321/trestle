@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import shutil
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
@@ -15,13 +13,13 @@ import pytest
 from fastmcp import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
+from tests.proof import mcp_host, tolerances
 from trestle.common import codes
 from trestle.query.catalog import VIEW_CATALOG_URI
 from trestle.query.views import FETCH_WINDOW_KINDS, VIEW_NAMES
 
 TOOLS_LIST_BYTE_BUDGET = 8192
 REPO = Path(__file__).resolve().parents[1]
-HTTP_PORT = 18792
 
 
 @pytest.fixture
@@ -41,39 +39,11 @@ def smoke_home() -> Path:
 
 def test_streamable_http_serve_golden_path(smoke_home: Path) -> None:
     async def exercise() -> None:
-        env = os.environ.copy()
-        env["TRESTLE_HOME"] = str(smoke_home)
-
-        proc = subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "trestle.cli",
-                "serve",
-                "--transport",
-                "streamable-http",
-                "--port",
-                str(HTTP_PORT),
-            ],
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
-        url = f"http://127.0.0.1:{HTTP_PORT}/mcp"
+        # `--port 0`: the server picks a free port and says which (L-18), so two suites on one
+        # host never collide on a fixed port
+        proc, port = mcp_host.serve_http(smoke_home)
+        url = f"http://127.0.0.1:{port}/mcp"
         try:
-            for _ in range(50):
-                try:
-                    transport = StreamableHttpTransport(url=url)
-                    async with Client(transport=transport) as client:
-                        tools = await client.list_tools()
-                        if len(tools) == 10:
-                            break
-                except Exception:
-                    await asyncio.sleep(0.1)
-            else:
-                stderr = proc.stderr.read().decode() if proc.stderr else ""
-                raise AssertionError(f"MCP HTTP server did not become ready: {stderr}")
-
             transport = StreamableHttpTransport(url=url)
             async with Client(transport=transport) as client:
                 tools = await client.list_tools()
@@ -140,8 +110,37 @@ def test_streamable_http_serve_golden_path(smoke_home: Path) -> None:
         finally:
             proc.terminate()
             try:
-                proc.wait(timeout=5)
+                proc.wait(timeout=tolerances.PROC_WAIT_S)
             except subprocess.TimeoutExpired:
                 proc.kill()
+                proc.wait()
 
     asyncio.run(exercise())
+
+
+def test_two_servers_on_port_zero_get_two_ports(smoke_home: Path, tmp_path: Path) -> None:
+    """`serve --port 0` twice on one host: each reports its own port, and both answer."""
+    second_home = tmp_path / "second"
+    shutil.copytree(smoke_home, second_home)
+    servers = [mcp_host.serve_http(smoke_home), mcp_host.serve_http(second_home)]
+    try:
+        ports = [port for _, port in servers]
+        assert ports[0] != ports[1], ports
+
+        async def tools(port: int) -> int:
+            transport = StreamableHttpTransport(url=f"http://127.0.0.1:{port}/mcp")
+            async with Client(transport=transport) as client:
+                return len(await client.list_tools())
+
+        async def both() -> list[int]:
+            return list(await asyncio.gather(*(tools(port) for port in ports)))
+
+        assert asyncio.run(both()) == [10, 10]
+    finally:
+        for proc, _ in servers:
+            proc.terminate()
+            try:
+                proc.wait(timeout=tolerances.PROC_WAIT_S)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()

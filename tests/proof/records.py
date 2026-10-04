@@ -16,15 +16,23 @@ byte, with its own strict schema per written entry class (MC-19), and never thro
 lane entries: tickets, steps (a `NodeEnd` is the vertex's end and never a step), ends.
 `LANE_FORMAT` is the format version the oracle parses ("absent" before L.SV-1.4; TM-P0-3's
 probe reads it).
+
+`await_record` is the test kit's one wait on a run's record: it returns when the awaited
+condition holds, or when the root reaches a terminal row first (any terminating event), or at its
+bound, and says which. Tests wait through it (or its two shapes `await_node_end` and
+`await_confirmations`), never through their own polling loop (SA-05's lane-poll ratchet).
 """
 
 from __future__ import annotations
 
 import json
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
+from tests.proof import tolerances
 from trestle.server.ledger import TERMINAL_KINDS, ledger_path
 
 LANE_FORMAT = 1
@@ -237,11 +245,15 @@ def lane_rows(run_dir: Path) -> LaneRows:
     `problems` and dropped; a last line without its newline that is not a whole entry sets `torn`.
     A class outside MC-19's written set is counted in `unknown` (a `TicketEntry` is never one of
     the written classes). `seq` must strictly increase and the first entry carries
-    `lane_format`. Nothing is swallowed silently."""
+    `lane_format`. A lane that cannot be read at all is one problem and no rows. Nothing is
+    swallowed silently."""
     path = run_dir / "evidence" / "lane.ndjson"
     if not path.exists():
         return LaneRows()
-    data = path.read_bytes()
+    try:
+        data = path.read_bytes()
+    except OSError as exc:  # an unreadable lane is reported, never raised into a waiting reader
+        return LaneRows(problems=[f"the lane is unreadable: {type(exc).__name__}"])
     rows: list[LaneRow] = []
     problems: list[str] = []
     unknown = 0
@@ -320,4 +332,82 @@ def node_record(run_dir: Path, path: tuple[str, ...] = ()) -> NodeRecord:
     ends = [r.entry for r in lane.rows if r.cls == "end" and r.path == where]
     return NodeRecord(
         path=path, kinds=kinds, terminal=terminal, tickets=tickets, steps=steps, ends=ends
+    )
+
+
+# -------------------------------------------------------------------------- waiting on the record
+
+
+@dataclass(frozen=True)
+class Awaited:
+    """What ended a wait on the record: the condition held, the root reached a terminal row
+    first (any terminating event), or the bound elapsed. `lane` and `node` are the last read."""
+
+    why: Literal["condition", "terminal", "timed_out"]
+    lane: LaneRows
+    node: NodeRecord
+
+
+def await_record(
+    run_dir: Path,
+    condition: Callable[[LaneRows, NodeRecord], bool],
+    *,
+    bound_s: float = tolerances.JOIN_WAIT_S,
+    until_terminal: bool = True,
+) -> Awaited:
+    """Poll the lane and ledger every `tolerances.POLL_S` until `condition` holds, the root has a
+    terminal row (when `until_terminal`), or `bound_s` elapses. A torn last line is "not yet",
+    never a failure: `lane_rows` already drops it and sets `torn`. The condition is read on the
+    same snapshot before the terminal row, so a condition the last write satisfied wins."""
+    deadline = time.monotonic() + bound_s
+    while True:
+        lane = lane_rows(run_dir)
+        node = node_record(run_dir)
+        if condition(lane, node):
+            return Awaited("condition", lane, node)
+        if until_terminal and node.terminal is not None:
+            return Awaited("terminal", lane, node)
+        if time.monotonic() >= deadline:
+            return Awaited("timed_out", lane, node)
+        time.sleep(tolerances.POLL_S)
+
+
+def await_terminal(run_dir: Path, *, bound_s: float = tolerances.JOIN_WAIT_S) -> Awaited:
+    """The root has its terminal row (`why` is then "condition")."""
+    return await_record(run_dir, lambda _, node: node.terminal is not None, bound_s=bound_s)
+
+
+def await_node_end(run_dir: Path, *paths: str, bound_s: float = tolerances.JOIN_WAIT_S) -> Awaited:
+    """Every path in `paths` (lane path text: `"raiser"`, `"branch/w1"`; `""` is the root) has
+    its `NodeEnd`."""
+    wanted = set(paths)
+    return await_record(
+        run_dir,
+        lambda lane, _: wanted <= {r.path for r in lane.rows if r.cls == "end"},
+        bound_s=bound_s,
+    )
+
+
+def await_confirmations(
+    run_dir: Path,
+    effect: str,
+    *paths: str,
+    status: str = "applied",
+    bound_s: float = tolerances.JOIN_WAIT_S,
+) -> Awaited:
+    """Every path in `paths` has a confirmation of `effect` with `status`."""
+    wanted = set(paths)
+    return await_record(
+        run_dir,
+        lambda lane, _: (
+            wanted
+            <= {
+                r.path
+                for r in lane.rows
+                if r.cls == "confirmation"
+                and r.entry["effect"] == effect
+                and r.entry["status"] == status
+            }
+        ),
+        bound_s=bound_s,
     )

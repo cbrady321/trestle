@@ -97,13 +97,17 @@ def host_environ(seam: str | None = None) -> dict[str, str | None]:
 def run_terminal(
     host: mcp_host.McpHost, env: str, services: list[str] | None = None
 ) -> dict[str, Any]:
-    """THE one call: `run(reference_env, completion="terminal")`; MC-12 counts it once."""
+    """THE one call: `run(reference_env, completion="terminal")`; MC-12 counts it once. With no
+    `services` the request names none: the run walks every catalog service (C-3)."""
     sent = host.request_count()
+    args: dict[str, Any] = {"env": env}
+    if services is not None:
+        args["services"] = services
     answer = host.call(
         "run",
         {
             "plugin": PLUGIN_NAME,
-            "args": {"env": env, "services": services or [tree.POSTGRES_SERVICE]},
+            "args": args,
             "wait_ms": tolerances.HARNESS_WAIT_MS,
             "completion": "terminal",
         },
