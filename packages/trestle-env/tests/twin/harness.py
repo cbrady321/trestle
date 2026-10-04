@@ -141,9 +141,14 @@ def lane(run_dir_: Path) -> list[dict[str, Any]]:
 
 
 def dispositions(answer: Mapping[str, Any]) -> dict[str, str | None]:
-    """Every listed vertex's resource disposition, by its path (`started`, `reused`, ...)."""
+    """Every listed vertex's resource disposition (`started`, `reused`, ...), by its first path
+    segment: a service's CHOICE lists the one alternative that ran below it, and that
+    alternative's disposition is the service's."""
     body = answer["answer"]
-    return {".".join(node["path"]): node["disposition"] for node in body["listed"]}
+    shown: dict[str, str | None] = {}
+    for node in sorted(body["listed"], key=lambda n: len(n["path"])):
+        shown[node["path"][0] if node["path"] else ""] = node["disposition"]
+    return shown
 
 
 def container_released(answer: Mapping[str, Any]) -> bool:

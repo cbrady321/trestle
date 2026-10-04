@@ -61,11 +61,16 @@ class StageFailure:
 
 def failure_at(path: str, code: str) -> StageFailure | None:
     """The stage and service a node path names, or None when the path is no stage node (the
-    root, or a node whose prefix is not one of `NODE_PREFIXES`). The last segment decides. A
-    reference tree's service child is pathed by its catalog id (`postgres`): its readiness."""
-    leaf = path.rsplit(PATH_SEPARATOR, 1)[-1]
-    if leaf in SERVICE_CHILDREN:
-        return StageFailure(Stage.READINESS, leaf, code)
+    root, or a node whose prefix is not one of `NODE_PREFIXES`). A segment that is a service id
+    decides first (a service child, or its CHOICE and any alternative below it: its readiness);
+    else the last segment's prefix."""
+    segments = path.split(PATH_SEPARATOR)
+    leaf = segments[-1]
+    # a service's CHOICE keeps the service id as its path; any alternative below it (Docker or a
+    # local override, whatever its unit is named) is that service's readiness
+    service = next((s for s in segments if s in SERVICE_CHILDREN), None)
+    if service is not None:
+        return StageFailure(Stage.READINESS, service, code)
     prefix, dot, service = leaf.partition(".")
     stage = NODE_PREFIXES.get(prefix)
     if not dot or not service or stage is None:

@@ -62,12 +62,24 @@ def test_declared_tree_admitted_one_root_one_child() -> None:
     # (the name is L.RB-0.2's: the tree began as one root over one child and has grown since;
     # what it pins is that the declared tree compiles to an admitted plan with the env key)
     plan = compiled(tree.ENTRY, {schema.ENV_ARG: PROJECT})
-    assert [v.path for v in plan.vertices] == ["", tree.HTTP_SUPPORT_SERVICE, tree.POSTGRES_SERVICE]
+    # http_support has a catalog override: a CHOICE (named by the service id) over its Docker leaf
+    # and the local one; postgres has none and stays a plain child (decision B)
+    local = f"{tree.HTTP_SUPPORT_SERVICE}/http_support_local"
+    assert [v.path for v in plan.vertices] == [
+        "",
+        tree.HTTP_SUPPORT_SERVICE,
+        tree.HTTP_SUPPORT_PATH,
+        local,
+        tree.POSTGRES_SERVICE,
+    ]
     assert [v.unit for v in plan.vertices] == [
         tree.ROOT_UNIT,
+        tree.choice_unit_name(tree.HTTP_SUPPORT_SERVICE),
         tree.HTTP_SUPPORT_UNIT,
+        "http_support_local",
         tree.POSTGRES_UNIT,
     ]
+    assert plan.vertex(tree.HTTP_SUPPORT_SERVICE).compose == "choice"
     assert plan.vertex("").children == (tree.HTTP_SUPPORT_SERVICE, tree.POSTGRES_SERVICE)
     assert plan.vertex(tree.POSTGRES_SERVICE).compose == "leaf"
     # the environment key is the Compose project the request names (opaque bytes to the host)
@@ -159,7 +171,7 @@ def test_a_catalog_test_node_needs_every_readiness_node_and_backends_follow_the_
     assert isinstance(root, AllDeclaration)
     needs = {c.unit: c.needs for c in root.children}
     # a backend's needs are the catalog's depends_on: postgres after http_support (C-3)
-    assert needs[tree.HTTP_SUPPORT_UNIT] == ()
+    assert needs[tree.choice_unit_name(tree.HTTP_SUPPORT_SERVICE)] == ()
     assert needs[tree.POSTGRES_UNIT] == (tree.HTTP_SUPPORT_SERVICE,)
     assert set(needs[TEST_NODE]) == {tree.HTTP_SUPPORT_SERVICE, tree.POSTGRES_SERVICE}
     plan = compiled(entry, {schema.ENV_ARG: PROJECT})
@@ -169,6 +181,6 @@ def test_a_catalog_test_node_needs_every_readiness_node_and_backends_follow_the_
     }
     # the reference catalog lists no test: the default tree is the two backends
     assert [c.unit for c in tree.ENTRY.units[tree.ROOT_UNIT].children] == [  # type: ignore[union-attr]
-        tree.HTTP_SUPPORT_UNIT,
+        tree.choice_unit_name(tree.HTTP_SUPPORT_SERVICE),
         tree.POSTGRES_UNIT,
     ]

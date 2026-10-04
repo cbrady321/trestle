@@ -65,7 +65,7 @@ def started(answer: dict[str, Any], entries: list[dict[str, Any]], run_id: str) 
     lane confirms the create applied, under the run's selector prefix)."""
     prefix = harness.selector_prefix(run_id)
     created = {
-        e["path"]
+        str(e["path"]).split("/", 1)[0]  # a CHOICE's alternative stands for its service
         for e in entries
         if e["class"] == "confirmation"
         and e.get("effect") == tree.UP

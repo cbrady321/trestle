@@ -91,7 +91,7 @@ def test_cancel_during_readiness_wait_prompt(tmp_path: Path) -> None:
     )
     local = LocalProcessPort()
     dependent = Probe(TEST_NODE)  # the catalog test's node: it must never be observed
-    entry = entry_with_test()
+    entry = entry_with_test(overrides=False)  # backend.http_support is this rig's own unit
     rig = tk.tree_rig(
         tmp_path,
         entry.units[tree.ROOT_UNIT],  # type: ignore[arg-type]

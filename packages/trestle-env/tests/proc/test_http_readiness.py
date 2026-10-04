@@ -45,7 +45,7 @@ def rig_over_local_app(tmp_path: Path, mode: tuple[str, ...]) -> tuple[tk.TreeRi
     saw: list[list[str]] = []
     dependent = Probe(TEST_NODE, lambda: saw.append(log.read_text().split("\n")))
     dependent.saw = saw  # type: ignore[attr-defined]
-    entry = entry_with_test()
+    entry = entry_with_test(overrides=False)  # backend.http_support is this rig's own unit
     units = {
         tree.HTTP_SUPPORT_UNIT: tree.ServiceUnit(
             tree.HTTP_SUPPORT_UNIT,

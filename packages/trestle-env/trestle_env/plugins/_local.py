@@ -17,6 +17,11 @@ it needs to concrete adapters, next to `_bind` (the container binding):
   call goes to the port of the realization it is about (a spec's kind; a handle's or reference's
   own run-scoped selector), so a Docker node's container adapter never sees a local process and the
   local port never sees a container;
+* the router also binds an override's command for the run: the reference tree's local unit
+  declares a spec that names the override (`entry`) and no command, and the router binds it once
+  per run through `LocalOverrides`. An override that cannot be bound reads as could-not-observe
+  with the bind code (the unit blocks on it before any effect, never a Docker fallback); a launch
+  records `override.launch` (argv0, reported version) through the run's evidence sink;
 * `local_ports(base, ...)` wraps a port map (the real binding or a twin's seam) with that router,
   the local process port answering the tree's HTTP readiness contracts over loopback like the
   container port does.
@@ -26,6 +31,7 @@ Nothing here selects a realization: the choice is admission's and the loop's.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 from collections.abc import Mapping
@@ -35,7 +41,7 @@ from typing import Any, Final
 from trestle.workflow import ports
 from trestle.workflow.declarations import RealizationKind
 from trestle.workflow.ports import BoundCommand, Unresolved
-from trestle.workflow.values import FoundRef
+from trestle.workflow.values import Confirmation, ConfirmationStatus, FoundRef
 from trestle_packs.process.command import CommandPort
 from trestle_packs.process.local import LocalProcessPort
 from trestle_packs.toolchain import MiseToolchainResolver
@@ -157,17 +163,48 @@ class RealizationRouter:
         container_owned: Any,
         local_reads: Any,
         local: Any,
+        overrides: LocalOverrides | None = None,
     ) -> None:
         self._container_reads = container_reads
         self._container_create = container_create
         self._container_owned = container_owned
         self._local_reads = local_reads
         self._local = local
+        self._overrides = overrides
+        self._bound: dict[str, BoundCommand | OverrideBlocked] = {}  # this run's, per override
+        self._sink: Any = None
+
+    def bind_evidence(self, sink: Any) -> None:
+        """The run's evidence sink, for `override.launch`; passed on to the wrapped ports."""
+        self._sink = sink
+        for port in {
+            id(p): p for p in (self._container_reads, self._container_create, self._container_owned)
+        }.values():
+            binder = getattr(port, "bind_evidence", None)
+            if callable(binder):
+                binder(sink)
+
+    def _bind(self, spec: Any) -> Any:
+        """`spec` with its override's command bound, or the `OverrideBlocked` it cannot get past.
+        A spec that carries a command, or a router with no overrides, is passed through."""
+        if self._overrides is None or spec.command is not None:
+            return spec
+        entry = str(spec.entry)
+        if entry not in self._bound:
+            self._bound[entry] = self._overrides.command_for(entry)
+        bound = self._bound[entry]
+        if isinstance(bound, OverrideBlocked):
+            return bound
+        return dataclasses.replace(spec, command=bound)
 
     # reads
     def observe(self, spec: Any, lineage: Any, effect: Any) -> Any:
-        port = self._local_reads if _is_local_spec(spec) else self._container_reads
-        return port.observe(spec, lineage, effect)
+        if not _is_local_spec(spec):
+            return self._container_reads.observe(spec, lineage, effect)
+        bound = self._bind(spec)
+        if isinstance(bound, OverrideBlocked):  # could not observe (V-3.8): the bind code
+            return ports.ResourceObservation(False, None, False, False, (), (), bound.code)
+        return self._local_reads.observe(bound, lineage, effect)
 
     def check(self, check: Any, target: Any) -> Any:
         port = self._local_reads if _is_local(target) else self._container_reads
@@ -195,9 +232,18 @@ class RealizationRouter:
         return owner.release_descriptor(call)
 
     def create(self, spec: Any, ticket: Any) -> Any:
-        return (self._local if _is_local_spec(spec) else self._container_create).create(
-            spec, ticket
-        )
+        if not _is_local_spec(spec):
+            return self._container_create.create(spec, ticket)
+        bound = self._bind(spec)
+        if isinstance(bound, OverrideBlocked):  # the unit blocks first; never a Docker fallback
+            return Confirmation(ConfirmationStatus.NOT_APPLIED, bound.code, None)
+        if bound is not spec and self._sink is not None:
+            command = bound.command
+            self._sink.event(
+                "override.launch",
+                {"argv0": command.argv[0], "version": command.resolved.reported_version},
+            )
+        return self._local.create(bound, ticket)
 
     # owned
     def restart(self, target: Any, ticket: Any) -> Any:
@@ -213,7 +259,9 @@ class RealizationRouter:
 
 
 def local_ports(
-    base: Mapping[type, object], local: LocalProcessPort | None = None
+    base: Mapping[type, object],
+    local: LocalProcessPort | None = None,
+    overrides: LocalOverrides | None = None,
 ) -> Mapping[type, object]:
     """`base` (a tree's port map: the real binding or a twin's seam) with the resource ports
     replaced by a `RealizationRouter` over it and a local process port; every other port (the
@@ -225,6 +273,7 @@ def local_ports(
         base[ports.ResourceOwned],
         HttpReadinessReads(port, tree.HTTP_READINESS, alive=LOCAL_ALIVE),
         port,
+        overrides,
     )
     return {
         **base,

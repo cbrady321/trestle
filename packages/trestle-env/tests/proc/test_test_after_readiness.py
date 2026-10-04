@@ -43,7 +43,7 @@ def test_system_test_starts_after_local_http_readiness_pass(tmp_path: Path) -> N
         tree.HTTP_SUPPORT_SERVICE, RealizationKind.AGENT_LAUNCHED_PROJECT, "http-app", command
     )
     local = LocalProcessPort()
-    entry = entry_with_test()
+    entry = entry_with_test(overrides=False)  # backend.http_support is this rig's own unit
     rig = tk.tree_rig(
         tmp_path,
         entry.units[tree.ROOT_UNIT],  # type: ignore[arg-type]

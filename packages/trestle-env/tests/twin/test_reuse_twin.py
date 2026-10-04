@@ -60,7 +60,7 @@ def test_prestarted_postgres_reused_untouched(tmp_path: Path, path: str) -> None
         assert answer.outcome == "passed"
         shown = dispositions(answer)
         assert shown[tree.POSTGRES_SERVICE] == ResourceDisposition.REUSED
-        assert shown[tree.HTTP_SUPPORT_SERVICE] == ResourceDisposition.STARTED
+        assert shown[tree.HTTP_SUPPORT_PATH] == ResourceDisposition.STARTED
         # reused is reported, and nothing was created for it: no ticket for the found node
         rows = rig.rows()
         assert not any(

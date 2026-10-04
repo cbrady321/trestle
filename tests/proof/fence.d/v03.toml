@@ -24,6 +24,13 @@ globs         = [
   "packages/trestle-env/tests/fixtures/two-overrides/catalog.json",
   # commit 3: the reference catalog drops `postgres_local` (decision B).
   "packages/trestle-env/trestle_env/catalog/reference.json", "docs/environment.md",
+  # commit 4: `LocalServiceUnit`, a CHOICE per overridable service in `build_entry`, the local
+  # router binding the override per run, the port closed with the run, `failure_at` by service.
+  "packages/trestle-env/trestle_env/tree.py", "packages/trestle-env/trestle_env/stages.py",
+  "packages/trestle-env/trestle_env/plugins/_local.py",
+  "packages/trestle-env/trestle_env/plugins/reference_env.py",
+  "packages/trestle-env/tests/twin/*.py", "packages/trestle-env/tests/proc/*.py",
+  "packages/trestle-env/tests/unit/*.py", "packages/trestle-env/tests/host/*.py",
 ]
 
 [[lane]]

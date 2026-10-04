@@ -17,10 +17,12 @@ from collections.abc import Mapping
 from trestle.plugin import Context, trestle
 from trestle.workflow.declarations import JsonValue
 from trestle.workflow.loop import run_tree
+from trestle_packs.process.local import LocalProcessPort
 
 from trestle_env.plugins._bind import bind_evidence, derive_closure, reference_ports
+from trestle_env.plugins._local import LocalOverrides, local_ports
 from trestle_env.schema import OverrideId, ServiceId, TestId
-from trestle_env.tree import ENTRY
+from trestle_env.tree import CATALOG, ENTRY
 
 
 class _Evidence:
@@ -48,8 +50,17 @@ def reference_env(
     for name, chosen in (("services", services), ("tests", tests), ("overrides", overrides)):
         if chosen is not None:
             intent[name] = sorted(chosen)
-    bound = reference_ports(artifacts=ctx.outputs / "tests")
-    bind_evidence(bound, _Evidence(ctx))
-    derive_closure(bound, services, overrides or ())  # refused before any effect (WR-ENV-1)
-    run_tree(ctx, ENTRY, intent, ports=bound)
+    # a local override's process runs on this run's own local port, its command bound for this
+    # run (`LocalOverrides`); the port is closed after the loop's release phase, so its endpoint
+    # directory never outlives the run
+    local = LocalProcessPort()
+    try:
+        bound = local_ports(
+            reference_ports(artifacts=ctx.outputs / "tests"), local, LocalOverrides(CATALOG)
+        )
+        bind_evidence(bound, _Evidence(ctx))
+        derive_closure(bound, services, overrides or ())  # refused before any effect (WR-ENV-1)
+        run_tree(ctx, ENTRY, intent, ports=bound)
+    finally:
+        local.close()
     return {"env": env}
