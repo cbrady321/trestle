@@ -55,6 +55,8 @@ globs         = [
   # REG_SERIAL_FILES is empty.
   "trestle/server/main.py", "trestle/cli.py", "tests/test_mcp_http_smoke.py", "docs/install.md",
   "tests/core/admission/test_cl_a2_profile.py", "tests/proof/baseline.json",
+  # stage 8b: the baseline selftest drops the explanation that now names its planted field.
+  "tests/proof/selftest/test_baseline.py",
   # stage 9: C-3, the service children are named by catalog id and `services` filters them; the
   # catalog's `depends_on` is their `needs`, so a selection admits its dependency closure; the
   # Compose definition must agree with it; the reference budgets hold the longer chain.
