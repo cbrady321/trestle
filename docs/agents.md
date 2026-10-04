@@ -355,6 +355,11 @@ select among the declared ones when the plugin offers a selector argument (for e
 `admission.unknown_identifier`, with no run id. A selection runs the named parts together with
 everything they depend on (`reference_env`'s `services: ["postgres"]` also brings up
 `http_support`, which postgres depends on); parts outside that closure are not in the run.
+A part with more than one realization is a choice: `reference_env`'s `http_support` runs in
+Docker unless `overrides: ["http_support_local"]` names its local realization. The choice keeps
+the part's path (`http_support`) and the realization that ran sits one level below it
+(`http_support/backend.http_support` or `http_support/http_support_local`); the answer lists the
+choice and that one realization, never the one not chosen.
 
 1. **Discover.** `describe_plugin(plugin_id="…")`. The selector arguments and the environment
    argument are in `input_schema`; `deadline_s` is the deadline the whole tree runs under. Give

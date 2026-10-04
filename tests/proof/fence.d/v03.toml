@@ -34,6 +34,10 @@ globs         = [
   # commit 5: the owned restart on the local realization only (decision C); the test plugin's
   # unit collapses onto it.
   "packages/trestle-env/tests/fixtures/owned_restart.py",
+  # commit 7: the reference fossils re-recorded over the CHOICE paths; the guides' path notes.
+  "tests/fixtures/fossils/slice-b/b-*reference_env*/**",
+  "tests/fixtures/fossils/root/b-*reference_env*/**",
+  "docs/agents.md",
 ]
 
 [[lane]]
