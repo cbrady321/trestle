@@ -29,6 +29,7 @@ adapter is bound by the composition root (`plugins/reference_env.py`), never her
 
 from __future__ import annotations
 
+import dataclasses
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -40,6 +41,7 @@ from trestle.workflow import (
     AllDeclaration,
     ArgBinding,
     ChildBinding,
+    ChoiceNode,
     CompletionSource,
     Compose,
     EffectDeclaration,
@@ -54,7 +56,7 @@ from trestle.workflow import (
     WaitPolicy,
     WorkflowEntry,
 )
-from trestle.workflow.codes import CREDENTIAL_LIFETIME_INSUFFICIENT
+from trestle.workflow.codes import CREDENTIAL_LIFETIME_INSUFFICIENT, POSTCONDITION_TIMEOUT
 from trestle.workflow.ports import (
     BoundCommand,
     ExecutionPort,
@@ -86,6 +88,7 @@ from trestle.workflow.values import (
     Verdict,
 )
 
+from trestle_env import realization
 from trestle_env.catalog import Catalog, load_reference
 from trestle_env.catalog.model import Project, TaskEntry, TestSpec
 from trestle_env.schema import ENV_ARG, OVERRIDES_ARG, SERVICES_ARG, TESTS_ARG
@@ -97,6 +100,7 @@ POSTGRES_ROLE: Final = "postgres"  # the MC-B-10 image role the composition root
 HTTP_SUPPORT_UNIT: Final = "backend.http_support"
 HTTP_SUPPORT_SERVICE: Final = "http_support"
 HTTP_SUPPORT_ROLE: Final = "http_support"
+HTTP_SUPPORT_PATH: Final = "http_support/backend.http_support"  # its Docker alternative's path
 SERVICES_SET: Final = "services"  # the declared identifier sets the request arguments name
 TESTS_SET: Final = "tests"
 OVERRIDES_SET: Final = "overrides"
@@ -132,6 +136,16 @@ STAGE_BUDGET_S: Final = 20
 STAGE_WAIT_S: Final = 10
 RELEASE_TIMEOUT_S: Final = 2
 CONCURRENCY: Final = 2
+# A service with a catalog override is a CHOICE between its Docker leaf and each override's local
+# leaf (V-7). The local leaf waits less than a container (a local process starts in well under a
+# second) so its owned-restart remedy fits the leaf budget: wait + remedy total + release
+# = 10 + 15 + 2 = 27 <= LEAF_BUDGET_S. The CHOICE's budget is its largest alternative plus the
+# carve's finalization reserve (40 + 10).
+LOCAL_READY_WAIT_S: Final = 10
+RESTART: Final = "restart"  # the local leaf's owned repair: one restart of its own process
+RESTART_TOTAL_S: Final = 15  # the remedy's own bound (V-14)
+CHOICE_BUDGET_S: Final = 50
+CHOICE_SUFFIX: Final = ".choice"  # a service's CHOICE unit is `<service id>.choice`
 
 
 @dataclass(frozen=True)
@@ -267,6 +281,8 @@ class ServiceUnit:
     gives the same unit an agent-launched spec, so the contract is the unit's and the realization
     is the port's."""
 
+    wait_s: int = READY_WAIT_S  # the readiness wait (a local realization's is shorter)
+
     def __init__(
         self,
         unit: str,
@@ -292,7 +308,7 @@ class ServiceUnit:
             flags=LoopFlags(Compose.LEAF, CompletionSource.OBSERVED, Repeat.SAFE),
             preconditions=(),
             postcondition=self._readiness,
-            wait=WaitPolicy(timedelta(seconds=READY_POLL_S), 1.0, timedelta(seconds=READY_WAIT_S)),
+            wait=WaitPolicy(timedelta(seconds=READY_POLL_S), 1.0, timedelta(seconds=self.wait_s)),
             resource_kind=kind,
             may_touch=frozenset({kind}),
             effects=(
@@ -377,6 +393,76 @@ class ServiceUnit:
     def release(self, params: Any, handle: CreatedHandle, effects: Any, ctx: ActContext) -> Step:
         effects.owned(ResourceOwned).stop(handle, STOP)
         return Acted()
+
+
+LOCAL_BLOCKS: Final[Mapping[str, str]] = {
+    "environment.repository_missing": (
+        "Check out the repository of {stage}'s project at the directory the operator configured "
+        "(TRESTLE_ENV_PROJECT_DIRS), then re-send: the override runs from it and never falls "
+        "back to Docker."
+    ),
+}
+LOCAL_BLOCK_DEFAULT: Final = (
+    "Make the toolchain {stage} pins resolvable on this machine (the operator's mise, "
+    "TRESTLE_MISE_PATH), then re-send: the override never falls back to Docker."
+)
+
+
+class LocalServiceUnit(ServiceUnit):
+    """A catalog override: the service's readiness contract (WR-ENV-2: one readiness per CHOICE)
+    over an agent-launched project, a local process this run launches (L.RB-8.2).
+
+    The unit holds no per-run state: its spec names the override (`entry`) with no command, and the
+    composition root's local router binds the command for the run (`plugins._local.LocalOverrides`,
+    the operator's project directory and toolchain). An override that cannot be bound is a
+    could-not-observe reading carrying the bind code: the node reports nothing present and `advance`
+    blocks with that code and its human action, before any effect. It never falls back to Docker:
+    admission already pinned the CHOICE to it.
+
+    Owned restart (decision C, L.RB-8.3; WR-ENV-7): the local leaf alone declares one `restart`
+    of its own handle as the remedy for `POSTCONDITION_TIMEOUT`, once. A process this run launched
+    that died (J-23) or never got ready (J-20) is restarted on the same handle, never recreated;
+    a restart that does not help ends `REMEDY_EXHAUSTED` (J-3). A Docker leaf declares no remedy,
+    so no Docker outcome changes. Stage budget: wait + remedy total + release = 10 + 15 + 2."""
+
+    wait_s = LOCAL_READY_WAIT_S
+
+    def __init__(self, override: str, service: str, readiness: str) -> None:
+        super().__init__(
+            override,
+            service,
+            readiness,
+            ResourceSpec(service, RealizationKind.AGENT_LAUNCHED_PROJECT, override, None),
+        )
+
+    def declare(self) -> LeafDeclaration:
+        base = super().declare()
+        release = timedelta(seconds=RELEASE_TIMEOUT_S)
+        restart = EffectDeclaration(
+            RESTART, EffectFacetClass.OWNED, "", Lifetime.RUN, frozenset(), release
+        )
+        remedy = RemedyDeclaration(
+            POSTCONDITION_TIMEOUT, RESTART, 1, timedelta(seconds=RESTART_TOTAL_S), timedelta(0)
+        )
+        return dataclasses.replace(base, effects=(*base.effects, restart), remedies=(remedy,))
+
+    def advance(self, params: Any, state: Verdict, effects: EffectFacets, ctx: ActContext) -> Step:
+        if state.remedy is not None and state.owned:
+            # the repair is one `restart` of the run's own handle: never a new create, never a
+            # signal to a process this run does not hold
+            effects.owned(ResourceOwned).restart(state.owned[-1], state.remedy.effect)
+            return Acted()
+        seen = effects.read(ResourceReads).observe(self._spec, ctx.lineage, UP)
+        if seen.code is not None:
+            stage = f"{self._unit} ({self._spec.logical_system})"
+            text = LOCAL_BLOCKS.get(seen.code, LOCAL_BLOCK_DEFAULT)
+            return Blocked(seen.code, text.format(stage=stage), Resend.SUCCEEDS_AFTER_ACTION)
+        effects.create(ResourceCreate).create(self._spec, UP)
+        return Acted()
+
+
+def choice_unit_name(service: str) -> str:
+    return f"{service}{CHOICE_SUFFIX}"
 
 
 CATALOG_ENV: Final = "TRESTLE_ENV_CATALOG"
@@ -710,6 +796,32 @@ def build_entry(catalog: Catalog) -> WorkflowEntry:
         return tuple(str(d) for d in found.depends_on) if found is not None else ()
 
     provisioned = any(t.provision for t in tests)  # a test that needs the fixture record
+    docker_units = {HTTP_SUPPORT_SERVICE: HTTP_SUPPORT_UNIT, POSTGRES_SERVICE: POSTGRES_UNIT}
+    readiness = {HTTP_SUPPORT_SERVICE: HTTP_SUPPORT_READY, POSTGRES_SERVICE: POSTGRES_READY}
+    overridden = {
+        service: tuple(str(o.id) for o in catalog.overrides if str(o.service) == service)
+        for service in backends
+    }
+
+    def service_unit(service: str) -> str:
+        # a service with an override is a CHOICE named by the service id, so it keeps the path the
+        # plain child had; its alternatives sit one level below (`http_support/<unit>`)
+        return choice_unit_name(service) if overridden[service] else docker_units[service]
+
+    choices: dict[str, Any] = {}
+    for service in backends:
+        if not overridden[service]:
+            continue
+        choices[choice_unit_name(service)] = ChoiceNode(
+            unit=choice_unit_name(service),
+            flags=LoopFlags(Compose.CHOICE, CompletionSource.OBSERVED, Repeat.SAFE),
+            choice=realization.choice_for(
+                catalog, service, docker_units[service], readiness[service]
+            ),
+            budget=timedelta(seconds=CHOICE_BUDGET_S),
+        )
+        for override in overridden[service]:
+            choices[override] = LocalServiceUnit(override, service, readiness[service])
     return WorkflowEntry(
         root=ROOT_UNIT,
         units={
@@ -718,13 +830,13 @@ def build_entry(catalog: Catalog) -> WorkflowEntry:
                 flags=LoopFlags(Compose.ALL, CompletionSource.OBSERVED, Repeat.SAFE),
                 children=(
                     ChildBinding(
-                        unit=HTTP_SUPPORT_UNIT,
+                        unit=service_unit(HTTP_SUPPORT_SERVICE),
                         params={},
                         needs=depends(HTTP_SUPPORT_SERVICE),
                         name=HTTP_SUPPORT_SERVICE,
                     ),
                     ChildBinding(
-                        unit=POSTGRES_UNIT,
+                        unit=service_unit(POSTGRES_SERVICE),
                         params={},
                         needs=depends(POSTGRES_SERVICE),
                         name=POSTGRES_SERVICE,
@@ -765,6 +877,7 @@ def build_entry(catalog: Catalog) -> WorkflowEntry:
             POSTGRES_UNIT: ServiceUnit(
                 POSTGRES_UNIT, POSTGRES_SERVICE, POSTGRES_READY, reuse=POSTGRES_REUSE
             ),
+            **choices,
             **({PROVISION_UNIT: ProvisionUnit()} if provisioned else {}),
             **{task_unit_name(str(t.id)): task_unit(t) for t in tests},
         },

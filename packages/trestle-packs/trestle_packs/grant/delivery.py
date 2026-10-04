@@ -16,8 +16,11 @@ next read with the same container or process, and never a half-written file.
 - The token is held in memory for the length of one call and written to the channel file. It is in
   no return value, no code, no log line and no record (WR-EVID-12); the confirmation holds names
   and a status.
-- Only a run-scoped selector (`trwr-...`, `[a-z0-9_.-]`) names a channel, so a selector can never
-  point outside the channels root.
+- Only a run-scoped selector names a channel, so a selector can never point outside the channels
+  root: a container's (`trwr-...`, `[a-z0-9_.-]`) or an owned local process's (`proc-<16 hex>`).
+  A container mounts its channel (`channel_mount`, container selectors only); a local process is
+  told where it is by `TRESTLE_CHANNEL_DIR` (`channel_env`, process selectors only), a variable
+  that names the directory, never the credential.
 """
 
 from __future__ import annotations
@@ -42,21 +45,33 @@ from trestle_packs.grant.demo import (
 CHANNEL_FILE: Final = "credentials"  # the refreshable file's name inside a channel directory
 CHANNEL_MOUNT: Final = "/run/trestle-demo-credentials"  # where a container mounts the directory
 SELECTOR_PREFIX: Final = "trwr-"  # MC-B-01: every object a run created is named trwr-<run>-<path>
-_SELECTOR = re.compile(r"trwr-[a-z0-9_.-]+")
+CHANNEL_ENV: Final = "TRESTLE_CHANNEL_DIR"  # a local process's channel DIRECTORY, not a credential
+_CONTAINER_SELECTOR = re.compile(r"trwr-[a-z0-9_.-]+")
+_PROCESS_SELECTOR = re.compile(r"proc-[0-9a-f]{16}")  # `process.local.run_scoped_selector`
 _APPLIED = ConfirmationStatus.APPLIED
 _NOT_APPLIED = ConfirmationStatus.NOT_APPLIED
 
 
 def channel_directory(root: Path, selector: str) -> Path:
     """The channel directory of the consumer a run-scoped `selector` names, under `root`."""
-    if not _SELECTOR.fullmatch(selector):
+    if not (_CONTAINER_SELECTOR.fullmatch(selector) or _PROCESS_SELECTOR.fullmatch(selector)):
         raise ValueError(f"{selector!r} is not a run-scoped selector: it names no channel")
     return root / selector
 
 
 def channel_mount(root: Path, selector: str) -> tuple[str, str]:
     """`(host source, container target)` for a consumer container's read-only bind mount."""
+    if not _CONTAINER_SELECTOR.fullmatch(selector):
+        raise ValueError(f"{selector!r} is not a run-scoped container selector: nothing mounts it")
     return str(channel_directory(root, selector)), CHANNEL_MOUNT
+
+
+def channel_env(root: Path, selector: str) -> dict[str, str]:
+    """The environment that tells an owned local process where its channel directory is. The
+    process reads `credentials` inside it on every use, so a refresh needs no restart."""
+    if not _PROCESS_SELECTOR.fullmatch(selector):
+        raise ValueError(f"{selector!r} is not an owned local process selector: no channel env")
+    return {CHANNEL_ENV: str(channel_directory(root, selector))}
 
 
 def provision_channel(root: Path, selector: str) -> Path:

@@ -11,7 +11,7 @@ import pytest
 
 from trestle_env import tree
 from trestle_env.plugins import _bind
-from twin import cancel_case, fake_binding, harness
+from twin import cancel_case, fake_binding, harness, overrides
 
 FOUND = tree.POSTGRES_SERVICE
 
@@ -42,3 +42,19 @@ def test_cancel_during_readiness_owned_and_created_gone_found_untouched(
     assert found["state"] == "running"  # the found one: untouched
     touched = [c for c in after["calls"] if c.get("selector") == FOUND and c["member"] != "check"]
     assert touched == [], touched
+
+
+@pytest.mark.stub_proven("WR-CANCEL-4:b-created-gone-found-untouched@stub-twin")
+@pytest.mark.stub_proven("WR-OWN-2:b-cancel-path@stub-twin")
+def test_reference_tree_cancel_during_readiness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "engine.json"
+    environ = {
+        **harness.twin_environ(state, fake_binding.WRONG_PASSWORD_SEAM),
+        **overrides.operator_environ(tmp_path / "operator"),
+    }
+    done, _ = cancel_case.reference_cancel(tmp_path, monkeypatch, environ, "cancel-ref-twin")
+    after = fake_binding.read_state(state)
+    prefix = harness.selector_prefix(done.run_id)
+    assert not [c for c in after["containers"] if c["name"].startswith(prefix)]  # released

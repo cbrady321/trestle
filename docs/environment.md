@@ -206,6 +206,22 @@ other), and `services`, `tests` and `overrides` are sets of catalog identifiers.
 the plan, so `["postgres"]` walks `http_support` and then `postgres`, and a service outside that
 closure is not part of the run at all. With no `services` the run walks every catalog service.
 
+`overrides` names catalog overrides: a service's local realization in place of its Docker one. The
+reference catalog declares one, `http_support_local` (the override app run as a local process); a
+service whose override the request does not name stays in Docker.
+
+A service with an override is a choice in the tree, named by the service id; the realization that
+runs is one level below it. So `http_support`'s Docker node is `http_support/backend.http_support`
+(its container `trwr-<run id>-http_support.backend.http_support`) and its local one
+`http_support/http_support_local`; `postgres` has no override and stays `postgres`. A container a
+pre-change run left running is still found by its logical service and reused, never recreated.
+The local realization runs from the project directory the operator names in
+`TRESTLE_ENV_PROJECT_DIRS` (a JSON object, project id to absolute directory) with the interpreter
+the operator's mise (`TRESTLE_MISE_PATH`) resolves for the project's pin. A directory that is
+absent ends the node `blocked` with `environment.repository_missing` before anything starts; it
+never falls back to Docker. An owned local process that dies, or is not ready within its 10 s wait,
+is restarted once on the same handle; the answer is then `passed` with the node `repaired`.
+
 An identifier the catalog does not hold is refused before a run id exists, with
 `admission.unknown_identifier`, the identifier and where the valid ones are listed
 (`identifier_sets.services`, `.tests` or `.overrides` of the declared plan). A repeated identifier is

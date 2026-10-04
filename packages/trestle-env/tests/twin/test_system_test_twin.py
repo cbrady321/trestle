@@ -29,5 +29,5 @@ def test_test_starts_after_every_readiness_pass(tmp_path: Path) -> None:
     ended = {e["path"]: n for n, e in enumerate(entries) if e["class"] == "end"}
     first = next(n for n, e in enumerate(entries) if e.get("path") == NODE)
     assert entries[first]["class"] == "issue"  # the test's start is its ticket
-    for backend in (tree.HTTP_SUPPORT_SERVICE, tree.POSTGRES_SERVICE):
+    for backend in (tree.HTTP_SUPPORT_PATH, tree.POSTGRES_SERVICE):  # the leaves that ran
         assert ended[backend] < first, backend

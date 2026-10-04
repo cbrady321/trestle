@@ -77,7 +77,7 @@ def test_one_call_passed_healthy_machine(tmp_path: Path) -> None:
     assert harness.claim_precedes_create(entries)
     prefix = harness.selector_prefix(run_id)
     confirmed = [e for e in entries if e["class"] == "confirmation" and e["effect"] == tree.UP]
-    assert {e["path"] for e in confirmed} == {tree.HTTP_SUPPORT_SERVICE, POSTGRES}
+    assert {e["path"] for e in confirmed} == {tree.HTTP_SUPPORT_PATH, POSTGRES}
     for entry in confirmed:
         assert str(entry["identity"]).startswith(prefix), entry  # this run created each
     assert harness.container_released(answer)

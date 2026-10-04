@@ -157,11 +157,15 @@ def catalog_file(directory: Path) -> Path:
     return path
 
 
-def entry_with_test() -> WorkflowEntry:
+def entry_with_test(overrides: bool = True) -> WorkflowEntry:
     """The reference tree over a catalog that lists one test, `demo-version`: its node needs both
-    backends' readiness pass, and (the request not naming it) runs nothing."""
+    backends' readiness pass, and (the request not naming it) runs nothing. `overrides` False drops
+    the catalog's overrides, so every service is a plain child (a rig that binds its own unit for
+    `backend.http_support`)."""
     data = json.loads(REFERENCE_PATH.read_text(encoding="utf-8"))
     data["tests"] = [{"id": TEST_ID, "project": "demo-py", "task": "version"}]
+    if not overrides:
+        data["overrides"] = []
     return tree.build_entry(Catalog.from_data(data))
 
 

@@ -59,12 +59,6 @@
       "service": "http_support",
       "project": "override-app",
       "task": "launch"
-    },
-    {
-      "id": "postgres_local",
-      "service": "postgres",
-      "project": "override-app",
-      "task": "launch-alt"
     }
   ],
   "remediation": [

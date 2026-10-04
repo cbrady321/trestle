@@ -11,12 +11,10 @@ loop (the tree rig) over the real container adapter on the operator's docker, `D
 loopback. The loop reads its host scope through the bound `HostScopeReads`, a `DemoHostScope` over
 the same issuer, once per observation.
 
-`test_rotation_refreshed_in_place_no_recreate[local_app]` (L.RB-9.4.fix1, DEVIATION): the product
-`ChannelDelivery` addresses only run-scoped container selectors (`trwr-...`) and a local process's
-is `proc-<hex>`, so nothing in the product can refresh a local app in place. The case runs the real
-`LocalProcessPort` (the app is a real process), the real stub issuer and the shipped `LocalAppProbe`
-(the demo client `stub_cloud`) with a test-defined delivery binding, `twin/local_consumer.py`'s
-`LocalAppDelivery`; no Docker is used by that case.
+`test_rotation_refreshed_in_place_no_recreate[local_app]` (L.RB-9.4.fix1): the product
+`ChannelDelivery` refreshes the local app's channel, the directory its `proc-<hex>` selector names.
+The case runs the real `LocalProcessPort` (the app is a real process), the real stub issuer and the
+shipped `LocalAppProbe` (the demo client `stub_cloud`); no Docker is used by that case.
 Twins: `twin/test_credential_currency_twin.py` (same node names).
 """
 
@@ -50,6 +48,7 @@ from trestle_packs.grant import (
     ContainerExecProbe,
     DemoGrant,
     LocalAppProbe,
+    channel_directory,
     channel_mount,
     provision_channel,
     write_channel,
@@ -294,8 +293,8 @@ def _rotation_local_app(tmp_path: Path, issuer: Any) -> None:
     run_id = f"r_cred_{uuid.uuid4().hex[:10]}"
     selector = local_consumer.selector_for(run_id)
     channels = tmp_path / "channels"
-    delivery = local_consumer.LocalAppDelivery(issuer.url, channels)
-    directory = delivery.channel(selector)
+    delivery = Recording(ChannelDelivery(issuer.url, channels))
+    directory = channel_directory(channels, selector)
     directory.mkdir(parents=True)
     write_channel(directory, issuer.state.token())
     execution = RecordingExecution()
@@ -303,7 +302,9 @@ def _rotation_local_app(tmp_path: Path, issuer: Any) -> None:
         sys.executable,
         str(REPO / "tests" / "fixtures" / "stubs" / "stub_cloud.py"),
         issuer.url,
-        lambda sel: delivery.channel(sel) / CHANNEL_FILE if sel.startswith("proc-") else None,
+        lambda sel: (
+            channel_directory(channels, sel) / CHANNEL_FILE if sel.startswith("proc-") else None
+        ),
         ArgvRunner(execution),
     )
     grant = DemoGrant(issuer.url, probe=probe)

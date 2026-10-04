@@ -12,10 +12,12 @@ subpackages are untouched. `fakes/grant.py` is the stdlib-only fake the same sui
 
 from trestle_packs.grant.consumer_probe import ArgvRunner, ContainerExecProbe, LocalAppProbe
 from trestle_packs.grant.delivery import (
+    CHANNEL_ENV,
     CHANNEL_FILE,
     CHANNEL_MOUNT,
     ChannelDelivery,
     channel_directory,
+    channel_env,
     channel_mount,
     provision_channel,
     write_channel,
@@ -33,6 +35,7 @@ from trestle_packs.grant.demo import (
 from trestle_packs.grant.host_scope import HOST_SCOPE_UNREADABLE, DemoHostScope
 
 __all__ = [
+    "CHANNEL_ENV",
     "CHANNEL_FILE",
     "CHANNEL_MOUNT",
     "CREDENTIAL_INTERACTIVE",
@@ -50,6 +53,7 @@ __all__ = [
     "LocalAppProbe",
     "ProbeReading",
     "channel_directory",
+    "channel_env",
     "channel_mount",
     "provision_channel",
     "write_channel",

@@ -1,16 +1,19 @@
 """L.RB-8.2: two overrides make a plan that is the same whatever order they are named in, and the
 same on every admission (D-11; WR-ENV-2; `trestle_env.realization.choice_for` over the catalog).
 
-With fakes: declaration-only units, no port and no process. Two supporting services of the
-reference catalog are each a CHOICE between their Docker node and the catalog's agent-launched
-override; a request that names both overrides selects both local alternatives, the plan lists them
-(never a Docker node), and its digest is a function of the request's SET of overrides alone.
-Real routing (an externally managed realization) is undecided (OQ-25): the reference space declares
-none."""
+With fakes: declaration-only units, no port and no process. Two supporting services of a test
+catalog (`fixtures/two-overrides/catalog.json`: the reference catalog plus `postgres_local`, which
+the shipped one dropped, decision B) are each a CHOICE between their Docker node and the catalog's
+agent-launched override; a request that names both overrides selects both local alternatives, the
+plan lists them (never a Docker node), and its digest is a function of the request's SET of
+overrides alone. A request that names one override pins the other CHOICE to its fallback (V-7.2 step
+1, decision A). Real routing (an externally managed realization) is undecided (OQ-25): the reference
+space declares none."""
 
 from __future__ import annotations
 
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -32,10 +35,10 @@ from trestle.workflow.declarations import RealizationKind
 from trestle.workflow.extract import extract_root
 
 from trestle_env import realization, tree
-from trestle_env.catalog import load_reference
+from trestle_env.catalog import Catalog, load_reference
 from trestle_env.schema import OVERRIDES_ARG
 
-CATALOG = load_reference()
+CATALOG = Catalog.load(Path(__file__).parents[1] / "fixtures" / "two-overrides" / "catalog.json")
 SERVICES = ("http_support", "postgres")
 OVERRIDES = {"http_support": "http_support_local", "postgres": "postgres_local"}
 DOCKER = {name: f"{name}.docker" for name in SERVICES}
@@ -145,11 +148,18 @@ def test_two_overrides_same_plan_digest() -> None:
     assert not units_in(forward) & set(DOCKER.values())
 
 
-def test_a_request_that_leaves_a_choice_without_an_eligible_alternative_is_refused() -> None:
-    declared = extract_root(entry())[1]
-    only = compiler.compile(declared, {"env": "e", OVERRIDES_ARG: ["postgres_local"]})
-    assert isinstance(only, compiler.Refusal)  # the supporting service names no alternative
-    assert only.code == "admission.route_unsupported"
+def test_a_request_that_names_none_of_a_choices_alternatives_pins_its_fallback() -> None:
+    """V-7.2 step 1 (decision A): `overrides` names only postgres's override, so http_support's
+    CHOICE has its fallback alone eligible: postgres local, http_support in Docker."""
+    only = admit({"env": "e", OVERRIDES_ARG: ["postgres_local"]})
+    assert dict(only.eligible) == {
+        "http_support": ("http_support/http_support.docker",),
+        "postgres": ("postgres/postgres_local",),
+    }
+    assert {"postgres_local", "http_support.docker"} <= units_in(only)
+    assert not units_in(only) & {"http_support_local", "postgres.docker"}
+    again = admit({"env": "e", OVERRIDES_ARG: ["postgres_local"]})
+    assert only.plan_digest == again.plan_digest  # D-11: the same request, the same plan
     other_env = admit({"env": "other", OVERRIDES_ARG: ["http_support_local", "postgres_local"]})
     both = admit({"env": "e", OVERRIDES_ARG: ["http_support_local", "postgres_local"]})
     assert other_env.plan_digest != both.plan_digest  # the environment key is part of the plan

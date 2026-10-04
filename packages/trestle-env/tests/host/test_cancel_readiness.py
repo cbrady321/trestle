@@ -12,6 +12,13 @@ readiness is awaited (`twin.cancel_case`): the owned process is gone within the 
 created container is absent afterwards (released: observe, stop, remove, observe), the found one is
 exactly as it was, and past the stop row only releases were issued. Twin:
 `twin/test_cancel_readiness_twin.py` (same node name).
+
+`test_reference_tree_cancel_during_readiness` proves the same on the SHIPPED reference tree (V03
+stage 10): `overrides=[http_support_local]` makes the supporting service an owned local process,
+Postgres is a container the run creates whose readiness never passes (the planted wrong password,
+`planted_password.py`), and the cancel lands during that readiness wait: the owned process stops
+listening within `tolerances.PROC_WAIT_S`, the created container is released, and past the stop
+row only releases were issued.
 """
 
 from __future__ import annotations
@@ -27,7 +34,7 @@ from typing import Any
 
 import pytest
 from tests.proof import tolerances
-from twin import cancel_case, harness
+from twin import cancel_case, harness, overrides
 
 from trestle_env import tree
 from trestle_env.plugins import _bind
@@ -113,3 +120,25 @@ def test_cancel_during_readiness_owned_and_created_gone_found_untouched(
     left = docker("ps", "-a", "--format", "{{.Names}}", "--filter", f"name=trwr-{done.run_id}-")
     assert left == "", left  # the created container: observed absent
     assert snapshot() == before  # the found one: exactly as it was
+
+
+PLANTED = Path(__file__).with_name("planted_password.py")
+
+
+@pytest.mark.proves(
+    "WR-CANCEL-4", "WR-CANCEL-4:b-created-gone-found-untouched", "B", "B", "DOCKER+PROC", "HOST"
+)
+@pytest.mark.proves("WR-OWN-2", "WR-OWN-2:b-cancel-path", "B", "B", "DOCKER+PROC", "HOST")
+def test_reference_tree_cancel_during_readiness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    docker_path = shutil.which("docker")
+    assert docker_path is not None
+    environ = {
+        **overrides.operator_environ(tmp_path / "operator"),
+        _bind.DOCKER_PATH_ENV: docker_path,
+        _bind.PORTS_ENV: f"{PLANTED}:wrong_password",
+    }
+    done, _ = cancel_case.reference_cancel(tmp_path, monkeypatch, environ, "cancel-ref")
+    left = docker("ps", "-a", "--format", "{{.Names}}", "--filter", f"name=trwr-{done.run_id}-")
+    assert left == "", left  # the created Postgres: released

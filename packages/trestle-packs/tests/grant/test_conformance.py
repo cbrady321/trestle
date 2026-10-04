@@ -48,6 +48,7 @@ from trestle_packs.grant import (
 )
 from trestle_packs.grant.demo import ProbeReading
 from trestle_packs.process.command import CommandPort
+from trestle_packs.process.local import run_scoped_selector
 
 IDENTITY = "demo-user"
 
@@ -339,6 +340,17 @@ def _handle(name: str, release: Any = None) -> CreatedHandle:
     )
 
 
+def _proc_handle(name: str, release: Any = None) -> CreatedHandle:
+    """A consumer that is an owned local process: its selector is `proc-<16 hex>`."""
+    lineage = container_cases.lineage(name)
+    return CreatedHandle(
+        lineage,
+        "up",
+        run_scoped_selector(lineage, "up"),
+        ports.InRunGroup() if release is None else release,
+    )
+
+
 def fake_delivery(base: Path) -> Callable[[], core.Implementation]:
     def build() -> core.Implementation:
         world = FakeGrant(IDENTITY)
@@ -373,9 +385,11 @@ def generation_of(token: str) -> str | None:
     return parts[1] if len(parts) == 3 else None
 
 
-def demo_stub_delivery(base: Path) -> Callable[[], core.Implementation]:
+def demo_stub_delivery(base: Path, local: bool = False) -> Callable[[], core.Implementation]:
     """`ChannelDelivery` over a fresh in-process stub issuer and channels root per case; the
-    consumer is a local app whose credentials file is the channel file."""
+    consumer is a local app whose credentials file is the channel file. `local`: the consumer's
+    selector is an owned local process's (`proc-...`), not a container's."""
+    handle_for = _proc_handle if local else _handle
     stub = load_stub("stub_issuer")
     counter = iter(range(10_000))
 
@@ -402,7 +416,7 @@ def demo_stub_delivery(base: Path) -> Callable[[], core.Implementation]:
         )
 
         def own(name: str, generation: str | None = None) -> CreatedHandle:
-            handle = _handle(name)
+            handle = handle_for(name)
             write_channel(provision_channel(root, handle.selector), issuer.state.token(generation))
             return handle
 
@@ -422,7 +436,7 @@ def demo_stub_delivery(base: Path) -> Callable[[], core.Implementation]:
             extras={
                 "reads": reads,
                 "own_consumer": own,
-                "unprovisioned_consumer": _handle,
+                "unprovisioned_consumer": handle_for,
                 "channel_generation": channel_generation,
                 "consumer_incarnation": lambda h: str((root / h.selector).stat().st_ino),
                 "consumer_environment": lambda h: {},
@@ -567,6 +581,7 @@ DELIVERY_BINDINGS = [
         marks=[pytest.mark.stub_proven("WR-ENV-13:channel-not-env-var@host@stub-twin")],
     ),
     pytest.param("demo-stub", id="demo-stub"),
+    pytest.param("demo-stub-local", id="demo-stub-local"),
     pytest.param(
         "real",
         id="real",
@@ -584,6 +599,7 @@ def delivery_factory(binding: str, base: Path) -> Callable[[], core.Implementati
     factories: dict[str, Callable[[Path], Callable[[], core.Implementation]]] = {
         "fake": fake_delivery,
         "demo-stub": demo_stub_delivery,
+        "demo-stub-local": lambda b: demo_stub_delivery(b, local=True),
         "real": real_docker_delivery,
     }
     return factories[binding](base)
