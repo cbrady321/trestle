@@ -1,0 +1,638 @@
+{
+  "admitted": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "admitted",
+          "evidence_finalized",
+          "interrupted"
+        ],
+        "projected_state": "interrupted"
+      },
+      "projected_state": "queued"
+    },
+    "seam": {
+      "kinds": [
+        "created",
+        "admitted"
+      ],
+      "meta_keys": null,
+      "terminal": null,
+      "torn": false
+    }
+  },
+  "artifacts_present": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "admitted",
+          "started",
+          "artifact_available",
+          "execution_ended",
+          "evidence_finalized",
+          "succeeded"
+        ],
+        "projected_state": "succeeded"
+      },
+      "projected_state": "succeeded"
+    },
+    "seam": {
+      "kinds": [
+        "created",
+        "admitted",
+        "started",
+        "artifact_available",
+        "execution_ended",
+        "evidence_finalized",
+        "succeeded"
+      ],
+      "meta_keys": [
+        "artifact_count",
+        "classification",
+        "duration_ms",
+        "limits_exceeded",
+        "result_state",
+        "run_id"
+      ],
+      "terminal": "succeeded",
+      "torn": false
+    }
+  },
+  "cancelled": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "admitted",
+          "started",
+          "execution_ended",
+          "evidence_finalized",
+          "cancelled"
+        ],
+        "projected_state": "cancelled"
+      },
+      "projected_state": "cancelled"
+    },
+    "seam": {
+      "kinds": [
+        "created",
+        "admitted",
+        "started",
+        "execution_ended",
+        "evidence_finalized",
+        "cancelled"
+      ],
+      "meta_keys": [
+        "artifact_count",
+        "classification",
+        "duration_ms",
+        "limits_exceeded",
+        "result_state",
+        "run_id"
+      ],
+      "terminal": "cancelled",
+      "torn": false
+    }
+  },
+  "crashed": {
+    "absent": true
+  },
+  "created": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "evidence_finalized",
+          "interrupted"
+        ],
+        "projected_state": "interrupted"
+      },
+      "projected_state": "queued"
+    },
+    "seam": {
+      "kinds": [
+        "created"
+      ],
+      "meta_keys": null,
+      "terminal": null,
+      "torn": false
+    }
+  },
+  "execution_ended": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "admitted",
+          "started",
+          "execution_ended",
+          "evidence_finalized",
+          "interrupted"
+        ],
+        "projected_state": "interrupted"
+      },
+      "projected_state": "running"
+    },
+    "seam": {
+      "kinds": [
+        "created",
+        "admitted",
+        "started",
+        "execution_ended"
+      ],
+      "meta_keys": [
+        "artifact_count",
+        "classification",
+        "duration_ms",
+        "limits_exceeded",
+        "result_state",
+        "run_id"
+      ],
+      "terminal": null,
+      "torn": false
+    }
+  },
+  "failed": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "admitted",
+          "started",
+          "execution_ended",
+          "evidence_finalized",
+          "failed"
+        ],
+        "projected_state": "failed"
+      },
+      "projected_state": "failed"
+    },
+    "seam": {
+      "kinds": [
+        "created",
+        "admitted",
+        "started",
+        "execution_ended",
+        "evidence_finalized",
+        "failed"
+      ],
+      "meta_keys": [
+        "artifact_count",
+        "classification",
+        "duration_ms",
+        "limits_exceeded",
+        "result_state",
+        "run_id"
+      ],
+      "terminal": "failed",
+      "torn": false
+    }
+  },
+  "finalized_no_terminal": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "admitted",
+          "started",
+          "execution_ended",
+          "evidence_finalized",
+          "interrupted"
+        ],
+        "projected_state": "interrupted"
+      },
+      "projected_state": "running"
+    },
+    "seam": {
+      "kinds": [
+        "created",
+        "admitted",
+        "started",
+        "execution_ended",
+        "evidence_finalized"
+      ],
+      "meta_keys": [
+        "artifact_count",
+        "classification",
+        "duration_ms",
+        "limits_exceeded",
+        "result_state",
+        "run_id"
+      ],
+      "terminal": null,
+      "torn": false
+    }
+  },
+  "idempotency_keyed": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "admitted",
+          "started",
+          "execution_ended",
+          "evidence_finalized",
+          "succeeded"
+        ],
+        "projected_state": "succeeded"
+      },
+      "projected_state": "succeeded"
+    },
+    "seam": {
+      "kinds": [
+        "created",
+        "admitted",
+        "started",
+        "execution_ended",
+        "evidence_finalized",
+        "succeeded"
+      ],
+      "meta_keys": [
+        "artifact_count",
+        "classification",
+        "duration_ms",
+        "limits_exceeded",
+        "result_state",
+        "run_id"
+      ],
+      "terminal": "succeeded",
+      "torn": false
+    }
+  },
+  "interrupted": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "admitted",
+          "started",
+          "evidence_finalized",
+          "interrupted"
+        ],
+        "projected_state": "interrupted"
+      },
+      "projected_state": "interrupted"
+    },
+    "seam": {
+      "kinds": [
+        "created",
+        "admitted",
+        "started",
+        "evidence_finalized",
+        "interrupted"
+      ],
+      "meta_keys": [
+        "artifact_count",
+        "classification",
+        "duration_ms",
+        "limits_exceeded",
+        "recovered",
+        "result_state",
+        "run_id"
+      ],
+      "terminal": "interrupted",
+      "torn": false
+    }
+  },
+  "invalid_synthesized": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "admitted",
+          "started",
+          "execution_ended",
+          "evidence_finalized",
+          "succeeded"
+        ],
+        "projected_state": "succeeded"
+      },
+      "projected_state": "succeeded"
+    },
+    "seam": {
+      "kinds": [
+        "created",
+        "admitted",
+        "started",
+        "execution_ended",
+        "evidence_finalized",
+        "succeeded"
+      ],
+      "meta_keys": [
+        "artifact_count",
+        "classification",
+        "duration_ms",
+        "limits_exceeded",
+        "result_state",
+        "run_id"
+      ],
+      "terminal": "succeeded",
+      "torn": false
+    }
+  },
+  "newline_less_tail": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "admitted",
+          "started",
+          "execution_ended",
+          "evidence_finalized",
+          "succeeded"
+        ],
+        "projected_state": "succeeded"
+      },
+      "projected_state": "succeeded"
+    },
+    "seam": {
+      "kinds": [
+        "created",
+        "admitted",
+        "started",
+        "execution_ended",
+        "evidence_finalized",
+        "succeeded"
+      ],
+      "meta_keys": [
+        "artifact_count",
+        "classification",
+        "duration_ms",
+        "limits_exceeded",
+        "result_state",
+        "run_id"
+      ],
+      "terminal": "succeeded",
+      "torn": true
+    }
+  },
+  "partial_limits": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "admitted",
+          "started",
+          "limit_exceeded",
+          "execution_ended",
+          "evidence_finalized",
+          "succeeded"
+        ],
+        "projected_state": "succeeded"
+      },
+      "projected_state": "succeeded"
+    },
+    "seam": {
+      "kinds": [
+        "created",
+        "admitted",
+        "started",
+        "limit_exceeded",
+        "execution_ended",
+        "evidence_finalized",
+        "succeeded"
+      ],
+      "meta_keys": [
+        "artifact_count",
+        "classification",
+        "duration_ms",
+        "limits_exceeded",
+        "result_state",
+        "run_id"
+      ],
+      "terminal": "succeeded",
+      "torn": false
+    }
+  },
+  "started": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "admitted",
+          "started",
+          "evidence_finalized",
+          "interrupted"
+        ],
+        "projected_state": "interrupted"
+      },
+      "projected_state": "running"
+    },
+    "seam": {
+      "kinds": [
+        "created",
+        "admitted",
+        "started"
+      ],
+      "meta_keys": null,
+      "terminal": null,
+      "torn": false
+    }
+  },
+  "straddle": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "admitted",
+          "started",
+          "evidence_finalized",
+          "interrupted"
+        ],
+        "projected_state": "interrupted"
+      },
+      "projected_state": "running"
+    },
+    "seam": {
+      "kinds": [
+        "created",
+        "admitted",
+        "started"
+      ],
+      "meta_keys": null,
+      "terminal": null,
+      "torn": false
+    }
+  },
+  "succeeded": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "admitted",
+          "started",
+          "execution_ended",
+          "evidence_finalized",
+          "succeeded"
+        ],
+        "projected_state": "succeeded"
+      },
+      "projected_state": "succeeded"
+    },
+    "seam": {
+      "kinds": [
+        "created",
+        "admitted",
+        "started",
+        "execution_ended",
+        "evidence_finalized",
+        "succeeded"
+      ],
+      "meta_keys": [
+        "artifact_count",
+        "classification",
+        "duration_ms",
+        "limits_exceeded",
+        "result_state",
+        "run_id"
+      ],
+      "terminal": "succeeded",
+      "torn": false
+    }
+  },
+  "timed_out": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "admitted",
+          "started",
+          "execution_ended",
+          "evidence_finalized",
+          "timed_out"
+        ],
+        "projected_state": "timed_out"
+      },
+      "projected_state": "timed_out"
+    },
+    "seam": {
+      "kinds": [
+        "created",
+        "admitted",
+        "started",
+        "execution_ended",
+        "evidence_finalized",
+        "timed_out"
+      ],
+      "meta_keys": [
+        "artifact_count",
+        "classification",
+        "duration_ms",
+        "limits_exceeded",
+        "result_state",
+        "run_id"
+      ],
+      "terminal": "timed_out",
+      "torn": false
+    }
+  },
+  "too_large": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "admitted",
+          "started",
+          "execution_ended",
+          "evidence_finalized",
+          "succeeded"
+        ],
+        "projected_state": "succeeded"
+      },
+      "projected_state": "succeeded"
+    },
+    "seam": {
+      "kinds": [
+        "created",
+        "admitted",
+        "started",
+        "execution_ended",
+        "evidence_finalized",
+        "succeeded"
+      ],
+      "meta_keys": [
+        "artifact_count",
+        "classification",
+        "duration_ms",
+        "limits_exceeded",
+        "result_state",
+        "run_id"
+      ],
+      "terminal": "succeeded",
+      "torn": false
+    }
+  },
+  "torn_tail": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "admitted",
+          "started",
+          "execution_ended",
+          "evidence_finalized",
+          "interrupted"
+        ],
+        "projected_state": "interrupted"
+      },
+      "projected_state": "running"
+    },
+    "seam": {
+      "kinds": [
+        "created",
+        "admitted",
+        "started",
+        "execution_ended",
+        "evidence_finalized"
+      ],
+      "meta_keys": [
+        "artifact_count",
+        "classification",
+        "duration_ms",
+        "limits_exceeded",
+        "result_state",
+        "run_id"
+      ],
+      "terminal": null,
+      "torn": true
+    }
+  },
+  "worker_exit": {
+    "reader": {
+      "after_recovery": {
+        "kinds": [
+          "created",
+          "admitted",
+          "started",
+          "execution_ended",
+          "evidence_finalized",
+          "worker_exit"
+        ],
+        "projected_state": "worker_exit"
+      },
+      "projected_state": "worker_exit"
+    },
+    "seam": {
+      "kinds": [
+        "created",
+        "admitted",
+        "started",
+        "execution_ended",
+        "evidence_finalized",
+        "worker_exit"
+      ],
+      "meta_keys": [
+        "artifact_count",
+        "classification",
+        "duration_ms",
+        "limits_exceeded",
+        "result_state",
+        "run_id"
+      ],
+      "terminal": "worker_exit",
+      "torn": false
+    }
+  }
+}

@@ -1,0 +1,127 @@
+{
+  "admitted": null,
+  "artifacts_present": {
+    "artifact_count": "int",
+    "classification": "str",
+    "duration_ms": "int",
+    "limits_exceeded": "NoneType",
+    "result_state": "str",
+    "run_id": "str"
+  },
+  "cancelled": {
+    "artifact_count": "int",
+    "classification": "str",
+    "duration_ms": "int",
+    "limits_exceeded": "NoneType",
+    "result_state": "str",
+    "run_id": "str"
+  },
+  "created": null,
+  "execution_ended": {
+    "artifact_count": "int",
+    "classification": "str",
+    "duration_ms": "int",
+    "limits_exceeded": "NoneType",
+    "result_state": "str",
+    "run_id": "str"
+  },
+  "failed": {
+    "artifact_count": "int",
+    "classification": "str",
+    "duration_ms": "int",
+    "limits_exceeded": "NoneType",
+    "result_state": "str",
+    "run_id": "str"
+  },
+  "finalized_no_terminal": {
+    "artifact_count": "int",
+    "classification": "str",
+    "duration_ms": "int",
+    "limits_exceeded": "NoneType",
+    "result_state": "str",
+    "run_id": "str"
+  },
+  "idempotency_keyed": {
+    "artifact_count": "int",
+    "classification": "str",
+    "duration_ms": "int",
+    "limits_exceeded": "NoneType",
+    "result_state": "str",
+    "run_id": "str"
+  },
+  "interrupted": {
+    "artifact_count": "int",
+    "classification": "str",
+    "duration_ms": "NoneType",
+    "limits_exceeded": "NoneType",
+    "recovered": "bool",
+    "result_state": "str",
+    "run_id": "str"
+  },
+  "invalid_synthesized": {
+    "artifact_count": "int",
+    "classification": "str",
+    "duration_ms": "int",
+    "limits_exceeded": "NoneType",
+    "result_state": "str",
+    "run_id": "str"
+  },
+  "newline_less_tail": {
+    "artifact_count": "int",
+    "classification": "str",
+    "duration_ms": "int",
+    "limits_exceeded": "NoneType",
+    "result_state": "str",
+    "run_id": "str"
+  },
+  "partial_limits": {
+    "artifact_count": "int",
+    "classification": "str",
+    "duration_ms": "int",
+    "limits_exceeded": "list",
+    "result_state": "str",
+    "run_id": "str"
+  },
+  "started": null,
+  "straddle": null,
+  "succeeded": {
+    "artifact_count": "int",
+    "classification": "str",
+    "duration_ms": "int",
+    "limits_exceeded": "NoneType",
+    "result_state": "str",
+    "run_id": "str"
+  },
+  "timed_out": {
+    "artifact_count": "int",
+    "classification": "str",
+    "duration_ms": "int",
+    "limits_exceeded": "NoneType",
+    "result_state": "str",
+    "run_id": "str"
+  },
+  "too_large": {
+    "artifact_count": "int",
+    "classification": "str",
+    "duration_ms": "int",
+    "limits_exceeded": "NoneType",
+    "result_state": "str",
+    "run_id": "str"
+  },
+  "torn_tail": {
+    "artifact_count": "int",
+    "classification": "str",
+    "duration_ms": "int",
+    "limits_exceeded": "NoneType",
+    "result_state": "str",
+    "run_id": "str"
+  },
+  "worker_exit": {
+    "artifact_count": "int",
+    "classification": "str",
+    "duration_ms": "int",
+    "limits_exceeded": "NoneType",
+    "result_state": "str",
+    "run_id": "str"
+  }
+}

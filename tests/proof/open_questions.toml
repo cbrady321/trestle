@@ -1,0 +1,80 @@
+# open_questions.toml (L.P0-0c.3): exactly the 12 ids root C.9 lists as open
+# (plan-workflow-runtime.md:199). Schema: [[oq]] {id, kind, posture, where}.
+# posture in {gated_on, both_variant, neutral}. PLAN-GAP: the row-audit
+# citation (plan-workflow-runtime.md:1078) groups these ids loosely
+# ("OQ-29 variants", "OQ-25 routing", ...) without a clean gated_on/
+# both_variant split for every id; postures below are this delivery's best
+# reading of that text plus the cited requirements/design passages, flagged
+# per-item in 'where' where the source is thin.
+
+[[oq]]
+id = "OQ-25"
+kind = "maintainer_question"
+posture = "gated_on"
+where = "WR-ENV-2 (D-4/D-11 promotion, routing) -- requirements-workflow-runtime.md:743"
+
+[[oq]]
+id = "OQ-26"
+kind = "maintainer_question"
+posture = "gated_on"
+where = "M-5 serialization -- requirements-workflow-runtime.md:743 (row not further specified in the row-audit citation, plan-workflow-runtime.md:1078; plan-gap)"
+
+[[oq]]
+id = "OQ-27"
+kind = "maintainer_question"
+posture = "gated_on"
+where = "WR-UNIT-6 child-addressed cancel -- plan-workflow-runtime.md:1078, requirements-workflow-runtime.md:743"
+
+[[oq]]
+id = "OQ-29"
+kind = "maintainer_question"
+posture = "both_variant"
+where = "WR-OWN-8 strength -- requirements-workflow-runtime.md:743"
+
+[[oq]]
+id = "OQ-30"
+kind = "maintainer_question"
+posture = "both_variant"
+where = "WR-UNIT-7, WR-OWN-6 -- requirements-workflow-runtime.md:647"
+
+[[oq]]
+id = "OQ-31"
+kind = "maintainer_question"
+posture = "both_variant"
+where = "wr-contract root-entry eligibility (L-7 / F-B1-8) -- decomposition-workflow-runtime.md:152, requirements-workflow-runtime.md:743"
+
+[[oq]]
+id = "F-13(d)"
+kind = "maintainer_question"
+posture = "both_variant"
+where = "agent-published variant -- plan-workflow-runtime.md:1078 (row-audit citation; specific row not further named there; plan-gap)"
+
+[[oq]]
+id = "F-11(a)"
+kind = "maintainer_question"
+posture = "gated_on"
+where = "fail-closed class; release-executable allowlist owner -- design-workflow-runtime.md:120 (\"Which executables a stop command may name is new operator configuration whose owner and default the requirements do not state\", §10 F-11)"
+
+[[oq]]
+id = "F-11(b)"
+kind = "maintainer_question"
+posture = "gated_on"
+where = "release-executable allowlist default -- design-workflow-runtime.md:120, §10 F-11"
+
+[[oq]]
+id = "F-12"
+kind = "maintainer_question"
+posture = "gated_on"
+where = "durable owner -- plan-workflow-runtime.md:1078"
+
+[[oq]]
+id = "F-B3-2"
+kind = "maintainer_question"
+posture = "gated_on"
+where = "durable owner (\"which level keeps a deliberately durable creation is carried, not decided\") -- design-workflow-runtime.md:120"
+
+[[oq]]
+id = "OPEN-MISE-HOST"
+kind = "maintainer_question"
+posture = "gated_on"
+where = "real mise (WR-CON-2: mise not installed on this host) -- plan-workflow-runtime.md:1078"

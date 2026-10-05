@@ -1,0 +1,391 @@
+{
+  "view_catalog": {
+    "fetch_keys": [
+      "kinds",
+      "targets",
+      "use_when"
+    ],
+    "fetch_kinds": [
+      "range",
+      "head",
+      "tail",
+      "grep",
+      "jsonpath"
+    ],
+    "keys": [
+      "fetch",
+      "invalid_view",
+      "mouths",
+      "views"
+    ],
+    "mouth_keys": [
+      "artifact",
+      "ctx.log",
+      "print",
+      "return_value"
+    ],
+    "view_entry_keys": [
+      "name",
+      "params",
+      "use_when"
+    ]
+  },
+  "view_names": [
+    "run",
+    "last_error",
+    "run_tail",
+    "run_events",
+    "recent_runs",
+    "recent_failures",
+    "run_provenance",
+    "run_artifacts",
+    "artifact_refs"
+  ],
+  "views": {
+    "artifact_refs": {
+      "declared_fields": [
+        "artifact_id",
+        "producer_run_id",
+        "referrer_run_id"
+      ],
+      "observed": {
+        "failed": {
+          "envelope_keys": [
+            "as_of",
+            "backend",
+            "items",
+            "next_cursor",
+            "truncated"
+          ],
+          "row_count_kind": "none",
+          "row_shape": null
+        },
+        "succeeded": {
+          "envelope_keys": [
+            "as_of",
+            "backend",
+            "items",
+            "next_cursor",
+            "truncated"
+          ],
+          "row_count_kind": "none",
+          "row_shape": null
+        }
+      }
+    },
+    "last_error": {
+      "declared_fields": [
+        "at",
+        "event_seq",
+        "kind",
+        "message",
+        "run_id"
+      ],
+      "observed": {
+        "failed": {
+          "envelope_keys": [
+            "as_of",
+            "backend",
+            "items",
+            "next_cursor",
+            "truncated"
+          ],
+          "row_count_kind": "some",
+          "row_shape": {
+            "at": "str",
+            "event_seq": "int",
+            "kind": "str",
+            "message": "str",
+            "run_id": "str"
+          }
+        },
+        "succeeded": {
+          "envelope_keys": [
+            "as_of",
+            "backend",
+            "items",
+            "next_cursor",
+            "truncated"
+          ],
+          "row_count_kind": "none",
+          "row_shape": null
+        }
+      }
+    },
+    "recent_failures": {
+      "declared_fields": [
+        "failed_at",
+        "plugin",
+        "run_id",
+        "state"
+      ],
+      "observed": {
+        "failed": {
+          "envelope_keys": [
+            "as_of",
+            "backend",
+            "items",
+            "next_cursor",
+            "truncated"
+          ],
+          "row_count_kind": "some",
+          "row_shape": {
+            "failed_at": "str",
+            "plugin": "str",
+            "run_id": "str",
+            "state": "str"
+          }
+        },
+        "succeeded": {
+          "envelope_keys": [
+            "as_of",
+            "backend",
+            "items",
+            "next_cursor",
+            "truncated"
+          ],
+          "row_count_kind": "none",
+          "row_shape": null
+        }
+      }
+    },
+    "recent_runs": {
+      "declared_fields": [
+        "plugin",
+        "run_id",
+        "started_at",
+        "state"
+      ],
+      "observed": {
+        "failed": {
+          "envelope_keys": [
+            "as_of",
+            "backend",
+            "items",
+            "next_cursor",
+            "truncated"
+          ],
+          "row_count_kind": "some",
+          "row_shape": {
+            "plugin": "str",
+            "run_id": "str",
+            "started_at": "str",
+            "state": "str"
+          }
+        },
+        "succeeded": {
+          "envelope_keys": [
+            "as_of",
+            "backend",
+            "items",
+            "next_cursor",
+            "truncated"
+          ],
+          "row_count_kind": "some",
+          "row_shape": {
+            "plugin": "str",
+            "run_id": "str",
+            "started_at": "str",
+            "state": "str"
+          }
+        }
+      }
+    },
+    "run": {
+      "declared_fields": [
+        "ended_at",
+        "plugin",
+        "run_id",
+        "started_at",
+        "state",
+        "version"
+      ],
+      "observed": {
+        "failed": {
+          "envelope_keys": [
+            "as_of",
+            "backend",
+            "items",
+            "next_cursor",
+            "truncated"
+          ],
+          "row_count_kind": "some",
+          "row_shape": {
+            "ended_at": "str",
+            "plugin": "str",
+            "run_id": "str",
+            "started_at": "str",
+            "state": "str",
+            "version": "str"
+          }
+        },
+        "succeeded": {
+          "envelope_keys": [
+            "as_of",
+            "backend",
+            "items",
+            "next_cursor",
+            "truncated"
+          ],
+          "row_count_kind": "some",
+          "row_shape": {
+            "ended_at": "str",
+            "plugin": "str",
+            "run_id": "str",
+            "started_at": "str",
+            "state": "str",
+            "version": "str"
+          }
+        }
+      }
+    },
+    "run_artifacts": {
+      "declared_fields": [
+        "artifact_id",
+        "name",
+        "retention_class",
+        "run_id",
+        "state"
+      ],
+      "observed": {
+        "failed": {
+          "envelope_keys": [
+            "as_of",
+            "backend",
+            "items",
+            "next_cursor",
+            "truncated"
+          ],
+          "row_count_kind": "none",
+          "row_shape": null
+        },
+        "succeeded": {
+          "envelope_keys": [
+            "as_of",
+            "backend",
+            "items",
+            "next_cursor",
+            "truncated"
+          ],
+          "row_count_kind": "none",
+          "row_shape": null
+        }
+      }
+    },
+    "run_events": {
+      "declared_fields": [
+        "event_seq",
+        "kind",
+        "payload",
+        "run_id"
+      ],
+      "observed": {
+        "failed": {
+          "envelope_keys": [
+            "as_of",
+            "backend",
+            "items",
+            "next_cursor",
+            "truncated"
+          ],
+          "row_count_kind": "none",
+          "row_shape": null
+        },
+        "succeeded": {
+          "envelope_keys": [
+            "as_of",
+            "backend",
+            "items",
+            "next_cursor",
+            "truncated"
+          ],
+          "row_count_kind": "some",
+          "row_shape": {
+            "event_seq": "int",
+            "kind": "str",
+            "payload": {
+              "message": "str"
+            },
+            "run_id": "str"
+          }
+        }
+      }
+    },
+    "run_provenance": {
+      "declared_fields": [
+        "args_hash",
+        "run_id",
+        "snapshot_id",
+        "source_sha256",
+        "spec_hash"
+      ],
+      "observed": {
+        "failed": {
+          "envelope_keys": [
+            "as_of",
+            "backend",
+            "items",
+            "next_cursor",
+            "truncated"
+          ],
+          "row_count_kind": "some",
+          "row_shape": {
+            "args_hash": "str",
+            "run_id": "str",
+            "snapshot_id": "str",
+            "source_sha256": "str",
+            "spec_hash": "str"
+          }
+        },
+        "succeeded": {
+          "envelope_keys": [
+            "as_of",
+            "backend",
+            "items",
+            "next_cursor",
+            "truncated"
+          ],
+          "row_count_kind": "some",
+          "row_shape": {
+            "args_hash": "str",
+            "run_id": "str",
+            "snapshot_id": "str",
+            "source_sha256": "str",
+            "spec_hash": "str"
+          }
+        }
+      }
+    },
+    "run_tail": {
+      "declared_fields": [
+        "line_no",
+        "run_id",
+        "text"
+      ],
+      "observed": {
+        "failed": {
+          "envelope_keys": [
+            "as_of",
+            "backend",
+            "items",
+            "next_cursor",
+            "truncated"
+          ],
+          "row_count_kind": "none",
+          "row_shape": null
+        },
+        "succeeded": {
+          "envelope_keys": [
+            "as_of",
+            "backend",
+            "items",
+            "next_cursor",
+            "truncated"
+          ],
+          "row_count_kind": "none",
+          "row_shape": null
+        }
+      }
+    }
+  }
+}

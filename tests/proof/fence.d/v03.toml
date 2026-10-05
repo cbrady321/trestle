@@ -1,0 +1,118 @@
+# tests/proof/fence.d/v03.toml — v0.3 preparation on top of e4dba393: the wait interface
+# (DEFERRED-DECISIONS.md section 1), host scope fed by the loop, the selectable local realization,
+# and the remaining RACES-REPORT leads. One branch, one gate, one host session.
+phase = "v03"
+
+# The selectable local realization (V03 stage 10, C-2; DESIGN-stage10-local-realization.md): its
+# own lane and gate after V03-WAIT landed. Listed first: a lane is the first whose prefix matches.
+[[lane]]
+name          = "v03-local"
+branch_prefix = "wr/v03/local-"
+globs         = [
+  # commit 1: the local credential channel (`proc-` selectors, `channel_env`, decision D).
+  "tests/proof/fence.d/v03.toml",
+  "packages/trestle-packs/trestle_packs/grant/delivery.py",
+  "packages/trestle-packs/trestle_packs/grant/__init__.py",
+  "packages/trestle-packs/tests/grant/test_delivery.py",
+  "packages/trestle-packs/tests/grant/test_conformance.py",
+  "packages/trestle-env/tests/twin/local_consumer.py",
+  "packages/trestle-env/tests/host/test_credential_currency.py",
+  "packages/trestle-env/tests/host/test_stale_generation.py",
+  # commit 2: V-7.2 step 1, a choice the request names none of pins its fallback (decision A).
+  "trestle/common/plan/compiler.py",
+  "packages/trestle-env/tests/unit/test_two_overrides_plan_determinism.py",
+  "packages/trestle-env/tests/fixtures/two-overrides/catalog.json",
+  # commit 3: the reference catalog drops `postgres_local` (decision B).
+  "packages/trestle-env/trestle_env/catalog/reference.json", "docs/environment.md",
+  # commit 4: `LocalServiceUnit`, a CHOICE per overridable service in `build_entry`, the local
+  # router binding the override per run, the port closed with the run, `failure_at` by service.
+  "packages/trestle-env/trestle_env/tree.py", "packages/trestle-env/trestle_env/stages.py",
+  "packages/trestle-env/trestle_env/plugins/_local.py",
+  "packages/trestle-env/trestle_env/plugins/reference_env.py",
+  "packages/trestle-env/tests/twin/*.py", "packages/trestle-env/tests/proc/*.py",
+  "packages/trestle-env/tests/unit/*.py", "packages/trestle-env/tests/host/*.py",
+  # commit 5: the owned restart on the local realization only (decision C); the test plugin's
+  # unit collapses onto it.
+  "packages/trestle-env/tests/fixtures/owned_restart.py",
+  # commit 7: the reference fossils re-recorded over the CHOICE paths; the guides' path notes.
+  "tests/fixtures/fossils/slice-b/b-*reference_env*/**",
+  "tests/fixtures/fossils/root/b-*reference_env*/**",
+  "docs/agents.md",
+]
+
+[[lane]]
+name          = "v03"
+branch_prefix = "wr/v03/"
+globs         = [
+  # stage 1: the phase's `[phases]` entry, this file, and CI lints every script (C-5).
+  "tests/proof/fence.toml", "tests/proof/fence.d/v03.toml", ".github/workflows/ci.yml", "scripts/*.py",
+  # stage 2: the test kit's one wait on the record, the slow-host skip, torn-safe results, SA-05's
+  # lane-poll ratchet.
+  "tests/proof/records.py", "tests/core/spine/support.py", "tests/proof/results.py",
+  "tests/proof/drift/test_sa05_tolerances.py", "tests/proof/selftest/test_await_record.py",
+  # stage 3: the race leads' local waits move onto the kit (L-1..L-5, L-15a), and the older record
+  # polls with them; m2's liveness bound, m6's private plugin dir, the REG serial lists.
+  "tests/tree/test_tr3_slices.py", "tests/tree/host/test_trl_rollup.py", "tests/tree/test_tr4_depth.py",
+  "tests/tree/test_tr3_failfast.py", "tests/proof/selftest/test_mcp_host.py", "tests/proof/mcp_host.py",
+  "tests/core/admission/test_cl_a1_capacity.py", "tests/core/spine/test_cs4_call.py",
+  "packages/trestle-env/tests/twin/test_reuse_twin.py",
+  "tests/test_m2_bounding.py", "tests/test_m6_extending.py", "tests/core/tooling/ck_drill.py",
+  "tests/core/tooling/test_ck_drill.py",
+  # stage 4: the unit's one wait on a state (`CancelSignal.wait_for`, `WaitOutcome`), the walking
+  # call's node signal that also wakes on the root goal's flip, and the fail-fast latency proof.
+  "trestle/workflow/values.py", "trestle/workflow/__init__.py", "trestle/child/run_services.py",
+  "trestle/workflow/loop.py", "tests/single/workflow/loopkit.py", "tests/single/workflow/test_wait_for.py",
+  "tests/fixtures/trees/wait_interface.py", "tests/tree/test_tr3_wait_interface.py",
+  "tests/tree/test_fixtures.py",
+  # stage 5: L-10, the raiser waits for its siblings' markers through `wait_for`, not a pause; its
+  # six fossil states re-recorded over the changed fixture.
+  "tests/fixtures/trees/exception_branch.py", "tests/fixtures/fossils/**",
+  # stage 6: the loop reads host scope through the bound `HostScopeReads`, once per observation;
+  # the demo and toolchain readers are bound; the tests' injection hooks are gone.
+  "packages/trestle-packs/trestle_packs/grant/demo.py",
+  "packages/trestle-packs/trestle_packs/toolchain/host_scope.py",
+  "packages/trestle-env/trestle_env/plugins/_bind.py", "tests/tree/treekit.py", "tests/tree/test_tr3_dispatch.py",
+  "tests/single/workflow/joinkit.py", "tests/single/workflow/test_loop.py",
+  "packages/trestle-env/tests/twin/consumers.py", "packages/trestle-env/tests/twin/local_consumer.py",
+  "packages/trestle-env/tests/twin/test_stale_generation_twin.py",
+  "packages/trestle-env/tests/twin/test_credential_currency_twin.py",
+  "packages/trestle-env/tests/host/test_stale_generation.py",
+  "packages/trestle-env/tests/host/test_credential_currency.py",
+  "packages/trestle-env/tests/stub/test_demo_auth.py", "packages/trestle-env/tests/stub/test_never_capture.py",
+  # stage 7: L-17, a local process started with PORT=0 reports its own endpoint; every free-port
+  # guess in the tests (and in the local-override composition) is gone.
+  "packages/trestle-packs/trestle_packs/process/local.py", "packages/trestle-env/trestle_env/plugins/_local.py",
+  "tests/fixtures/apps/http_app.py", "tests/fixtures/apps/override_app.py",
+  "packages/trestle-env/tests/twin/*.py", "packages/trestle-env/tests/proc/*.py",
+  "packages/trestle-env/tests/host/test_cancel_readiness.py",
+  "packages/trestle-env/tests/host/test_healthy_machine_full.py",
+  "packages/trestle-env/tests/unit/test_local_composition.py",
+  "packages/trestle-packs/tests/process/*.py", "packages/trestle-packs/tests/conformance/process_restart_cases.py",
+  # stage 8: L-18, `serve --port 0` binds a free port and reports it; the HTTP smokes use it and
+  # REG_SERIAL_FILES is empty.
+  "trestle/server/main.py", "trestle/cli.py", "tests/test_mcp_http_smoke.py", "docs/install.md",
+  "tests/core/admission/test_cl_a2_profile.py", "tests/proof/baseline.json",
+  # stage 8b: the baseline selftest drops the explanation that now names its planted field.
+  "tests/proof/selftest/test_baseline.py",
+  # stage 9: C-3, the service children are named by catalog id and `services` filters them; the
+  # catalog's `depends_on` is their `needs`, so a selection admits its dependency closure; the
+  # Compose definition must agree with it; the reference budgets hold the longer chain.
+  "packages/trestle-env/trestle_env/catalog/model.py", "packages/trestle-env/trestle_env/catalog/reference.json",
+  "packages/trestle-env/trestle_env/tree.py", "packages/trestle-env/trestle_env/closure.py",
+  "packages/trestle-env/trestle_env/stages.py", "packages/trestle-env/trestle_env/plugins/reference_env.py",
+  "packages/trestle-env/tests/unit/*.py", "packages/trestle-env/tests/host/*.py",
+  "packages/trestle-env/tests/fixtures/cancel_readiness.py", "packages/trestle-env/tests/fixtures/owned_restart.py",
+  "docs/environment.md",
+  # stage 11: the agent and plugin guides, `wait_for` and `--port 0` and the selection closure.
+  "docs/plugins.md", "docs/agents.md",
+]
+
+[[gate]]
+branch         = "wr/v03/wait-interface"
+merge          = "V03-WAIT"
+requires_merge = []
+
+[[gate]]
+branch         = "wr/v03/local-realization"
+merge          = "V03-LOCAL"
+requires_merge = ["V03-WAIT"]

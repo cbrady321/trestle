@@ -1,0 +1,61 @@
+# tests/proof/temporary.d/single.toml -- phase SINGLE (plans/a1-single-level.md). Schema CM-7 (MC-07);
+# permanent = false on every entry. L.SV-0.2 writes only this comment header: each [[entry]] is appended
+# by its introducing leaf (L.SV-3.4 admission-audit-hook, L.SV-3.5 multi-vertex-refusal, L.SV-3.7
+# release-executable-allowlist-empty, L.SV-5.7 loop-walk-children-absent, L.SV-5.9 one-vertex-spine-fixture).
+# Deferrals (CM-8), lane worktrees, the lane-only workflow file and the D2 exception E-SV3-1 (CM-9) are not
+# register entries (CM-7).
+
+[[entry]]
+id                = "admission-audit-hook"        # plan id TM-B2-8
+mechanism         = "trestle/server/admission.py::write_admitted_run appends one ndjson line {run_dir, vertex_count, plugin, pid, nodeid} per admission to the file TRESTLE_ADMISSION_AUDIT names (unset -> no write): test instrumentation read only by J-SINGLE (b) and the A-1 MJ vertex audits before J-SINGLE"
+introduced_by     = "L.SV-3.4"
+serves            = []
+probe             = "grep -q TRESTLE_ADMISSION_AUDIT trestle/server/admission.py"   # exit 0 = present
+removal_condition = "J-SINGLE evaluated (its conditions never re-run, DM-11)"
+removed_by        = "L.TR-1.1"
+permanent         = false
+
+[[entry]]
+id                = "release-executable-allowlist-empty"   # plan id TM-B2-2
+mechanism         = "TrestleConfig.operator_limits.release_executables defaults to frozenset() (F-11(b) neutral)"
+introduced_by     = "L.SV-3.7"
+serves            = []
+probe             = "python -c \"import sys;from trestle.server.config import TrestleConfig as C;sys.exit(0 if not C.defaults().operator_limits.release_executables else 1)\""
+removal_condition = "none while F-11(b) (allowlist owner/default) is open; RB-0 populates only the reference operator config"
+removed_by        = "named-not-removed"
+permanent         = false
+citation          = "root C.9 F-11(a/b); design §10 F-11(b)"
+
+[[entry]]
+id                = "multi-vertex-refusal"        # plan id TM-B2-1
+mechanism         = "Admission.admit refuses a declared root with more than one vertex (AllDeclaration, ChoiceNode, ChildBinding) before a run id: admission.plan_multi_vertex_unsupported (the only home of the refusal, DM-07)"
+introduced_by     = "L.SV-3.5"
+serves            = []
+phases            = [
+  { name = "full", serves = ["A1.5", "A2.6", "A4.2", "A5.4", "A6.3", "A6.4", "A8.4", "A8.5"], probe = "python -m tests.proof.probes.single multi-vertex-refusal --phase full" },
+  { name = "choice-only", serves = ["A2.6", "WR-UNIT-8:selection-validated-only", "WR-UNIT-8:live-state-stops"], probe = "python -m tests.proof.probes.single multi-vertex-refusal --phase choice-only" },
+]                                                  # one inline table per line: Python 3.12's tomllib is TOML 1.0
+probe             = "python -m tests.proof.probes.single multi-vertex-refusal"   # exit 0 = present
+removal_condition = "full -> choice-only when the J-TRL lift set is green (narrowed by L.TR-L.1); choice-only -> absent when ChoiceNode selection and live-state are green"
+removed_by        = "L.TR-5.3"
+permanent         = false
+
+[[entry]]
+id                = "loop-walk-children-absent"     # plan id TM-B2-6
+mechanism         = "trestle/workflow/loop.py raises before any effect when a vertex is composite (the walk is tree-band work, OQ-28)"
+introduced_by     = "L.SV-5.7"
+serves            = []
+probe             = "grep -q 'walk_children: tree band' trestle/workflow/loop.py"
+removal_condition = "the in-library AllDeclaration walk lands"
+removed_by        = "L.TR-3.2"
+permanent         = false
+
+[[entry]]
+id                = "one-vertex-spine-fixture"      # plan id TM-B2-3
+mechanism         = "tests/fixtures/workflows/spine_leaf.py is the only Slice A fixture the spine gate is parametrized on"
+introduced_by     = "L.SV-5.9"
+serves            = []
+probe             = "python -m tests.proof.probes.single one-vertex-spine-fixture"   # exit 0 iff the spine gate parametrization == {spine_leaf}
+removal_condition = "spine gate green on the Slice A fake tree and the three-level tree (SA-09 retires)"
+removed_by        = "L.TR-6.6"
+permanent         = false

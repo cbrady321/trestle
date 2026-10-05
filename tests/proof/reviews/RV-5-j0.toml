@@ -1,0 +1,15 @@
+# RV-5 at J0 (L.J0.3, CM-5 role 1): stage-critic transcription review paired
+# with `python -m tests.proof.transcribe --check all`. Reviewer: strong-model
+# stage critic, read-only. Round 1 failed k_docs (K-5/K-9 landing_merge,
+# docs_source lines); fixed in 13add2e, landed in WR-Fix: P0-0d 3e82d1f.
+id = "RV-5"
+mode = "stage-critic review"
+outcome = "pass"
+sha = "3e82d1f7a1095b7364a5a23c2b2247a69687feb9"
+transcribe_log = "transcribe --check all --requirements requirements-workflow-runtime.md --decomposition decomposition-workflow-runtime.md: exit 0, no findings (at 3e82d1f, and re-run at J0 base c4682fe; matrix_map/row_owners/k_doc_map/open_questions byte-identical between the two). Reviewer: 65/65 fragments verbatim (18 cells, 65 ids, 69 parts); 129 rows = decomposition s7; owners/dispositions/join_cids equal s7; K-1..K-19 match requirements L532-550 and the phase merge tables incl. I-P2-16 (K-5 CL-C2, K-9 CL-C1, K-4 CK-3/4)."
+
+[criteria]
+verbatim_fragments = "pass"
+row_set = "pass"
+owner = "pass"
+k_docs = "pass"

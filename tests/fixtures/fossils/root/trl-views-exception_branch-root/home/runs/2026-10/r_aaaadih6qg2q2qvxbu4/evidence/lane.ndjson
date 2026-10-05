@@ -1,0 +1,16 @@
+{"class":"plan","seq":1,"lane_format":1,"declaration_digest":"4de592c1e895b8984d469e86862a7ce7cb01feb43a75703e2c572a4e603c861f","args_hash":"3da29e1d6a85d50486f5253771aa792367dae07e272b81210118647774c00a25","selection":{},"observations_digest":"4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}
+{"class":"issue","seq":2,"path":"sibling_a","effect":"up","attempt":1,"facet":"create","repeat":"safe","lifetime":"run","release":{"form":"in_run_group","helpers_disclosed":false},"remedy":null,"issued_at":"2026-10-02T21:25:08.610867Z"}
+{"class":"issue","seq":3,"path":"sibling_b","effect":"up","attempt":1,"facet":"create","repeat":"safe","lifetime":"run","release":{"form":"in_run_group","helpers_disclosed":false},"remedy":null,"issued_at":"2026-10-02T21:25:08.615887Z"}
+{"class":"confirmation","seq":4,"path":"sibling_a","effect":"up","attempt":1,"status":"applied","code":null,"identity":"fake-7e38c720b73521bd"}
+{"class":"confirmation","seq":5,"path":"sibling_b","effect":"up","attempt":1,"status":"applied","code":null,"identity":"fake-760790ab2d82f356"}
+{"class":"step","seq":6,"path":"raiser","at":"2026-10-02T21:25:08.673018Z","kind":"failed","code":"execution.unit_raised","human_action":null,"resend":null,"handle":null}
+{"class":"end","seq":7,"path":"raiser","at":"2026-10-02T21:25:08.675319Z","condition":"failed","code":"execution.unit_raised","human_action":null,"resend":null,"provenance":"absent","cut":null}
+{"class":"end","seq":8,"path":"sibling_a","at":"2026-10-02T21:25:09.630786Z","condition":"converging","code":null,"human_action":null,"resend":null,"provenance":"created","cut":"stopped"}
+{"class":"end","seq":9,"path":"sibling_b","at":"2026-10-02T21:25:09.634939Z","condition":"converging","code":null,"human_action":null,"resend":null,"provenance":"created","cut":"stopped"}
+{"class":"end","seq":10,"path":"","at":"2026-10-02T21:25:09.635284Z","condition":null,"code":null,"human_action":null,"resend":null,"provenance":null,"cut":"stopped"}
+{"class":"issue","seq":11,"path":"sibling_b","effect":"stop","attempt":1,"facet":"owned","repeat":"safe","lifetime":"run","release":{"form":"in_run_group","helpers_disclosed":false},"remedy":null,"issued_at":"2026-10-02T21:25:09.635925Z"}
+{"class":"confirmation","seq":12,"path":"sibling_b","effect":"stop","attempt":1,"status":"applied","code":null,"identity":"fake-760790ab2d82f356"}
+{"class":"released","seq":13,"path":"sibling_b","effect":"up","attempt":1,"released_at":"2026-10-02T21:25:10.659690Z","outcome":null}
+{"class":"issue","seq":14,"path":"sibling_a","effect":"stop","attempt":1,"facet":"owned","repeat":"safe","lifetime":"run","release":{"form":"in_run_group","helpers_disclosed":false},"remedy":null,"issued_at":"2026-10-02T21:25:10.663927Z"}
+{"class":"confirmation","seq":15,"path":"sibling_a","effect":"stop","attempt":1,"status":"applied","code":null,"identity":"fake-7e38c720b73521bd"}
+{"class":"released","seq":16,"path":"sibling_a","effect":"up","attempt":1,"released_at":"2026-10-02T21:25:11.681006Z","outcome":null}

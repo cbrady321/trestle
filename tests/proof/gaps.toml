@@ -1,0 +1,156 @@
+# Gap inventory (MC-09-adjacent; L.P0-0a.4). Schema (p0-court.md
+# "## Leaves and joins" verifier text):
+# [[gap]] {id, lane, rows, clause, slice, step, tier, venue, flip_merge,
+#          target = "required" | "none(reason)", entry = "module:function" | "pending"}
+#
+# Every entry is `entry = "pending"` until its lane's leaf builds the
+# real entry point (P0-1A..E). `target` is "required" for every id except
+# G-C4, whose target is "none(DM-20)": G-C4 is pin-only at L.P0-1C.4 and its
+# target is born only later, at L.CL-B1.1.
+
+[[gap]]
+id = "G-A1"
+lane = "A"
+flip_merge = "CS-2"
+target = "required"
+entry = "tests.pins.a_lifecycle.test_g_a1:test_target_no_attributable_survivor_after_terminal_row"
+
+[[gap]]
+id = "G-A2"
+lane = "A"
+flip_merge = "CS-2"
+target = "required"
+entry = "tests.pins.a_lifecycle.test_g_a2:test_target_run_driven_after_admitted_deadline_times_out"
+
+[[gap]]
+id = "G-A3"
+lane = "A"
+flip_merge = "CS-2"
+target = "required"
+entry = "tests.pins.a_lifecycle.test_g_a3:test_target_restart_leaves_no_attributable_survivor"
+
+[[gap]]
+id = "G-A4"
+lane = "A"
+flip_merge = "CL-A1"
+target = "required"
+entry = "tests.pins.a_lifecycle.test_g_a4:test_target_query_answered_before_probe_ends"
+
+[[gap]]
+id = "G-B1"
+lane = "B"
+flip_merge = "CL-C1"
+target = "required"
+entry = "tests.pins.b_contract.test_g_b1:test_target_described_is_executed"
+
+[[gap]]
+id = "G-B2"
+lane = "B"
+flip_merge = "CK-3/4"
+target = "required"
+entry = "tests.pins.b_contract.test_g_b2:test_target_dataclass_param_receives_instance"
+
+[[gap]]
+id = "G-B3"
+lane = "B"
+flip_merge = "CS-3"
+target = "required"
+entry = "tests.pins.b_contract.test_g_b3:test_target_runview_error_carries_message"
+
+[[gap]]
+id = "G-B4"
+lane = "B"
+flip_merge = "CL-C1"
+target = "required"
+entry = "tests.pins.b_contract.test_g_b4:test_target_import_roots_equal"
+
+[[gap]]
+id = "G-B5"
+lane = "B"
+flip_merge = "CL-C1"
+target = "required"
+entry = "tests.pins.b_contract.test_g_b5:test_target_import_edit_changes_snapshot_id"
+
+[[gap]]
+id = "G-C1"
+lane = "C"
+flip_merge = "CS-4"
+target = "required"
+entry = "tests.pins.c_surface.test_g_c1:wait_at_budget"
+
+[[gap]]
+id = "G-C2"
+lane = "C"
+flip_merge = "CL-B1"
+target = "required"
+entry = "tests.pins.c_surface.test_g_c2:project_across_republish"
+
+[[gap]]
+id = "G-C3"
+lane = "C"
+flip_merge = "CK-1"
+target = "required"
+entry = "tests.pins.c_surface.test_g_c3:retry_after_edit"
+
+[[gap]]
+id = "G-C4"
+lane = "C"
+flip_merge = "CL-B1"
+target = "none(DM-20)"
+entry = "tests.pins.c_surface.test_g_c4:sorted_fill_view"
+
+[[gap]]
+id = "G-D1"
+lane = "D"
+flip_merge = "CS-1"
+target = "required"
+entry = "tests.pins.d_evidence.test_g_d1:test_target_bytes_read_nongrowing_2000_vs_4000"
+
+[[gap]]
+id = "G-D2"
+lane = "D"
+flip_merge = "CS-1"
+target = "required"
+entry = "tests.pins.d_evidence.test_g_d2:test_target_no_valid_row_lost"
+
+[[gap]]
+id = "G-D3"
+lane = "D"
+flip_merge = "CS-3"
+target = "required"
+entry = "tests.pins.d_evidence.test_g_d3:test_target_last_error_contains_exception_message"
+
+[[gap]]
+id = "G-D4"
+lane = "D"
+flip_merge = "CL-B1"
+target = "required"
+entry = "tests.pins.d_evidence.test_g_d4:test_target_marker_lines_equal_for_200_and_2000_drops"
+
+[[gap]]
+id = "G-D5"
+lane = "D"
+flip_merge = "CL-B1"
+target = "required"
+entry = "tests.pins.d_evidence.test_g_d5:test_target_cap_marked_and_staged_promoted_or_refused"
+
+[[gap]]
+id = "G-E1"
+lane = "E"
+flip_merge = "NW-1"
+target = "required"
+entry = "tests.pins.e_packs.test_g_e1:test_target_unknown_wave_name_refused"
+
+[[gap]]
+id = "G-E2"
+lane = "E"
+flip_merge = "NW-2"
+target = "required"
+entry = "tests.pins.e_packs.test_g_e2:test_target_host_docker_record_passes_live_compose"
+
+[[gap]]
+id = "G-E3"
+lane = "E"
+flip_merge = "NW-1"
+target = "required"
+entry = "tests.pins.e_packs.test_g_e3:test_target_setup_error_counted_not_passed"

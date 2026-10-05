@@ -1,0 +1,88 @@
+# tests/proof/fence.d/release.toml — post-release fixes on top of the v0.2.0 release commit
+# (20e6988, `Release-Of: 592d3b5`). Every plan phase has landed and the history above the
+# release commit carries no `WR-Merge:` trailer, so a gate here requires no earlier merge
+# (R2 has nothing to read on the squashed base). Each fix adds its own gate and widens the
+# lane's globs with a comment, as the CZ lane did.
+phase = "release"
+
+[[lane]]
+name          = "release"
+branch_prefix = "wr/release/"
+globs         = [
+  # REL-VERSION: the package versions and the runtime's `__version__` say the release's 0.2.0.
+  "pyproject.toml", "packages/trestle-packs/pyproject.toml", "packages/trestle-env/pyproject.toml",
+  "trestle/__init__.py",
+  # The runtime version is an identity ingredient (MC-18): the pinned echo identity is checked
+  # under the runtime version it was recorded under.
+  "tests/single/contract/test_publish_workflow.py", "tests/single/contract/test_env_declaration.py",
+  "tests/tree/test_tr0_identity.py",
+  # The phase's `[phases]` entry.
+  "tests/proof/fence.toml",
+  # Product races (delivery-close RACES-REPORT). P1: atomic_write gives each writer its own
+  # temporary.
+  "trestle/common/fsutil.py",
+  # P2: a snapshot's plugin.py is whole or absent, and is the hashed source.
+  "trestle/server/snapshots.py",
+  # P3: registry refreshes are serialized and tolerate removed plugins.
+  "trestle/server/registry.py",
+  # Sever: an admitted run is driven even if its run call is cancelled.
+  "trestle/server/control.py",
+  # P5: test-limit scans are bounded by bytes and counts, not wall time (limits.py had no lane).
+  "trestle/common/limits.py", "trestle/server/projection.py", "trestle/query/fs.py",
+  # The races' proving tests (one deterministic interleaving per race).
+  "tests/core/spine/test_product_races.py",
+  # CI hardening. The tool set is pinned: constraints/ci.txt via PIP_CONSTRAINT, exact mypy and
+  # ruff in pyproject.toml, read by CI's workflow.
+  "constraints/ci.txt", ".github/workflows/ci.yml",
+  # ci_parity.sh runs CI's checks locally in CI's shape before a push or a host session.
+  "scripts/ci_parity.sh",
+  # Test races: wait on the condition, not a pause (CS-2 containment and its pipe holder, the
+  # tree-facts freeze, the port holders, SA-05's tolerances).
+  "tests/core/spine/plugins/pipe_holder.py", "tests/core/spine/test_cs2_containment.py",
+  "tests/tree/facts/test_tree_facts.py", "tests/proof/suites/ports/implementations.py",
+  "tests/proof/drift/test_sa05_tolerances.py",
+  # reuse_twin[cancelled]: the stop waits for the sibling's end, so it leaves ck_drill's REG
+  # serial tail.
+  "packages/trestle-env/tests/twin/test_reuse_twin.py",
+  "tests/core/tooling/ck_drill.py", "tests/core/tooling/test_ck_drill.py",
+  # The stop-offset proof: no step lies past the offset (tightened again by P4 below).
+  "tests/proof/spine/test_stop_offset.py",
+  # G-E2 is pending on PR runs; fence landing rule L1 requires the host-docker record.
+  "tests/pins/e_packs/test_g_e2.py", "tests/proof/host/record.py", "tests/proof/fence.py",
+  # The fence and G-E2 selftests that hold L1 and the pending rule.
+  "tests/proof/selftest/test_g_e2_pending.py", "tests/proof/selftest/test_fence_merge.py",
+  "tests/proof/selftest/test_fence_cli.py", "tests/proof/selftest/test_bundle_landing.py",
+  "tests/proof/selftest/test_landing_loop.py",
+  # P4: the root is carved nothing; its slice end is the release point and flips the goal
+  # (`LeafWalk.step`), so a single-vertex deadline run ends STOPPED, never CARVE_EXCEEDED.
+  "trestle/workflow/loop.py",
+  # P4's named contract change in the agent and plugin guides ("a carved node").
+  "docs/agents.md", "docs/plugins.md",
+  # P4's proofs: both orderings in a tree rig, and the carve kept for a carved leaf; the
+  # single-vertex loop and polling tests now see the root's stop.
+  "tests/tree/test_tr3_slices.py", "tests/single/workflow/test_loop.py",
+  "tests/single/workflow/test_polling.py",
+  # P4's clock skew: the root's own slice end raises the release-point flag
+  # (`RunServices.release_point_reached`, the child's flag file and the rig's), and the conductor
+  # reads that flag as well as its own clock, so a child clock ahead of the host's still gives a
+  # stop row and `timed_out`, never `passed`.
+  "trestle/workflow/services.py", "trestle/child/run_services.py", "trestle/server/conductor.py",
+  "tests/single/workflow/loopkit.py",
+  # REL-FOLLOWUPS (leads folded in): the RACES-REPORT test leads #6-#18 that were confirmed and are cheap to close wait
+  # on the condition or carry a stall-sized slack (cs2_clock queue time, run-services promptness,
+  # capacity hold, lease FIFO read, m3 cancel vs deadline, SA-10 grandchild, MCP stdin-close
+  # sever); the trl_lease absence windows are marked and leave SA-05's baseline (already globbed).
+  "tests/core/spine/test_cs2_clock.py", "tests/single/workflow/test_run_services.py",
+  "tests/core/admission/test_cl_a1_capacity.py", "tests/tree/host/test_trl_lease.py",
+  "tests/test_m3_durability.py", "tests/proof/drift/test_sa10_attribution.py",
+  "tests/proof/selftest/test_mcp_host.py",
+  # The E501 line no lane owned (FINAL-REPORT section 9).
+  "scripts/smoke_operator_api.py",
+  # ci_parity.sh tier 2's image (`trestle-ci-parity`), written, not built.
+  "scripts/ci-parity.Dockerfile",
+]
+
+[[gate]]
+branch         = "wr/release/followups"
+merge          = "REL-FOLLOWUPS"
+requires_merge = []

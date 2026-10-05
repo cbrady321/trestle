@@ -1,0 +1,40 @@
+# Found resources the run must never signal, adopt or repair (L.RB-3.2; WR-OWN-7, WR-OWN-10;
+# CSC-10). The TEST starts one profile before a run (`docker compose --profile <p> up -d`): a
+# container named exactly as the tree's logical system (`postgres`), so the run finds it.
+#
+# * `foreign`   - a same-name container of ANOTHER image (the alpine role): its identity cannot
+#                 be proven (the reference role and database are not in its environment);
+# * `unhealthy` - the reference identity and the pinned Postgres, but a password the reference
+#                 readiness call does not present: identity and configuration proven, never ready.
+#
+# Images by role only, never pulled; every service and network carries the fixture label (no
+# volume: the data path is tmpfs), so the gate's housekeeping attributes nothing to the run.
+name: foreign
+
+services:
+  foreign:
+    profiles: ["foreign"]
+    image: ${TRESTLE_IMAGE_ALPINE}
+    pull_policy: never
+    container_name: postgres
+    command: ["sh", "-c", "trap 'exit 0' TERM; while :; do sleep 1; done"]
+    labels:
+      trestle.proof.fixture: foreign
+  unhealthy:
+    profiles: ["unhealthy"]
+    image: ${TRESTLE_IMAGE_POSTGRES}
+    pull_policy: never
+    container_name: postgres
+    environment:
+      POSTGRES_USER: trestle
+      POSTGRES_DB: trestle
+      POSTGRES_PASSWORD: not-the-fixture-password
+    tmpfs:
+      - /var/lib/postgresql/data
+    labels:
+      trestle.proof.fixture: foreign
+
+networks:
+  default:
+    labels:
+      trestle.proof.fixture: foreign
