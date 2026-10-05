@@ -10,3 +10,4 @@ __pycache__/
 _tmp/
 node_modules/
 /tests/proof/results/
+.idea/
