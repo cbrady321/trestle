@@ -105,6 +105,11 @@ globs         = [
   "docs/environment.md",
   # stage 11: the agent and plugin guides, `wait_for` and `--port 0` and the selection closure.
   "docs/plugins.md", "docs/agents.md",
+  # V03-VERSION: the package versions and the runtime's `__version__` say 0.3.0; the runtime version
+  # is an identity ingredient (MC-18), so the echo pins are re-pinned under it; IDE files are ignored.
+  "pyproject.toml", "packages/trestle-packs/pyproject.toml", "packages/trestle-env/pyproject.toml",
+  "trestle/__init__.py", "tests/single/contract/test_publish_workflow.py",
+  "tests/single/contract/test_env_declaration.py", "tests/tree/test_tr0_identity.py", ".gitignore",
 ]
 
 [[gate]]
@@ -116,3 +121,10 @@ requires_merge = []
 branch         = "wr/v03/local-realization"
 merge          = "V03-LOCAL"
 requires_merge = ["V03-WAIT"]
+
+# V03-VERSION sits on the squashed 0.3 release commit (2b99c631, `Release-Of: ed9b1e1d`); like the
+# release phase's gates it requires no earlier merge (R2 has nothing to read on a squashed base).
+[[gate]]
+branch         = "wr/v03/version"
+merge          = "V03-VERSION"
+requires_merge = []
