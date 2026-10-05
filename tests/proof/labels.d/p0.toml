@@ -1,0 +1,182 @@
+# CSC-1 labels registry fragment for P0 (MC-04).
+# Schema: [[label]] {id, row, composes?, step, slice, tier, venue, posture, oq?, reason?, declared_by}
+# Declared here at collection-schema granularity only (L.P0-0a.2); the
+# matrix ids this composes against switch on at L.P0-0c.1.
+
+[[label]]
+id = "WR-PROOF-8:baseline-preserved"
+row = "WR-PROOF-8"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0a.1"
+
+[[label]]
+id = "WR-COMPAT-12:preserved"
+row = "WR-COMPAT-12"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0a.1"
+
+[[label]]
+id = "WR-COMPAT-1:preserved"
+row = "WR-COMPAT-1"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0a.5"
+
+[[label]]
+id = "WR-COMPAT-3:preserved"
+row = "WR-COMPAT-3"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0a.5"
+
+[[label]]
+id = "WR-COMPAT-6:preserved"
+row = "WR-COMPAT-6"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0a.5"
+
+[[label]]
+id = "WR-COMPAT-7:preserved"
+row = "WR-COMPAT-7"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0a.5"
+
+[[label]]
+id = "WR-COMPAT-8:preserved"
+row = "WR-COMPAT-8"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0a.5"
+
+[[label]]
+id = "WR-COMPAT-9:preserved"
+row = "WR-COMPAT-9"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0a.5"
+
+[[label]]
+id = "WR-COMPAT-10:preserved"
+row = "WR-COMPAT-10"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0a.5"
+
+[[label]]
+id = "WR-COMPAT-11:preserved"
+row = "WR-COMPAT-11"
+step = "core"
+slice = "compat"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0a.5"
+
+[[label]]
+id = "WR-PROOF-2:pack-docker-live"
+row = "WR-PROOF-2"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "claim"
+reason = "alpine:3.20 image absent on this host; skip renders UNPROVEN, never a silent pass"
+declared_by = "L.P0-0a.5"
+
+[[label]]
+id = "WR-CON-4:loopback-only"
+row = "WR-CON-4"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0d.26"
+
+# L.P0-0d.33: the clause labels p0-court.md names for L.P0-0a.3, L.P0-0a.4,
+# L.P0-0b.5 and L.P0-0b.6, which no fragment declared, so rows WR-PROOF-7,
+# WR-PROOF-9, WR-CON-1, WR-CON-2 and WR-CON-5 had no registered clause.
+# Each is registered by the P0 nodes that exercise it (their leaf verifiers).
+# `WR-PROOF-7:interpreter-per-result` is not declared: no node asserts that
+# the plugin stamps each record's interpreter.
+
+[[label]]
+id = "WR-PROOF-7:3.14-only-not-proven"
+row = "WR-PROOF-7"
+step = "core"
+slice = "core"
+tier = "LOGIC"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0d.33"
+
+[[label]]
+id = "WR-PROOF-9:tolerances-declared"
+row = "WR-PROOF-9"
+step = "core"
+slice = "core"
+tier = "LOGIC"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0d.33"
+
+[[label]]
+id = "WR-CON-1:no-credential-read"
+row = "WR-CON-1"
+step = "core"
+slice = "core"
+tier = "PROC"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0d.33"
+
+[[label]]
+id = "WR-CON-2:absent"
+row = "WR-CON-2"
+step = "core"
+slice = "core"
+tier = "PROC"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0d.33"
+
+[[label]]
+id = "WR-CON-5:no-model-client"
+row = "WR-CON-5"
+step = "core"
+slice = "core"
+tier = "INSPECT"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-0d.33"

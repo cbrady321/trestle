@@ -1,0 +1,32 @@
+# CSC-1 labels for lane P0-1E (packs). Target labels reuse the flip leaves'
+# strings so a flip keeps the label.
+
+[[label]]
+id = "WR-ENV-1:legacy-explicit-waves-refuse-unknown-duplicate"
+row = "WR-ENV-1"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-1E.1"
+
+[[label]]
+id = "WR-VERIFY-4:legacy-run_pytest-errors"
+row = "WR-VERIFY-4"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-1E.3"
+
+[[label]]
+id = "WR-ENV-11:pipeline-one-teardown@fake"
+row = "WR-ENV-11"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-1E.3"

@@ -1,0 +1,53 @@
+# CSC-1 labels for lane P0-1D's target claims (MC-04). Declared here, claimed
+# by the core flips (WR-EVID-4:flat-append / no-later-row-lost at CS-1,
+# sentinel-in-last-error at CS-3, markers-bounded / artifact-limits at CL-B1).
+
+[[label]]
+id = "WR-EVID-4:flat-append"
+row = "WR-EVID-4"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-1D.1"
+
+[[label]]
+id = "WR-EVID-11:no-later-row-lost"
+row = "WR-EVID-11"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-1D.1"
+
+[[label]]
+id = "WR-EVID-1:sentinel-in-last-error"
+row = "WR-EVID-1"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-1D.2"
+
+[[label]]
+id = "WR-EVID-4:markers-bounded"
+row = "WR-EVID-4"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-1D.3"
+
+[[label]]
+id = "WR-EVID-6:artifact-limits"
+row = "WR-EVID-6"
+step = "core"
+slice = "core"
+tier = "must"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-1D.4"

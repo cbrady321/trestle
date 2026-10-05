@@ -1,0 +1,170 @@
+# tests/proof/b/stub_labels.toml -- MC-B-05 (ledger <-> docs), created by L.RB-0.5.
+#
+# `twin_suffix` (CSC-8): every label ending in it is a CI twin of a DOCKER . HOST node's label, is
+# declared `posture = "stub_proven"` and renders STUB-PROVEN. Every OTHER label declared
+# `posture = "stub_proven"` in labels.d/slice-b.toml has exactly one `[[row]]` here (its label text
+# and deferral, which RV-2 reads). B4.5 and B9.1 (the adversary-stub clauses) carry no STUB label
+# and so no row (DM-29).
+#
+# Append-only. The rows are appended by the leaves that own each stub group (a row never needs a
+# leaf's file listed, only this one): L.RB-4.5 (D-1, toolchain resolver and task stubs), L.RB-7.2
+# (D-8, engine starter), L.RB-9.6 (D-9, AWS demo, never real), L.RB-10.2 (D-19, JVM/Gradle).
+#
+# Row schema (exactly these keys; no other key or table shape):
+#
+# [[row]]
+# label    = "WR-ENV-3:allowlisted-noninteractive-identity"   # a stub_proven label id
+# group    = "D-1"        # one of stub_labels.GROUPS: B4.6 B6.2 B8.4 D-1 D-8 D-9 D-19
+# text     = "..."        # the label text: what the stub stands for and that the real tool is unverified
+# deferral = "OPEN-MISE-HOST"   # the open question or disclosure the row cites
+
+twin_suffix = "@stub-twin"
+
+[[row]]
+label    = "WR-ENV-15:adapter-exact-or-unresolved"
+group    = "D-1"
+text     = "The resolver is proven against the mise-shaped stub only: it resolves the pinned tool to an absolute executable exactly or returns Unresolved. The real mise's output is unverified."
+deferral = "OPEN-MISE-HOST"
+
+[[row]]
+label    = "WR-VERIFY-8:b-stub-read-facets-toolchain"
+group    = "D-1"
+text     = "The toolchain read facets are proven on the resolver's conformance suite against the stub mise; the real tool is unverified."
+deferral = "OPEN-MISE-HOST"
+
+[[row]]
+label    = "WR-PROOF-4:b-toolchain-suite"
+group    = "D-1"
+text     = "The toolchain family suite runs unmodified on the fake and the real resolver over the stub mise; a real mise run has not been made."
+deferral = "OPEN-MISE-HOST"
+
+[[row]]
+label    = "WR-ENV-3:allowlisted-noninteractive-identity"
+group    = "D-1"
+text     = "An allowlisted task runs non-interactively with its toolchain identity recorded, on the real task runner over stub tools; the real mise is unverified."
+deferral = "OPEN-MISE-HOST"
+
+[[row]]
+label    = "WR-ENV-3:never-via-backing-tool-orchestration"
+group    = "B8.4"
+text     = "A task never runs through mise exec, mise run or a shim: shown against the stub, which logs and refuses them; the real tool is unverified."
+deferral = "OPEN-MISE-HOST"
+
+[[row]]
+label    = "WR-ENV-16:no-install-side-effect"
+group    = "B8.4"
+text     = "No install, download or upgrade happens as a side effect of a task: shown against the stub and the fetch logger; the real tool is unverified."
+deferral = "OPEN-MISE-HOST"
+
+[[row]]
+label    = "WR-ENV-16:jvm-wrapper-fetch-disabled-or-blocked"
+group    = "D-19"
+text     = "A Gradle-shaped task is run as the resolved JDK executing `org.gradle.wrapper.GradleWrapperMain` from the project's wrapper jar, never the wrapper script, with `--no-daemon` and JDK auto-provisioning disabled by configuration (`-Porg.gradle.java.installations.auto-download=false`, else the step blocks); a wrapper-declared distribution absent from the store blocks with `TOOLCHAIN_MISSING` before any task start: all shown on a stub standing in for the JDK and wrapper (`stub_tool --mode wrapper-fetch`). Gradle is absent here and the real wrapper's behaviour is unverified (D-19)."
+deferral = "D-19"
+
+[[row]]
+label    = "WR-EVID-10:by-hand-identical"
+group    = "D-1"
+text     = "A task's result classification matches the by-hand invocation: shown on the stub tools; real tools are unverified."
+deferral = "OPEN-MISE-HOST"
+
+[[row]]
+label    = "WR-ENV-15:workflow-blocked-before-task"
+group    = "B4.6"
+text     = "The reference workflow blocks with TOOLCHAIN_MISSING before any task start when the pin does not resolve: shown through one MCP call against the stub mise; the real tool is unverified."
+deferral = "OPEN-MISE-HOST"
+
+# D-8 (engine starter), appended by L.RB-7.2. The stub starts nothing real: starting the real
+# container engine is deferred (D-8), so the only venue is the stub `stub_engine_starter`.
+[[row]]
+label    = "WR-ENV-6:remediation-bounded-recorded"
+group    = "D-8"
+text     = "The engine remediation loop is bounded and recorded by the runtime against a stub engine starter (stub_engine_starter, a ResourceSafeStart whose descriptor is Durable(HOST)); starting the real container engine is unverified and deferred (D-8)."
+deferral = "D-8"
+
+[[row]]
+label    = "WR-REMEDY-4:b-engine-safe-start-stub"
+group    = "D-8"
+text     = "The safe-start remediation of the engine is proven with a stub starter that never invokes the real docker binary; a real engine start (and the host's own start command) is unverified, deferred as D-8."
+deferral = "D-8"
+
+# D-9 (AWS demo, never real), appended by L.RB-9.6. Every credential path runs against the stub
+# issuer (tests/fixtures/stubs/stub_issuer.py); no real identity provider is reachable (WR-CON-1).
+[[row]]
+label    = "WR-PROOF-4:b-grant-suite"
+group    = "D-9"
+text     = "The grant family suite runs unmodified on the fake and the demo grant over the stub issuer on loopback; AWS is a demo and is never real, and a real identity provider's behaviour is unverified."
+deferral = "D-9"
+
+[[row]]
+label    = "WR-VERIFY-8:b-stub-read-facets-grant"
+group    = "D-9"
+text     = "The grant read facets are proven against the stub issuer only (identity, expiry, generation, interactivity); a real identity provider is unverified and out of scope (D-9)."
+deferral = "D-9"
+
+[[row]]
+label    = "WR-ENV-8:mfa-blocked-human-action"
+group    = "D-9"
+text     = "An identity that needs interactive sign-in ends the node blocked with a named human action and no dependent started: shown against the stub issuer's interactive mode; a real identity provider's flow is unverified (D-9)."
+deferral = "D-9"
+
+[[row]]
+label    = "WR-ENV-14:lifetime-vs-root-deadline-refresh-or-block"
+group    = "D-9"
+text     = "A credential lifetime is checked against the root deadline plus the margin, refreshed once or blocked: shown against the stub issuer's lifetimes; a real provider's expiry behaviour is unverified (D-9)."
+deferral = "D-9"
+
+[[row]]
+label    = "WR-VERIFY-6:invalid-credential-not-ready"
+group    = "D-9"
+text     = "A service with an invalid demo credential is never ready, read by an authenticated call from inside the consumer against the stub issuer; a real provider's rejection is unverified (D-9)."
+deferral = "D-9"
+
+[[row]]
+label    = "WR-ENV-13:refresh-in-place-container"
+group    = "D-9"
+text     = "A host rotation of the demo credential reaches a reused container through its mounted channel, with no recreate; proven with the stub issuer only, and a real provider's rotation is unverified (D-9)."
+deferral = "D-9"
+
+[[row]]
+label    = "WR-ENV-13:refresh-in-place-local-app"
+group    = "D-9"
+text     = "A host rotation of the demo credential reaches a running local app through its channel, with no restart; proven with the stub issuer only, and a real provider's rotation is unverified (D-9)."
+deferral = "D-9"
+
+[[row]]
+label    = "WR-OWN-9:owned-process-restarted"
+group    = "D-9"
+text     = "An owned local process holding an older demo credential generation is restarted, never one it does not own: shown against the stub issuer's generations; a real provider's generations are unverified (D-9)."
+deferral = "D-9"
+
+[[row]]
+label    = "WR-OWN-9:not-owned-blocked-untouched"
+group    = "D-9"
+text     = "A not-owned container holding an older demo credential generation is reported blocked and left untouched: shown against the stub issuer's generations; a real provider's generations are unverified (D-9)."
+deferral = "D-9"
+
+[[row]]
+label    = "WR-REMEDY-4:b-credential-refresh-safe"
+group    = "D-9"
+text     = "Credential refresh is the safe-refresh remediation, issued at most as declared and recorded: shown against the stub issuer; the real provider's refresh is unverified and AWS is never real (D-9)."
+deferral = "D-9"
+
+# D-19 (JVM/Gradle), appended by L.RB-10.2: the build-daemon patterns on tests/fixtures/stubs/stub_gradle.py.
+[[row]]
+label    = "WR-CANCEL-7:prevented-by-config"
+group    = "D-19"
+text     = "A Gradle-shaped task's daemon is prevented by the declared configuration (--no-daemon): shown on a stub that starts a daemon without the flag; real Gradle's daemon behaviour is unverified and unproven pending D-19."
+deferral = "D-19"
+
+[[row]]
+label    = "WR-CANCEL-7:contained-within-bound"
+group    = "D-19"
+text     = "An in-group helper of a Gradle-shaped build is ended within the stop bound after a cancel: shown with a stub helper in the run's group; real Gradle's helpers are unverified and unproven pending D-19."
+deferral = "D-19"
+
+[[row]]
+label    = "WR-CANCEL-7:disclosed-boundary"
+group    = "D-19"
+text     = "A helper outside Gradle's daemon machinery is not contained and is disclosed as a boundary (policy DISCLOSED, helpers_disclosed, named in docs/environment.md): shown with a stub that escapes the run's group; real Gradle is unverified and unproven pending D-19."
+deferral = "D-19"

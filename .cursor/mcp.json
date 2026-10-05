@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "trestle": {
+      "command": "trestle",
+      "args": [
+        "serve",
+        "--plugin-dir",
+        "${workspaceFolder}/examples/packs"
+      ],
+      "env": {
+        "TRESTLE_HOME": "~/.trestle"
+      }
+    }
+  }
+}

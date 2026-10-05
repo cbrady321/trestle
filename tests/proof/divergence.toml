@@ -1,0 +1,1573 @@
+# divergence.toml (L.P0-0c.5): the divergence ledger's P0 seed, exactly the
+# root MC-06 seed list (plan-workflow-runtime.md:979) -- requirements Part 2
+# survey items 1-16, K-1..K-19 (K-19 included), design §8.3 D-a..D-v, and the
+# root-named additive diffs. Schema: [[entry]] {id, facet, row_or_k, docs,
+# due_checkpoint, direction, authorized_by}. No entry names a keep or cleanup
+# parameter (B2-C2, B4-C6): none of the rows_or_k values below is a keep
+# argument or a new refusal code. WR-COMPAT-row-touching entries (K-16, BF2-8)
+# are additive-only per WR-COMPAT-{1..12}:no-unnamed-change.
+# PLAN-GAP: individual due_checkpoint values for the Part 2/D-item entries are
+# not enumerated anywhere in the P0 read-only packet (only K-19's landing_merge
+# is given verbatim, CL-D1); every other post-P0 entry here records
+# due_checkpoint as a deliberately-not-yet-due placeholder string so d1's
+# `_due()` check does not treat it as missing today.
+#
+# L.CZ.4: the ledger is closed. `differ d1 --closure` checked that every entry appeared by its due
+# checkpoint and names a row, a K-item, a design item or a contract; from here every `d1` holds the
+# witness and reference rules too (tests/proof/differ.py, `closure_problems`), against golden S0,
+# which stays.
+
+[ledger]
+closed = true
+
+[[entry]]
+id = "K-1"
+facet = "internal"
+row_or_k = "K-1"
+docs = ["docs/agents.md"]
+due_checkpoint = "CK-1"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-2"
+facet = "internal"
+row_or_k = "K-2"
+docs = ["docs/agents.md"]
+due_checkpoint = "CL-C1"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-3"
+facet = "internal"
+row_or_k = "K-3"
+docs = ["docs/plugins.md"]
+due_checkpoint = "CK-3/4"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-4"
+facet = "internal"
+row_or_k = "K-4"
+docs = ["docs/plugins.md"]
+due_checkpoint = "CK-3/4"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-5"
+facet = "internal"
+row_or_k = "K-5"
+docs = ["docs/plugins.md"]
+due_checkpoint = "CL-C1"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-6"
+facet = "internal"
+row_or_k = "K-6"
+docs = ["docs/packs.md"]
+due_checkpoint = "NW-1"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-7"
+facet = "internal"
+row_or_k = "K-7"
+docs = ["docs/agents.md"]
+due_checkpoint = "CS-2"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-8"
+facet = "internal"
+row_or_k = "K-8"
+docs = ["docs/packs.md"]
+due_checkpoint = "CK-8"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-9"
+facet = "internal"
+row_or_k = "K-9"
+docs = ["docs/plugins.md"]
+due_checkpoint = "CS-2"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-10"
+facet = "internal"
+row_or_k = "K-10"
+docs = ["docs/agents.md"]
+due_checkpoint = "CS-3"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-11"
+facet = "internal"
+row_or_k = "K-11"
+docs = ["docs/agents.md"]
+due_checkpoint = "SV-0"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-12"
+facet = "internal"
+row_or_k = "K-12"
+docs = ["docs/plugins.md"]
+due_checkpoint = "CL-C2"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-13"
+facet = "internal"
+row_or_k = "K-13"
+docs = ["docs/agents.md"]
+due_checkpoint = "CL-D1"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-14"
+facet = "internal"
+row_or_k = "K-14"
+docs = []
+due_checkpoint = "CK-14"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-15"
+facet = "internal"
+row_or_k = "K-15"
+docs = ["docs/packs.md"]
+due_checkpoint = "NW-1"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-16"
+facet = "internal"
+row_or_k = "K-16"
+docs = ["docs/agents.md"]
+due_checkpoint = "none (conditional, unbuilt)"
+direction = "additive"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-17"
+facet = "internal"
+row_or_k = "K-17"
+docs = ["docs/plugins.md"]
+due_checkpoint = "CL-B1"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-18"
+facet = "internal"
+row_or_k = "K-18"
+docs = ["docs/agents.md"]
+due_checkpoint = "CS-1"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "K-19"
+facet = "internal"
+row_or_k = "K-19"
+docs = ["docs/agents.md"]
+due_checkpoint = "CL-D1"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md \"Knowing changes\" table (L528-550)"
+
+[[entry]]
+id = "BF2-1"
+facet = "internal"
+row_or_k = "WR-CANCEL-1, WR-CANCEL-2, WR-CANCEL-3, WR-OWN-1, WR-OWN-3"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 1"
+
+[[entry]]
+id = "BF2-2"
+facet = "internal"
+row_or_k = "WR-EVID-1, WR-EVID-2, WR-TERM-3"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 2"
+
+[[entry]]
+id = "BF2-3"
+facet = "internal"
+row_or_k = "WR-DEADLINE-1, WR-DEADLINE-2, WR-TERM-2"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 3"
+
+[[entry]]
+id = "BF2-4"
+facet = "internal"
+row_or_k = "WR-EVID-4"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 4"
+
+[[entry]]
+id = "BF2-5"
+facet = "internal"
+row_or_k = "WR-PLAN-4"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 5"
+
+[[entry]]
+id = "BF2-6"
+facet = "internal"
+row_or_k = "WR-PLAN-5, WR-PLAN-6"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 6"
+
+[[entry]]
+id = "BF2-7"
+facet = "internal"
+row_or_k = "WR-IDEM-1, WR-IDEM-2"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 7"
+
+[[entry]]
+id = "BF2-8"
+facet = "internal"
+row_or_k = "WR-TERM-1, WR-TERM-2, WR-COMPAT-1"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 8"
+
+[[entry]]
+id = "BF2-9"
+facet = "internal"
+row_or_k = "WR-TERM-7"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 9"
+
+[[entry]]
+id = "BF2-10"
+facet = "internal"
+row_or_k = "WR-TERM-5"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 10"
+
+[[entry]]
+id = "BF2-11"
+facet = "internal"
+row_or_k = "WR-PLAN-7, WR-PLAN-8, WR-PLAN-9, WR-PLAN-4"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 11"
+
+[[entry]]
+id = "BF2-12"
+facet = "internal"
+row_or_k = "WR-EVID-5"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 12"
+
+[[entry]]
+id = "BF2-13"
+facet = "internal"
+row_or_k = "WR-EVID-6"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 13"
+
+[[entry]]
+id = "BF2-14"
+facet = "internal"
+row_or_k = "WR-ENV-1, WR-VERIFY-4, WR-ENV-11"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 14"
+
+[[entry]]
+id = "BF2-15"
+facet = "internal"
+row_or_k = "WR-EVID-7"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 15"
+
+[[entry]]
+id = "BF2-16"
+facet = "internal"
+row_or_k = "WR-PROOF-8, WR-PROOF-7, WR-EVID-9"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "requirements-workflow-runtime.md Brownfield Part 2, survey item 16"
+
+[[entry]]
+id = "D-a"
+facet = "internal"
+row_or_k = "D-a"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Environment-argument declaration on the decorator)"
+
+[[entry]]
+id = "D-b"
+facet = "internal"
+row_or_k = "D-b"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Declaration required for port importers)"
+
+[[entry]]
+id = "D-c"
+facet = "internal"
+row_or_k = "D-c"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Key derivation, lease acquire/enqueue/refuse)"
+
+[[entry]]
+id = "D-d"
+facet = "internal"
+row_or_k = "D-d"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Environment key durability)"
+
+[[entry]]
+id = "D-e"
+facet = "internal"
+row_or_k = "D-e"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Per-key capacity dimension and FIFO)"
+
+[[entry]]
+id = "D-f"
+facet = "internal"
+row_or_k = "D-f"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Index release on every path)"
+
+[[entry]]
+id = "D-g"
+facet = "internal"
+row_or_k = "D-g"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Reserved ownership evidence lane)"
+
+[[entry]]
+id = "D-h"
+facet = "internal"
+row_or_k = "D-h"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Created/claimed ids folded into the record)"
+
+[[entry]]
+id = "D-i"
+facet = "internal"
+row_or_k = "D-i"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Declared-priority byte-range projection)"
+
+[[entry]]
+id = "D-j"
+facet = "internal"
+row_or_k = "D-j"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Self-verifying record framing)"
+
+[[entry]]
+id = "D-k"
+facet = "internal"
+row_or_k = "D-k"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Summary budget read from the run's own spec)"
+
+[[entry]]
+id = "D-l"
+facet = "internal"
+row_or_k = "D-l"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "design-workflow-runtime.md §8.3 (Shared contract suite and proof ledger (this proof court itself))"
+
+[[entry]]
+id = "D-m"
+facet = "internal"
+row_or_k = "D-m"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Declared-tree extraction at publication; digest in snapshot identity)"
+
+[[entry]]
+id = "D-n"
+facet = "internal"
+row_or_k = "D-n"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Whole-tree compile and refusal before the run id)"
+
+[[entry]]
+id = "D-o"
+facet = "internal"
+row_or_k = "D-o"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Lineage-keyed entries and one terminal verdict per path)"
+
+[[entry]]
+id = "D-p"
+facet = "internal"
+row_or_k = "D-p"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Attempt entries with release descriptors, failing closed)"
+
+[[entry]]
+id = "D-q"
+facet = "internal"
+row_or_k = "D-q"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Recovery-time lane fold)"
+
+[[entry]]
+id = "D-r"
+facet = "internal"
+row_or_k = "D-r"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Plan-rank host sweep interpreting three descriptor forms, operator executable allowlist)"
+
+[[entry]]
+id = "D-s"
+facet = "internal"
+row_or_k = "D-s"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Stop row carrying the lane offset, for cancel and the release point)"
+
+[[entry]]
+id = "D-t"
+facet = "internal"
+row_or_k = "D-t"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Tree roll-up and child run views)"
+
+[[entry]]
+id = "D-u"
+facet = "internal"
+row_or_k = "D-u"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (The S-8 loop, slices, selection and attempt measure)"
+
+[[entry]]
+id = "D-v"
+facet = "internal"
+row_or_k = "D-v"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "change"
+authorized_by = "design-workflow-runtime.md §8.3 (Shared core module: plan compiler, carving, precedence)"
+
+[[entry]]
+id = "ADD-run-completion"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-terminal-answer-field"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-runview-fields"
+facet = "runview_shape"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-ledger-kinds"
+facet = "ledger_kinds"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-spec-json-keys"
+facet = "spec_keys"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-manifest-json-keys"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-snapshot-declaration"
+facet = "snapshot_manifest"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-release-point-flag"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-describe-duration-codes"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-execution-codes"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-admission-codes"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-projection-codes"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-publication-codes"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-restricted-profile-tools-list"
+facet = "tools_list"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-context-event-method"
+facet = "context_surface"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+[[entry]]
+id = "ADD-adapter-environment-codes"
+facet = "internal"
+row_or_k = "none"
+docs = []
+due_checkpoint = "post-P0 (per-item landing merge not enumerated in the P0 packet)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed, root-named additive diffs)"
+
+# Permitted additive refusal/projection codes (L.P0-0d.13). facet = "refusal_codes",
+# direction = "additive", `codes` = wire-value fnmatch patterns. The S0 codes
+# golden stays strict: a code is admitted only when named here; an S0 code
+# removed or renamed is `missing` and always fails. Add ONE entry per code a
+# core leaf introduces, citing its row/leaf. Seeded only with what MC-06
+# (plan-workflow-runtime.md:979) names verbatim.
+
+[[entry]]
+id = "ADD-code-projection-outside-window"
+facet = "refusal_codes"
+row_or_k = "MC-06"
+codes = ["projection.outside_window"]
+docs = []
+due_checkpoint = "post-P0 (landing leaf L.CL-PX2.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06: projection.{terminal_wait_exceeded, outside_window, not_owner, cancel_not_root}); BFD-38"
+
+# Named additive shape diffs of the other d1 facets (L.P0-0d.20). An entry with
+# direction = "additive" and facet = <facet id> excuses only what its selectors
+# name (tests/proof/differ.py SELECTOR_FIELDS):
+#   keys  = ["$.frames.*.cleanup"]                              a dict key added
+#   items = [{ path = "$.sequences.*", value = "group_stop" }]  a list item inserted
+#           (the S0 list must stay an ordered subsequence; every extra item named)
+#   grows = [{ path = "$.tools_bytes", max = 8192 }]            an int grows, <= max
+# `*` matches one path segment. A selector that matches nothing on the head is
+# stale and fails d1. An additive entry without selectors excuses nothing.
+
+# L.CS-3.1: the nine MC-CORE-04 execution codes (MC-06 names execution.*; core.md MC-CORE-04, DM-16).
+
+[[entry]]
+id = "ADD-code-execution-import-failed"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.import_failed"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-bind-failed"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.bind_failed"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-plugin-raised"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.plugin_raised"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-result-unencodable"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.result_unencodable"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-provenance-mismatch"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.provenance_mismatch"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-cancelled"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.cancelled"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-deadline-exceeded"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.deadline_exceeded"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-worker-exit"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.worker_exit"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+[[entry]]
+id = "ADD-code-execution-interrupted"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-04"
+codes = ["execution.interrupted"]
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.*); plans/core.md MC-CORE-04 (L.CS-3.1, DM-16)"
+
+# L.CS-4.1: the terminal wait's one bounded-failure code (MC-06 names projection.terminal_wait_exceeded).
+
+[[entry]]
+id = "ADD-code-projection-terminal-wait-exceeded"
+facet = "refusal_codes"
+row_or_k = "MC-16"
+codes = ["projection.terminal_wait_exceeded"]
+docs = []
+due_checkpoint = "CS-4 (leaf L.CS-4.1)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06: projection.{terminal_wait_exceeded, outside_window, not_owner, cancel_not_root}); plans/core.md MC-16 (L.CS-4.1)"
+
+# L.CL-C1.5: a declared deadline above the ceiling is refused at admission (B2-C2 (4), V-11 closed).
+
+[[entry]]
+id = "ADD-code-admission-budget-does-not-fit"
+facet = "refusal_codes"
+row_or_k = "B2-C2"
+codes = ["admission.budget_does_not_fit"]
+docs = []
+due_checkpoint = "CL-C1 (leaf L.CL-C1.5)"
+direction = "additive"
+authorized_by = "interfaces/interface-host-run-services.md B2-C2 (4); plans/core.md L.CL-C1.5 (DM-16, V-11 closed)"
+
+# L.CL-A2.1: the restricted profile's allowlist refusal (MC-CORE-07, WR-AUTH-2).
+
+[[entry]]
+id = "ADD-code-admission-not-allowlisted"
+facet = "refusal_codes"
+row_or_k = "MC-CORE-07"
+codes = ["admission.not_allowlisted"]
+docs = []
+due_checkpoint = "CL-A2 (leaf L.CL-A2.1)"
+direction = "additive"
+authorized_by = "plans/core.md MC-CORE-07 (L.CL-A2.1: a non-allowlisted plugin is refused admission.not_allowlisted before the run id)"
+
+# L.CL-A2.2: the restricted profile's session-scoped cancel refusal (MC-06 names projection.not_owner).
+
+[[entry]]
+id = "ADD-code-projection-not-owner"
+facet = "refusal_codes"
+row_or_k = "MC-06"
+codes = ["projection.not_owner"]
+docs = []
+due_checkpoint = "CL-A2 (leaf L.CL-A2.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06: projection.{terminal_wait_exceeded, outside_window, not_owner, cancel_not_root}); plans/core.md L.CL-A2.2"
+
+# The core bundle's named additive diffs of the S0 goldens (keys/items/grows selectors, see the
+# L.P0-0d.20 schema comment above): one entry per change, attributed to its leaf.
+
+# L.CS-2.1 (MC-14): process_identity rows between `started` and `execution_ended`.
+# ledger_kinds: $.sequences.<state>[3..] (two process_identity rows inserted after `started`).
+
+[[entry]]
+id = "ADD-ledger-kind-process-identity"
+facet = "ledger_kinds"
+row_or_k = "MC-14"
+docs = []
+due_checkpoint = "CS-2 (leaf L.CS-2.1)"
+direction = "additive"
+items = [{ path = "$.sequences.*", value = "process_identity" }]
+authorized_by = "plans/core.md MC-14 (L.CS-2.1: the leader's process identity after spawn, every attributed descendant)"
+
+# L.CS-2.6 (MC-32): a group_stop row on every terminal path, and after recovery.
+# ledger_kinds: $.sequences.<state>[n] (group_stop before execution_ended / error_record).
+# fossil_projection: $.<state>.reader.after_recovery.kinds (group_stop on execution_ended,
+# finalized_no_terminal, started, straddle, torn_tail).
+
+[[entry]]
+id = "ADD-ledger-kind-group-stop"
+facet = "ledger_kinds"
+row_or_k = "MC-32"
+docs = []
+due_checkpoint = "CS-2 (leaf L.CS-2.6)"
+direction = "additive"
+items = [{ path = "$.sequences.*", value = "group_stop" }]
+authorized_by = "plans/core.md MC-32 (L.CS-2.6: GroupStop row on every terminal path)"
+
+[[entry]]
+id = "ADD-fossil-recovery-group-stop"
+facet = "fossil_projection"
+row_or_k = "MC-32"
+docs = []
+due_checkpoint = "CS-2 (leaves L.CS-2.4, L.CS-2.6)"
+direction = "additive"
+items = [{ path = "$.*.reader.after_recovery.kinds", value = "group_stop" }]
+authorized_by = "plans/core.md MC-32 (L.CS-2.6) and L.CS-2.4 (recovery takes B2-C11's branch and writes the stop row)"
+
+# L.CS-2.6 (MC-32): RunView.cleanup, the stop report's projection.
+# runview_shape: $.fields[13], $.frames.{succeeded,truncated_array,truncated_object}.cleanup.
+
+[[entry]]
+id = "ADD-runview-cleanup"
+facet = "runview_shape"
+row_or_k = "MC-32"
+docs = ["docs/agents.md"]
+due_checkpoint = "CS-2 (leaf L.CS-2.6)"
+direction = "additive"
+keys = ["$.frames.*.cleanup"]
+items = [{ path = "$.fields", value = ["cleanup", "CleanupView | None"] }]
+authorized_by = "plans/core.md MC-32 (L.CS-2.6: the cleanup projection on RunView)"
+
+# L.CS-3.2 (MC-15): the error_record ledger row is the sole failure authority.
+# ledger_kinds: $.sequences.<failing state>[n] (error_record before execution_ended).
+# fossil_projection: $.<state>.reader.after_recovery.kinds (error_record on admitted, created,
+# execution_ended, finalized_no_terminal, started, straddle, torn_tail).
+
+[[entry]]
+id = "ADD-ledger-kind-error-record"
+facet = "ledger_kinds"
+row_or_k = "MC-15"
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.2)"
+direction = "additive"
+items = [{ path = "$.sequences.*", value = "error_record" }]
+authorized_by = "plans/core.md MC-15 (L.CS-3.2: error_record ledger row is the sole authority; meta derived)"
+
+[[entry]]
+id = "ADD-fossil-recovery-error-record"
+facet = "fossil_projection"
+row_or_k = "MC-15"
+docs = []
+due_checkpoint = "CS-3 (leaf L.CS-3.2)"
+direction = "additive"
+items = [{ path = "$.*.reader.after_recovery.kinds", value = "error_record" }]
+authorized_by = "plans/core.md MC-15 (L.CS-3.2: recovery finalizes with an error_record row)"
+
+# L.CS-4.1 (MC-16): run(completion), an additive parameter of the `run` tool.
+# tools_list: $.tools[0].inputSchema.properties.completion; $.tools_bytes grows (4089 -> 4140),
+# bounded by WR-COMPAT-1's budget (test_goldens.py TOOLS_LIST_BUDGET_BYTES = 8192).
+
+[[entry]]
+id = "ADD-tools-list-run-completion"
+facet = "tools_list"
+row_or_k = "MC-16"
+docs = ["docs/agents.md", "docs/agent-console-mcp.md"]
+due_checkpoint = "CS-4 (leaf L.CS-4.1)"
+direction = "additive"
+keys = ["$.tools[0].inputSchema.properties.completion"]
+authorized_by = "plans/core.md MC-16 (L.CS-4.1: completion=\"terminal\"); WR-COMPAT-1:ten-tools-within-budget"
+
+[[entry]]
+id = "ADD-tools-list-bytes-growth"
+facet = "tools_list"
+row_or_k = "WR-COMPAT-1"
+docs = []
+due_checkpoint = "CS-4 (leaf L.CS-4.1)"
+direction = "additive"
+grows = [{ path = "$.tools_bytes", max = 8192 }]
+authorized_by = "plans/core.md L.CS-4.1 (an additive tool parameter grows tools/list); WR-COMPAT-1:ten-tools-within-budget"
+
+# L.CS-4.3 (MC-17): RunView.outcome, the six-class outcome.
+# runview_shape: $.fields[14], $.frames.{succeeded,truncated_array,truncated_object}.outcome.
+
+[[entry]]
+id = "ADD-runview-outcome"
+facet = "runview_shape"
+row_or_k = "MC-17"
+docs = ["docs/agents.md", "docs/agent-console-mcp.md"]
+due_checkpoint = "CS-4 (leaf L.CS-4.3)"
+direction = "additive"
+keys = ["$.frames.*.outcome"]
+items = [{ path = "$.fields", value = ["outcome", "dict[str, Any] | None"] }]
+authorized_by = "plans/core.md MC-17 (L.CS-4.3: outcome class for the six plain-plugin conditions); DM-03"
+
+# L.SV-3.6 (MC-21): U2 appends one stop_row (cause, lane committed length) when it sees a cancel or
+# the release point, before the group is stopped.
+# ledger_kinds: $.sequences.<state>[n] (stop_row before group_stop, on the cancelled and timed_out paths).
+[[entry]]
+id = "ADD-ledger-kind-stop-row"
+facet = "ledger_kinds"
+row_or_k = "MC-21"
+docs = ["docs/plugins.md", "docs/agents.md"]
+due_checkpoint = "SV-3 (leaf L.SV-3.6)"
+direction = "additive"
+items = [{ path = "$.sequences.*", value = "stop_row" }]
+authorized_by = "plans/a1-single-level.md L.SV-3.6 (B2-C15 StopRow; MC-21); plan-workflow-runtime.md:979 (ledger kind stop)"
+
+# L.SV-4.2 (B4-C6): the TerminalAnswer, one additive key on the run view (the run / await_runs
+# terminal response carries the same view), wire name `answer` (hld-wr-answer.md).
+# runview_shape: $.frames.*.answer on every terminal frame, and the RunView field list.
+[[entry]]
+id = "ADD-runview-answer"
+facet = "runview_shape"
+row_or_k = "MC-06"
+docs = ["docs/agents.md", "docs/agent-console-mcp.md"]
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+keys = ["$.frames.*.answer"]
+items = [{ path = "$.fields", value = ["answer", "dict[str, Any] | None"] }]
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed: the additive TerminalAnswer field on the terminal response and the run view, B4-C6); hld-wr-answer.md (wire name `answer`)"
+
+# L.CL-C1.4 (MC-18): run_provenance records the declared packages.
+# query_row_shapes: $.views.run_provenance.declared_fields[5],
+# $.views.run_provenance.observed.{failed,succeeded}.row_shape.packages.
+
+[[entry]]
+id = "ADD-run-provenance-packages"
+facet = "query_row_shapes"
+row_or_k = "MC-18"
+docs = []
+due_checkpoint = "CL-C1 (leaf L.CL-C1.4)"
+direction = "additive"
+keys = ["$.views.run_provenance.observed.*.row_shape.packages"]
+items = [{ path = "$.views.run_provenance.declared_fields", value = "packages" }]
+authorized_by = "plans/core.md MC-18 (L.CL-C1.4: identity digest full-shape; packages recorded); WR-PLAN-5:provenance-lists-imported-code"
+
+# L.SV-5.1 (MC-15, BFD-10): Context.event(kind, **fields), the plugin-authored event method.
+# context_surface: $.context.methods.event. The seeded ADD-context-event-method above carries no
+# selector and so excuses nothing; this entry names the one diff.
+
+[[entry]]
+id = "ADD-context-event-method-surface"
+facet = "context_surface"
+row_or_k = "BFD-10"
+docs = ["docs/plugins.md"]
+due_checkpoint = "SV-5 (leaf L.SV-5.1)"
+direction = "additive"
+keys = ["$.context.methods.event"]
+authorized_by = "plans/a1-single-level.md L.SV-5.1 (BFD-10: Context.event, additive); plan-workflow-runtime.md:979 (MC-06 seed)"
+
+# L.SV-2.3 (MC-34): a workflow plugin whose declared tree cannot be extracted is refused at
+# publication with its own code (B2-C1: never a partial declaration; no snapshot is promoted).
+
+[[entry]]
+id = "ADD-code-publication-declaration-invalid"
+facet = "refusal_codes"
+row_or_k = "B2-C1"
+codes = ["publication.declaration_invalid"]
+docs = []
+due_checkpoint = "SV-2 (leaf L.SV-2.3)"
+direction = "additive"
+authorized_by = "interfaces/interface-host-run-services.md B2-C1 (an extraction failure refuses publication with a stable code); plans/a1-single-level.md L.SV-2.3 (DM-16, V-11 closed)"
+
+# L.SV-2.4 (WR-OWN-8, B1-E1 D-b): a plugin importing a port module must declare env_arg, and a
+# workflow root's env_key_field must equal it; the refusal is publication.env_arg_missing.
+
+[[entry]]
+id = "ADD-code-publication-env-arg-missing"
+facet = "refusal_codes"
+row_or_k = "B1-E1"
+codes = ["publication.env_arg_missing"]
+docs = []
+due_checkpoint = "SV-2 (leaf L.SV-2.4)"
+direction = "additive"
+authorized_by = "interfaces/interface-work-unit.md B1-E1 (D-b: a root entry importing the environment or process ports names an env_key_field); plans/a1-single-level.md L.SV-2.4 (DM-16, V-11 closed)"
+
+# L.SV-4.2 (DM-16): the single-level node and publication codes (V-11; plans/a1-single-level.md L.SV-4.1's
+# closed set, re-exported by trestle/common/codes.py). One named entry per wire code.
+
+[[entry]]
+id = "ADD-code-execution-declaration-stale"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.declaration_stale"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-ticket-refused"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.ticket_refused"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-unit-raised"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.unit_raised"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-lane-unavailable"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.lane_unavailable"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-stop-seen"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.stop_seen"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-effect-unconfirmed"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.effect_unconfirmed"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-plan-precondition-uncovered"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.plan_precondition_uncovered"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-precondition-unsatisfied"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.precondition_unsatisfied"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-postcondition-timeout"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.postcondition_timeout"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-remedy-exhausted"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.remedy_exhausted"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-remedy-no-progress"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.remedy_no_progress"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-found-unhealthy"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.found_unhealthy"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-found-incompatible"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.found_incompatible"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-carve-exceeded"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.carve_exceeded"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-currency-unconfirmed"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.currency_unconfirmed"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-execution-vertex-unended"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.vertex_unended"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-plan-contract-missing"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.plan_contract_missing"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-safe-start-verb-invalid"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.safe_start_verb_invalid"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-facet-lifetime-mismatch"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.facet_lifetime_mismatch"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-release-timeout-missing"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.release_timeout_missing"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-max-attempts-invalid"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.max_attempts_invalid"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-release-effect-once"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.release_effect_once"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-flags-contradict-type"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.flags_contradict_type"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-recorded-with-remedies"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.recorded_with_remedies"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-owned-remedy-on-found"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.owned_remedy_on_found"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-publication-budget-exceeds-leaf"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.budget_exceeds_leaf"]
+docs = []
+due_checkpoint = "SV-4 (leaf L.SV-4.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names execution.* and publication.* additions); plans/a1-single-level.md L.SV-4.1/L.SV-4.2 (DM-16, A1c3-7)"
+
+[[entry]]
+id = "ADD-code-admission-plan-multi-vertex-unsupported"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.plan_multi_vertex_unsupported"]
+docs = []
+due_checkpoint = "SV-3 (leaf L.SV-3.5)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names admission.* additions); plans/a1-single-level.md L.SV-3.5 (DM-16, A1c3-7; DM-07 for plan_multi_vertex_unsupported)"
+
+[[entry]]
+id = "ADD-code-admission-bound-exceeded"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.bound_exceeded"]
+docs = []
+due_checkpoint = "SV-3 (leaf L.SV-3.5)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names admission.* additions); plans/a1-single-level.md L.SV-3.5 (DM-16, A1c3-7; DM-07 for plan_multi_vertex_unsupported)"
+
+[[entry]]
+id = "ADD-code-admission-unknown-identifier"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.unknown_identifier"]
+docs = []
+due_checkpoint = "SV-3 (leaf L.SV-3.5)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names admission.* additions); plans/a1-single-level.md L.SV-3.5 (DM-16, A1c3-7; DM-07 for plan_multi_vertex_unsupported)"
+
+[[entry]]
+id = "ADD-code-admission-unit-unresolved"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.unit_unresolved"]
+docs = []
+due_checkpoint = "SV-3 (leaf L.SV-3.5)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names admission.* additions); plans/a1-single-level.md L.SV-3.5 (DM-16, A1c3-7; DM-07 for plan_multi_vertex_unsupported)"
+
+[[entry]]
+id = "ADD-code-admission-dependency-cycle"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.dependency_cycle"]
+docs = []
+due_checkpoint = "SV-3 (leaf L.SV-3.5)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names admission.* additions); plans/a1-single-level.md L.SV-3.5 (DM-16, A1c3-7; DM-07 for plan_multi_vertex_unsupported)"
+
+[[entry]]
+id = "ADD-code-admission-declaration-conflict"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.declaration_conflict"]
+docs = []
+due_checkpoint = "SV-3 (leaf L.SV-3.5)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names admission.* additions); plans/a1-single-level.md L.SV-3.5 (DM-16, A1c3-7; DM-07 for plan_multi_vertex_unsupported)"
+
+[[entry]]
+id = "ADD-code-admission-lease-set-undecidable"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.lease_set_undecidable"]
+docs = []
+due_checkpoint = "SV-3 (leaf L.SV-3.5)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names admission.* additions); plans/a1-single-level.md L.SV-3.5 (DM-16, A1c3-7; DM-07 for plan_multi_vertex_unsupported)"
+
+[[entry]]
+id = "ADD-code-admission-route-unsupported"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.route_unsupported"]
+docs = []
+due_checkpoint = "SV-3 (leaf L.SV-3.5)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 names admission.* additions); plans/a1-single-level.md L.SV-3.5 (DM-16, A1c3-7; DM-07 for plan_multi_vertex_unsupported)"
+
+# L.SL-8.2: the environment lease's busy refusal (MC-06 seed; B2 ordering step 2).
+[[entry]]
+id = "ADD-code-admission-environment-busy"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.environment_busy"]
+docs = []
+due_checkpoint = "SL-8 (leaf L.SL-8.2)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seeds admission.environment_busy); plans/a1-single-level.md L.SL-8.2 (DM-16; U7-1 routes the V-11 row)"
+
+# L.TR-0.4 (V-11, MC-34): the whole-tree check that the declaration alone decides sits at publication,
+# so a defective tree is refused there (no snapshot promoted, no run id) with the publication spelling of
+# each code. Admission keeps its own spellings as V-11's defensive second reach (L.TR-1.1).
+
+[[entry]]
+id = "ADD-code-publication-unit-unresolved"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.unit_unresolved"]
+docs = []
+due_checkpoint = "TR-0 (leaf L.TR-0.4)"
+direction = "additive"
+authorized_by = "interfaces/00-shared-vocabulary.md V-11 UNIT_UNRESOLVED (publication); plans/a2-tree.md L.TR-0.4 (DM-16, F-3, AM-15)"
+
+[[entry]]
+id = "ADD-code-publication-dependency-cycle"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.dependency_cycle"]
+docs = []
+due_checkpoint = "TR-0 (leaf L.TR-0.4)"
+direction = "additive"
+authorized_by = "interfaces/00-shared-vocabulary.md V-11 DEPENDENCY_CYCLE (publication); plans/a2-tree.md L.TR-0.4 (DM-16, F-3, AM-15)"
+
+[[entry]]
+id = "ADD-code-publication-declaration-conflict"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.declaration_conflict"]
+docs = []
+due_checkpoint = "TR-0 (leaf L.TR-0.4)"
+direction = "additive"
+authorized_by = "interfaces/00-shared-vocabulary.md V-1.2 and V-11 DECLARATION_CONFLICT (literal parameters at publication); plans/a2-tree.md L.TR-0.4 (DM-16, F-3, AM-15)"
+
+[[entry]]
+id = "ADD-code-publication-plan-precondition-uncovered"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.plan_precondition_uncovered"]
+docs = []
+due_checkpoint = "TR-0 (leaf L.TR-0.4)"
+direction = "additive"
+authorized_by = "plans/a2-tree.md L.TR-0.4 (OQ-31 refuse_at_publication variant) and L.TR-1.5 (cross-node coverage) (DM-16, F-3, AM-15)"
+
+# L.TR-2.2 (MC-B3-08): a child view is a RunView with three more fields, emitted on child views only
+# (a root view's bytes are unchanged).
+# runview_shape: $.fields gains root_run_id, path, disposition.
+[[entry]]
+id = "ADD-runview-child-fields"
+facet = "runview_shape"
+row_or_k = "MC-B3-08"
+docs = []
+due_checkpoint = "TR-2 (leaf L.TR-2.2)"
+direction = "additive"
+items = [
+  { path = "$.fields", value = ["root_run_id", "str | None"] },
+  { path = "$.fields", value = ["path", "str | None"] },
+  { path = "$.fields", value = ["disposition", "str | None"] },
+]
+authorized_by = "plans/a2-tree.md L.TR-2.2 (V-1.3 child run view: root_run_id, path, disposition; MC-B3-08), MC-06 seed"
+
+# L.TR-2.5 (MC-B3-08, V-11): a cancel addressed to a child handle is refused (OQ-27 assumed default).
+[[entry]]
+id = "ADD-code-projection-cancel-not-root"
+facet = "refusal_codes"
+row_or_k = "MC-06"
+codes = ["projection.cancel_not_root"]
+docs = []
+due_checkpoint = "TR-2 (leaf L.TR-2.5)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06: projection.{terminal_wait_exceeded, outside_window, not_owner, cancel_not_root}); interfaces/00-shared-vocabulary.md V-11 CANCEL_NOT_ROOT; plans/a2-tree.md L.TR-2.5"
+
+# L.NW-2.3 (MC-B-12, DM-16, DM-48): the adapter half of Slice B's code set (V-11 codes, B3-E1),
+# defined in trestle/common/plan/vocabulary.py and re-exported by trestle/common/codes.py. One named
+# entry per wire code; ADD-adapter-environment-codes above is the seed's internal-facet marker.
+
+[[entry]]
+id = "ADD-code-docker-cli-missing"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["adapter.docker_cli_missing"]
+docs = []
+due_checkpoint = "NW-2 (leaf L.NW-2.3)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed names the adapter.* codes, DM-48); plans/b-slice-b.md L.NW-2.3 (MC-B-12, DM-16, V-11 closed)"
+
+[[entry]]
+id = "ADD-code-docker-engine-unreachable"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["adapter.docker_engine_unreachable"]
+docs = []
+due_checkpoint = "NW-2 (leaf L.NW-2.3)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed names the adapter.* codes, DM-48); plans/b-slice-b.md L.NW-2.3 (MC-B-12, DM-16, V-11 closed)"
+
+[[entry]]
+id = "ADD-code-toolchain-missing"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.toolchain_missing"]
+docs = []
+due_checkpoint = "NW-2 (leaf L.NW-2.3)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed names the adapter.* codes, DM-48); plans/b-slice-b.md L.NW-2.3 (MC-B-12, DM-16, V-11 closed)"
+
+[[entry]]
+id = "ADD-code-toolchain-interface-drift"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["adapter.toolchain_interface_drift"]
+docs = []
+due_checkpoint = "NW-2 (leaf L.NW-2.3)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed names the adapter.* codes, DM-48); plans/b-slice-b.md L.NW-2.3 (MC-B-12, DM-16, V-11 closed)"
+
+[[entry]]
+id = "ADD-code-compose-definition-invalid"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["adapter.compose_definition_invalid"]
+docs = []
+due_checkpoint = "NW-2 (leaf L.NW-2.3)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed names the adapter.* codes, DM-48); plans/b-slice-b.md L.NW-2.3 (MC-B-12, DM-16, V-11 closed)"
+
+[[entry]]
+id = "ADD-code-credential-interactive"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.credential_interactive"]
+docs = []
+due_checkpoint = "NW-2 (leaf L.NW-2.3)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed names the adapter.* codes, DM-48); plans/b-slice-b.md L.NW-2.3 (MC-B-12, DM-16, V-11 closed)"
+
+[[entry]]
+id = "ADD-code-grant-issuer-unreachable"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["adapter.grant_issuer_unreachable"]
+docs = []
+due_checkpoint = "NW-2 (leaf L.NW-2.3)"
+direction = "additive"
+authorized_by = "plan-workflow-runtime.md:979 (MC-06 seed names the adapter.* codes, DM-48); plans/b-slice-b.md L.NW-2.3 (MC-B-12, DM-16, V-11 closed)"
+
+# L.RB-6.3.fix1 (V-11 gap, plans/b-slice-b.md L.RB-6.1 return): the provisioning store's unreadable
+# code. V-11 names no code for "the authoritative record store did not answer"; the adapter half
+# gains the one, spelled as DM-16 spells the others.
+
+[[entry]]
+id = "ADD-code-provision-store-unreadable"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["adapter.provision_store_unreadable"]
+docs = []
+due_checkpoint = "RB-6 (leaf L.RB-6.3)"
+direction = "additive"
+authorized_by = "plans/b-slice-b.md L.RB-6.1/L.RB-6.3 (B3-C21 Provisioning; B3-E1: a store failure is a stable code, V-3.8: never absent); B-SINGLES-RETURN plan gap 3 (V-11 has no code for an authoritative store that did not answer)"
+
+# L.RB-9.3.fix1 (V-11 `HOST_SCOPE_UNREADABLE`, B3-C18, V-9.7): the host-scope port's unreadable-subject
+# code, spelled as DM-16 spells the adapter codes. The credential gate (RB-9.3, RB-9.4) reads the demo
+# credential's current generation through it; no earlier leaf defined it (B-GRANT plan gap 1).
+
+[[entry]]
+id = "ADD-code-host-scope-unreadable"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["adapter.host_scope_unreadable"]
+docs = []
+due_checkpoint = "RB-9 (leaf L.RB-9.3)"
+direction = "additive"
+authorized_by = "interfaces/00-shared-vocabulary.md V-11 HOST_SCOPE_UNREADABLE (CB-8; B3-C18 HostScopeUnreadable, V-9.7); plans/b-slice-b.md L.RB-9.3/L.RB-9.4; B-GRANT-RETURN plan gap 1"

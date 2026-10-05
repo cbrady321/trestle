@@ -1,0 +1,891 @@
+"""The reference environment tree, declared as data (MC-B-04; L.RB-0.2, L.RB-2.1; WR-ENV-10).
+
+`ENTRY` is the `WorkflowEntry` the `reference_env` plugin (plugins/reference_env.py) binds: a root
+all-of declaration `reference_env` over two leaves whose realization is a Docker service. Each is
+ready only when its own declared check passes, read through `ResourceReads.check`:
+`backend.http_support` when its declared endpoint answers its declared response, and
+`backend.postgres`, which needs it, when an authenticated `SELECT 1` succeeds. Composites are data
+and the loop belongs to the workflow package (hld-wr-environment KDD 4): nothing here selects,
+orders or retries; the units only observe and issue the effects they declare, and the `needs`
+edge is the loop's gate (WR-VERIFY-2): a dependent starts only after its dependency's readiness
+pass, never after a sleep or an open port.
+
+* The environment key is the request's `env` argument, the Compose project name; the root declares
+  it as `env_key_field` and the host compares it only as opaque bytes (KDD 1).
+* Readiness is never a sleep, a port being open or `pg_isready` (KDD 2). `POSTGRES_READINESS` is
+  the authenticated call: `psql` over TCP to the container's OWN non-loopback address. The official
+  image's `initdb` trusts local sockets and 127.0.0.1/::1 without a password and only its appended
+  `host all all all scram-sha-256` line demands one, so a loopback or socket check would pass
+  with a wrong password; the fixture never sets `POSTGRES_HOST_AUTH_METHOD`. The password travels
+  in the exec environment (`PGPASSWORD`), never in the argv. Whether authentication really happens
+  is proven at HOST by L.RB-0.4's planted wrong-password case; here only the argv shape is data.
+* The unit names the logical service, never a container: the run-scoped selector
+  `trwr-<root run_id>-<path>` comes from the port (MC-B-01) and the created container is released
+  through the `ArgvRelease` descriptor the port records with the create ticket.
+
+This module imports the standard library and `trestle.workflow` only (root C.5 step 4): a concrete
+adapter is bound by the composition root (`plugins/reference_env.py`), never here.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import os
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from datetime import timedelta
+from pathlib import Path
+from typing import Any, Final
+
+from trestle.workflow import (
+    AllDeclaration,
+    ArgBinding,
+    ChildBinding,
+    ChoiceNode,
+    CompletionSource,
+    Compose,
+    EffectDeclaration,
+    EffectFacetClass,
+    HostScopeRef,
+    LeafDeclaration,
+    Lifetime,
+    LoopFlags,
+    RealizationKind,
+    RemedyDeclaration,
+    Repeat,
+    WaitPolicy,
+    WorkflowEntry,
+)
+from trestle.workflow.codes import CREDENTIAL_LIFETIME_INSUFFICIENT, POSTCONDITION_TIMEOUT
+from trestle.workflow.ports import (
+    BoundCommand,
+    ExecutionPort,
+    GrantReads,
+    GrantRefresh,
+    Resolved,
+    ResourceCreate,
+    ResourceOwned,
+    ResourceReads,
+    ResourceSpec,
+    ToolchainResolver,
+    Unresolved,
+)
+from trestle.workflow.units import (
+    ActContext,
+    Acted,
+    Blocked,
+    EffectFacets,
+    ObserveContext,
+    ReadFacets,
+    Step,
+)
+from trestle.workflow.values import (
+    CheckResult,
+    CreatedHandle,
+    CurrencyFact,
+    Observation,
+    Resend,
+    Verdict,
+)
+
+from trestle_env import realization
+from trestle_env.catalog import Catalog, load_reference
+from trestle_env.catalog.model import Project, TaskEntry, TestSpec
+from trestle_env.schema import ENV_ARG, OVERRIDES_ARG, SERVICES_ARG, TESTS_ARG
+
+ROOT_UNIT: Final = "reference_env"
+POSTGRES_UNIT: Final = "backend.postgres"
+POSTGRES_SERVICE: Final = "postgres"  # the catalog identifier and the logical system
+POSTGRES_ROLE: Final = "postgres"  # the MC-B-10 image role the composition root resolves
+HTTP_SUPPORT_UNIT: Final = "backend.http_support"
+HTTP_SUPPORT_SERVICE: Final = "http_support"
+HTTP_SUPPORT_ROLE: Final = "http_support"
+HTTP_SUPPORT_PATH: Final = "http_support/backend.http_support"  # its Docker alternative's path
+SERVICES_SET: Final = "services"  # the declared identifier sets the request arguments name
+TESTS_SET: Final = "tests"
+OVERRIDES_SET: Final = "overrides"
+
+# Declared effects of a Docker-service leaf (V-14): one run-lifetime create and its owned release.
+UP: Final = "up"
+STOP: Final = "stop"
+
+# The fixture Postgres identity. Fixture values for the proof stack only (never a real credential:
+# the container is created with them and destroyed with the run).
+POSTGRES_USER: Final = "trestle"
+POSTGRES_DATABASE: Final = "trestle"
+POSTGRES_FIXTURE_PASSWORD: Final = "trestle-fixture-password"
+
+# Declared timings, in seconds. The wait is the readiness stage's own budget (hld-wr-environment
+# Provisioning & System Test: a stage that never passes ends at its declared wait); the leaf budget
+# holds the wait plus the release timeout (B2-C5); every level leaves the reserve the carve
+# demands, the root budget holds the longest `needs` chain of leaf budgets (the two backends in
+# their catalog order, then provisioning and a test), and the plugin's deadline holds the root
+# budget plus the release slice. The release
+# timeout bounds each descriptor command (observe, stop, remove) and is small on purpose: admission
+# refuses a root whose worst-case finalization, `grace + kill + 5 * release_timeout` per release
+# rank (B2-C2 (5)), exceeds the operator's finalization margin (35 s by default), so every rank of
+# create-run effects a tree declares costs `5 * RELEASE_TIMEOUT_S` of that margin.
+DEADLINE_S: Final = 160
+ROOT_BUDGET_S: Final = 140
+LEAF_BUDGET_S: Final = 40
+READY_POLL_S: Final = 1
+READY_WAIT_S: Final = 30
+# The work nodes after readiness (the provisioning submit, a test's task) have their own, shorter
+# budget: the root budget holds the longest `needs` chain, backend -> provision -> test.
+STAGE_BUDGET_S: Final = 20
+STAGE_WAIT_S: Final = 10
+RELEASE_TIMEOUT_S: Final = 2
+CONCURRENCY: Final = 2
+# A service with a catalog override is a CHOICE between its Docker leaf and each override's local
+# leaf (V-7). The local leaf waits less than a container (a local process starts in well under a
+# second) so its owned-restart remedy fits the leaf budget: wait + remedy total + release
+# = 10 + 15 + 2 = 27 <= LEAF_BUDGET_S. The CHOICE's budget is its largest alternative plus the
+# carve's finalization reserve (40 + 10).
+LOCAL_READY_WAIT_S: Final = 10
+RESTART: Final = "restart"  # the local leaf's owned repair: one restart of its own process
+RESTART_TOTAL_S: Final = 15  # the remedy's own bound (V-14)
+CHOICE_BUDGET_S: Final = 50
+CHOICE_SUFFIX: Final = ".choice"  # a service's CHOICE unit is `<service id>.choice`
+
+
+@dataclass(frozen=True)
+class ExecReadiness:
+    """A readiness check run inside the container by `docker exec` (exit 0 satisfies it).
+
+    Data only: the composition root binds it to the container adapter's exec-check registry. The
+    `environment` values are passed to the exec, never placed in `argv`."""
+
+    check: str
+    argv: tuple[str, ...]
+    environment: Mapping[str, str] = field(default_factory=dict)
+
+
+POSTGRES_READY: Final = "postgres_ready"
+
+POSTGRES_READINESS: Final = ExecReadiness(
+    check=POSTGRES_READY,
+    argv=(
+        "sh",
+        "-c",
+        'exec psql -h "$(hostname -i | cut -d" " -f1)"'
+        f' -U {POSTGRES_USER} -d {POSTGRES_DATABASE} -tAc "SELECT 1"',
+    ),
+    environment={"PGPASSWORD": POSTGRES_FIXTURE_PASSWORD},
+)
+"""The authenticated call that makes Postgres ready (KDD 2)."""
+
+READINESS: Final[Mapping[str, ExecReadiness]] = {POSTGRES_READY: POSTGRES_READINESS}
+"""Every exec readiness check the tree declares, by check id."""
+
+# Reuse proof (WR-OWN-7, KDD 3): a found Postgres is reused only on PROVEN identity and
+# configuration, and only when it is ready. Both proofs are read from inside the found container
+# and need no running server, so a container whose server is down still has its identity proven
+# (and is then unhealthy, not foreign):
+#   identity      - it was created for the reference stack: the fixture role and database in its
+#                   own environment (the values the run itself creates its container with);
+#   configuration - it runs the Postgres major version the reference image pins.
+POSTGRES_IDENTITY: Final = "postgres_identity"
+POSTGRES_CONFIGURATION: Final = "postgres_configuration"
+POSTGRES_MAJOR: Final = 16
+
+POSTGRES_IDENTITY_PROOF: Final = ExecReadiness(
+    check=POSTGRES_IDENTITY,
+    argv=(
+        "sh",
+        "-c",
+        f'test "$POSTGRES_USER" = {POSTGRES_USER} && test "$POSTGRES_DB" = {POSTGRES_DATABASE}',
+    ),
+)
+POSTGRES_CONFIGURATION_PROOF: Final = ExecReadiness(
+    check=POSTGRES_CONFIGURATION,
+    argv=("sh", "-c", f'postgres --version | grep -q "(PostgreSQL) {POSTGRES_MAJOR}\\."'),
+)
+
+EXEC_CHECKS: Final[Mapping[str, ExecReadiness]] = {
+    **READINESS,
+    POSTGRES_IDENTITY: POSTGRES_IDENTITY_PROOF,
+    POSTGRES_CONFIGURATION: POSTGRES_CONFIGURATION_PROOF,
+}
+"""Every exec check the tree declares (readiness and reuse proof), bound by the composition root."""
+
+
+@dataclass(frozen=True)
+class ReuseProof:
+    """The checks that prove a FOUND resource is this service's: its identity and its
+    configuration (check ids, read from inside the found resource). Declared by a unit that
+    may reuse what it finds; a unit that declares none never does (a found resource is then
+    incompatible, WR-OWN-7)."""
+
+    identity: str
+    configuration: str
+
+
+POSTGRES_REUSE: Final = ReuseProof(POSTGRES_IDENTITY, POSTGRES_CONFIGURATION)
+
+
+@dataclass(frozen=True)
+class HttpReadiness:
+    """A readiness contract over HTTP: a GET of `path` on the service's host-reachable endpoint
+    answers `status` with exactly `body`. The service is ready when, and only when, the declared
+    response comes back; a refused connection, another status or another body is not ready yet.
+
+    Data only: the composition root binds it to a read facet that makes the request (the unit
+    itself starts nothing and opens no socket)."""
+
+    check: str
+    path: str
+    status: int
+    body: str
+
+
+HTTP_SUPPORT_READY: Final = "http_support_ready"
+
+HTTP_SUPPORT_READINESS: Final = HttpReadiness(HTTP_SUPPORT_READY, "/health", 200, "ok")
+"""The declared endpoint and response that make the supporting service ready."""
+
+HTTP_READINESS: Final[Mapping[str, HttpReadiness]] = {HTTP_SUPPORT_READY: HTTP_SUPPORT_READINESS}
+"""Every HTTP readiness contract the tree declares, by check id."""
+
+
+# The two engine conditions a Docker leaf cannot go past (V-3.8: the port could not observe). They
+# are the container adapter's codes, spelled as its engine module spells them (this module may
+# not import an adapter; a test pins the spellings together), and each ends the node BLOCKED with
+# the code in a `Blocked` step (B4-T2 row 9), never `failed`: nothing was wrong with what the node
+# was asked to do, the machine cannot yet answer.
+DOCKER_CLI_MISSING: Final = "adapter.docker_cli_missing"
+DOCKER_ENGINE_UNREACHABLE: Final = "adapter.docker_engine_unreachable"
+ENGINE_BLOCKS: Final[Mapping[str, str]] = {
+    DOCKER_ENGINE_UNREACHABLE: (
+        "Start the Docker engine, or name the endpoint it answers on, so {stage} can be "
+        "read; then re-send."
+    ),
+    DOCKER_CLI_MISSING: (
+        "Install the Docker CLI at the operator's configured path so {stage} can be "
+        "read; then re-send."
+    ),
+}
+
+RESOURCE_KINDS: Final[Mapping[RealizationKind, str]] = {
+    RealizationKind.DOCKER_SERVICE: "docker_container",
+    RealizationKind.AGENT_LAUNCHED_PROJECT: "local_process",
+}
+"""The resource kind a leaf declares for the realization its spec names (V-14 `resource_kind`)."""
+
+
+class ServiceUnit:
+    """A leaf whose one resource is created by this run, ready when its declared readiness check
+    passes, and released (stopped and removed, never a volume) with the run.
+
+    One instance serves one logical service; it holds no state (the record is the loop's). The
+    resource is a Docker service by default; a proof of the readiness contract on a local process
+    gives the same unit an agent-launched spec, so the contract is the unit's and the realization
+    is the port's."""
+
+    wait_s: int = READY_WAIT_S  # the readiness wait (a local realization's is shorter)
+
+    def __init__(
+        self,
+        unit: str,
+        service: str,
+        readiness: str,
+        spec: ResourceSpec | None = None,
+        reuse: ReuseProof | None = None,
+    ) -> None:
+        self._unit = unit
+        self._readiness = readiness
+        self._reuse = reuse
+        # the entry is the catalog identifier the port maps to the container definition
+        self._spec = (
+            spec
+            if spec is not None
+            else ResourceSpec(service, RealizationKind.DOCKER_SERVICE, service, None)
+        )
+
+    def declare(self) -> LeafDeclaration:
+        kind = RESOURCE_KINDS[self._spec.realization]
+        return LeafDeclaration(
+            unit=self._unit,
+            flags=LoopFlags(Compose.LEAF, CompletionSource.OBSERVED, Repeat.SAFE),
+            preconditions=(),
+            postcondition=self._readiness,
+            wait=WaitPolicy(timedelta(seconds=READY_POLL_S), 1.0, timedelta(seconds=self.wait_s)),
+            resource_kind=kind,
+            may_touch=frozenset({kind}),
+            effects=(
+                EffectDeclaration(
+                    UP,
+                    EffectFacetClass.CREATE,
+                    "",
+                    Lifetime.RUN,
+                    frozenset(),
+                    timedelta(seconds=RELEASE_TIMEOUT_S),
+                ),
+                EffectDeclaration(
+                    STOP,
+                    EffectFacetClass.OWNED,
+                    "",
+                    Lifetime.RUN,
+                    frozenset(),
+                    timedelta(seconds=RELEASE_TIMEOUT_S),
+                    is_release=True,
+                ),
+            ),
+            retryable=frozenset(),
+            remedies=(),
+            budget=timedelta(seconds=LEAF_BUDGET_S),
+            max_attempts=1,
+        )
+
+    def observe(self, params: Any, reads: ReadFacets, ctx: ObserveContext) -> Observation:
+        resource = reads.read(ResourceReads)
+        seen = resource.observe(self._spec, ctx.lineage, UP)
+        ready = CheckResult(False, None, "")
+        code = seen.code
+        identity, configuration = seen.identity_proven, seen.configuration_compatible
+        if seen.selector_ref is not None and code is None:
+            # the authoritative observation: the declared authenticated call, never a convenience
+            # read that can lag behind the write (KDD 2)
+            ready = resource.check(self._readiness, seen.selector_ref)
+            code = ready.code
+        elif seen.found and code is None and self._reuse is not None:
+            # a found resource of this service: reused only on proven identity and configuration,
+            # and only when its own readiness passes; the proofs are read, never assumed. It is
+            # never created over, stopped, adopted or released (V-4.2).
+            found = seen.found[0]
+            proofs = (
+                resource.check(self._reuse.identity, found),
+                resource.check(self._reuse.configuration, found),
+                resource.check(self._readiness, found),
+            )
+            code = next((c.code for c in proofs if c.code is not None), None)
+            identity, configuration, ready = (
+                proofs[0].satisfied,
+                proofs[1].satisfied,
+                proofs[2],
+            )
+        return Observation(
+            present=seen.selector_present or bool(seen.found),
+            selector_present=seen.selector_present,
+            identity_proven=identity,
+            configuration_compatible=configuration,
+            postcondition=ready,
+            preconditions=(),
+            currency=seen.currency,
+            found=tuple(seen.found),
+            code=code,
+            payload=None,
+        )
+
+    def advance(self, params: Any, state: Verdict, effects: EffectFacets, ctx: ActContext) -> Step:
+        seen = effects.read(ResourceReads).observe(self._spec, ctx.lineage, UP)
+        if seen.code in ENGINE_BLOCKS:
+            # the engine cannot be read at all (a missing CLI and an unreachable engine are
+            # different codes, WR-VERIFY-3): block with the code and human action, create nothing
+            stage = f"{self._unit} ({self._spec.logical_system})"
+            return Blocked(
+                seen.code,
+                ENGINE_BLOCKS[seen.code].format(stage=stage),
+                Resend.SUCCEEDS_AFTER_ACTION,
+            )
+        effects.create(ResourceCreate).create(self._spec, UP)
+        return Acted()
+
+    def release(self, params: Any, handle: CreatedHandle, effects: Any, ctx: ActContext) -> Step:
+        effects.owned(ResourceOwned).stop(handle, STOP)
+        return Acted()
+
+
+LOCAL_BLOCKS: Final[Mapping[str, str]] = {
+    "environment.repository_missing": (
+        "Check out the repository of {stage}'s project at the directory the operator configured "
+        "(TRESTLE_ENV_PROJECT_DIRS), then re-send: the override runs from it and never falls "
+        "back to Docker."
+    ),
+}
+LOCAL_BLOCK_DEFAULT: Final = (
+    "Make the toolchain {stage} pins resolvable on this machine (the operator's mise, "
+    "TRESTLE_MISE_PATH), then re-send: the override never falls back to Docker."
+)
+
+
+class LocalServiceUnit(ServiceUnit):
+    """A catalog override: the service's readiness contract (WR-ENV-2: one readiness per CHOICE)
+    over an agent-launched project, a local process this run launches (L.RB-8.2).
+
+    The unit holds no per-run state: its spec names the override (`entry`) with no command, and the
+    composition root's local router binds the command for the run (`plugins._local.LocalOverrides`,
+    the operator's project directory and toolchain). An override that cannot be bound is a
+    could-not-observe reading carrying the bind code: the node reports nothing present and `advance`
+    blocks with that code and its human action, before any effect. It never falls back to Docker:
+    admission already pinned the CHOICE to it.
+
+    Owned restart (decision C, L.RB-8.3; WR-ENV-7): the local leaf alone declares one `restart`
+    of its own handle as the remedy for `POSTCONDITION_TIMEOUT`, once. A process this run launched
+    that died (J-23) or never got ready (J-20) is restarted on the same handle, never recreated;
+    a restart that does not help ends `REMEDY_EXHAUSTED` (J-3). A Docker leaf declares no remedy,
+    so no Docker outcome changes. Stage budget: wait + remedy total + release = 10 + 15 + 2."""
+
+    wait_s = LOCAL_READY_WAIT_S
+
+    def __init__(self, override: str, service: str, readiness: str) -> None:
+        super().__init__(
+            override,
+            service,
+            readiness,
+            ResourceSpec(service, RealizationKind.AGENT_LAUNCHED_PROJECT, override, None),
+        )
+
+    def declare(self) -> LeafDeclaration:
+        base = super().declare()
+        release = timedelta(seconds=RELEASE_TIMEOUT_S)
+        restart = EffectDeclaration(
+            RESTART, EffectFacetClass.OWNED, "", Lifetime.RUN, frozenset(), release
+        )
+        remedy = RemedyDeclaration(
+            POSTCONDITION_TIMEOUT, RESTART, 1, timedelta(seconds=RESTART_TOTAL_S), timedelta(0)
+        )
+        return dataclasses.replace(base, effects=(*base.effects, restart), remedies=(remedy,))
+
+    def advance(self, params: Any, state: Verdict, effects: EffectFacets, ctx: ActContext) -> Step:
+        if state.remedy is not None and state.owned:
+            # the repair is one `restart` of the run's own handle: never a new create, never a
+            # signal to a process this run does not hold
+            effects.owned(ResourceOwned).restart(state.owned[-1], state.remedy.effect)
+            return Acted()
+        seen = effects.read(ResourceReads).observe(self._spec, ctx.lineage, UP)
+        if seen.code is not None:
+            stage = f"{self._unit} ({self._spec.logical_system})"
+            text = LOCAL_BLOCKS.get(seen.code, LOCAL_BLOCK_DEFAULT)
+            return Blocked(seen.code, text.format(stage=stage), Resend.SUCCEEDS_AFTER_ACTION)
+        effects.create(ResourceCreate).create(self._spec, UP)
+        return Acted()
+
+
+def choice_unit_name(service: str) -> str:
+    return f"{service}{CHOICE_SUFFIX}"
+
+
+CATALOG_ENV: Final = "TRESTLE_ENV_CATALOG"
+
+
+def configured_catalog(environ: Mapping[str, str]) -> Catalog:
+    """The trusted catalog: the operator's (`TRESTLE_ENV_CATALOG`, an absolute path to a catalog
+    file) or the reference one that ships with the package. The catalog is the operator's data, so
+    which tests exist, and so which test nodes the tree has, is the operator's to configure."""
+    named = environ.get(CATALOG_ENV)
+    if not named:
+        return load_reference()
+    if not os.path.isabs(named):
+        raise ValueError(f"{CATALOG_ENV} must be an absolute path, got {named!r}")
+    return Catalog.load(Path(named))
+
+
+CATALOG: Final[Catalog] = configured_catalog(os.environ)
+"""The trusted catalog the tree's identifier sets and test nodes are drawn from."""
+
+TASK_PREFIX: Final = "test"  # a catalog test's node is `test.<test id>` (stages.py: the test stage)
+TASK: Final = "task"  # the declared effect: one run of the allowlisted task
+NOTHING: Final = ""  # the `BoundCommand.task` of "no test was requested": a run of nothing
+FAILING_EVIDENCE: Final = "test.failing"  # the evidence event that names a failed run's test ids
+
+
+def task_unit_name(test_id: str) -> str:
+    return f"{TASK_PREFIX}.{test_id}"
+
+
+PROVISION_UNIT: Final = "provision.postgres"
+PROVISION_SERVICE: Final = "postgres"  # the logical system whose record is provisioned
+PROVISION_ENTRY: Final = "reference-fixture"  # the catalog entry the store maps to its payload
+PROVISION_PAYLOAD: Final = "fixture-record"
+SUBMIT: Final = "submit"
+PROVISIONED: Final = "provisioned"  # the postcondition: the authoritative probe sees the record
+
+
+class ProvisionUnit:
+    """Provision the environment's fixture record exactly once (L.RB-6.2; WR-ENV-4, B3.3).
+
+    The submit is `ResourceCreate.create` of a `PROVISIONED` resource and NOT safe to resubmit
+    (`Repeat.ONCE`): once a ticket is issued the node never issues another, whatever a read says.
+    Completion is observed through the AUTHORITATIVE probe only (`ResourceReads.observe`, a
+    read-only authenticated query of the record store): a submit the port ACCEPTED is not the
+    record being there, so the node converges (polls, within its declared wait) until the probe
+    sees it, and a lagging convenience read (`check`) is never consulted. A record of the same
+    system already in the store under another key (an earlier equivalent run's) is reused: no
+    submit is issued for it. The record is durable (`Durable(ENVIRONMENT)`): no run releases it."""
+
+    def __init__(self) -> None:
+        self._spec = ResourceSpec(
+            PROVISION_SERVICE, RealizationKind.PROVISIONED, PROVISION_ENTRY, None
+        )
+
+    def declare(self) -> LeafDeclaration:
+        return LeafDeclaration(
+            unit=PROVISION_UNIT,
+            flags=LoopFlags(Compose.LEAF, CompletionSource.OBSERVED, Repeat.ONCE),
+            preconditions=(),
+            postcondition=PROVISIONED,
+            wait=WaitPolicy(timedelta(seconds=READY_POLL_S), 1.0, timedelta(seconds=STAGE_WAIT_S)),
+            resource_kind="postgres_record",
+            may_touch=frozenset({"postgres_record"}),
+            effects=(
+                EffectDeclaration(
+                    SUBMIT, EffectFacetClass.CREATE, "", Lifetime.DURABLE, frozenset(), None
+                ),
+            ),
+            retryable=frozenset(),
+            remedies=(),
+            budget=timedelta(seconds=STAGE_BUDGET_S),
+            max_attempts=1,
+        )
+
+    def observe(self, params: Any, reads: ReadFacets, ctx: ObserveContext) -> Observation:
+        seen = reads.read(ResourceReads).observe(self._spec, ctx.lineage, SUBMIT)
+        recorded = seen.selector_present or bool(seen.found)
+        return Observation(
+            present=recorded,
+            selector_present=seen.selector_present,
+            # a found record was selected by the system it names: it is this service's record
+            identity_proven=seen.identity_proven or bool(seen.found),
+            configuration_compatible=True,
+            postcondition=CheckResult(recorded and seen.code is None, seen.code, ""),
+            preconditions=(),
+            currency=(),
+            found=tuple(seen.found),
+            code=seen.code,
+            payload=None,
+        )
+
+    def advance(self, params: Any, state: Verdict, effects: EffectFacets, ctx: ActContext) -> Step:
+        effects.create(ResourceCreate).create(self._spec, SUBMIT)
+        return Acted()
+
+    def release(self, params: Any, handle: CreatedHandle, effects: Any, ctx: ActContext) -> Step:
+        raise AssertionError("a durable record is never released by a run")
+
+
+CREDENTIAL_UNIT: Final = "credential.demo"
+CREDENTIAL_KIND: Final = "demo_credential"
+CREDENTIAL_CURRENT: Final = "credential_current"  # the postcondition: a usable credential
+REFRESH: Final = "refresh"
+# The one grant condition a credential leaf cannot go past on its own (V-3.8: the issuer could not
+# be read). It is the grant adapter's code, spelled as its module spells it; a test pins them.
+GRANT_ISSUER_UNREACHABLE: Final = "adapter.grant_issuer_unreachable"
+ISSUER_BLOCK: Final = (
+    "Start the demo credential issuer, or name the endpoint it answers on, so {stage} can be "
+    "read; then re-send."
+)
+
+
+class CredentialUnit:
+    """The demo-credential precondition every dependent of the environment waits for (L.RB-9.3;
+    WR-ENV-8, WR-ENV-14, B3-C8, B3-C11; D-9: the demo issuer only, never a real identity).
+
+    The unit states the domain's policy and issues one effect: a SAFE_START `refresh` of the host
+    grant through `GrantRefresh`. Everything else is the join's:
+
+    * An identity that needs interactive sign-in is not usable: the node is unsatisfied, the
+      refresh comes back `NOT_APPLIED(CREDENTIAL_INTERACTIVE)` carrying the identity's name, and
+      the join ends the node `BLOCKED` with V-11.1's human action and re-send
+      `SUCCEEDS_AFTER_ACTION` (J-5a), so no dependent starts (they `need` this node).
+    * A usable credential reports its expiry as a currency fact. The join compares it with the
+      ROOT deadline plus the finalization margin, never a slice (J-25, WR-ENV-14): a shorter
+      lifetime gets the declared remedy, one `refresh`, first; one still short after it ends
+      `CREDENTIAL_LIFETIME_INSUFFICIENT` (J-25a, class EXHAUSTED, answered `BLOCKED`).
+
+    Only identity, expiry and generation are ever read or recorded (WR-EVID-12): the grant port has
+    no way to return a secret."""
+
+    def declare(self) -> LeafDeclaration:
+        return LeafDeclaration(
+            unit=CREDENTIAL_UNIT,
+            flags=LoopFlags(Compose.LEAF, CompletionSource.OBSERVED, Repeat.SAFE),
+            preconditions=(),
+            postcondition=CREDENTIAL_CURRENT,
+            wait=WaitPolicy(timedelta(seconds=READY_POLL_S), 1.0, timedelta(seconds=STAGE_WAIT_S)),
+            resource_kind=CREDENTIAL_KIND,
+            may_touch=frozenset({CREDENTIAL_KIND}),
+            effects=(
+                EffectDeclaration(
+                    REFRESH,
+                    EffectFacetClass.SAFE_START,
+                    "",
+                    Lifetime.DURABLE,
+                    frozenset({HostScopeRef.DEMO_CREDENTIAL}),
+                    None,
+                ),
+            ),
+            retryable=frozenset(),
+            remedies=(
+                RemedyDeclaration(
+                    CREDENTIAL_LIFETIME_INSUFFICIENT,
+                    REFRESH,
+                    1,
+                    timedelta(seconds=STAGE_WAIT_S),
+                    timedelta(0),
+                ),
+            ),
+            budget=timedelta(seconds=STAGE_BUDGET_S),
+            max_attempts=1,
+        )
+
+    def observe(self, params: Any, reads: ReadFacets, ctx: ObserveContext) -> Observation:
+        grant = reads.read(GrantReads).observe_host()
+        if grant.code is not None:  # the issuer cannot be read: nothing else in it means anything
+            return Observation(
+                False,
+                False,
+                False,
+                True,
+                CheckResult(False, grant.code, ""),
+                (),
+                (),
+                (),
+                grant.code,
+                None,
+            )
+        usable = not grant.interactive_required
+        fact = CurrencyFact(HostScopeRef.DEMO_CREDENTIAL, grant.generation, grant.expires_at)
+        return Observation(
+            present=usable,
+            selector_present=False,
+            identity_proven=True,
+            configuration_compatible=True,
+            postcondition=CheckResult(usable, None, ""),
+            preconditions=(),
+            currency=(fact,) if usable else (),
+            found=(),
+            code=None,
+            payload=None,
+        )
+
+    def advance(self, params: Any, state: Verdict, effects: EffectFacets, ctx: ActContext) -> Step:
+        grant = effects.read(GrantReads).observe_host()
+        if grant.code == GRANT_ISSUER_UNREACHABLE:
+            stage = f"{CREDENTIAL_UNIT} (demo credential)"
+            return Blocked(
+                grant.code, ISSUER_BLOCK.format(stage=stage), Resend.SUCCEEDS_AFTER_ACTION
+            )
+        effects.safe_start(GrantRefresh).refresh(grant.found, REFRESH)
+        return Acted()
+
+    def release(self, params: Any, handle: CreatedHandle, effects: Any, ctx: ActContext) -> Step:
+        raise AssertionError("a refresh of the host grant creates nothing to release")
+
+
+class TaskUnit:
+    """The toolchain leg for one catalog test: run its project's allowlisted task once, when the
+    request names the test, through the `ExecutionPort` (L.RB-4.5; B3-C14, WR-ENV-3, WR-ENV-15).
+
+    The task is the catalog's data: `argv[0]` a bare tool name the `ToolchainResolver` resolves to
+    an absolute executable EXACTLY (the project's declared pin), the rest literals; nothing of the
+    request but the test identifier reaches a command. A pin that does not resolve ends the node
+    BLOCKED with that resolution's own code and human action BEFORE any effect is issued, so no
+    task-start record can exist (nothing installs the tool, OQ-18). A test the request did not
+    name is a run of nothing (`NOTHING`): recorded as passed with no command, so the node is
+    always in the tree and always ends. Completion is RECORDED: the recorded result decides."""
+
+    def __init__(self, test: TestSpec, project: Project, task: TaskEntry) -> None:
+        self._unit = task_unit_name(str(test.id))
+        self._test = str(test.id)
+        self._project = str(project.id)
+        self._task = str(task.id)
+        self._argv = tuple(str(a) for a in task.argv)
+        self._reports = task.reports_tests
+
+    def declare(self) -> LeafDeclaration:
+        return LeafDeclaration(
+            unit=self._unit,
+            flags=LoopFlags(Compose.LEAF, CompletionSource.RECORDED, Repeat.SAFE),
+            preconditions=(),
+            postcondition="task_recorded",
+            wait=WaitPolicy(timedelta(seconds=READY_POLL_S), 1.0, timedelta(seconds=STAGE_WAIT_S)),
+            resource_kind="toolchain_task",
+            may_touch=frozenset({"toolchain_task"}),
+            effects=(
+                EffectDeclaration(
+                    TASK, EffectFacetClass.EVENT, "", Lifetime.RUN, frozenset(), None
+                ),
+            ),
+            retryable=frozenset(),
+            remedies=(),
+            budget=timedelta(seconds=STAGE_BUDGET_S),
+            max_attempts=1,
+        )
+
+    def observe(self, params: Any, reads: ReadFacets, ctx: ObserveContext) -> Observation:
+        return Observation(
+            present=False,
+            selector_present=False,
+            identity_proven=False,
+            configuration_compatible=True,
+            postcondition=CheckResult(False, None, ""),
+            preconditions=(),
+            currency=(),
+            found=(),
+            code=None,
+            payload=None,
+        )
+
+    def _requested(self, params: Any) -> bool:
+        named = params.get("tests") if isinstance(params, Mapping) else None
+        return isinstance(named, list) and self._test in named
+
+    def advance(self, params: Any, state: Verdict, effects: EffectFacets, ctx: ActContext) -> Step:
+        if not self._requested(params):
+            command = _nothing()
+        else:
+            tool, *rest = self._argv
+            resolved = effects.read(ToolchainResolver).resolve(self._project, tool)
+            if isinstance(resolved, Unresolved):
+                return Blocked(resolved.code, resolved.human_action, Resend.SUCCEEDS_AFTER_ACTION)
+            command = BoundCommand(
+                task=f"{self._project}/{self._task}",
+                argv=(resolved.executable, *rest),
+                environment={},
+                resolved=resolved,
+                reports_tests=self._reports,
+            )
+        _, result = effects.event(ExecutionPort).run(
+            command, TASK, ctx.cancellation, ctx.clock.release_point
+        )
+        if result is not None and not result.recorded.passed and result.failing:
+            # the failing test ids ride the run's evidence (the answer's `detail` handle reaches
+            # it, B4-C5); the node's class and code stay the recorded result's
+            ctx.evidence.event(
+                FAILING_EVIDENCE,
+                {"test": self._test, "failing": list(result.failing), "code": result.code},
+            )
+        return Acted()
+
+    def release(self, params: Any, handle: CreatedHandle, effects: Any, ctx: ActContext) -> Step:
+        raise AssertionError("a task creates nothing to release")
+
+
+def _nothing() -> BoundCommand:
+    return BoundCommand(NOTHING, (), {}, Resolved("", "", "", ""), False)
+
+
+def identifier_sets(catalog: Catalog) -> dict[str, frozenset[str]]:
+    """The identifier set each request argument is bound to, from the catalog."""
+    return {
+        SERVICES_SET: frozenset(str(s.id) for s in catalog.services),
+        TESTS_SET: frozenset(str(t.id) for t in catalog.tests),
+        OVERRIDES_SET: frozenset(str(o.id) for o in catalog.overrides),
+    }
+
+
+def build_entry(catalog: Catalog) -> WorkflowEntry:
+    """The reference tree over `catalog`: the two backends (independent of each other), and one
+    `test.<id>` node per catalog test that needs EVERY backend's readiness pass (WR-VERIFY-2: a
+    test never starts before readiness). The tree is the catalog's data made declarations."""
+    tests = catalog.tests
+
+    def task_unit(test: TestSpec) -> TaskUnit:
+        project = catalog.project(str(test.project))
+        task = catalog.task(str(test.project), str(test.task))
+        assert project is not None and task is not None  # the catalog checked its references
+        return TaskUnit(test, project, task)
+
+    # the service children are named (and so pathed) by catalog id: a `services` selection names
+    # them, and their `needs` are the catalog's `depends_on`, so the compiler admits a selection's
+    # dependency closure (`compiler._select_refs` keeps a selected child's needs, C-3)
+    backends = (HTTP_SUPPORT_SERVICE, POSTGRES_SERVICE)
+
+    def depends(service: str) -> tuple[str, ...]:
+        found = catalog.service(service)
+        return tuple(str(d) for d in found.depends_on) if found is not None else ()
+
+    provisioned = any(t.provision for t in tests)  # a test that needs the fixture record
+    docker_units = {HTTP_SUPPORT_SERVICE: HTTP_SUPPORT_UNIT, POSTGRES_SERVICE: POSTGRES_UNIT}
+    readiness = {HTTP_SUPPORT_SERVICE: HTTP_SUPPORT_READY, POSTGRES_SERVICE: POSTGRES_READY}
+    overridden = {
+        service: tuple(str(o.id) for o in catalog.overrides if str(o.service) == service)
+        for service in backends
+    }
+
+    def service_unit(service: str) -> str:
+        # a service with an override is a CHOICE named by the service id, so it keeps the path the
+        # plain child had; its alternatives sit one level below (`http_support/<unit>`)
+        return choice_unit_name(service) if overridden[service] else docker_units[service]
+
+    choices: dict[str, Any] = {}
+    for service in backends:
+        if not overridden[service]:
+            continue
+        choices[choice_unit_name(service)] = ChoiceNode(
+            unit=choice_unit_name(service),
+            flags=LoopFlags(Compose.CHOICE, CompletionSource.OBSERVED, Repeat.SAFE),
+            choice=realization.choice_for(
+                catalog, service, docker_units[service], readiness[service]
+            ),
+            budget=timedelta(seconds=CHOICE_BUDGET_S),
+        )
+        for override in overridden[service]:
+            choices[override] = LocalServiceUnit(override, service, readiness[service])
+    return WorkflowEntry(
+        root=ROOT_UNIT,
+        units={
+            ROOT_UNIT: AllDeclaration(
+                unit=ROOT_UNIT,
+                flags=LoopFlags(Compose.ALL, CompletionSource.OBSERVED, Repeat.SAFE),
+                children=(
+                    ChildBinding(
+                        unit=service_unit(HTTP_SUPPORT_SERVICE),
+                        params={},
+                        needs=depends(HTTP_SUPPORT_SERVICE),
+                        name=HTTP_SUPPORT_SERVICE,
+                    ),
+                    ChildBinding(
+                        unit=service_unit(POSTGRES_SERVICE),
+                        params={},
+                        needs=depends(POSTGRES_SERVICE),
+                        name=POSTGRES_SERVICE,
+                    ),
+                    *(
+                        (ChildBinding(unit=PROVISION_UNIT, params={}, needs=(POSTGRES_SERVICE,)),)
+                        if provisioned
+                        else ()
+                    ),
+                    # the test leg: one node per catalog test, after every readiness pass, running
+                    # the test's project task when the request names the test
+                    *(
+                        ChildBinding(
+                            unit=task_unit_name(str(t.id)),
+                            params={"tests": TESTS_ARG},
+                            needs=(*backends, *((PROVISION_UNIT,) if t.provision else ())),
+                        )
+                        for t in tests
+                    ),
+                ),
+                concurrency=CONCURRENCY,
+                budget=timedelta(seconds=ROOT_BUDGET_S),
+                # what a request may name: admission refuses any other identifier before a run id
+                # (B2-C2 (1)) with UNKNOWN_IDENTIFIER, naming it and where valid ones are listed
+                identifier_sets=identifier_sets(catalog),
+                arg_bindings=(
+                    # `services` selects the service children the run walks, with their
+                    # dependency closure (C-3)
+                    ArgBinding(SERVICES_ARG, SERVICES_SET, True),
+                    ArgBinding(TESTS_ARG, TESTS_SET, False),
+                    ArgBinding(OVERRIDES_ARG, OVERRIDES_SET, False),
+                ),
+                env_key_field=ENV_ARG,
+            ),
+            HTTP_SUPPORT_UNIT: ServiceUnit(
+                HTTP_SUPPORT_UNIT, HTTP_SUPPORT_SERVICE, HTTP_SUPPORT_READY
+            ),
+            POSTGRES_UNIT: ServiceUnit(
+                POSTGRES_UNIT, POSTGRES_SERVICE, POSTGRES_READY, reuse=POSTGRES_REUSE
+            ),
+            **choices,
+            **({PROVISION_UNIT: ProvisionUnit()} if provisioned else {}),
+            **{task_unit_name(str(t.id)): task_unit(t) for t in tests},
+        },
+        deadline=timedelta(seconds=DEADLINE_S),
+    )
+
+
+ENTRY = build_entry(CATALOG)
+"""The reference tree over the operator's catalog: `reference_env` over the services `http_support`
+and `postgres` (units `backend.http_support`, `backend.postgres`), and one `test.<test id>` per
+catalog test, after both."""

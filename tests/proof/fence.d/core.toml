@@ -1,0 +1,223 @@
+# tests/proof/fence.d/core.toml — phase CORE (plans/core.md). Schema CM-2 (MC-08), closed: no other key.
+# A path is in the globs of every core lane that edits it; lanes may share globs (CM-2). Host records
+# tests/proof/host/host-*/*.json are fence-exempt (CM-2), so no lane lists them.
+phase = "core"
+
+[[lane]]
+name          = "core-spine"
+branch_prefix = "wr/core-spine/"
+globs         = ["trestle/common/fsutil.py", "trestle/common/outcome.py", "trestle/common/errtext.py", "trestle/common/clock.py",
+                 "trestle/common/types.py", "trestle/common/codes.py", "trestle/server/procident.py", "trestle/server/conductor.py",
+                 "trestle/server/runs.py", "trestle/server/recovery.py", "trestle/server/project.py", "trestle/server/scheduler.py",
+                 "trestle/server/main.py", "trestle/server/control.py", "trestle/wrapper/main.py", "trestle/wrapper/spawn.py",
+                 "trestle/wrapper/reactor.py", "trestle/child/main.py", "trestle/query/fs.py", "trestle/query/catalog.py",
+                 "docs/agents.md", "docs/plugins.md", "docs/security.md", "tests/core/docs/test_cl_d1_disclosures.py", "docs/agent-console-mcp.md", "docs/install.md",
+                 "docs/operator-sessions-telemetry.md", ".cursor/skills/trestle/SKILL.md", "pyproject.toml",
+                 ".github/workflows/ci.yml", "tests/core/__init__.py", "tests/core/spine/**", "tests/core/tooling/__init__.py",
+                 "tests/core/tooling/ck_drill.py", "tests/core/tooling/declines/__init__.py", "tests/core/tooling/declines/ck_8.py",
+                 "tests/core/tooling/test_ck_drill.py", "tests/core/tooling/test_core_fragments.py",
+                 "tests/core/tooling/test_core_fence.py", "tests/spine/**", "tests/test_ver_serialization.py",
+                 "tests/proof/drift/core/__init__.py", "tests/proof/drift/core/test_sa03_*.py", "tests/proof/drift/core/test_sa05_*.py",
+                 "tests/proof/drift/core/test_sa06_*.py", "tests/proof/drift/core/test_sa10_*.py", "tests/proof/drift/core/test_sa13_*.py",
+                 "tests/proof/fence.d/core.toml", "tests/proof/temporary.d/core.toml", "tests/proof/labels.d/core.toml",
+                 "tests/proof/gates.d/core.toml", "tests/proof/rollback.toml", "tests/proof/divergence.toml",
+                 "tests/proof/selftest/test_ci_checkout.py", "tests/proof/selftest/test_tolerances_cli.py", "tests/proof/selftest/test_rollback.py",
+                 "tests/proof/drift/test_sa06_reader_seam.py", "tests/proof/selftest/test_tolerances_cli.py",
+                 "tests/pins/a_lifecycle/fossil_producers.py", "tests/pins/c_surface/test_goldens.py",
+                 "tests/pins/a_lifecycle/test_g_a1.py", "tests/pins/a_lifecycle/test_g_a2.py", "tests/pins/a_lifecycle/test_g_a3.py",
+                 "tests/pins/a_lifecycle/test_straddle.py", "tests/pins/b_contract/test_g_b3.py", "tests/pins/c_surface/test_g_c1.py",
+                 "tests/pins/d_evidence/test_g_d1.py", "tests/pins/d_evidence/test_g_d2.py", "tests/pins/d_evidence/test_g_d3.py"]
+
+[[lane]]
+name          = "cl-a"
+branch_prefix = "wr/cl-a/"
+globs         = ["trestle/server/idempotency.py", "trestle/server/config.py", "trestle/server/control.py", "trestle/server/scheduler.py",
+                 "trestle/server/conductor.py", "trestle/server/admission.py", "trestle/server/main.py", "trestle/common/codes.py",
+                 "trestle/common/types.py", "docs/agents.md", "docs/security.md", "tests/core/admission/**",
+                 "tests/core/tooling/declines/ck_1.py", "tests/proof/labels.d/core.toml",
+                 "tests/proof/labels.d/p0-1c.toml",
+                 "tests/pins/a_lifecycle/test_g_a4.py", "tests/pins/c_surface/test_g_c3.py"]
+
+[[lane]]
+name          = "cl-b"
+branch_prefix = "wr/cl-b/"
+globs         = ["trestle/server/projection.py", "trestle/common/redact.py", "trestle/common/errtext.py", "trestle/server/project.py", "trestle/server/conductor.py",
+                 "trestle/query/fs.py", "trestle/query/catalog.py", "trestle/child/context.py", "trestle/child/main.py",
+                 "trestle/child/serialize.py", "trestle/wrapper/reactor.py", "trestle/server/admission.py", "trestle/common/types.py",
+                 "trestle/common/codes.py", "trestle/server/main.py", "trestle/server/control.py", "docs/agents.md", "docs/plugins.md",
+                 "tests/core/answer/**", "tests/proof/drift/core/test_sa09_*.py", "tests/test_ver_serialization.py",
+                 "tests/pins/c_surface/test_g_c2.py", "tests/pins/c_surface/test_g_c4.py", "tests/pins/d_evidence/test_g_d4.py",
+                 "tests/pins/d_evidence/test_g_d5.py"]
+
+[[lane]]
+name          = "cl-c"
+branch_prefix = "wr/cl-c/"
+globs         = ["trestle/plugin/**", "trestle/server/plugin_schema.py", "trestle/server/snapshots.py", "trestle/server/plugin_validate.py",
+                 "trestle/server/registry.py", "trestle/child/validate.py", "trestle/common/ids.py", "trestle/common/pyenv.py",
+                 "trestle/common/types.py", "trestle/common/codes.py", "trestle/common/clock.py", "trestle/child/main.py",
+                 "trestle/child/serialize.py", "trestle/wrapper/spawn.py", "trestle/server/conductor.py", "trestle/server/admission.py",
+                 "trestle/query/fs.py", "examples/packs/integration_pipeline.py", "docs/agents.md", "docs/plugins.md",
+                 ".cursor/skills/trestle/SKILL.md", "pyproject.toml", ".github/workflows/ci.yml", "tests/core/contract/**",
+                 "tests/proof/drift/core/test_sa02_*.py", "tests/core/tooling/declines/ck_3_4.py", "tests/proof/labels.d/core.toml",
+                 "tests/proof/labels.d/p0-1b.toml",
+                 "tests/proof/gates.d/core.toml", "tests/proof/temporary.toml", "tests/proof/divergence.toml",
+                 "tests/proof/selftest/test_ci_checkout.py",
+                 "tests/proof/fence.d/core.toml", "tests/pins/b_contract/facets.py", "tests/pins/b_contract/test_g_b1.py", "tests/pins/b_contract/test_g_b2.py", "tests/pins/b_contract/test_g_b4.py",
+                 "tests/pins/b_contract/test_g_b5.py", "trestle/query/views.py", "tests/pins/c_surface/facets.py",
+                 "tests/pins/d_evidence/facets.py", "tests/pins/c_surface/test_goldens.py"]
+
+[[lane]]
+name          = "ck-14"
+branch_prefix = "wr/ck-14/"
+globs         = ["trestle/server/init_cmd.py", "packages/trestle-packs/trestle_packs/py.typed", "tests/core/tooling/test_ck14_*.py",
+                 "tests/core/tooling/declines/ck_14.py", ".github/workflows/ci.yml", "pyproject.toml", "docs/install.md",
+                 "tests/proof/labels.d/core.toml", "tests/proof/temporary.d/p0.toml",
+                 "tests/proof/baseline.json", "tests/proof/selftest/test_ci_checkout.py"]
+
+[[lane]]
+name          = "cl-d"
+branch_prefix = "wr/cl-d/"
+globs         = ["tests/core/docs/**", "tests/proof/ckpt/core.py", "tests/proof/deferrals.toml", "docs/agents.md",
+                 "docs/agent-console-mcp.md", "docs/security.md"]
+
+[[lane]]
+name          = "core-ckpt"    # the J-CORE checkpoint lane (CM-5): its only gate is J-CORE's
+branch_prefix = "wr/core-ckpt/"
+globs         = ["tests/fixtures/fossils/core/**", "tests/proof/reviews/*-core.toml"]
+
+# The core product bundle (one PR, CM-2 bundle): the 16 product gates below share the branch
+# `wr/core-bundle/core`, so R4 judges every chunk against this lane. Its globs are the union of the six
+# product lanes' globs as the lane branches left them (cs-2 .. cl-px2), plus `trestle/server/ledger.py`
+# (L.CL-B1.2 edits it; no lane listed it) and `tests/proof/k_doc_map.toml` (the bundle base repoints K-8). The per-lane blocks above stay for the landed CS-1 gate and for
+# the lane branches' own local checks; every glob they gain must also be added here.
+[[lane]]
+name          = "core-bundle"
+branch_prefix = "wr/core-bundle/"
+globs         = ["tests/core/docs/test_cl_d1_disclosures.py", "trestle/common/fsutil.py", "trestle/common/outcome.py", "trestle/common/errtext.py", "trestle/common/clock.py",
+                 "trestle/common/types.py", "trestle/common/codes.py", "trestle/server/procident.py", "trestle/server/conductor.py",
+                 "trestle/server/runs.py", "trestle/server/recovery.py", "trestle/server/project.py", "trestle/server/scheduler.py",
+                 "trestle/server/main.py", "trestle/server/control.py", "trestle/wrapper/main.py", "trestle/wrapper/spawn.py",
+                 "trestle/wrapper/reactor.py", "trestle/child/main.py", "trestle/query/fs.py", "trestle/query/catalog.py",
+                 "docs/agents.md", "docs/plugins.md", "docs/agent-console-mcp.md", "docs/install.md",
+                 "docs/operator-sessions-telemetry.md", ".cursor/skills/trestle/SKILL.md", "pyproject.toml",
+                 ".github/workflows/ci.yml", "tests/core/__init__.py", "tests/core/spine/**", "tests/core/tooling/__init__.py",
+                 "tests/core/tooling/ck_drill.py", "tests/core/tooling/declines/__init__.py", "tests/core/tooling/declines/ck_8.py",
+                 "tests/core/tooling/test_ck_drill.py", "tests/core/tooling/test_core_fragments.py",
+                 "tests/core/tooling/test_core_fence.py", "tests/spine/**", "tests/test_ver_serialization.py",
+                 "tests/proof/drift/core/__init__.py", "tests/proof/drift/core/test_sa03_*.py",
+                 "tests/proof/drift/core/test_sa05_*.py", "tests/proof/drift/core/test_sa06_*.py",
+                 "tests/proof/drift/core/test_sa10_*.py", "tests/proof/drift/core/test_sa13_*.py", "tests/proof/fence.d/core.toml",
+                 "tests/proof/temporary.d/core.toml", "tests/proof/labels.d/core.toml", "tests/proof/gates.d/core.toml",
+                 "tests/proof/rollback.toml", "tests/proof/selftest/test_ci_checkout.py", "tests/proof/selftest/test_rollback.py",
+                 "tests/pins/a_lifecycle/test_g_a1.py", "tests/pins/a_lifecycle/test_g_a2.py", "tests/pins/a_lifecycle/test_g_a3.py",
+                 "tests/pins/a_lifecycle/test_straddle.py", "tests/pins/b_contract/test_g_b3.py", "tests/pins/c_surface/test_g_c1.py",
+                 "tests/pins/d_evidence/test_g_d1.py", "tests/pins/d_evidence/test_g_d2.py", "tests/pins/d_evidence/test_g_d3.py",
+                 "tests/proof/drift/test_sa06_reader_seam.py", "tests/proof/selftest/test_tolerances_cli.py",
+                 "tests/pins/a_lifecycle/fossil_producers.py", "tests/pins/c_surface/test_goldens.py", "tests/proof/divergence.toml",
+                 "trestle/server/idempotency.py", "trestle/server/config.py", "trestle/server/admission.py", "docs/security.md",
+                 "tests/core/admission/**", "tests/core/tooling/declines/ck_1.py", "tests/proof/labels.d/p0-1c.toml",
+                 "tests/pins/a_lifecycle/test_g_a4.py", "tests/pins/c_surface/test_g_c3.py", "trestle/server/projection.py",
+                 "trestle/common/redact.py", "trestle/child/context.py", "trestle/child/serialize.py", "tests/core/answer/**",
+                 "tests/proof/drift/core/test_sa09_*.py", "tests/pins/c_surface/test_g_c2.py", "tests/pins/c_surface/test_g_c4.py",
+                 "tests/pins/d_evidence/test_g_d4.py", "tests/pins/d_evidence/test_g_d5.py", "trestle/plugin/**",
+                 "trestle/server/plugin_schema.py", "trestle/server/snapshots.py", "trestle/server/plugin_validate.py",
+                 "trestle/server/registry.py", "trestle/child/validate.py", "trestle/common/ids.py", "trestle/common/pyenv.py",
+                 "examples/packs/integration_pipeline.py", "tests/core/contract/**", "tests/proof/drift/core/test_sa02_*.py",
+                 "tests/core/tooling/declines/ck_3_4.py", "tests/proof/labels.d/p0-1b.toml", "tests/proof/temporary.toml",
+                 "tests/pins/b_contract/test_g_b1.py", "tests/pins/b_contract/test_g_b2.py", "tests/pins/b_contract/test_g_b4.py",
+                 "tests/pins/b_contract/test_g_b5.py", "tests/pins/b_contract/facets.py", "trestle/query/views.py",
+                 "tests/pins/c_surface/facets.py", "tests/pins/d_evidence/facets.py", "trestle/server/init_cmd.py",
+                 "packages/trestle-packs/trestle_packs/py.typed", "tests/core/tooling/test_ck14_*.py",
+                 "tests/core/tooling/declines/ck_14.py", "tests/proof/temporary.d/p0.toml", "tests/proof/baseline.json",
+                 "tests/core/docs/**", "tests/proof/ckpt/core.py", "tests/proof/deferrals.toml", "trestle/server/ledger.py",
+                 "tests/proof/k_doc_map.toml"]
+
+[[gate]]
+branch         = "wr/core-spine/cs-1"
+merge          = "CS-1"
+requires_merge = ["J0"]
+
+[[gate]]
+branch         = "wr/core-bundle/core"
+merge          = "CS-2"
+requires_merge = ["CS-1"]
+
+[[gate]]
+branch         = "wr/core-bundle/core"
+merge          = "CK-8"
+requires_merge = ["CS-2"]
+
+[[gate]]
+branch         = "wr/core-bundle/core"
+merge          = "CS-3"
+requires_merge = ["CK-8"]
+
+[[gate]]
+branch         = "wr/core-bundle/core"
+merge          = "CS-4"
+requires_merge = ["CS-3"]
+
+[[gate]]
+branch         = "wr/core-bundle/core"
+merge          = "CK-14"
+requires_merge = ["CS-4"]
+
+[[gate]]
+branch         = "wr/core-bundle/core"
+merge          = "CL-D1"
+requires_merge = ["CS-4"]
+
+[[gate]]
+branch         = "wr/core-bundle/core"
+merge          = "CL-A1"
+requires_merge = ["CS-4", "CL-D1"]
+
+[[gate]]
+branch         = "wr/core-bundle/core"
+merge          = "CL-C1"
+requires_merge = ["CL-A1", "CK-14", "CL-D1"]
+
+[[gate]]
+branch         = "wr/core-bundle/core"
+merge          = "CK-1"
+requires_merge = ["CL-C1"]
+
+[[gate]]
+branch         = "wr/core-bundle/core"
+merge          = "CL-C2"
+requires_merge = ["CK-1"]
+
+[[gate]]
+branch         = "wr/core-bundle/core"
+merge          = "CK-3/4"
+requires_merge = ["CL-C2"]
+
+[[gate]]
+branch         = "wr/core-bundle/core"
+merge          = "CL-B2"
+requires_merge = ["CK-3/4"]
+
+[[gate]]
+branch         = "wr/core-bundle/core"
+merge          = "CL-B1"
+requires_merge = ["CL-B2"]
+
+[[gate]]
+branch         = "wr/core-bundle/core"
+merge          = "CL-B3"
+requires_merge = ["CL-B2"]
+
+[[gate]]
+branch         = "wr/core-bundle/core"
+merge          = "CL-A2"
+requires_merge = ["CL-B2"]
+
+[[gate]]
+branch         = "wr/core-bundle/core"
+merge          = "CL-PX2"
+requires_merge = ["CL-B2"]
+
+[[gate]]
+branch         = "wr/core-ckpt/j-core"
+merge          = "J-CORE"
+requires_merge = ["CL-B1", "CL-B3", "CL-A2", "CL-PX2"]

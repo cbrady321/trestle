@@ -1,0 +1,1 @@
+{"root_type":"object","byte_length":18,"index_truncated":false,"fields":[{"name":"cancelled","start":13,"end":17,"type":"bool","bytes":4}],"field_count":1}

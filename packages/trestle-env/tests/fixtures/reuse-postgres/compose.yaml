@@ -1,0 +1,33 @@
+# A pre-started Postgres for the reuse proof (L.RB-3.1; WR-OWN-1, WR-OWN-2, WR-OWN-10; CSC-10).
+#
+# The TEST starts this before a run (`docker compose up -d`): it is a FOUND resource, never
+# run-scoped, named exactly as the tree's logical system (`postgres`) so the run finds it, created
+# from the reference identity (role, database and password) and the pinned image, with its data on
+# a named volume the test seeds with a row. Every service, network and volume carries the fixture
+# label, so the gate's housekeeping removes what the test leaves and the diff attributes nothing
+# to the run.
+name: reuse-postgres
+
+services:
+  postgres:
+    image: ${TRESTLE_IMAGE_POSTGRES}
+    pull_policy: never
+    container_name: postgres
+    environment:
+      POSTGRES_USER: trestle
+      POSTGRES_DB: trestle
+      POSTGRES_PASSWORD: trestle-fixture-password
+    volumes:
+      - reuse_data:/var/lib/postgresql/data
+    labels:
+      trestle.proof.fixture: reuse-postgres
+
+networks:
+  default:
+    labels:
+      trestle.proof.fixture: reuse-postgres
+
+volumes:
+  reuse_data:
+    labels:
+      trestle.proof.fixture: reuse-postgres

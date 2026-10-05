@@ -1,0 +1,22 @@
+# tests/proof/d2_exceptions.toml (L.P0-0c.7, CM-9). Created empty here.
+#
+# Schema: [[exception]] {id, reader, states, declared_by, note?}. `states`
+# are fossil-state globs under tests/fixtures/fossils/. An exception
+# excuses a divergence only in its `states` and only when `differ d2` runs
+# with exactly its `reader`. Withdrawn CM-9 keys (CM-12) -- `retires_at`,
+# `scope`, `register_id` -- are load errors; an exception is not a register
+# entry (CM-7) and nothing here retires it.
+
+[[exception]]
+id = "E-SV3-1"
+reader = "wr-ckpt/core"
+states = ["single/inflight-plan-bearing"]
+declared_by = "L.SV-3.8"
+note = "drain rule: readers before SV-3 do not fold or sweep a non-terminal plan-bearing root"
+
+[[exception]]
+id = "E-TR-1"
+reader = "wr-ckpt/single"
+states = ["*/trl-views-*", "*/tr5-views-*"]
+declared_by = "L.TR-L.11"
+note = "readers before TR-2 serve no child views"

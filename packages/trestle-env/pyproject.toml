@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trestle-env"
+version = "0.3.0"
+description = "The Trestle environment wing: the trusted catalog, the reference environment tree and its plugins"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["trestle", "trestle-packs"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trestle_env"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

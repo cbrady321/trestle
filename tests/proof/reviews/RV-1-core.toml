@@ -1,0 +1,25 @@
+# RV-1 at J-CORE (L.J-CORE.1, CM-5 role 1): stage-critic review of WR-CANCEL-6's two
+# containment boundaries (double-fork escape; the pre-identity run, K-19) and their
+# disclosure, paired with tests/core/docs/test_cl_d1_disclosures.py
+# (::test_containment_boundary_disclosed_and_no_universal_claim). Reviewer: stage critic,
+# read-only. Round 1 at 174ba22 (WR-Merge: CL-PX2) FAILED: F-1 docs/agents.md universal
+# "every process the run started is gone" claim, F-2 docs/plugins.md daemon promise
+# contradicted by the double fork (required), F-3 docs/security.md pre-upgrade `ps` advice
+# (recommended), F-4 heading nit. Fixed in c07ee28 (L.CL-D1.fix2: docs claim containment
+# only of attributable processes; the universal-claim scan now requires an
+# attributable/recorded scope and plants the old F-1 sentence), landed in 6cef746
+# (WR-Fix: CS-1). Round 2 at 6cef746: pass, no required fix.
+# Observation carried (not a WR-CANCEL-6 boundary): recovery branch (ii) sends no signal
+# when the leader is gone even if a recorded descendant lives; docs/agents.md is scoped
+# correctly. Verdict: _tmp/delivery/RV-1-core-review.md.
+id = "RV-1"
+mode = "stage-critic review"
+outcome = "pass"
+sha = "6cef746e6a540870eb9eecd6a376ddbe74cbc8bc"
+paired_check_log = "pytest -q tests/core/docs/test_cl_d1_disclosures.py at 6cef746: 2 passed (the universal-claim scanner flags the old 174ba22 F-1 sentence and 0 sentences in every current docs/*.md)."
+
+[criteria]
+agents_md_attributable_scope = "pass"  # F-1 fixed (docs/agents.md:277-284, heading :229)
+plugins_md_double_fork = "pass"        # F-2 fixed (docs/plugins.md:99-105 -> security.md)
+security_md_pre_identity_run = "pass"  # F-3 fixed (docs/security.md:48-54); K-19 :38-41
+no_universal_claim = "pass"            # 0 unqualified universal claims across docs/**

@@ -1,0 +1,217 @@
+# tests/proof/fence.d/slice-b.toml -- phase SLICE-B (plans/b-slice-b.md). Schema CM-2 (MC-08), closed: no other key.
+# BUNDLE FORM (deviation from the plan's per-merge branches, recorded in B-LEGACY-RETURN.md): the 16 product gates
+# below share ONE branch `wr/slice-b-bundle/slice-b`, so R4 judges every chunk against the `slice-b-bundle` lane, and
+# `match_gates` lands them in requires_merge order (greedy over config order; the table order below is the landing
+# order). RB-13 (conditional catch-up) and J-SLICE-B keep their own branches. The b-legacy, b-adapters, b-env and
+# b-ckpt blocks stay verbatim from the plan literal for the lane branches' own local checks; every glob they gain must
+# also be added to the bundle lane.
+phase        = "slice-b"
+
+[[lane]]
+name          = "b-legacy"
+branch_prefix = "wr/b-legacy/"
+globs         = ["packages/trestle-packs/trestle_packs/core/dag.py", "packages/trestle-packs/trestle_packs/core/readiness.py",
+                 "packages/trestle-packs/trestle_packs/docker/runner.py", "packages/trestle-packs/trestle_packs/pytest/runner.py",
+                 "packages/trestle-packs/tests/test_dag.py", "packages/trestle-packs/tests/test_stack_runner.py",
+                 "packages/trestle-packs/tests/legacy/**", "packages/trestle-packs/tests/fixtures/legacy-errors/**",
+                 "docs/packs.md", "examples/packs/integration_pipeline.py", "tests/pins/e_packs/test_g_e1.py",
+                 "tests/pins/e_packs/test_g_e3.py", "tests/proof/fence.d/slice-b.toml", "tests/proof/temporary.d/slice-b.toml",
+                 "tests/proof/labels.d/slice-b.toml", "tests/proof/drift/b/test_sa11_b_fence.py"]
+
+[[lane]]
+name          = "b-adapters"
+branch_prefix = "wr/b-adapters/"
+globs         = ["packages/trestle-packs/trestle_packs/container/**", "packages/trestle-packs/tests/container/**",
+                 "packages/trestle-packs/trestle_packs/fakes/container.py", "packages/trestle-packs/trestle_packs/fakes/compose.py",
+                 "packages/trestle-packs/tests/conformance/container_cases.py", "packages/trestle-packs/tests/conformance/compose_cases.py",
+                 "packages/trestle-packs/tests/conformance/test_cases_unbranched.py", "packages/trestle-packs/tests/conformance/__init__.py",
+                 "tests/proof/host/docker_gate/inventory.py", "tests/proof/host/docker_gate/fake_docker.py",
+                 "tests/proof/host/docker_gate/run.py", "tests/proof/host/docker_gate/select.py",
+                 "tests/proof/host/docker_gate/test_*.py", "tests/proof/drift/b/test_sa03_b_codes.py",
+                 "tests/proof/drift/b/test_sa14_b_ports.py", "trestle/common/codes.py", "trestle/common/plan/vocabulary.py",
+                 "tests/proof/fence.d/slice-b.toml", "tests/proof/temporary.d/slice-b.toml", "tests/proof/labels.d/slice-b.toml",
+                 "tests/proof/drift/b/test_sa11_b_fence.py", "tests/proof/host/docker_gate/__main__.py",
+                 "tests/proof/host/docker_gate/preflight.py", "tests/proof/host/docker_gate/images.toml",
+                 "tests/proof/selftest/test_docker_preflight.py", "tests/pins/e_packs/test_g_e2.py"]
+
+[[lane]]
+name          = "b-env"
+branch_prefix = "wr/b-env/"
+globs         = ["packages/trestle-env/**", "packages/trestle-packs/trestle_packs/toolchain/**",
+                 "packages/trestle-packs/trestle_packs/testrun/**", "packages/trestle-packs/trestle_packs/provision/**",
+                 "packages/trestle-packs/trestle_packs/grant/**", "packages/trestle-packs/tests/toolchain/**",
+                 "packages/trestle-packs/tests/testrun/**", "packages/trestle-packs/tests/provision/**",
+                 "packages/trestle-packs/tests/grant/**", "packages/trestle-packs/tests/process/**",
+                 "packages/trestle-packs/trestle_packs/fakes/toolchain.py", "packages/trestle-packs/trestle_packs/fakes/testrun.py",
+                 "packages/trestle-packs/trestle_packs/fakes/provision.py", "packages/trestle-packs/trestle_packs/fakes/grant.py",
+                 "packages/trestle-packs/tests/conformance/toolchain_cases.py", "packages/trestle-packs/tests/conformance/testrun_cases.py",
+                 "packages/trestle-packs/tests/conformance/provision_cases.py", "packages/trestle-packs/tests/conformance/grant_cases.py",
+                 "packages/trestle-packs/tests/conformance/process_restart_cases.py", "tests/fixtures/stubs/**", "tests/fixtures/apps/**",
+                 "tests/fixtures/fossils/b/**", "tests/proof/b/**", "tests/proof/ckpt/slice_b.py", "docs/environment.md",
+                 "pyproject.toml", ".github/workflows/ci.yml", "trestle/common/codes.py", "trestle/common/plan/vocabulary.py",
+                 "packages/trestle-packs/trestle_packs/process/local.py", "packages/trestle-packs/trestle_packs/fakes/local_process.py",
+                 "packages/trestle-packs/trestle_packs/container/**", "packages/trestle-packs/tests/container/**",
+                 "packages/trestle-packs/trestle_packs/fakes/container.py", "packages/trestle-packs/trestle_packs/fakes/compose.py",
+                 "packages/trestle-packs/tests/conformance/container_cases.py", "packages/trestle-packs/tests/conformance/compose_cases.py",
+                 "tests/proof/host/docker_gate/**", "tests/pins/e_packs/test_g_e2.py",
+                 "tests/proof/temporary.d/p0.toml"]   # FF-2/AMB-12: RB-13.3 removes TM-P0-2:G-E2 when NW-2.8 could not
+
+[[lane]]
+name          = "b-ckpt"
+branch_prefix = "wr/b-ckpt/"
+globs         = ["tests/fixtures/fossils/slice-b/**", "tests/proof/reviews/*-slice-b.toml"]
+
+
+# The single product bundle (one PR, CM-2 bundle): its globs are the union of the three product lanes' globs above
+# plus the FF-2 additions no product lane owns: tests/proof/temporary.d/p0.toml (G-E1/G-E3/TM-P0-13/G-E2 entry
+# removals), tests/proof/divergence.toml (named ADD-code-* entries for the new adapter codes), tests/proof/ci_shards.py
+# and tests/proof/selftest/test_ci_checkout.py (if RB-0.1's ci.yml change trips them), the drift/b and proof/b package
+# markers, the G-E3 pin's helper modules, docker_gate/__init__.py, and core's deferral test (B declares the four
+# deferred core labels it claims as `claim`, as A-1's bundle lane does), and the MC-B-02 host-record keys L.NW-2.2 adds
+# (tests/proof/host/record.py OPTIONAL_KEYS `residue`, record.schema.json object-valued engine/images/diff), and
+# the import-boundary test (tests/proof/test_import_boundaries.py: L.NW-2.3 scans `trestle_packs.container` for
+# MJ.NW-2's stdlib + trestle.workflow rule), and tests/proof/meta.py (L.RB-0.1: the S0 baseline
+# measurement ignores packages/trestle-env, now in testpaths), and tests/proof/selftest/test_compat_map.py
+# (its subprocess PYTHONPATH gains packages/trestle-env, whose tests testpaths now collects).
+[[lane]]
+name          = "slice-b-bundle"
+branch_prefix = "wr/slice-b-bundle/"
+globs         = ["packages/trestle-packs/trestle_packs/core/dag.py", "packages/trestle-packs/trestle_packs/core/readiness.py",
+                 "packages/trestle-packs/trestle_packs/docker/runner.py", "packages/trestle-packs/trestle_packs/pytest/runner.py",
+                 "packages/trestle-packs/tests/test_dag.py", "packages/trestle-packs/tests/test_stack_runner.py",
+                 "packages/trestle-packs/tests/legacy/**", "packages/trestle-packs/tests/fixtures/legacy-errors/**", "docs/packs.md",
+                 "examples/packs/integration_pipeline.py", "tests/pins/e_packs/test_g_e1.py", "tests/pins/e_packs/test_g_e3.py",
+                 "tests/proof/fence.d/slice-b.toml", "tests/proof/temporary.d/slice-b.toml", "tests/proof/labels.d/slice-b.toml",
+                 "tests/proof/drift/b/test_sa11_b_fence.py", "packages/trestle-packs/trestle_packs/container/**",
+                 "packages/trestle-packs/tests/container/**", "packages/trestle-packs/trestle_packs/fakes/container.py",
+                 "packages/trestle-packs/trestle_packs/fakes/compose.py", "packages/trestle-packs/tests/conformance/container_cases.py",
+                 "packages/trestle-packs/tests/conformance/compose_cases.py",
+                 "packages/trestle-packs/tests/conformance/test_cases_unbranched.py",
+                 "packages/trestle-packs/tests/conformance/__init__.py", "tests/proof/host/docker_gate/inventory.py",
+                 "tests/proof/host/docker_gate/fake_docker.py", "tests/proof/host/docker_gate/run.py",
+                 "tests/proof/host/docker_gate/select.py", "tests/proof/host/docker_gate/test_*.py",
+                 "tests/proof/drift/b/test_sa03_b_codes.py", "tests/proof/drift/b/test_sa14_b_ports.py", "trestle/common/codes.py",
+                 "trestle/common/plan/vocabulary.py", "tests/proof/host/docker_gate/__main__.py",
+                 "tests/proof/host/docker_gate/preflight.py", "tests/proof/host/docker_gate/images.toml",
+                 "tests/proof/selftest/test_docker_preflight.py", "tests/pins/e_packs/test_g_e2.py", "packages/trestle-env/**",
+                 "packages/trestle-packs/trestle_packs/toolchain/**", "packages/trestle-packs/trestle_packs/testrun/**",
+                 "packages/trestle-packs/trestle_packs/provision/**", "packages/trestle-packs/trestle_packs/grant/**",
+                 "packages/trestle-packs/tests/toolchain/**", "packages/trestle-packs/tests/testrun/**",
+                 "packages/trestle-packs/tests/provision/**", "packages/trestle-packs/tests/grant/**",
+                 "packages/trestle-packs/tests/process/**", "packages/trestle-packs/trestle_packs/fakes/toolchain.py",
+                 "packages/trestle-packs/trestle_packs/fakes/testrun.py", "packages/trestle-packs/trestle_packs/fakes/provision.py",
+                 "packages/trestle-packs/trestle_packs/fakes/grant.py", "packages/trestle-packs/tests/conformance/toolchain_cases.py",
+                 "packages/trestle-packs/tests/conformance/testrun_cases.py",
+                 "packages/trestle-packs/tests/conformance/provision_cases.py",
+                 "packages/trestle-packs/tests/conformance/grant_cases.py",
+                 "packages/trestle-packs/tests/conformance/process_restart_cases.py", "tests/fixtures/stubs/**",
+                 "tests/fixtures/apps/**", "tests/fixtures/fossils/b/**", "tests/proof/b/**", "tests/proof/ckpt/slice_b.py",
+                 "docs/environment.md", "pyproject.toml", ".github/workflows/ci.yml",
+                 "packages/trestle-packs/trestle_packs/process/local.py", "packages/trestle-packs/trestle_packs/fakes/local_process.py",
+                 "tests/proof/host/docker_gate/**", "tests/proof/temporary.d/p0.toml", "tests/proof/divergence.toml",
+                 "tests/proof/ci_shards.py", "tests/proof/selftest/test_ci_checkout.py", "tests/proof/drift/b/__init__.py",
+                 "tests/pins/e_packs/driver_g_e3.py", "tests/pins/e_packs/fake_backend.py", "tests/proof/host/docker_gate/__init__.py",
+                 "tests/proof/b/__init__.py", "tests/core/docs/test_cl_d1_deferrals.py",
+                 "tests/proof/host/record.py", "tests/proof/host/record.schema.json",
+                 "tests/proof/test_import_boundaries.py", "tests/proof/meta.py",
+                 "tests/proof/selftest/test_compat_map.py",
+                 # L.NW-2.8: the d8 container/compose fake-vs-real pairs and their tests
+                 "tests/proof/differ_modes/d8_fake_real.py", "tests/proof/suites/ports/test_fake_real.py",
+                 # L.RB-0.3.fix1: load_config reads the [operator] release_executables allowlist
+                 "trestle/server/config.py",
+                 # L.RB-12.7: B's fossil band MANIFEST (the b-ckpt lane's glob; the checkpoint fills the band)
+                 "tests/fixtures/fossils/slice-b/**",
+                 # L.CS-1.4.fix1: CM-7 step 3 as amended (the CK drill and its self-test; PR #46 ck-drill [CK-3-4])
+                 "tests/core/tooling/ck_drill.py", "tests/core/tooling/test_ck_drill.py",
+                 # L.TR-L.6.fix1: the lease rig waits for admission to mint the run (PR #46 test-shard (root))
+                 "tests/tree/host/test_trl_lease.py"]
+
+[[gate]]
+branch         = "wr/slice-b-bundle/slice-b"
+merge          = "NW-1"
+requires_merge = ["J-CORE", "CK-3/4"]
+
+[[gate]]
+branch         = "wr/slice-b-bundle/slice-b"
+merge          = "NW-2"
+requires_merge = ["SV-5", "SL-3"]
+
+[[gate]]
+branch         = "wr/slice-b-bundle/slice-b"
+merge          = "RB-0"
+requires_merge = ["J-SLICE-A", "NW-2"]
+
+[[gate]]
+branch         = "wr/slice-b-bundle/slice-b"
+merge          = "NW-3"
+requires_merge = ["RB-0"]
+
+[[gate]]
+branch         = "wr/slice-b-bundle/slice-b"
+merge          = "RB-1"
+requires_merge = ["NW-3"]
+
+[[gate]]
+branch         = "wr/slice-b-bundle/slice-b"
+merge          = "RB-2"
+requires_merge = ["RB-1"]
+
+[[gate]]
+branch         = "wr/slice-b-bundle/slice-b"
+merge          = "RB-3"
+requires_merge = ["RB-2", "NW-1"]
+
+[[gate]]
+branch         = "wr/slice-b-bundle/slice-b"
+merge          = "RB-4"
+requires_merge = ["RB-3"]
+
+[[gate]]
+branch         = "wr/slice-b-bundle/slice-b"
+merge          = "RB-5"
+requires_merge = ["RB-4"]
+
+[[gate]]
+branch         = "wr/slice-b-bundle/slice-b"
+merge          = "RB-6"
+requires_merge = ["RB-5"]
+
+[[gate]]
+branch         = "wr/slice-b-bundle/slice-b"
+merge          = "RB-7"
+requires_merge = ["RB-6"]
+
+[[gate]]
+branch         = "wr/slice-b-bundle/slice-b"
+merge          = "RB-8"
+requires_merge = ["RB-7"]
+
+[[gate]]
+branch         = "wr/slice-b-bundle/slice-b"
+merge          = "RB-9"
+requires_merge = ["RB-8"]
+
+[[gate]]
+branch         = "wr/slice-b-bundle/slice-b"
+merge          = "RB-10"
+requires_merge = ["RB-9"]
+
+[[gate]]
+branch         = "wr/slice-b-bundle/slice-b"
+merge          = "RB-11"
+requires_merge = ["RB-10", "NW-1"]
+
+[[gate]]
+branch         = "wr/slice-b-bundle/slice-b"
+merge          = "RB-12"
+requires_merge = ["RB-11"]
+
+[[gate]]
+branch         = "wr/b-env/rb-13"
+merge          = "RB-13"
+requires_merge = ["RB-12"]   # plus `$PRE` exit 0 after pin-images, checked by L.RB-13.1's base case (the fence cannot express an environment precondition)
+
+[[gate]]
+branch         = "wr/b-ckpt/j-slice-b"
+merge          = "J-SLICE-B"
+requires_merge = ["RB-12"]   # plus WR-Merge: RB-13 when RB-13 opened, checked by L.J-SLICE-B.1's base case (a B phase rule; the fence cannot express it)
