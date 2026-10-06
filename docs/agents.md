@@ -81,7 +81,7 @@ connect to `http://127.0.0.1:<port>/mcp` ([`install.md`](install.md#4-optional-s
 | 1 | `list_plugins` | — discover plugin `name` values |
 | 2 | `describe_plugin` | `plugin_id` = plugin name (optional; pull `input_schema` / `return_schema`) |
 | 2b | `publish_plugin` | `source` (optional; create/update plugin at runtime) |
-| 3 | `run` | `plugin`, `args`, `wait_ms`, optional `completion` (`"bounded"` default, or `"terminal"`) |
+| 3 | `run` | `plugin`, `args`, `wait_ms`, optional `completion` (`"bounded"` default, or `"terminal"`), optional `deadline_s` |
 | 4a | `fetch` | `{run_id}/result` + window (success path) |
 | 4b | `query` | `view: last_error`, `params: {run_id}` (failure path) |
 
@@ -270,7 +270,18 @@ A plugin may declare a longer deadline in its `@trestle(deadline=...)` call form
 none keeps 300 s); `describe_plugin` reports it as `deadline_s` with `deadline_source` (`declared` or `default`), and it is enforced, not
 advisory. A declared deadline above the ceiling (3600 s) is refused before any run id with
 `admission.budget_does_not_fit`.
-<!-- /K-9 --> `cancel` and the deadline are the two ways a run is stopped, and
+<!-- /K-9 -->
+A call may set its own with `run(deadline_s=...)` (seconds): the call's value, else the declared one,
+else 300 s, so a call may go above or below the declaration but never above the ceiling, and one too
+short to hold the release slice is refused the same way. The ceiling is the operator's
+`[operator] deadline_ceiling_s` in `config.toml` (default 3600, at most 86400; no environment
+override; read at each admission, so a change needs no restart). The run view shows `deadline_s` and
+`deadline_source` (`call`, `declared` or `default`); `describe_plugin` adds `finalization_margin_s`
+and `deadline_ceiling_s`, so size a client's timeout for any call as `deadline_s +
+finalization_margin_s`. A key's identity includes the call's own `deadline_s` argument (not the
+effective deadline). For runs of hours, send with the default bounded `wait_ms` and wait in bounded
+calls instead of one `completion="terminal"` call.
+ `cancel` and the deadline are the two ways a run is stopped, and
 both stop the **whole process tree**, not just the plugin's own process. The supervisor sends
 SIGTERM to every process attributable to the run at once, waits at most `grace`, sends SIGKILL,
 and waits at most `kill` for confirmation. Attributable means the run's process group, and every

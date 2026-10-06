@@ -1594,3 +1594,40 @@ docs = []
 due_checkpoint = "v0.4 step 1a"
 direction = "additive"
 authorized_by = "v0.4 design (shared home), Problem A (registry version) and Wire and compatibility (new codes in codes.py)"
+
+# v0.4 step 3 (Feature 2): the run view's retry_of; step 4 (Feature 0): the run view's deadline_s and
+# deadline_source, and run(deadline_s=...). All additive (Wire and compatibility).
+
+[[entry]]
+id = "ADD-runview-retry-of"
+facet = "runview_shape"
+row_or_k = "MC-06"
+docs = []
+due_checkpoint = "v0.4 step 3"
+direction = "additive"
+items = [{ path = "$.fields", value = ["retry_of", "str | None"] }]
+authorized_by = "v0.4 design (shared home), Feature 2 and Wire and compatibility (run view field retry_of)"
+
+[[entry]]
+id = "ADD-runview-deadline"
+facet = "runview_shape"
+row_or_k = "MC-06"
+docs = []
+due_checkpoint = "v0.4 step 4"
+direction = "additive"
+keys = ["$.frames.*.deadline_s", "$.frames.*.deadline_source"]
+items = [
+  { path = "$.fields", value = ["deadline_s", "float | None"] },
+  { path = "$.fields", value = ["deadline_source", "str | None"] },
+]
+authorized_by = "v0.4 design (shared home), Feature 0 (the run view shows deadline_s and deadline_source)"
+
+[[entry]]
+id = "ADD-tools-list-run-deadline-s"
+facet = "tools_list"
+row_or_k = "MC-16"
+docs = []
+due_checkpoint = "v0.4 step 4"
+direction = "additive"
+keys = ["$.tools[0].inputSchema.properties.deadline_s"]
+authorized_by = "v0.4 design (shared home), Feature 0 and Wire and compatibility (run(deadline_s=...))"

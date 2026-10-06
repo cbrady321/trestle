@@ -602,6 +602,7 @@ class Project:
             outcome=_outcome_view(ledger, state, evidence),
             answer=_answer_view(ledger, state, run_dir),
             retry_of=_retry_of(ledger),
+            **_deadline_fields(ledger.last_kind("created")),
         )
 
     def _summary_budget(self, spec: dict[str, object] | None) -> int:
@@ -670,7 +671,20 @@ def _live_view(run_id: Handle, run_dir: Path, state: dict[str, Any]) -> RunView:
         artifact_count=artifact_count,
         limits_exceeded=limits_exceeded if isinstance(limits_exceeded, list) else None,
         retry_of=state.get("retry_of") if isinstance(state.get("retry_of"), str) else None,
+        **_deadline_fields(state),
     )
+
+
+def _deadline_fields(record: dict[str, Any] | None) -> dict[str, Any]:
+    """The run view's `deadline_s` and `deadline_source` (Feature 0), from the `created` row (or
+    state.json); a run admitted before v0.4 has no recorded source and shows neither."""
+    if record is None:
+        return {}
+    source = record.get("deadline_source")
+    seconds = record.get("deadline_s")
+    if not isinstance(source, str) or not isinstance(seconds, int | float):
+        return {}
+    return {"deadline_s": seconds, "deadline_source": source}
 
 
 def _retry_of(ledger: RunLedger) -> str | None:

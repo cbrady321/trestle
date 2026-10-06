@@ -49,7 +49,7 @@ KEEP_CONTAINERS: list[dict[str, Any]] = [
 
 # `run`'s published properties: the S0 set (MC-16 adds `completion` and nothing else).
 S0_RUN_PROPERTIES = {"plugin", "args", "version", "wait_ms", "idempotency_key"}
-RUN_PROPERTIES = S0_RUN_PROPERTIES | {"completion"}
+RUN_PROPERTIES = S0_RUN_PROPERTIES | {"completion", "deadline_s"}
 
 # A property or enum value that names a keep or cleanup choice.
 KEEP_WORDS = ("keep", "cleanup", "clean_up", "retain", "preserve", "persist", "release", "teardown")

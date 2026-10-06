@@ -52,7 +52,8 @@ from trestle.server.registry import Registry
 from trestle.server.runstate import trusted_state
 from trestle.server.scheduler import Scheduler
 from trestle.server.snapshots import (
-    deadline_of,
+    DEADLINE_CALL,
+    effective_deadline,
     load_declared,
     load_declared_tree,
     load_snapshot_schema,
@@ -63,8 +64,9 @@ from trestle.server.snapshots import (
 # the same plugin, the same `args_hash`, the same call deadline argument and `after`, and the run
 # present (the snapshot is not compared); the entry lives `key_expires_at - admitted_at =
 # deadline_s + finalization_margin + ttl` (v0.4 "Fix first"), `deadline_s` being the run's own
-# deadline (`deadline_of`), never the snapshot default. v0.4 Problem B: `key_expires_at` is fixed
-# here and recorded in `created` and `home/keys/<sha256(key)>.json`.
+# deadline (`effective_deadline`: the call's, else the declared one), never the snapshot default.
+# v0.4 Problem B: `key_expires_at` is fixed here and recorded in `created` and
+# `home/keys/<sha256(key)>.json`.
 
 
 @dataclass(frozen=True)
@@ -74,15 +76,20 @@ class KeyCall:
 
     plugin: str
     args_hash: str
-    # Feature 0 seam: the call's `deadline_s` argument (None: omitted, the declaration applies)
+    # the call's `deadline_s` argument (Feature 0; None: omitted, the declaration applies)
     call_deadline_s: float | None = None
     # Feature 3 seam: the call's `after`, canonical JSON (None: omitted)
     after: str | None = None
 
 
 def key_call(snap: PluginSnapshot, req: AdmitRequest, a_hash: str) -> KeyCall:
-    """The call's join identity. Features 0 and 3 fill `call_deadline_s` and `after` from `req`."""
-    return KeyCall(plugin=snap.plugin, args_hash=a_hash)
+    """The call's join identity. Feature 3 fills `after` from `req`."""
+    call = req.deadline_s
+    return KeyCall(
+        plugin=snap.plugin,
+        args_hash=a_hash,
+        call_deadline_s=float(call) if call is not None else None,
+    )
 
 
 @dataclass(frozen=True)
@@ -136,7 +143,8 @@ class Admission:
             )
         # v0.4 rule 11: the pool's settings come from config.toml at each admission, so a change
         # applies without a restart (TRESTLE_MAX_RUNNING_RUNS is ignored)
-        self.scheduler.max_running = load_config(self.home).max_running_runs
+        config = load_config(self.home)
+        self.scheduler.max_running = config.max_running_runs
         capacity = self.scheduler.check_admit_capacity()
         if capacity is not None:
             return capacity
@@ -203,21 +211,11 @@ class Admission:
                 ),
             )
 
-        deadline_s, _ = deadline_of(snap)
-        if deadline_s > clock.deadline_ceiling:
-            # B2-C2 (4): the admitted deadline may not exceed the ceiling; nothing is minted
-            return AdmitResultRefused(
-                tag="refused",
-                outcome=RequestOutcome(
-                    code=codes.BUDGET_DOES_NOT_FIT,
-                    message=(
-                        f"declared deadline {deadline_s:g}s exceeds the ceiling "
-                        f"{clock.deadline_ceiling:g}s"
-                    ),
-                    retryable=False,
-                    origin="admission",
-                ),
-            )
+        ceiling = config.operator_limits.deadline_ceiling
+        refused_deadline = _refuse_deadline(snap, req, ceiling)
+        if refused_deadline is not None:
+            return refused_deadline
+        deadline_s, _ = effective_deadline(snap, req.deadline_s)
 
         if req.idempotency_key is not None:
             # a lock-free pre-read: a join or a conflict answers before the plan is built, as it
@@ -230,7 +228,7 @@ class Admission:
         # is not a run); a plan-less root gets the implicit depth-1 plan (B2-C1). The whole
         # declared tree is compiled here (MC-23 over MC-34), so a tree defective in any way the
         # declaration and the request show is refused with its own code naming the identifier.
-        planned = plan_for_admission(snap, req, deadline_s)
+        planned = plan_for_admission(snap, req, deadline_s, deadline_ceiling_s=ceiling)
         if isinstance(planned, AdmitResultRefused):
             return planned
         try:
@@ -363,6 +361,42 @@ class Admission:
         )
 
 
+def _refuse_deadline(
+    snap: PluginSnapshot, req: AdmitRequest, ceiling: float
+) -> AdmitResultRefused | None:
+    """Feature 0: the call's deadline (else the declared one) may not be above the operator's
+    ceiling (`[operator] deadline_ceiling_s`, read from config.toml at each admission) nor too
+    short to hold anything; nothing is minted (B2-C2 (4)). Too short for the release slice is
+    the carve's refusal, with the same code."""
+    call = req.deadline_s
+    if call is not None and (
+        isinstance(call, bool) or not isinstance(call, int | float) or math.isnan(call)
+    ):
+        return AdmitResultRefused(
+            tag="refused",
+            outcome=RequestOutcome(
+                code=codes.INVALID_ARGS,
+                message=f"deadline_s must be a number of seconds, got {call!r}"[:200],
+                retryable=False,
+                origin="admission",
+            ),
+        )
+    deadline_s, source = effective_deadline(snap, call)
+    if deadline_s > ceiling:
+        what = "deadline_s" if source == DEADLINE_CALL else "declared deadline"
+        message = f"{what} {deadline_s:g}s exceeds the ceiling {ceiling:g}s"
+    elif deadline_s <= 0 and source == DEADLINE_CALL:
+        message = f"deadline_s {deadline_s:g}s is too short to hold a run"
+    else:
+        return None
+    return AdmitResultRefused(
+        tag="refused",
+        outcome=RequestOutcome(
+            code=codes.BUDGET_DOES_NOT_FIT, message=message, retryable=False, origin="admission"
+        ),
+    )
+
+
 def _plan_refusal(refusal: compiler.Refusal) -> AdmitResultRefused:
     """A plan refusal as the request's outcome: the plan code, naming the identifier (and, for an
     unknown identifier, where the valid ones are listed)."""
@@ -381,12 +415,17 @@ def _plan_refusal(refusal: compiler.Refusal) -> AdmitResultRefused:
 
 
 def plan_for_admission(
-    snap: PluginSnapshot, req: AdmitRequest, deadline_s: float
+    snap: PluginSnapshot,
+    req: AdmitRequest,
+    deadline_s: float,
+    *,
+    deadline_ceiling_s: float | None = None,
 ) -> AdmittedPlan | AdmitResultRefused:
     """Compile and carve this request's plan (B2-C2, MC-23): the declared tree of a workflow
     snapshot (MC-34), or the implicit depth-1 plan of a plain plugin (B2-C1); the carve and this
     root's release slice attached, `plan_digest` over all of it. Pure over the snapshot and the
-    request; a refusal names its node or identifier and no run id exists yet."""
+    request (the carve's ceiling is the operator's, `clock.deadline_ceiling` unless given); a
+    refusal names its node or identifier and no run id exists yet."""
     declared = load_declared_tree(snap)
     if declared is None:
         plan = compiler.implicit_depth1_plan(snap.plugin)
@@ -401,12 +440,13 @@ def plan_for_admission(
             return _plan_refusal(compiled)
         plan = compiled
     release_slice = carving.release_slice_for(plan, clock.release_slice)
+    ceiling = clock.deadline_ceiling if deadline_ceiling_s is None else deadline_ceiling_s
     slices = carving.carve(
         plan,
         deadline_s,
         clock.FINALIZATION_RESERVE_S,
         release_slice,
-        deadline_ceiling_s=clock.deadline_ceiling,
+        deadline_ceiling_s=ceiling,
     )
     if isinstance(slices, compiler.Refusal):
         return _plan_refusal(slices)
@@ -486,7 +526,7 @@ def write_admitted_run(
     An admission that dies before (d) leaves debris (an `.adm-` directory, maybe a marker) that
     only the reaper removes, under the admission lock."""
     a_hash = args_hash(req.args)
-    deadline_s, _ = deadline_of(snap)
+    deadline_s, deadline_source = effective_deadline(snap, req.deadline_s)
     run_id = generate_run_id()
     run_dir = run_dir_for(home, run_id)
     month_dir = run_dir.parent
@@ -554,6 +594,7 @@ def write_admitted_run(
             # v0.4 Problem B: the inputs of the key's window, recorded so no later process (a
             # rebuild, another server) recomputes it; the margin is this owner's own (rule 11)
             "deadline_s": deadline_s,
+            "deadline_source": deadline_source,
             "finalization_margin_s": clock.finalization_margin,
             "repeatable": declared.repeatable,
         }

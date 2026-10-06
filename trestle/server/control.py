@@ -120,6 +120,7 @@ class ControlSurface:
         idempotency_key: str | None = None,
         completion: str = "bounded",
         caller_session: str | None = None,
+        deadline_s: float | None = None,
     ) -> RequestOutcome | RunView:
         refused = _refuse_completion(completion, wait_ms)
         if refused is not None:
@@ -131,6 +132,7 @@ class ControlSurface:
                 version=version,
                 idempotency_key=idempotency_key,
                 caller_session=caller_session,
+                deadline_s=deadline_s,
             )
         ).result()
         if result.tag == "refused":
@@ -179,6 +181,7 @@ class ControlSurface:
         idempotency_key: str | None = None,
         completion: str = "bounded",
         caller_session: str | None = None,
+        deadline_s: float | None = None,
     ) -> RequestOutcome | RunView:
         refused = _refuse_completion(completion, wait_ms)
         if refused is not None:
@@ -192,6 +195,7 @@ class ControlSurface:
                 version=version,
                 idempotency_key=idempotency_key,
                 caller_session=caller_session,
+                deadline_s=deadline_s,
             )
         )
         try:

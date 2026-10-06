@@ -123,6 +123,7 @@ def state_record(evidence: Path, records: list[dict[str, Any]]) -> dict[str, Any
         "key": created.get("idempotency_key"),
         "retry_of": created.get("retry_of"),
         "deadline_s": deadline_s,
+        "deadline_source": created.get("deadline_source"),
         "state": state,
         "finalized": ledger.has_kind("evidence_finalized"),
         "created_at": created.get("at"),

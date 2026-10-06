@@ -24,6 +24,10 @@ QUEUE_DEPTH_DEFAULT = 256
 # max_share`, unset by default, caps one server's slots); `queue_depth` and `[operator]
 # max_held_runs` (Feature 3's held runs) bound each server's own FIFO, read at start.
 MAX_HELD_RUNS_DEFAULT = 256
+# v0.4 Feature 0: `[operator] deadline_ceiling_s` bounds a call's `deadline_s` (default: the
+# clock's 3,600 s, so nothing changes until an operator raises it); a value above the hard cap
+# stops the load.
+DEADLINE_CEILING_MAX_S = 86400
 # v0.4: the environment override of the pool size, now ignored (doctor warns when it is set)
 IGNORED_MAX_RUNNING_ENV = "TRESTLE_MAX_RUNNING_RUNS"
 
@@ -159,6 +163,7 @@ def load_config(home: Path) -> TrestleConfig:
             )
         cfg = replace(cfg, profile=_load_profile(raw.get("profile")))
         cfg = _load_pool_operator(cfg, raw.get("operator"))
+        cfg = _load_deadline_ceiling(cfg, raw.get("operator"))
         executables = _load_release_executables(raw.get("operator"))
         if executables:
             limits = replace(cfg.operator_limits, release_executables=executables)
@@ -200,6 +205,26 @@ def _load_pool_operator(cfg: TrestleConfig, raw: object) -> TrestleConfig:
             raise ValueError("config.toml [operator] max_held_runs must be an integer >= 0")
         cfg = replace(cfg, max_held_runs=held)
     return cfg
+
+
+def _load_deadline_ceiling(cfg: TrestleConfig, raw: object) -> TrestleConfig:
+    """`[operator] deadline_ceiling_s` (seconds, above 0 and at most 86,400): the longest deadline
+    a call may ask for (Feature 0). Unset leaves the default; a bad value stops the load."""
+    if not isinstance(raw, dict) or "deadline_ceiling_s" not in raw:
+        return cfg
+    ceiling = raw["deadline_ceiling_s"]
+    if (
+        not isinstance(ceiling, int | float)
+        or isinstance(ceiling, bool)
+        or not 0 < ceiling <= DEADLINE_CEILING_MAX_S
+    ):
+        raise ValueError(
+            f"config.toml [operator] deadline_ceiling_s must be above 0 and at most "
+            f"{DEADLINE_CEILING_MAX_S}"
+        )
+    return replace(
+        cfg, operator_limits=replace(cfg.operator_limits, deadline_ceiling=float(ceiling))
+    )
 
 
 def _load_release_executables(raw: object) -> frozenset[str]:

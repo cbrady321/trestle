@@ -34,6 +34,9 @@ class AdmitRequest:
     # The MCP session the call arrived on (None outside an MCP session); written on the `created`
     # row so the restricted profile can scope `cancel` to the session that started a run.
     caller_session: str | None = None
+    # v0.4 Feature 0: the call's own deadline in seconds (None: the plugin's declared deadline, else
+    # 300 s, applies)
+    deadline_s: float | None = None
 
 
 @dataclass
@@ -264,6 +267,10 @@ class RunView:
     # v0.4 Feature 2: the interrupted run this one replaced, when it was started by re-sending a
     # repeatable plugin's key; absent otherwise
     retry_of: str | None = None
+    # v0.4 Feature 0: the run's effective deadline and where it came from (call, declared or
+    # default); absent on a run admitted before v0.4
+    deadline_s: float | None = None
+    deadline_source: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -300,6 +307,10 @@ class RunView:
             out["answer"] = self.answer
         if self.retry_of is not None:
             out["retry_of"] = self.retry_of
+        if self.deadline_s is not None:
+            out["deadline_s"] = self.deadline_s
+        if self.deadline_source is not None:
+            out["deadline_source"] = self.deadline_source
         return out
 
 

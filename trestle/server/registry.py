@@ -20,6 +20,7 @@ from trestle.common.types import (
     PublishView,
     RequestOutcome,
 )
+from trestle.server.config import load_config
 from trestle.server.plugin_paths import (
     CATALOG_HINT_EMPTY,
     CATALOG_HINT_PACKS_MISSING,
@@ -327,6 +328,10 @@ class Registry:
             # deadline plus the same finalization margin the terminal wait uses (never a config
             # field, MC-B2-04). Discoverable here so a host sizes its own timeout before calling.
             "max_call_duration_s": deadline_s + clock.finalization_margin,
+            # v0.4 Feature 0: a call may ask for its own `deadline_s` up to the ceiling; a client
+            # sizes its timeout for any call as deadline_s + finalization_margin_s (this server's)
+            "finalization_margin_s": clock.finalization_margin,
+            "deadline_ceiling_s": load_config(self.home).operator_limits.deadline_ceiling,
             # v0.4 Feature 2: an interrupted run of this plugin frees its idempotency key
             "repeatable": load_declared(snap).repeatable,
             "input_schema": load_snapshot_schema(snap),

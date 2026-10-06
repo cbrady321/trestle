@@ -314,6 +314,7 @@ POLICY: dict[tuple[str, str], str] = {
     ("run", "wait_ms"): "validated",  # a bound; zero means do not wait
     ("run", "idempotency_key"): "text",  # matched against earlier keys, never interpreted
     ("run", "completion"): "closed",  # bounded | terminal
+    ("run", "deadline_s"): "validated",  # above 0 and at most the operator's ceiling
     ("await_runs", "run_ids"): "validated",  # handles that must resolve
     ("await_runs", "mode"): "closed",  # all | any | first_failure
     ("await_runs", "timeout_ms"): "validated",
