@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -75,6 +76,26 @@ def run_dir_for(home: Path, run_id: Handle, *, month: str | None = None) -> Path
     if month is None:
         month = time.strftime("%Y-%m")
     return home / "runs" / month / run_id
+
+
+def is_hidden(path: Path) -> bool:
+    """A name starting with a dot under runs/ is never a run: an admission in flight builds its
+    run as `.adm-<run_id>` (v0.4 rule 1), and every walker of runs/ skips such names."""
+    return path.name.startswith(".")
+
+
+def iter_run_dirs(home: Path, *, reverse: bool = False) -> Iterator[Path]:
+    """Every run directory under `home/runs/<month>/`, in name order (`reverse`: newest first),
+    skipping files and dot names at both levels."""
+    runs_root = home / "runs"
+    if not runs_root.is_dir():
+        return
+    for month_dir in sorted(runs_root.iterdir(), reverse=reverse):
+        if not month_dir.is_dir() or is_hidden(month_dir):
+            continue
+        for run_dir in sorted(month_dir.iterdir(), reverse=reverse):
+            if run_dir.is_dir() and not is_hidden(run_dir):
+                yield run_dir
 
 
 def evidence_dir(run_dir: Path) -> Path:

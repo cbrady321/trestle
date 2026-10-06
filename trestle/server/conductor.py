@@ -367,65 +367,8 @@ class Conductor:
         scrubber: redact.Scrubber = redact.NO_SCRUB,
         markers: list[dict[str, object]] | None = None,
     ) -> list[str]:
-        """Promote what a run left to artifacts: `outputs/` (auto-promote) and every staged
-        `ctx.artifact()` file that was never attached (a staged file is promoted or refused with a
-        marker, never left out, WR-EVID-6). Every promoted file passes the write-path scrub
-        (MC-CORE-13): text is copied with declared secrets and host paths scrubbed, and a binary
-        file holding a secret is not promoted at all: a `secret_in_binary` marker is appended to
-        `markers` in its place (nothing is written that later needs scrubbing). The run's count
-        and byte caps hold across everything the run has as artifacts, those the child attached
-        included: a file that would pass either is not promoted and a marker names the limit."""
-        work = work_dir(run_dir)
-        candidates: list[tuple[Path, str, str]] = []
-        outputs_dir = work / "outputs"
-        if outputs_dir.exists():
-            candidates += [
-                (path, path.name, "auto_promote")
-                for path in sorted(outputs_dir.iterdir())
-                if path.is_file()
-            ]
-        staging_dir = work / "artifact-staging"
-        if staging_dir.exists():
-            candidates += [
-                (path, path.relative_to(staging_dir).as_posix().removesuffix(".partial"), "staged")
-                for path in sorted(staging_dir.rglob("*.partial"))
-                if path.is_file()
-            ]
-
-        limits = capture_limits()
-        held = [p for p in (evidence_dir(run_dir) / "artifacts").glob("*") if p.is_file()]
-        count = len(held)
-        total_bytes = sum(p.stat().st_size for p in held)
-        artifact_ids: list[str] = []
-        for path, name, source in candidates:
-            size = path.stat().st_size
-            capped = None
-            if count >= limits.max_artifact_count:
-                capped = "max_artifact_count"
-            elif total_bytes + size > limits.max_artifact_bytes:
-                capped = "max_artifact_bytes"
-            if capped is not None:
-                if markers is not None:
-                    markers.append(_artifact_marker(capped, size))
-                continue
-            art_id = generate_artifact_id()
-            dest = evidence_dir(run_dir) / "artifacts" / art_id
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            if redact.copy_scrubbed(path, dest, scrubber):
-                if markers is not None:
-                    markers.append(_artifact_marker(redact.BINARY_LIMIT, size))
-                continue
-            ledger.append(
-                "artifact_available",
-                run_id=run_id,
-                artifact_id=art_id,
-                name=scrubber.text(name),
-                source=source,
-            )
-            artifact_ids.append(art_id)
-            count += 1
-            total_bytes += dest.stat().st_size
-        return artifact_ids
+        """The owner's promotion: `promote_outputs` (kept as a method, a test seam)."""
+        return promote_outputs(run_dir, ledger, run_id, scrubber, markers)
 
     def _find_run_dir(self, run_id: str) -> Path:
         runs_root = self.home / "runs"
@@ -436,6 +379,89 @@ class Conductor:
             if candidate.is_dir():
                 return candidate
         raise FileNotFoundError(run_id)
+
+
+def promote_outputs(
+    run_dir: Path,
+    ledger: RunLedger,
+    run_id: str,
+    scrubber: redact.Scrubber = redact.NO_SCRUB,
+    markers: list[dict[str, object]] | None = None,
+    *,
+    skip_available: bool = False,
+) -> list[str]:
+    """Promote what a run left to artifacts: `outputs/` (auto-promote) and every staged
+    `ctx.artifact()` file that was never attached (a staged file is promoted or refused with a
+    marker, never left out, WR-EVID-6). Every promoted file passes the write-path scrub
+    (MC-CORE-13): text is copied with declared secrets and host paths scrubbed, and a binary
+    file holding a secret is not promoted at all: a `secret_in_binary` marker is appended to
+    `markers` in its place (nothing is written that later needs scrubbing). The run's count
+    and byte caps hold across everything the run has as artifacts, those the child attached
+    included: a file that would pass either is not promoted and a marker names the limit.
+
+    It reads no conductor state: the reaper promotes a dead owner's run through it too (v0.4
+    rule 3), with `skip_available`, skipping every name that already has an `artifact_available`
+    row, since the owner may have died mid-promotion."""
+    work = work_dir(run_dir)
+    candidates: list[tuple[Path, str, str]] = []
+    outputs_dir = work / "outputs"
+    if outputs_dir.exists():
+        candidates += [
+            (path, path.name, "auto_promote")
+            for path in sorted(outputs_dir.iterdir())
+            if path.is_file()
+        ]
+    staging_dir = work / "artifact-staging"
+    if staging_dir.exists():
+        candidates += [
+            (path, path.relative_to(staging_dir).as_posix().removesuffix(".partial"), "staged")
+            for path in sorted(staging_dir.rglob("*.partial"))
+            if path.is_file()
+        ]
+
+    limits = capture_limits()
+    held = [p for p in (evidence_dir(run_dir) / "artifacts").glob("*") if p.is_file()]
+    count = len(held)
+    total_bytes = sum(p.stat().st_size for p in held)
+    artifact_ids: list[str] = []
+    available: set[str] = set()
+    if skip_available:
+        available = {
+            str(row.get("name"))
+            for row in ledger.records
+            if row.get("kind") == "artifact_available"
+        }
+    for path, name, source in candidates:
+        if skip_available and scrubber.text(name) in available:
+            continue
+        size = path.stat().st_size
+        capped = None
+        if count >= limits.max_artifact_count:
+            capped = "max_artifact_count"
+        elif total_bytes + size > limits.max_artifact_bytes:
+            capped = "max_artifact_bytes"
+        if capped is not None:
+            if markers is not None:
+                markers.append(_artifact_marker(capped, size))
+            continue
+        art_id = generate_artifact_id()
+        dest = evidence_dir(run_dir) / "artifacts" / art_id
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if redact.copy_scrubbed(path, dest, scrubber):
+            if markers is not None:
+                markers.append(_artifact_marker(redact.BINARY_LIMIT, size))
+            continue
+        ledger.append(
+            "artifact_available",
+            run_id=run_id,
+            artifact_id=art_id,
+            name=scrubber.text(name),
+            source=source,
+        )
+        artifact_ids.append(art_id)
+        count += 1
+        total_bytes += dest.stat().st_size
+    return artifact_ids
 
 
 def _monotonic_deadline(spec: dict[str, object]) -> float:

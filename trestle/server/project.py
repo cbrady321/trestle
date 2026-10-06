@@ -6,6 +6,7 @@ import asyncio
 import json
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,6 +29,7 @@ from trestle.common.types import (
 from trestle.query.fs import FilesystemQueryBackend
 from trestle.server import answer as answer_mod
 from trestle.server import fold
+from trestle.server.home import is_locked, marked_run_dir, marker_path, owner_lock_path, read_marker
 from trestle.server.ledger import (
     TERMINAL_KINDS,
     RunLedger,
@@ -71,6 +73,22 @@ class Project:
     # Status polls run on worker threads (L.CS-4.2), so two of them can overlap: a projection
     # rewrites the run's summary.json through one fixed temporary name, one writer at a time.
     _status_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+    # v0.4 rule 3: a waiter that finds its run's owner lock free wakes the local reaper (the only
+    # code that takes over a dead owner's run) and keeps polling. Set by a serving kernel.
+    on_owner_gone: Callable[[], None] | None = field(default=None, repr=False, compare=False)
+
+    def _wake_if_owner_gone(self, run_ids: list[Handle]) -> None:
+        """Probe the owner lock of each waited-on run that still has a live marker: a free lock
+        means its owner died, so the reaper is woken. Called at most once a second per wait."""
+        if self.on_owner_gone is None:
+            return
+        for run_id in run_ids:
+            if not marker_path(self.home, run_id).exists():
+                continue
+            run_dir = marked_run_dir(self.home, run_id, read_marker(self.home, run_id))
+            if run_dir is not None and not is_locked(owner_lock_path(run_dir)):
+                self.on_owner_gone()
+                return
 
     def status(self, run_id: Handle, caller_session: str | None = None) -> RunView | RequestOutcome:
         """The run view of `run_id`: a root run, or a child handle (L.TR-2.2). Under the restricted
@@ -127,24 +145,32 @@ class Project:
         ledger), never a running frame. The wait is bounded by the run's admitted deadline plus
         `clock.finalization_margin`; past it the answer is `projection.terminal_wait_exceeded`."""
         limit = time.monotonic() + self._terminal_bound_s(run_id)
+        probe_at = time.monotonic() + OWNER_PROBE_S
         while True:
             view = self.status(run_id, caller_session)
             if isinstance(view, RequestOutcome) or view.state not in _NON_TERMINAL_STATES:
                 return view
             if time.monotonic() >= limit:
                 return _terminal_wait_exceeded(run_id)
+            if time.monotonic() >= probe_at:
+                self._wake_if_owner_gone([run_id])
+                probe_at = time.monotonic() + OWNER_PROBE_S
             time.sleep(clock.poll_interval)
 
     async def await_terminal_async(
         self, run_id: Handle, caller_session: str | None = None
     ) -> RunView | RequestOutcome:
         limit = time.monotonic() + await asyncio.to_thread(self._terminal_bound_s, run_id)
+        probe_at = time.monotonic() + OWNER_PROBE_S
         while True:
             view = await asyncio.to_thread(self.status, run_id, caller_session)
             if isinstance(view, RequestOutcome) or view.state not in _NON_TERMINAL_STATES:
                 return view
             if time.monotonic() >= limit:
                 return _terminal_wait_exceeded(run_id)
+            if time.monotonic() >= probe_at:
+                await asyncio.to_thread(self._wake_if_owner_gone, [run_id])
+                probe_at = time.monotonic() + OWNER_PROBE_S
             await asyncio.sleep(clock.poll_interval)
 
     def _terminal_bound_s(self, run_id: Handle) -> float:
@@ -185,6 +211,7 @@ class Project:
         caller_session: str | None = None,
     ) -> list[RunView] | RequestOutcome:
         deadline = time.monotonic() + (timeout_ms / 1000.0)
+        probe_at = time.monotonic() + OWNER_PROBE_S
         while True:
             views, outcome = await asyncio.to_thread(
                 self._collect_run_views, run_ids, caller_session
@@ -196,6 +223,9 @@ class Project:
                 return views
             if time.monotonic() >= deadline:
                 return views
+            if time.monotonic() >= probe_at:
+                await asyncio.to_thread(self._wake_if_owner_gone, run_ids)
+                probe_at = time.monotonic() + OWNER_PROBE_S
             await asyncio.sleep(0.05)
 
     def await_many(
@@ -206,6 +236,7 @@ class Project:
         caller_session: str | None = None,
     ) -> list[RunView] | RequestOutcome:
         deadline = time.monotonic() + (timeout_ms / 1000.0)
+        probe_at = time.monotonic() + OWNER_PROBE_S
         while True:
             views, outcome = self._collect_run_views(run_ids, caller_session)
             if outcome is not None:
@@ -215,6 +246,9 @@ class Project:
                 return views
             if time.monotonic() >= deadline:
                 return views
+            if time.monotonic() >= probe_at:
+                self._wake_if_owner_gone(run_ids)
+                probe_at = time.monotonic() + OWNER_PROBE_S
             time.sleep(0.05)
 
     def _collect_run_views(
@@ -689,6 +723,8 @@ def _cleanup_view(ledger: RunLedger, state: str) -> CleanupView | None:
 
 
 _NON_TERMINAL_STATES = frozenset({"queued", "running"})
+# how often a waiter probes its runs' owner locks (v0.4 rule 3's wake-up)
+OWNER_PROBE_S = 1.0
 _FAILURE_TERMINAL_STATES = TERMINAL_KINDS - frozenset({"succeeded"})
 
 

@@ -1571,3 +1571,26 @@ docs = []
 due_checkpoint = "RB-9 (leaf L.RB-9.3)"
 direction = "additive"
 authorized_by = "interfaces/00-shared-vocabulary.md V-11 HOST_SCOPE_UNREADABLE (CB-8; B3-C18 HostScopeUnreadable, V-9.7); plans/b-slice-b.md L.RB-9.3/L.RB-9.4; B-GRANT-RETURN plan gap 1"
+
+# v0.4 Problem A (N processes on one home, step 1a): the admission lock's bound and a lost publish
+# race each answer with their own code.
+
+[[entry]]
+id = "ADD-code-admission-home-busy"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.home_busy"]
+docs = []
+due_checkpoint = "v0.4 step 1a"
+direction = "additive"
+authorized_by = "v0.4 design (shared home), Problem A rule 7 and Wire and compatibility (new codes in codes.py)"
+
+[[entry]]
+id = "ADD-code-publication-registry-conflict"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.registry_conflict"]
+docs = []
+due_checkpoint = "v0.4 step 1a"
+direction = "additive"
+authorized_by = "v0.4 design (shared home), Problem A (registry version) and Wire and compatibility (new codes in codes.py)"

@@ -306,6 +306,14 @@ After a server crash, recovery reads the run's recorded process identities befor
 signals a pid that now belongs to another process. A run started before identities were recorded
 gets no signal at all; its answer reports the stop as unconfirmed.
 
+Several servers may share one `TRESTLE_HOME` (v0.4). Each run is owned by the server that admitted
+it, through a lock the kernel drops when that server exits, even on SIGKILL; only runs whose owner
+is gone are recovered, by the reaper every running server runs (at start, then every 10 s, and at
+once when an `await_runs` or `completion="terminal"` waiter sees its run's owner gone). Starting a
+server never touches another live server's runs. A reaped run whose call gave no declared secret a
+value keeps what it left in `work/outputs/` (and staged artifacts) as artifacts:
+`query(view="run_artifacts")` lists them; a run with a secret value keeps none.
+
 ---
 
 ## Run capacity
@@ -313,7 +321,10 @@ gets no signal at all; its answer reports the stop as unconfirmed.
 A service runs at most `max_running_runs` runs at once; a run admitted beyond that waits in a FIFO
 of at most `queue_depth` runs, its deadline running from admission, and a run that would exceed
 both is refused `admission.queue_full` before it has a run id. Both are settable in the operator's
-`config.toml` and by `TRESTLE_MAX_RUNNING_RUNS` and `TRESTLE_QUEUE_DEPTH`.
+`config.toml`; `max_running_runs` is read from it at each admission (no restart needed) and
+`TRESTLE_MAX_RUNNING_RUNS` is ignored (`trestle doctor` warns when it is set), while
+`queue_depth` is read at start and `TRESTLE_QUEUE_DEPTH` still overrides it. Each server process on
+a home counts its own runs.
 
 <!-- capacity -->
 Defaults: `max_running_runs` = 31 (measured), `queue_depth` = 256 (not measured); ratio bound = 2.0.
@@ -570,6 +581,8 @@ See [`plugins.md`](plugins.md) for authoring, filesystem drop-in, and `publish_p
 | Bad plugin args (including a naive or malformed date/datetime) | `admission.invalid_args` | `describe_plugin` then retry `run` |
 | Pack plugin `valid: false` | `admission.import_failed` | `pip install -e ".[packs]"`; check `catalog_hint` |
 | Reused idempotency key, different args | `admission.idempotency_key_conflict` | New key or same args |
+| Admission while another process holds the home's admission lock over 2 s | `admission.home_busy` (retryable, no run id) | Retry; `trestle doctor` names the holder |
+| Two servers publish the same plugin name at once | `publication.registry_conflict` (names the winner) | `describe_plugin`, then republish if needed |
 
 <!-- K-1 -->
 ### The same idempotency key joins its run after a republish (K-1)

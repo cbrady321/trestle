@@ -6,12 +6,13 @@ import ast
 import math
 import os
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from trestle.common import clock, codes
-from trestle.common.fsutil import atomic_write, sha256_bytes
+from trestle.common.fsutil import atomic_write, sha256_bytes, sha256_file
 from trestle.common.types import (
     CatalogView,
     PluginCatalogRow,
@@ -47,6 +48,26 @@ from trestle.server.snapshots import (
 )
 
 MAX_PUBLISH_SOURCE_BYTES = 512 * 1024
+# v0.4: the home's one registry version counter, bumped under `locks/registry.lock`
+REGISTRY_VERSION_FILE = "registry_version"
+
+
+def read_registry_version(home: Path) -> int:
+    try:
+        return int((home / REGISTRY_VERSION_FILE).read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return 0
+
+
+def bump_registry_version(home: Path) -> int:
+    """One counter for the home (v0.4), still an int: read, add one and write it back under
+    `locks/registry.lock`, so two servers never hand out the same version."""
+    from trestle.server.home import REGISTRY_LOCK, file_lock, locks_dir
+
+    with file_lock(locks_dir(home) / REGISTRY_LOCK):
+        version = read_registry_version(home) + 1
+        atomic_write(home / REGISTRY_VERSION_FILE, f"{version}\n".encode())
+    return version
 
 
 @dataclass
@@ -106,6 +127,17 @@ class Registry:
     # plugin directory earlier could overwrite a later one's `snapshots`, and a publish could read
     # back another refresh's result. Re-entrant: `maybe_refresh` and `publish_source` refresh.
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
+    # told the new snapshot set whenever it changes (a server rewrites its lock file's snapshot
+    # ids, which GC keeps, v0.4)
+    on_change: Callable[[dict[str, PluginSnapshot]], None] | None = field(
+        default=None, repr=False, compare=False
+    )
+
+    def _changed(self, seen: dict[str, PluginSnapshot]) -> None:
+        """The plugin set changed: the home's counter moves, and this registry reports it."""
+        self.registry_version = bump_registry_version(self.home)
+        if self.on_change is not None:
+            self.on_change(seen)
 
     def _scan_signature_now(self) -> tuple[tuple[str, int, int], ...]:
         entries: list[tuple[str, int, int]] = []
@@ -170,9 +202,10 @@ class Registry:
         seen: dict[str, PluginSnapshot] = {}
         refusals: dict[str, PublicationRefused] = {}
         if not paths:
-            if seen != self.snapshots:
-                self.registry_version += 1
+            changed = seen != self.snapshots
             self.snapshots = seen
+            if changed:
+                self._changed(seen)
             self._refusals = refusals
             self._scan_signature = signature
             return
@@ -210,9 +243,10 @@ class Registry:
                     continue
                 seen[plugin_id] = snap
 
-        if seen != self.snapshots:
-            self.registry_version += 1
+        changed = seen != self.snapshots
         self.snapshots = seen
+        if changed:
+            self._changed(seen)
         self._refusals = refusals
         self._scan_signature = signature
 
@@ -380,6 +414,16 @@ class Registry:
         self.refresh()
         snap = self.get(plugin_name)
         if snap is None or snap.source_sha256 != source_sha256:
+            winner = _concurrent_winner(path, source_sha256, snap)
+            if winner is not None:
+                # v0.4: another server wrote this plugin's source after this one did; its source
+                # is the one published, not a validation failure of ours
+                return RequestOutcome(
+                    code=codes.PUBLICATION_REGISTRY_CONFLICT,
+                    message=f"{plugin_name} was published concurrently; {winner} won",
+                    retryable=True,
+                    origin="publication",
+                )
             refused = self._refusals.get(plugin_name)
             if refused is not None:
                 return RequestOutcome(
@@ -406,3 +450,17 @@ class Registry:
             source_sha256=snap.source_sha256,
             created=created,
         )
+
+
+def _concurrent_winner(path: Path, ours: str, snap: PluginSnapshot | None) -> str | None:
+    """When the source at `path` is no longer the one this publish wrote, the publish that
+    replaced it, by snapshot id when the registry already serves it, else by source digest."""
+    try:
+        on_disk = sha256_file(path)
+    except OSError:
+        return None
+    if on_disk == ours:
+        return None
+    if snap is not None and snap.source_sha256 == on_disk:
+        return f"snapshot {snap.snapshot_id}"
+    return f"source sha256 {on_disk[:16]}"

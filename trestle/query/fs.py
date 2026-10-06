@@ -175,13 +175,14 @@ class FilesystemQueryBackend:
         deadline = None if budget_ms is None else time.monotonic() + budget_ms / 1000.0
 
         for month_dir in sorted(runs_root.iterdir(), reverse=True):
-            if not month_dir.is_dir():
+            if not month_dir.is_dir() or month_dir.name.startswith("."):
                 continue
             for run_dir in sorted(month_dir.iterdir(), reverse=True):
                 if deadline is not None and time.monotonic() > deadline:
                     scan_truncated = True
                     break
-                if not run_dir.is_dir():
+                # an admission in flight (`.adm-<run_id>`, v0.4) is not a run
+                if not run_dir.is_dir() or run_dir.name.startswith("."):
                     continue
                 path = ledger_path(run_dir)
                 if not path.exists():

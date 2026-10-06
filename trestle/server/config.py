@@ -20,6 +20,8 @@ _GB = 1024**3
 # is bounded by its own deadline, not by the depth.
 MAX_RUNNING_RUNS_DEFAULT = 31
 QUEUE_DEPTH_DEFAULT = 256
+# v0.4: the environment override of the pool size, now ignored (doctor warns when it is set)
+IGNORED_MAX_RUNNING_ENV = "TRESTLE_MAX_RUNNING_RUNS"
 
 
 # The service profile (MC-CORE-07, WR-AUTH-1/2): `full` registers all ten tools and admits any
@@ -107,7 +109,9 @@ class TrestleConfig:
             ),
             idempotency_ttl_s=ttl,
             service_log=self.service_log,
-            max_running_runs=max(1, _env_int("TRESTLE_MAX_RUNNING_RUNS", self.max_running_runs)),
+            # v0.4 rule 11: the pool size every server must agree on comes from config.toml only;
+            # TRESTLE_MAX_RUNNING_RUNS is ignored (doctor warns when it is set)
+            max_running_runs=max(1, self.max_running_runs),
             queue_depth=max(0, _env_int("TRESTLE_QUEUE_DEPTH", self.queue_depth)),
             profile=self.profile,
             operator_limits=self.operator_limits,

@@ -152,15 +152,16 @@ def test_recover_cli_integrates_gc_and_epoch(
     ops_kernel,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    seed_interrupted_run(ops_kernel.home, "r_cli_recover", last_kind="admitted")
-    old_epoch = (ops_kernel.home / "service_epoch").read_text(encoding="utf-8")
+    run_dir = seed_interrupted_run(ops_kernel.home, "r_cli_recover", last_kind="admitted")
     code = run_recover(home=str(ops_kernel.home))
     assert code == 0
     out = capsys.readouterr().out
     assert "recovery complete" in out
-    assert "service_epoch:" in out
-    new_epoch = (ops_kernel.home / "service_epoch").read_text(encoding="utf-8")
-    assert new_epoch != old_epoch
+    # v0.4: recover reaps (only runs whose owner is gone), then runs GC, which collects the
+    # reaped run at once here (retention 0)
+    assert "reaped: 1" in out
+    assert "gc runs_removed: 1" in out
+    assert not run_dir.exists()
 
 
 def test_doctor_reports_epoch_registry_and_runs(ops_kernel) -> None:
@@ -168,7 +169,7 @@ def test_doctor_reports_epoch_registry_and_runs(ops_kernel) -> None:
     assert isinstance(view, RunView)
     plugin_dirs = [ops_kernel.registry.plugin_dirs[0]]
     report = build_doctor_report(home=ops_kernel.home, plugin_dirs=plugin_dirs)
-    assert report.service_epoch
+    assert report.home_format == 2
     assert report.registry_version >= 1
     assert report.run_counts["total"] >= 1
     assert report.run_counts.get("succeeded", 0) >= 1

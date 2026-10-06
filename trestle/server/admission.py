@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import platform
 import sys
 import time
@@ -30,6 +31,16 @@ from trestle.common.types import (
 )
 from trestle.server import lease
 from trestle.server.config import ProfileConfig, load_config
+from trestle.server.home import (
+    ADMISSION_WAIT_S,
+    ADMITTING_PREFIX,
+    HomeBusy,
+    Ownership,
+    admission_lock,
+    owner_lock_path,
+    try_lock,
+    write_marker,
+)
 from trestle.server.idempotency import IdempotencyStore
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, run_dir_for, work_dir
 from trestle.server.plugin_paths import CATALOG_HINT_PACKS_MISSING
@@ -52,15 +63,35 @@ from trestle.server.snapshots import (
 # first"), `deadline_s` being the run's own deadline (`deadline_of`), never the snapshot default.
 
 
+def _home_busy(busy: HomeBusy) -> AdmitResultRefused:
+    return AdmitResultRefused(
+        tag="refused",
+        outcome=RequestOutcome(
+            code=codes.ADMISSION_HOME_BUSY,
+            message=(
+                f"the home's admission lock stayed held past {ADMISSION_WAIT_S:g}s "
+                f"({busy.holder or 'another process'}); retry"
+            ),
+            retryable=True,
+            origin="admission",
+        ),
+    )
+
+
 @dataclass
 class Admission:
     home: Path
     registry: Registry
     scheduler: Scheduler
-    service_epoch: str
+    # the owner locks this server holds (v0.4 rule 1); its `server_id` is `created.owner`
+    ownership: Ownership
     profile: ProfileConfig = ProfileConfig()
     # the runs that may hold an environment lease (WR-OWN-8), rebuilt from the ledgers at startup
     holders: lease.Holders = field(default_factory=lease.Holders)
+
+    @property
+    def server_id(self) -> str:
+        return self.ownership.server_id
 
     def admit(self, req: AdmitRequest) -> AdmitResult:
         # The restricted profile's allowlist comes first: a refusal here mints nothing (no run id,
@@ -75,6 +106,9 @@ class Admission:
                     origin="admission",
                 ),
             )
+        # v0.4 rule 11: the pool's settings come from config.toml at each admission, so a change
+        # applies without a restart (TRESTLE_MAX_RUNNING_RUNS is ignored)
+        self.scheduler.max_running = load_config(self.home).max_running_runs
         capacity = self.scheduler.check_admit_capacity()
         if capacity is not None:
             return capacity
@@ -158,29 +192,11 @@ class Admission:
             )
 
         if req.idempotency_key is not None:
-            store = IdempotencyStore.open(self.home)
-            store.purge_expired()
-            existing = store.lookup(req.idempotency_key)
-            if existing is not None:
-                if (
-                    existing.plugin == snap.plugin
-                    and existing.args_hash == a_hash
-                    and find_run_dir(self.home, existing.run_id) is not None
-                ):
-                    return AdmitResultAdmitted(
-                        tag="admitted",
-                        run_id=existing.run_id,
-                        existing=True,
-                    )
-                return AdmitResultRefused(
-                    tag="refused",
-                    outcome=RequestOutcome(
-                        code=codes.IDEMPOTENCY_KEY_CONFLICT,
-                        message=f"idempotency key conflict: {req.idempotency_key}",
-                        retryable=False,
-                        origin="admission",
-                    ),
-                )
+            # a lock-free pre-read: a join or a conflict answers before the plan is built, as it
+            # always has; the locked step below decides for good
+            known = self._key_step(req.idempotency_key, snap, a_hash, locked=False)
+            if known is not None:
+                return known
 
         # B2-C2: every root is compiled and carved to a plan before any run id exists (a refusal
         # is not a run); a plan-less root gets the implicit depth-1 plan (B2-C1). The whole
@@ -189,12 +205,37 @@ class Admission:
         planned = plan_for_admission(snap, req, deadline_s)
         if isinstance(planned, AdmitResultRefused):
             return planned
+        try:
+            with admission_lock(self.home):
+                return self._admit_locked(req, snap, a_hash, deadline_s, planned)
+        except HomeBusy as busy:
+            return _home_busy(busy)
+
+    def _admit_locked(
+        self,
+        req: AdmitRequest,
+        snap: PluginSnapshot,
+        a_hash: str,
+        deadline_s: float,
+        planned: AdmittedPlan,
+    ) -> AdmitResult:
+        """v0.4 rule 7: the admission's locked section, its steps in order. Everything slow
+        (registry refresh, import validation, schema validation, compile and carve) ran before the
+        lock; process start runs after it. Step 1b's shared pool fills the marked seams."""
+        # (1) shared state. 1b: read home/sched.json (rebuilt from home/live/ when missing) and
+        #     the shared settings; drop rows of servers whose lock is free.
+        # (2) the idempotency key: join, else claim (the claim is written in step 4 (c); Problem
+        #     B replaces the store with home/keys/<sha256(key)>.json, claimed here).
+        if req.idempotency_key is not None:
+            known = self._key_step(req.idempotency_key, snap, a_hash, locked=True)
+            if known is not None:
+                return known
+        # (3) the busy pre-check (rule 6). 1b: from home/sched.json; today this server's holders.
         busy = self._environment_busy(planned, deadline_s)
         if busy is not None:
             return busy
-        admitted = write_admitted_run(
-            self.home, snap, req, planned, service_epoch=self.service_epoch
-        )
+        # (4) admission steps (a) to (d): built hidden, owner-locked, renamed into place.
+        admitted = write_admitted_run(self.home, snap, req, planned, ownership=self.ownership)
         if admitted.lease_key is not None:
             self.holders.prune()
             self.holders.add(
@@ -202,8 +243,44 @@ class Admission:
                 admitted.run_dir,
             )
         self.scheduler.mint(admitted.run_id, snap.snapshot_id, admitted.spec_hash)
+        # (5) marker state changes, (6) slot grants, (7) write home/sched.json: 1b. Today each
+        #     server grants its own slots in memory (`Scheduler.dispatch`).
         # the real values travel in memory to the run's WorkOrder and no further
         return AdmitResultAdmitted(tag="admitted", run_id=admitted.run_id, secrets=admitted.secrets)
+
+    def write_run(self, snap: PluginSnapshot, req: AdmitRequest, plan: AdmittedPlan) -> AdmittedRun:
+        """`write_admitted_run` for a caller outside `admit` (the harness's `run_tree`, L.SV-5.7):
+        under the admission lock, owned by this server."""
+        with admission_lock(self.home):
+            return write_admitted_run(self.home, snap, req, plan, ownership=self.ownership)
+
+    def _key_step(
+        self, key: str, snap: PluginSnapshot, a_hash: str, *, locked: bool
+    ) -> AdmitResult | None:
+        """The idempotency key's join or conflict, or None (a claim follows). A join needs the
+        same plugin, the same `args_hash` and the run present (K-1). Unlocked, nothing is
+        written; locked (rule 7 step 2), expired entries are purged."""
+        store = IdempotencyStore.open(self.home)
+        if locked:
+            store.purge_expired()
+        existing = store.entries.get(key)
+        if existing is None or existing.expires_at <= time.time():
+            return None
+        if (
+            existing.plugin == snap.plugin
+            and existing.args_hash == a_hash
+            and find_run_dir(self.home, existing.run_id) is not None
+        ):
+            return AdmitResultAdmitted(tag="admitted", run_id=existing.run_id, existing=True)
+        return AdmitResultRefused(
+            tag="refused",
+            outcome=RequestOutcome(
+                code=codes.IDEMPOTENCY_KEY_CONFLICT,
+                message=f"idempotency key conflict: {key}",
+                retryable=False,
+                origin="admission",
+            ),
+        )
 
     def _environment_busy(self, plan: AdmittedPlan, deadline_s: float) -> AdmitResultRefused | None:
         """B2 ordering step 2, the lease pre-check (WR-OWN-8, B2-C5): a request whose environment
@@ -317,94 +394,144 @@ class AdmittedRun:
     secrets: dict[str, object] = field(default_factory=dict, repr=False, compare=False)
 
 
+def _admission_step(step: str) -> None:
+    """A test seam: called after each step of `write_admitted_run` (`a`, `b`, `spec`, `created`,
+    `key`, `marker`, `d`), so a test can crash an admission between any two of them."""
+
+
 def write_admitted_run(
     home: Path,
     snap: PluginSnapshot,
     req: AdmitRequest,
     plan: AdmittedPlan,
     *,
-    service_epoch: str = "",
+    ownership: Ownership,
 ) -> AdmittedRun:
-    """The post-refusal half of admission (MC-B2-08): mint the run id, write the run directory,
-    `spec.json` (with `plan`), the `created` row and the idempotency record. Every refusal has
-    already happened; the harness's `run_tree` (L.SV-5.7) admits through here too."""
+    """The post-refusal half of admission (MC-B2-08): mint the run id and build the run, lock
+    before visible (v0.4 rule 1). Every refusal has already happened, and the caller holds the
+    admission lock (rule 7 step 4; `Admission.write_run` takes it for the harness's `run_tree`,
+    L.SV-5.7). The steps:
+
+    (a) `runs/<month>/.adm-<run_id>/evidence/` in one `mkdir(parents=True)`, so the empty-month
+        rmdir cannot strand it, and the work directories;
+    (b) `flock(LOCK_EX|LOCK_NB)` on `evidence/owner.lock`, held by `ownership` until the run's
+        terminal row;
+    (c) `spec.json` (with `plan`), the `created` row (owner, has_secrets), the idempotency claim
+        and the live marker `home/live/<run_id>`;
+    (d) the rename to `runs/<month>/<run_id>` and an fsync of the month directory: the commit
+        point, so a visible run always has a lock holder or a dead owner.
+
+    An admission that dies before (d) leaves debris (an `.adm-` directory, maybe a marker) that
+    only the reaper removes, under the admission lock."""
     a_hash = args_hash(req.args)
     deadline_s, _ = deadline_of(snap)
     run_id = generate_run_id()
     run_dir = run_dir_for(home, run_id)
     month_dir = run_dir.parent
-    month_dir.mkdir(parents=True, exist_ok=True)
-    fsync_dir(month_dir)
-    run_dir.mkdir(parents=True, exist_ok=True)
-    fsync_dir(run_dir)
-    ev_dir = evidence_dir(run_dir)
-    w_dir = work_dir(run_dir)
-    ev_dir.mkdir(parents=True, exist_ok=True)
-    w_dir.mkdir(parents=True, exist_ok=True)
-    (w_dir / "tmp").mkdir(parents=True, exist_ok=True)
-    (w_dir / "outputs").mkdir(parents=True, exist_ok=True)
-    (w_dir / "artifact-staging").mkdir(parents=True, exist_ok=True)
-    fsync_dir(run_dir)
+    building = month_dir / f"{ADMITTING_PREFIX}{run_id}"
+    ev_dir = evidence_dir(building)
+    w_dir = work_dir(building)
+    ev_dir.mkdir(parents=True)  # (a)
+    w_dir.mkdir()
+    (w_dir / "tmp").mkdir()
+    (w_dir / "outputs").mkdir()
+    (w_dir / "artifact-staging").mkdir()
+    fsync_dir(building)
+    _admission_step("a")
 
-    deadline = datetime.now(tz=UTC) + timedelta(seconds=deadline_s)
-    declared = load_declared(snap)
-    spec = RunSpec(
-        plugin=snap.plugin,
-        version=snap.version,
-        snapshot_id=snap.snapshot_id,
-        # declared secrets are redacted (MC-CORE-13); args_hash above is over the real intent
-        args=redact_args(req.args, declared.secrets),
-        args_hash=a_hash,
-        source_sha256=snap.source_sha256,
-        schema_sha256=snap.schema_sha256,
-        manifest_sha256=snap.manifest_sha256,
-        python_version=sys.version.split()[0],
-        platform=platform.platform(),
-        summary_budget=snap.summary_budget,
-        timeout_s=math.ceil(deadline_s),
-        deadline=deadline.isoformat(),
-        # what publication recorded for the declared packages; the child checks it first
-        provenance={"packages": dict(declared.package_digests)},
-        plan=json.loads(plan.to_json()),
-    )
-    spec_dict = spec.to_dict()
-    atomic_write_json(ev_dir / "spec.json", spec_dict)
-    # the plan digest is inside the spec, so it is part of the run's identity (design S-8)
-    spec_hash = hashlib.sha256(
-        json.dumps(spec_dict, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
-
-    ledger = RunLedger.open(ledger_path(run_dir))
-    created_fields: dict[str, object] = {
-        "run_id": run_id,
-        "spec_hash": spec_hash,
-        "service_epoch": service_epoch,
-        "plugin": snap.plugin,
-        "version": snap.version,
-        "snapshot_id": snap.snapshot_id,
-        "args_hash": a_hash,
-        "caller_session": req.caller_session,
-    }
-    if req.idempotency_key is not None:
-        created_fields["idempotency_key"] = req.idempotency_key
-    # WR-OWN-8: the environment key the run holds a lease on, when it holds one; absent otherwise,
-    # so a run that declares no environment writes the same row as before
-    lease_key = plan.lease_set[0] if plan.lease_set else None
-    if lease_key is not None:
-        created_fields[lease.LEASE_KEY_FIELD] = lease_key
-    ledger.append("created", **created_fields)
-    fsync_dir(run_dir)
-
-    if req.idempotency_key is not None:
-        cfg = load_config(home)
-        IdempotencyStore.open(home).remember(
-            req.idempotency_key,
-            run_id=run_id,
+    owner_fd = try_lock(owner_lock_path(building))  # (b)
+    if owner_fd is None:  # the directory is this call's own: no one else can hold its lock
+        raise RuntimeError(f"owner lock of a new run is held: {run_id}")
+    try:
+        _admission_step("b")
+        deadline = datetime.now(tz=UTC) + timedelta(seconds=deadline_s)
+        declared = load_declared(snap)
+        spec = RunSpec(
             plugin=snap.plugin,
+            version=snap.version,
             snapshot_id=snap.snapshot_id,
+            # declared secrets are redacted (MC-CORE-13); args_hash above is over the real intent
+            args=redact_args(req.args, declared.secrets),
             args_hash=a_hash,
-            ttl_s=key_window_s(deadline_s, cfg.idempotency_ttl_s),
+            source_sha256=snap.source_sha256,
+            schema_sha256=snap.schema_sha256,
+            manifest_sha256=snap.manifest_sha256,
+            python_version=sys.version.split()[0],
+            platform=platform.platform(),
+            summary_budget=snap.summary_budget,
+            timeout_s=math.ceil(deadline_s),
+            deadline=deadline.isoformat(),
+            # what publication recorded for the declared packages; the child checks it first
+            provenance={"packages": dict(declared.package_digests)},
+            plan=json.loads(plan.to_json()),
         )
+        spec_dict = spec.to_dict()
+        atomic_write_json(ev_dir / "spec.json", spec_dict)  # (c)
+        # the plan digest is inside the spec, so it is part of the run's identity (design S-8)
+        spec_hash = hashlib.sha256(
+            json.dumps(spec_dict, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        _admission_step("spec")
+
+        secrets = secret_values(req.args, declared.secrets)
+        ledger = RunLedger.open(ledger_path(building))
+        created_fields: dict[str, object] = {
+            "run_id": run_id,
+            "spec_hash": spec_hash,
+            # v0.4: the server that admitted the run and holds its owner lock (replaces the
+            # service epoch), and whether any declared secret had a value in the call (a reaped
+            # run without one has its outputs promoted, rule 3)
+            "owner": ownership.server_id,
+            "has_secrets": bool(secrets),
+            "plugin": snap.plugin,
+            "version": snap.version,
+            "snapshot_id": snap.snapshot_id,
+            "args_hash": a_hash,
+            "caller_session": req.caller_session,
+        }
+        if req.idempotency_key is not None:
+            created_fields["idempotency_key"] = req.idempotency_key
+        # WR-OWN-8: the environment key the run holds a lease on, when it holds one; absent
+        # otherwise, so a run that declares no environment writes the same row as before
+        lease_key = plan.lease_set[0] if plan.lease_set else None
+        if lease_key is not None:
+            created_fields[lease.LEASE_KEY_FIELD] = lease_key
+        created = ledger.append("created", **created_fields)
+        _admission_step("created")
+
+        if req.idempotency_key is not None:
+            cfg = load_config(home)
+            IdempotencyStore.open(home).remember(
+                req.idempotency_key,
+                run_id=run_id,
+                plugin=snap.plugin,
+                snapshot_id=snap.snapshot_id,
+                args_hash=a_hash,
+                ttl_s=key_window_s(deadline_s, cfg.idempotency_ttl_s),
+            )
+        _admission_step("key")
+
+        write_marker(
+            home,
+            run_id,
+            {
+                "owner": ownership.server_id,
+                "month": month_dir.name,
+                "state": "queued",
+                "lease_key": lease_key,
+                "deadline": deadline.timestamp(),
+                "arrival": created["at"],
+            },
+        )
+        _admission_step("marker")
+
+        os.rename(building, run_dir)  # (d) the commit point
+        _admission_step("d")
+        fsync_dir(month_dir)
+    except BaseException:
+        os.close(owner_fd)  # what the process's death would do: the reaper owns the debris
+        raise
+    ownership.adopt(run_id, owner_fd)
 
     return AdmittedRun(
         run_id=run_id,
@@ -412,5 +539,5 @@ def write_admitted_run(
         lease_key=lease_key,
         deadline_epoch=deadline.timestamp(),
         run_dir=run_dir,
-        secrets=secret_values(req.args, declared.secrets),
+        secrets=secrets,
     )

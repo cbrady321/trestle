@@ -18,7 +18,7 @@ from trestle.common import clock
 from trestle.common.plan import bounds, carving
 from trestle.common.plan.compiler import AdmittedPlan
 from trestle.common.types import AdmitRequest, AdmitResultAdmitted
-from trestle.server.admission import plan_for_admission, write_admitted_run
+from trestle.server.admission import plan_for_admission
 from trestle.server.idempotency import IdempotencyStore
 from trestle.server.main import Kernel
 from trestle.server.snapshots import load_declared_tree
@@ -118,14 +118,13 @@ def test_plan_digest_joins_run_identity(tmp_path: Path) -> None:
     snap = kernel.registry.get("wf")
     assert snap is not None
     req = AdmitRequest(plugin="wf", args={})
-    home = kernel.home
     base = plan_for_admission(snap, req, 300.0)
     assert isinstance(base, AdmittedPlan)
     other = carving.attach(base, {}, base.release_slice + 1.0)
     assert other.plan_digest != base.plan_digest
     seen: dict[str, tuple[str, str]] = {}
     for label, plan in (("base", base), ("other", other)):
-        admitted = write_admitted_run(home, snap, req, plan)
+        admitted = kernel.control.admission.write_run(snap, req, plan)
         run_dir = support.run_dir_of(kernel, admitted.run_id)
         spec = support.read_spec(run_dir)
         rehash = hashlib.sha256(
@@ -190,7 +189,7 @@ def test_write_admitted_run_equals_admit_for_one_vertex(tmp_path: Path) -> None:
     via_admit = support.run_dir_of(kernel, admitted.run_id)
     plan = plan_for_admission(snap, req, 300.0)
     assert isinstance(plan, AdmittedPlan)
-    direct = write_admitted_run(kernel.home, snap, replace(req, idempotency_key="key-2"), plan)
+    direct = kernel.control.admission.write_run(snap, replace(req, idempotency_key="key-2"), plan)
     via_write = support.run_dir_of(kernel, direct.run_id)
     left, right = _normalized(via_admit), _normalized(via_write)
     assert left["spec"] == right["spec"]

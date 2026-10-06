@@ -338,7 +338,11 @@ def _locate_artifact(home: Path, artifact_id: str) -> Path | None:
     if not runs_root.exists():
         return None
     for month_dir in runs_root.iterdir():
+        if not month_dir.is_dir() or month_dir.name.startswith("."):
+            continue
         for run_dir in month_dir.iterdir():
+            if run_dir.name.startswith("."):  # an admission in flight (v0.4)
+                continue
             candidate = run_dir / "evidence" / "artifacts" / artifact_id
             if candidate.exists():
                 return candidate

@@ -4,5 +4,5 @@
 
 [[entry]]
 file = "trestle/server/init_cmd.py"
-line = 25
+line = 38
 reason = "T-4: host's one packs hint import, conditional and caught (init_cmd.py::_packs_hint)"

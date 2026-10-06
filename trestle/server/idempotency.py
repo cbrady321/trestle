@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from trestle.common.fsutil import atomic_write_json
-from trestle.server.ledger import RunLedger, ledger_path
+from trestle.server.ledger import RunLedger, iter_run_dirs, ledger_path
 
 
 @dataclass(frozen=True)
@@ -103,35 +103,28 @@ class IdempotencyStore:
 def rebuild_from_ledgers(home: Path, *, ttl_s: int) -> None:
     """Reconstruct idempotency entries from durable ledger rows (R-WAIT-13)."""
     store = IdempotencyStore.open(home)
-    runs_root = home / "runs"
-    if not runs_root.exists():
-        return
     changed = False
-    for month_dir in runs_root.iterdir():
-        if not month_dir.is_dir():
+    # an admission in flight (`.adm-`, v0.4) is skipped: its claim is written under the lock
+    for run_dir in iter_run_dirs(home):
+        path = ledger_path(run_dir)
+        if not path.exists():
             continue
-        for run_dir in month_dir.iterdir():
-            if not run_dir.is_dir():
-                continue
-            path = ledger_path(run_dir)
-            if not path.exists():
-                continue
-            ledger = RunLedger.open(path)
-            created = ledger.last_kind("created")
-            if created is None:
-                continue
-            key = created.get("idempotency_key")
-            if not isinstance(key, str) or not key:
-                continue
-            if key in store.entries:
-                continue
-            store.entries[key] = IdempotencyRecord(
-                run_id=str(created.get("run_id", run_dir.name)),
-                plugin=str(created.get("plugin", "")),
-                snapshot_id=str(created.get("snapshot_id", "")),
-                args_hash=str(created.get("args_hash", "")),
-                expires_at=time.time() + ttl_s,
-            )
-            changed = True
+        ledger = RunLedger.open(path)
+        created = ledger.last_kind("created")
+        if created is None:
+            continue
+        key = created.get("idempotency_key")
+        if not isinstance(key, str) or not key:
+            continue
+        if key in store.entries:
+            continue
+        store.entries[key] = IdempotencyRecord(
+            run_id=str(created.get("run_id", run_dir.name)),
+            plugin=str(created.get("plugin", "")),
+            snapshot_id=str(created.get("snapshot_id", "")),
+            args_hash=str(created.get("args_hash", "")),
+            expires_at=time.time() + ttl_s,
+        )
+        changed = True
     if changed:
         store.save()

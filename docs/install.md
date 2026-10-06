@@ -127,6 +127,25 @@ Host checklist:
 - `run(plugin="echo", args={"message": "hi"}, wait_ms=5000)` returns a terminal `RunView`
 - `run(plugin="echo", args={"message": "hi"}, wait_ms=5000, completion="terminal")` also does, and can never return a `running` frame
 
+## Several servers on one home
+
+Any number of `trestle serve` (and `trestle ops serve`) processes may share one `TRESTLE_HOME`.
+The home must be on a local file system: every entry point (`serve`, `ops serve`, `init`,
+`recover`, `doctor`, `pin`, `unpin`) refuses an nfs, smbfs, afpfs, webdav or cifs mount. A home
+records its format in `home/format` (2); a home a v0.3.0 server used is refused until it is
+upgraded, and v0.3.0 and v0.4 servers must never share a home:
+
+```bash
+# stop every v0.3.0 server on the home first
+trestle init --upgrade
+```
+
+`trestle init` never recovers runs. `trestle recover` reaps now (only runs whose server is gone)
+and then runs the retention sweep; `trestle doctor` lists the live servers, the live runs by owner
+and, when an admission lock is stuck (a server stopped with Ctrl-Z or a debugger), who holds it.
+A server stopped with SIGTERM drains: it refuses new runs and keeps starting and finishing the
+runs it admitted; stop it once `doctor` shows it has no live runs.
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -135,6 +154,8 @@ Host checklist:
 | Empty catalog / `admission.plugin_not_found` | `trestle init`; check `catalog_hint` on `list_plugins` |
 | Pack plugins `valid: false` | `pip install -e ".[packs]"`; see [`packs.md`](packs.md) |
 | Wrong home / missing plugins | Set `TRESTLE_HOME` (or `--home`) to the directory you initialized |
+| `a v0.3.0 home` | Stop every v0.3.0 server, then `trestle init --upgrade` |
+| `admission.home_busy` | Another process held the home's admission lock over 2 s; retry, and see `trestle doctor` |
 
 ## Next
 

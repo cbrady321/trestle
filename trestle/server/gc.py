@@ -10,7 +10,8 @@ from datetime import datetime
 from pathlib import Path
 
 from trestle.server.config import RetentionConfig, TrestleConfig, load_config
-from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, work_dir
+from trestle.server.home import GC_LOCK, file_lock, locks_dir, marker_path, served_snapshots
+from trestle.server.ledger import RunLedger, evidence_dir, iter_run_dirs, ledger_path, work_dir
 from trestle.server.pins import PinStore
 from trestle.server.recovery import sweep_run_dir
 
@@ -25,6 +26,7 @@ class GCReport:
     bytes_freed: int = 0
     storage_bytes: int = 0
     capped: bool = False
+    skipped: bool = False  # another GC held locks/gc.lock
 
 
 def run_gc(
@@ -33,57 +35,54 @@ def run_gc(
     *,
     now: float | None = None,
 ) -> GCReport:
-    """Sweep expired runs, artifacts, snapshots, and orphan tmp dirs."""
+    """Sweep expired runs, artifacts, snapshots, and orphan tmp dirs. One GC at a time per home:
+    `locks/gc.lock` is taken non-blocking, and a GC that finds it held does nothing (`skipped`).
+    Only `doctor --gc` and `recover` call it (v0.4)."""
+    with file_lock(locks_dir(home) / GC_LOCK, blocking=False) as held:
+        if not held:
+            return GCReport(skipped=True)
+        return _run_gc(home, config, now=now)
+
+
+def _run_gc(
+    home: Path,
+    config: TrestleConfig | None = None,
+    *,
+    now: float | None = None,
+) -> GCReport:
     cfg = config or load_config(home)
     current = time.time() if now is None else now
     pins = PinStore.open(home)
-    referenced_snapshots = _referenced_snapshot_ids(home)
+    # the snapshots runs name, and those live servers serve (their lock files, v0.4)
+    referenced_snapshots = _referenced_snapshot_ids(home) | served_snapshots(home)
     runs_examined = 0
     runs_removed = 0
     artifacts_collected = 0
     orphans_swept = 0
     bytes_freed = 0
 
-    runs_root = home / "runs"
-    if runs_root.exists():
-        for month_dir in sorted(runs_root.iterdir()):
-            if not month_dir.is_dir():
-                continue
-            for run_dir in sorted(month_dir.iterdir()):
-                if not run_dir.is_dir():
-                    continue
-                path = ledger_path(run_dir)
-                if not path.exists():
-                    sweep_run_dir(run_dir)
-                    orphans_swept += 1
-                    continue
-                runs_examined += 1
-                ledger = RunLedger.open(path)
-                if ledger.records:
-                    run_id = str(ledger.records[0].get("run_id", run_dir.name))
-                else:
-                    run_id = run_dir.name
-                if pins.is_pinned(run_id):
-                    continue
-                run_mtime = _run_reference_time(run_dir, ledger, current)
-                metadata_age_days = (current - run_mtime) / 86400.0
-                if metadata_age_days >= cfg.retention.metadata_days:
-                    if _run_has_pinned_artifact(run_dir, ledger, pins):
-                        collected, freed = _collect_unpinned_artifacts(
-                            run_dir,
-                            ledger,
-                            pins,
-                            cfg.retention,
-                            current,
-                        )
-                        artifacts_collected += collected
-                        bytes_freed += freed
-                        continue
-                    bytes_freed += _dir_size(run_dir)
-                    shutil.rmtree(run_dir, ignore_errors=True)
-                    runs_removed += 1
-                    continue
-
+    for run_dir in iter_run_dirs(home):
+        # a run with a live marker is not terminal (or its owner is still finishing it): its
+        # files, work/tmp included, are its owner's (v0.4)
+        if marker_path(home, run_dir.name).exists():
+            continue
+        path = ledger_path(run_dir)
+        if not path.exists():
+            sweep_run_dir(run_dir)
+            orphans_swept += 1
+            continue
+        runs_examined += 1
+        ledger = RunLedger.open(path)
+        if ledger.records:
+            run_id = str(ledger.records[0].get("run_id", run_dir.name))
+        else:
+            run_id = run_dir.name
+        if pins.is_pinned(run_id):
+            continue
+        run_mtime = _run_reference_time(run_dir, ledger, current)
+        metadata_age_days = (current - run_mtime) / 86400.0
+        if metadata_age_days >= cfg.retention.metadata_days:
+            if _run_has_pinned_artifact(run_dir, ledger, pins):
                 collected, freed = _collect_unpinned_artifacts(
                     run_dir,
                     ledger,
@@ -93,7 +92,22 @@ def run_gc(
                 )
                 artifacts_collected += collected
                 bytes_freed += freed
-                orphans_swept += _sweep_orphan_tmp(run_dir)
+                continue
+            bytes_freed += _dir_size(run_dir)
+            shutil.rmtree(run_dir, ignore_errors=True)
+            runs_removed += 1
+            continue
+
+        collected, freed = _collect_unpinned_artifacts(
+            run_dir,
+            ledger,
+            pins,
+            cfg.retention,
+            current,
+        )
+        artifacts_collected += collected
+        bytes_freed += freed
+        orphans_swept += _sweep_orphan_tmp(run_dir)
 
     snapshots_removed, snap_freed = _gc_snapshots(home, referenced_snapshots)
     bytes_freed += snap_freed
@@ -121,22 +135,14 @@ def run_gc(
 def count_runs(home: Path) -> dict[str, int]:
     """Summarize run terminal states for doctor output."""
     counts: dict[str, int] = {"total": 0}
-    runs_root = home / "runs"
-    if not runs_root.exists():
-        return counts
-    for month_dir in runs_root.iterdir():
-        if not month_dir.is_dir():
+    for run_dir in iter_run_dirs(home):
+        path = ledger_path(run_dir)
+        if not path.exists():
             continue
-        for run_dir in month_dir.iterdir():
-            if not run_dir.is_dir():
-                continue
-            path = ledger_path(run_dir)
-            if not path.exists():
-                continue
-            counts["total"] += 1
-            ledger = RunLedger.open(path)
-            state = ledger.projected_state()
-            counts[state] = counts.get(state, 0) + 1
+        counts["total"] += 1
+        ledger = RunLedger.open(path)
+        state = ledger.projected_state()
+        counts[state] = counts.get(state, 0) + 1
     return counts
 
 
@@ -145,6 +151,7 @@ def _referenced_snapshot_ids(home: Path) -> set[str]:
     runs_root = home / "runs"
     if not runs_root.exists():
         return refs
+    # an admission in flight (`.adm-`) names its snapshot too: keep it
     for month_dir in runs_root.iterdir():
         if not month_dir.is_dir():
             continue
@@ -281,31 +288,25 @@ def _enforce_storage_cap(
 ) -> tuple[int, int]:
     """Collect oldest unpinned artifact bytes until under cap."""
     candidates: list[tuple[float, Path, str]] = []
-    runs_root = home / "runs"
-    if not runs_root.exists():
-        return 0, 0
-    for month_dir in runs_root.iterdir():
-        if not month_dir.is_dir():
+    for run_dir in iter_run_dirs(home):
+        if marker_path(home, run_dir.name).exists():
+            continue  # a live run's artifacts are its owner's
+        path = ledger_path(run_dir)
+        if not path.exists():
             continue
-        for run_dir in month_dir.iterdir():
-            if not run_dir.is_dir():
+        ledger = RunLedger.open(path)
+        artifacts_dir = evidence_dir(run_dir) / "artifacts"
+        if not artifacts_dir.exists():
+            continue
+        for record in ledger.records:
+            if record.get("kind") != "artifact_available":
                 continue
-            path = ledger_path(run_dir)
-            if not path.exists():
+            artifact_id = str(record.get("artifact_id", ""))
+            if not artifact_id or pins.is_pinned(artifact_id):
                 continue
-            ledger = RunLedger.open(path)
-            artifacts_dir = evidence_dir(run_dir) / "artifacts"
-            if not artifacts_dir.exists():
-                continue
-            for record in ledger.records:
-                if record.get("kind") != "artifact_available":
-                    continue
-                artifact_id = str(record.get("artifact_id", ""))
-                if not artifact_id or pins.is_pinned(artifact_id):
-                    continue
-                artifact_path = artifacts_dir / artifact_id
-                if artifact_path.exists():
-                    candidates.append((artifact_path.stat().st_mtime, artifact_path, artifact_id))
+            artifact_path = artifacts_dir / artifact_id
+            if artifact_path.exists():
+                candidates.append((artifact_path.stat().st_mtime, artifact_path, artifact_id))
     candidates.sort(key=lambda item: item[0])
     collected = 0
     freed = 0

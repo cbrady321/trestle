@@ -27,7 +27,9 @@ from trestle.common.types import (
     RunView,
     WorkOrder,
 )
-from trestle.server.admission import plan_for_admission, write_admitted_run
+from trestle.server.admission import plan_for_admission
+from trestle.server.home import is_legacy
+from trestle.server.init_cmd import upgrade_home
 from trestle.server.ledger import run_dir_for
 from trestle.server.main import Kernel, create_kernel
 from trestle.server.plugin_schema import validate_args
@@ -55,6 +57,9 @@ def fresh_kernel(
         home if home is not None else Path(tempfile.mkdtemp(prefix="trestle-proof-home-"))
     )
     trestle_home.mkdir(parents=True, exist_ok=True)
+    if is_legacy(trestle_home):
+        # a copied fossil home is a v0.3.0 home: the operator's `trestle init --upgrade` first
+        upgrade_home(trestle_home)
     dirs = plugin_dirs if plugin_dirs is not None else [DEFAULT_PLUGIN_DIR]
     return create_kernel(home=trestle_home, plugin_dirs=dirs, skip_recovery=True)
 
@@ -143,9 +148,7 @@ def admit_tree(
         outcome = planned.outcome
         raise RuntimeError(f"plan refused: {outcome.code} {outcome.message}")
     admission = kernel.control.admission
-    admitted = write_admitted_run(
-        kernel.home, snap, req, planned, service_epoch=admission.service_epoch
-    )
+    admitted = admission.write_run(snap, req, planned)
     admission.scheduler.mint(admitted.run_id, snap.snapshot_id, admitted.spec_hash)
     order = WorkOrder(
         run_id=admitted.run_id,

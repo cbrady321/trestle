@@ -56,7 +56,6 @@ REPO = Path(__file__).resolve().parents[2]
 # a run that outlives this wait is a miss (the host's own timeout is longer)
 WAIT_S = tolerances.JOIN_WAIT_S * 6
 HOST_TIMEOUT_S = WAIT_S * 2
-CAPACITY_ENV = "TRESTLE_MAX_RUNNING_RUNS"
 DEPTH_ENV = "TRESTLE_QUEUE_DEPTH"
 
 
@@ -194,10 +193,11 @@ def measure(cap: int | None = None) -> dict[str, Any]:
     """N = 1, 2, ... until the first failing N or the cap, on one host with room for the cap."""
     names = workload()
     top = cap if cap is not None else cap_default()
-    os.environ[CAPACITY_ENV] = str(top)
     os.environ[DEPTH_ENV] = str(top * len(names))
     samples: list[dict[str, Any]] = []
     with mcp_host.McpHost(timeout_s=HOST_TIMEOUT_S) as host:
+        # v0.4: the pool size comes from config.toml only, read at each admission
+        (host.home / "config.toml").write_text(f"max_running_runs = {top}\n", encoding="utf-8")
         install_workload(host, names)
         for wave in range(len(names)):  # warm-up: each entry once, not measured (first-use cost)
             run_wave(host, names, 1, wave, "warm")

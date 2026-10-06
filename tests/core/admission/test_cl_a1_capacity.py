@@ -30,8 +30,11 @@ LONG_S = tolerances.JOIN_WAIT_S * 6
 NO_WAIT_MS = 0
 
 
-def _capacity_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TRESTLE_MAX_RUNNING_RUNS", str(SLOTS))
+def _capacity_env(monkeypatch: pytest.MonkeyPatch, home: Path) -> None:
+    """The pool size comes from the home's config.toml only (v0.4 rule 11); the per-server
+    queue depth still from its environment override."""
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "config.toml").write_text(f"max_running_runs = {SLOTS}\n", encoding="utf-8")
     monkeypatch.setenv("TRESTLE_QUEUE_DEPTH", str(DEPTH))
 
 
@@ -50,7 +53,7 @@ def _run_dir(home: Path, run_id: str) -> Path:
 def test_over_capacity_queued_then_dispatched_or_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _capacity_env(monkeypatch)
+    _capacity_env(monkeypatch, tmp_path / "host-home")
     with mcp_host.McpHost(home=tmp_path / "host-home") as host:
         # the first run holds its slot until the test frees it (a cancel, below): a timed hold
         # could end, freeing the slot and the queue place, before the third call is made
@@ -106,9 +109,9 @@ def test_over_capacity_queued_then_dispatched_or_refused(
 @pytest.mark.proves(
     "WR-OWN-8", "WR-OWN-8:dispatch-wait-within-deadline-or-refuse", "core", "core", "MCP+PROC", "CI"
 )
-def test_queued_run_gets_no_extra_time(monkeypatch: pytest.MonkeyPatch) -> None:
-    _capacity_env(monkeypatch)
-    kernel = support.spine_kernel()
+def test_queued_run_gets_no_extra_time(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _capacity_env(monkeypatch, tmp_path / "home")
+    kernel = support.spine_kernel(tmp_path / "home")
     assert kernel.control.scheduler.max_running == SLOTS
     assert kernel.control.scheduler.queue_depth == DEPTH
     holder = kernel.control.run(plugin="slow", args={"seconds": LONG_S}, wait_ms=NO_WAIT_MS)
@@ -213,6 +216,9 @@ def test_capacity_defaults_are_final_and_overridable(
     (tmp_path / "config.toml").write_text("max_running_runs = 3\nqueue_depth = 5\n")
     from_file = server_config.load_config(tmp_path)
     assert (from_file.max_running_runs, from_file.queue_depth) == (3, 5)
-    _capacity_env(monkeypatch)
+    # v0.4: the pool size is the config file's alone; TRESTLE_MAX_RUNNING_RUNS is ignored
+    monkeypatch.setenv("TRESTLE_MAX_RUNNING_RUNS", str(SLOTS))
+    assert server_config.load_config(tmp_path).max_running_runs == 3
+    _capacity_env(monkeypatch, tmp_path)
     assert server_config.load_config(tmp_path).max_running_runs == SLOTS
     assert server_config.load_config(tmp_path).queue_depth == DEPTH

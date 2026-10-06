@@ -15,6 +15,9 @@ ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED = "admission.plan_multi_vertex_unsupport
 # L.SL-8.2 (MC-06 seed, retryable): the environment's lease holder leaves too little time before
 # this request's would-be deadline; refused before any run id.
 ADMISSION_ENVIRONMENT_BUSY = "admission.environment_busy"
+# v0.4 (Problem A, rule 7; retryable): the home's admission lock stayed held past its 2 s bound
+# (another server holds it, or one stopped while holding it); refused before any run id.
+ADMISSION_HOME_BUSY = "admission.home_busy"
 NOT_IMPLEMENTED = "projection.not_implemented"
 INVALID_HANDLE = "projection.invalid_handle"
 NOT_OWNER = "projection.not_owner"
@@ -39,6 +42,8 @@ PUBLICATION_SOURCE_TOO_LARGE = "publication.source_too_large"
 PUBLICATION_VALIDATION_FAILED = "publication.validation_failed"
 PUBLICATION_DECLARATION_INVALID = "publication.declaration_invalid"
 PUBLICATION_ENV_ARG_MISSING = "publication.env_arg_missing"
+# v0.4 (Problem A): another server published the same plugin name at once and its source won.
+PUBLICATION_REGISTRY_CONFLICT = "publication.registry_conflict"
 
 # MC-CORE-04: the execution-code vocabulary, additive only (DM-16). A run that started and ended
 # without an answer carries exactly one of these in its `error_record` (MC-15).

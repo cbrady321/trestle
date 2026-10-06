@@ -33,7 +33,7 @@ from trestle.server import lease, procident
 from trestle.server.ledger import RunLedger, ledger_path
 from trestle.server.main import Kernel, create_kernel
 from trestle.server.procident import Attribution, GroupStop, Identity
-from trestle.server.recovery import recover_on_startup
+from trestle.server.reaper import reap_home
 from trestle.server.scheduler import Scheduler
 
 PLUGINS = Path(__file__).resolve().parent / "plugins"
@@ -178,7 +178,9 @@ def test_lease_rebuilt_after_restart(tmp_path: Path) -> None:
     assert [h.run_id for h in after.held('"prod"')] == [first]
     assert lease.rebuild_holders(kernel.home).snapshot() == before
 
-    # a restart with recovery ends every unfinished run at a terminal row: nothing is held
+    # the first server dies (its owner locks go with it): a restart's reaper pass ends every
+    # unfinished run at a terminal row, so nothing is held
+    kernel.ownership.drop_all()
     recovered = create_kernel(home=kernel.home, plugin_dirs=[tmp_path / "plugin-src"])
     assert recovered.control.admission.holders.snapshot() == frozenset()
 
@@ -406,7 +408,8 @@ def _restarted(tmp_path: Path) -> Iterator[_Ended]:
     ledger.append("process_identity", run_id=holder.run_id, **recorded.fields())
     host = FakeHost()
     host.add(104, 1, 100, start=spine.START + 600)  # in the group, but started after the record
-    recover_on_startup(kernel.home, source=host, signaller=host)
+    kernel.ownership.drop_all()  # the server died: the kernel dropped its owner locks
+    reap_home(kernel.home, source=host, signaller=host)
     assert host.sent == []
     restarted = create_kernel(home=kernel.home, plugin_dirs=[PLUGINS], skip_recovery=True)
     yield _Ended(restarted, holder_dir, spine.run_dir_of(kernel, waiter.run_id))

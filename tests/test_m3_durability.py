@@ -11,9 +11,10 @@ import pytest
 
 from trestle.common import codes
 from trestle.common.types import AdmitRequest, RunView, WorkOrder
+from trestle.server.home import live_servers, marker_path
 from trestle.server.ledger import RunLedger, ledger_path, run_dir_for
+from trestle.server.main import create_kernel
 from trestle.server.recovery import (
-    recover_on_startup,
     recover_run_dir,
     seed_interrupted_run,
     sweep_run_dir,
@@ -158,15 +159,18 @@ def test_torn_ledger_line_tolerance_on_read(durable_kernel) -> None:
     assert RunLedger.open(path).projected_state() == "interrupted"
 
 
-def test_recover_on_startup_new_epoch_and_sweep(durable_kernel) -> None:
+def test_recover_on_startup_new_epoch_and_sweep(durable_kernel, plugin_dir) -> None:
+    """v0.4: a start reaps (the service epoch is gone): a new kernel has its own server id, and
+    its start pass finalizes a run whose owner is dead, removing the run's live marker."""
     run_id = "r_test_startup_recovery"
     seed_interrupted_run(durable_kernel.home, run_id, last_kind="admitted")
-    old_epoch = (durable_kernel.home / "service_epoch").read_text(encoding="utf-8")
 
-    new_epoch = recover_on_startup(durable_kernel.home)
-    assert new_epoch != old_epoch
+    restarted = create_kernel(home=durable_kernel.home, plugin_dirs=[plugin_dir])
+    assert restarted.server_id != durable_kernel.server_id
     ledger = RunLedger.open(ledger_path(durable_kernel.home / "runs" / "2099-01" / run_id))
     assert ledger.projected_state() == "interrupted"
+    assert not marker_path(durable_kernel.home, run_id).exists()
+    assert live_servers(durable_kernel.home) == []  # only a serving process registers
 
 
 def test_run_registry_cancel_flag(durable_kernel) -> None:

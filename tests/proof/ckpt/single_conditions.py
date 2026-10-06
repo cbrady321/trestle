@@ -276,7 +276,6 @@ from tests.proof.foundations import trees
 from trestle.common import clock
 from trestle.common.plan import carving, compiler
 from trestle.common.types import AdmitRequest
-from trestle.server.admission import write_admitted_run
 
 
 def test_planted_admission():
@@ -291,7 +290,7 @@ def test_planted_admission():
     slices = carving.carve(compiled, 300.0, clock.FINALIZATION_RESERVE_S, release_slice)
     plan = carving.attach(compiled, slices, release_slice)
     request = AdmitRequest(plugin="spine_leaf", args={{"env": "dev"}})
-    write_admitted_run(kernel.home, snap, request, plan)
+    kernel.control.admission.write_run(snap, request, plan)
 """
 
 

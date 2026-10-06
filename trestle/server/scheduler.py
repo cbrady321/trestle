@@ -50,6 +50,10 @@ class Scheduler:
     # holder index told when a run's lease ends
     running_keys: dict[Handle, str] = field(default_factory=dict)
     holders: lease.Holders | None = None
+    # v0.4: told once a run is done here (after its terminal row, or its drive raised): the
+    # owner removes the run's live marker and closes its owner lock (`Ownership.release`). Called
+    # outside `_lock`: the home's admission lock is never taken while holding it (rule 10).
+    on_complete: Callable[[Handle], None] | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def check_admit_capacity(self) -> AdmitResultRefused | None:
@@ -176,4 +180,6 @@ class Scheduler:
             self.running_keys.pop(run_id, None)
         if self.holders is not None:
             self.holders.release(run_id)  # the lease ends with the run (terminal row or crash)
+        if self.on_complete is not None:
+            self.on_complete(run_id)
         self.dispatch()

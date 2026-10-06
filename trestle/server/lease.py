@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from trestle.common.plan.declared import canonical_json
-from trestle.server.ledger import RunLedger, evidence_dir, ledger_path
+from trestle.server.ledger import RunLedger, evidence_dir, iter_run_dirs, ledger_path
 
 LEASE_KEY_FIELD = "lease_key"
 
@@ -151,16 +151,8 @@ def rebuild_holders(home: Path, *, now: float | None = None) -> Holders:
     every run whose ledger holds the lease per `holder_of`, in run-directory order. Reads the
     ledgers only; nothing is written."""
     holders = Holders()
-    runs_root = home / "runs"
-    if not runs_root.is_dir():
-        return holders
-    for month_dir in sorted(runs_root.iterdir()):
-        if not month_dir.is_dir():
-            continue
-        for run_dir in sorted(month_dir.iterdir()):
-            if not run_dir.is_dir():
-                continue
-            holder = holder_of(run_dir, now=now)
-            if holder is not None:
-                holders.add(holder, run_dir)
+    for run_dir in iter_run_dirs(home):
+        holder = holder_of(run_dir, now=now)
+        if holder is not None:
+            holders.add(holder, run_dir)
     return holders

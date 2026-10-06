@@ -19,7 +19,7 @@ from trestle.child.attempt_lane import AttemptLane
 from trestle.common import lane_format as lf
 from trestle.common.plan.compiler import AdmittedPlan
 from trestle.common.types import AdmitRequest, AdmitResultRefused, WorkOrder
-from trestle.server.admission import plan_for_admission, write_admitted_run
+from trestle.server.admission import plan_for_admission
 from trestle.server.fold import plan_of_spec
 from trestle.server.ledger import evidence_dir, run_dir_for
 from trestle.server.main import Kernel
@@ -134,9 +134,7 @@ def _admit_as(kernel: Kernel, plugin: Path, caller_session: str) -> harness.Admi
     planned = plan_for_admission(snap, req, deadline_s)
     assert not isinstance(planned, AdmitResultRefused), planned
     admission = kernel.control.admission
-    made = write_admitted_run(
-        kernel.home, snap, req, planned, service_epoch=admission.service_epoch
-    )
+    made = admission.write_run(snap, req, planned)
     admission.scheduler.mint(made.run_id, snap.snapshot_id, made.spec_hash)
     order = WorkOrder(
         run_id=made.run_id,

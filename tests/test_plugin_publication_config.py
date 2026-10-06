@@ -116,4 +116,4 @@ def test_trestle_init_creates_home_and_seeds_echo(
     monkeypatch.setenv("TRESTLE_HOME", str(home))
     assert main(["init"]) == 0
     assert (home / "plugins" / "echo.py").exists()
-    assert (home / "service_epoch").exists()
+    assert (home / "format").read_text(encoding="utf-8").strip() == "2"

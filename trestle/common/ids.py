@@ -65,5 +65,7 @@ def generate_snapshot_id(
     return f"snap_{hashlib.sha256(canonical_json(payload)).hexdigest()[:16]}"
 
 
-def generate_service_epoch() -> str:
-    return f"epoch_{_base32_encode(os.urandom(8))}"
+def generate_server_id() -> str:
+    """`srv_<base32>`: one server process's identity (v0.4), recorded as `created.owner` and named
+    by its lock file `home/servers/<server_id>.lock`. It replaces the service epoch."""
+    return f"srv_{_base32_encode(os.urandom(8))}"
