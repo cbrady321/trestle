@@ -31,6 +31,7 @@ from trestle.server import answer as answer_mod
 from trestle.server import fold, idempotency
 from trestle.server.home import is_locked, marked_run_dir, marker_path, owner_lock_path, read_marker
 from trestle.server.ledger import (
+    NON_TERMINAL_STATES,
     TERMINAL_KINDS,
     RunLedger,
     evidence_dir,
@@ -112,7 +113,7 @@ class Project:
             # is free (the owner may have died before writing it)
             run_dir = self._run_dir_for(run_id)
             state = trusted_state(run_dir) if run_dir is not None else None
-            if run_dir is not None and state is not None and state["state"] in _NON_TERMINAL_STATES:
+            if run_dir is not None and state is not None and state["state"] in NON_TERMINAL_STATES:
                 return _live_view(run_id, run_dir, state)
             ledger = RunLedger.open(ledger_path(run_dir)) if run_dir is not None else None
             if ledger is None:
@@ -135,7 +136,7 @@ class Project:
             view = self.status(run_id, caller_session)
             if isinstance(view, RequestOutcome):
                 return view
-            if view.state not in {"queued", "running"}:
+            if view.state not in NON_TERMINAL_STATES:
                 return view
             if time.monotonic() >= deadline:
                 return view
@@ -149,7 +150,7 @@ class Project:
             view = await asyncio.to_thread(self.status, run_id, caller_session)
             if isinstance(view, RequestOutcome):
                 return view
-            if view.state not in {"queued", "running"}:
+            if view.state not in NON_TERMINAL_STATES:
                 return view
             if time.monotonic() >= deadline:
                 return view
@@ -166,7 +167,7 @@ class Project:
         probe_at = time.monotonic() + OWNER_PROBE_S
         while True:
             view = self.status(run_id, caller_session)
-            if isinstance(view, RequestOutcome) or view.state not in _NON_TERMINAL_STATES:
+            if isinstance(view, RequestOutcome) or view.state not in NON_TERMINAL_STATES:
                 return view
             if time.monotonic() >= limit:
                 return _terminal_wait_exceeded(run_id)
@@ -182,7 +183,7 @@ class Project:
         probe_at = time.monotonic() + OWNER_PROBE_S
         while True:
             view = await asyncio.to_thread(self.status, run_id, caller_session)
-            if isinstance(view, RequestOutcome) or view.state not in _NON_TERMINAL_STATES:
+            if isinstance(view, RequestOutcome) or view.state not in NON_TERMINAL_STATES:
                 return view
             if time.monotonic() >= limit:
                 return _terminal_wait_exceeded(run_id)
@@ -193,12 +194,15 @@ class Project:
 
     def _terminal_bound_s(self, run_id: Handle) -> float:
         """Seconds from now to the moment the terminal wait gives up: the run's admitted
-        `spec.deadline` (wall clock, fixed at admission) plus the finalization margin. A spec
-        without a readable deadline falls back to its `timeout_s` from now, as the conductor
-        does."""
+        `spec.deadline` (wall clock, fixed at admission) plus the finalization margin; for a run
+        that was held, the deadline its `released` row minted once it has one (before that its spec
+        deadline is `hold_until + deadline_s`, the latest possible). A spec without a readable
+        deadline falls back to its `timeout_s` from now, as the conductor does."""
         run_dir = self._run_dir_for(run_id)
         spec: dict[str, Any] = {}
+        minted: str | None = None
         if run_dir is not None:
+            minted = RunLedger.open(ledger_path(run_dir)).released_deadline()
             try:
                 loaded = json.loads((evidence_dir(run_dir) / "spec.json").read_text("utf-8"))
             except (OSError, ValueError):
@@ -206,7 +210,7 @@ class Project:
             if isinstance(loaded, dict):
                 spec = loaded
         remaining: float | None = None
-        raw = spec.get("deadline")
+        raw = minted if minted is not None else spec.get("deadline")
         if isinstance(raw, str):
             try:
                 fixed = datetime.fromisoformat(raw)
@@ -351,7 +355,7 @@ class Project:
                 )
 
         state = ledger.projected_state()
-        if state not in {"queued", "running"}:
+        if state not in NON_TERMINAL_STATES:  # a held run is cancellable too (Feature 3)
             return RequestOutcome(
                 code=codes.INVALID_HANDLE,
                 message=f"run not cancellable: {run_id} ({state})",
@@ -385,7 +389,7 @@ class Project:
         child = self._resolve_child(handle, caller_session)
         if child is None or isinstance(child, RequestOutcome):
             return child
-        if child.ledger.projected_state() not in {"queued", "running"}:
+        if child.ledger.projected_state() not in NON_TERMINAL_STATES:
             return RequestOutcome(
                 code=codes.INVALID_HANDLE,
                 message=f"run not cancellable: {child.root_id} ({child.ledger.projected_state()})",
@@ -544,7 +548,7 @@ class Project:
         )
         state = ledger.projected_state()
         view = RunView(run_id=handle, state=state, root_run_id=root_id, path="/".join(path))
-        if state in _NON_TERMINAL_STATES:
+        if state in NON_TERMINAL_STATES:
             return view
         key = "/".join(path)
         wire = (answer_mod.read_child_views(run_dir) or {}).get(key)
@@ -608,7 +612,7 @@ class Project:
         next_handle: str | None = None
         result_bytes: int | None = None
 
-        if state not in {"queued", "running"} and evidence is not None:
+        if state not in NON_TERMINAL_STATES and evidence is not None:
             index = load_index(evidence)
             result_path = evidence / "result.json"
             if index is not None and result_path.exists():
@@ -653,6 +657,7 @@ class Project:
             outcome=_outcome_view(ledger, state, evidence),
             answer=_answer_view(ledger, state, run_dir),
             retry_of=_retry_of(ledger),
+            after_run_id=_after_run_id(ledger.last_kind("created")),
             **_deadline_fields(ledger.last_kind("created")),
         )
 
@@ -722,6 +727,7 @@ def _live_view(run_id: Handle, run_dir: Path, state: dict[str, Any]) -> RunView:
         artifact_count=artifact_count,
         limits_exceeded=limits_exceeded if isinstance(limits_exceeded, list) else None,
         retry_of=state.get("retry_of") if isinstance(state.get("retry_of"), str) else None,
+        after_run_id=_after_run_id(state),
         **_deadline_fields(state),
     )
 
@@ -736,6 +742,12 @@ def _deadline_fields(record: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(source, str) or not isinstance(seconds, int | float):
         return {}
     return {"deadline_s": seconds, "deadline_source": source}
+
+
+def _after_run_id(record: dict[str, Any] | None) -> str | None:
+    """The run a held (or once held) run was sent to wait for, from `created` or state.json."""
+    after = record.get("after_run_id") if record is not None else None
+    return after if isinstance(after, str) else None
 
 
 def _retry_of(ledger: RunLedger) -> str | None:
@@ -757,7 +769,7 @@ def _answer_view(ledger: RunLedger, state: str, run_dir: Path | None) -> dict[st
     """B4-C6's one additive field: the `TerminalAnswer`, recomputed from the durable inputs U2
     wrote (B4-C1 Post), only once the terminal row exists (WR-TERM-2). Bounded by the run's own
     summary budget (CL-B1); the rest is behind its `detail` handle."""
-    if state in _NON_TERMINAL_STATES or run_dir is None:
+    if state in NON_TERMINAL_STATES or run_dir is None:
         return None
     spec = _read_spec(evidence_dir(run_dir)) or {}
     answer = answer_mod.answer_for_run(run_dir, ledger.records, state, spec)
@@ -780,7 +792,7 @@ def _error_view(ledger: RunLedger, state: str) -> dict[str, Any] | None:
     """The run's explanation, read from the ledger's `error_record` row (MC-15, the sole
     authority): {code, phase, message}. A run that has not ended carries none, so a row written
     just before the terminal row is not shown on a run still reported as running."""
-    if state in _NON_TERMINAL_STATES:
+    if state in NON_TERMINAL_STATES:
         return None
     row = ledger.last_kind("error_record")
     if row is None:
@@ -793,7 +805,7 @@ def _outcome_view(ledger: RunLedger, state: str, evidence: Path | None) -> dict[
     the `error_record` row and whether recovery wrote the terminal row. Only `interrupted` is
     written by recovery. A run that has not ended has none. Identity is the snapshot the run's
     spec fixed at admission."""
-    if state in _NON_TERMINAL_STATES:
+    if state in NON_TERMINAL_STATES:
         return None
     row = ledger.last_kind("error_record")
     outcome = classify(state, row, recovered=state == "interrupted")
@@ -820,7 +832,7 @@ def _cleanup_view(ledger: RunLedger, state: str) -> CleanupView | None:
     the supervisor confirmed every attributable process gone, else `unknown`; no row is `unknown`,
     never clean. It is never `nothing_created`: the run spawned a process. (A core run records no
     lane, so no folded `InRunGroup` entry can hold `helpers_disclosed` back.)"""
-    if state in _NON_TERMINAL_STATES:
+    if state in NON_TERMINAL_STATES:
         return None
     if not ledger.has_kind("started"):
         return CleanupView(processes="nothing_created")
@@ -837,7 +849,6 @@ def _cleanup_view(ledger: RunLedger, state: str) -> CleanupView | None:
     return CleanupView(processes="released" if released else "unknown")
 
 
-_NON_TERMINAL_STATES = frozenset({"queued", "running"})
 # how often a waiter probes its runs' owner locks (v0.4 rule 3's wake-up)
 OWNER_PROBE_S = 1.0
 _FAILURE_TERMINAL_STATES = TERMINAL_KINDS - frozenset({"succeeded"})
@@ -848,7 +859,7 @@ _DISPOSITIONS = frozenset({"not_started", "stopped", "unended"})
 
 
 def _is_non_terminal(state: str) -> bool:
-    return state in _NON_TERMINAL_STATES
+    return state in NON_TERMINAL_STATES
 
 
 def _join_satisfied(views: list[RunView], mode: JoinMode) -> bool:

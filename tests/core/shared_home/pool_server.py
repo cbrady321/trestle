@@ -4,7 +4,8 @@
 
 It builds a kernel as `trestle serve` does (start pass, server lock, reaper thread, the 250 ms
 pass) and answers one JSON line per command line: `{"op": "run", "plugin": ..., "args": {...}}`
-(the run view, or the refusal) and `{"op": "drain"}` (what SIGTERM does, which it also handles).
+(the run view, or the refusal; `after` and `idempotency_key` are optional) and `{"op": "drain"}`
+(what SIGTERM does, which it also handles).
 Overrides shorten the pool's periods (`{"pool": {"RESERVE_FRESH_S": 2.0}}`), the reaper's
 (`"reap_interval_s"`), or stop a granted run from ever being spawned (`"hold_dispatch"`: the
 grant is reported as `{"event": "granted", "run_id": ...}` and nothing starts).
@@ -62,7 +63,13 @@ def main() -> int:
             scheduler.draining = True
             emit({"answer": {"draining": True}})
             continue
-        view = kernel.control.run(command["plugin"], command.get("args", {}), wait_ms=NO_WAIT_MS)
+        view = kernel.control.run(
+            command["plugin"],
+            command.get("args", {}),
+            wait_ms=NO_WAIT_MS,
+            after=command.get("after"),
+            idempotency_key=command.get("idempotency_key"),
+        )
         if isinstance(view, RequestOutcome):
             emit({"answer": view.to_dict()})
         else:

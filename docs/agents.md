@@ -206,6 +206,7 @@ that produces it; a state with no producer is **reserved** and is never written.
 | State | Kind | Producer |
 |-------|------|----------|
 | `queued` | projected | Admission writes the `created` and `admitted` ledger rows; the run is `queued` until the `started` row exists. |
+| `held` | projected | Admission, for a run sent with `after`: a `held` row follows `created`, and the run is `held` (no slot, none of its deadline spent) until a `released` row or a terminal row. |
 | `running` | projected | The conductor writes `started` when the worker begins; the run is `running` until evidence is finalized. |
 | `succeeded` | terminal | The conductor, when the worker exits 0. |
 | `failed` | terminal | The conductor, when the worker exits 1 (the plugin raised) or reports nothing usable. |
@@ -342,7 +343,7 @@ server's running runs keep their slots until another server's reaper ends them. 
 and `max_share` are read from `config.toml` at each admission and grant (no restart needed;
 `TRESTLE_MAX_RUNNING_RUNS` is ignored and `trestle doctor` warns when it is set); `queue_depth`
 (`TRESTLE_QUEUE_DEPTH` still overrides it) and `[operator] max_held_runs` (256) are per server, read
-at start. The shared state is `home/sched.json`, rebuilt from `home/live/` when missing.
+at start; held runs (`run(after=...)`) are outside `queue_depth`, and a server holding `max_held_runs` of them refuses another with `admission.queue_full`. The shared state is `home/sched.json`, rebuilt from `home/live/` when missing.
 
 <!-- capacity -->
 Defaults: `max_running_runs` = 31 (measured), `queue_depth` = 256 (not measured); ratio bound = 2.0.
@@ -603,12 +604,23 @@ See [`plugins.md`](plugins.md) for authoring, filesystem drop-in, and `publish_p
 | Reused idempotency key, different args | `admission.idempotency_key_conflict` | New key or same args |
 | Admission while another process holds the home's admission lock over 2 s | `admission.home_busy` (retryable, no run id) | Retry; `trestle doctor` names the holder |
 | Two servers publish the same plugin name at once | `publication.registry_conflict` (names the winner) | `describe_plugin`, then republish if needed |
+| `after` malformed (not exactly one of `run` and `key`, bad `when`, `match` with `when: "ended"`) | `admission.invalid_args` | See "Run after another run" |
+| `after` names a run or key no run used | `admission.after_unknown` (no run id) | Send the earlier run first |
+| A held run's `after` is not met | the held run ends `cancelled`, `error.code` `execution.after_unmet` (the message names the earlier run and why) | Read the earlier run; send a new run when it is fixed |
 
 ### Find a run by its key, wait on keys, keep an answer longer
 
 - `query(view="run_by_key", params={"idempotency_key": "…"})` lists the runs that used a key, newest first: `state`, `started_at`, `ended_at`, `deadline_s`, `outcome_class`, `error_code`, `summary` (`summary_truncated`), `artifact_count` and `artifacts_available` (artifacts GC has not collected), `retry_of`, and `joinable` with `key_expires_at` (whether re-sending the key now joins that run). The first row is the run a re-send would join. An unknown key is an empty page. It reads one key file, never the recent-runs window, so an old run is found as long as its metadata lives, and it changes nothing.
 - `await_runs(run_ids=[…], keys=[…], mode=…, timeout_ms=…)` also takes keys: each resolves to its newest run before the wait, and the answer lists the run ids, then the keys, each in the order given. A view reached through a key carries `idempotency_key`; the others are unchanged. `run_ids` stays a required argument of the tool, so send `run_ids: []` with `keys`; neither given is `projection.invalid_args`, and an unknown key refuses the call with `projection.unknown_key`.
 - `run(idempotency_ttl_s=…)` sets how long after the run's deadline plus margin the key stays joinable, in whole seconds from 0 to `[keys] max_ttl_s` in `config.toml` (default 604800, at most `metadata_days`; read at each admission). Omitted: the server's `TRESTLE_IDEMPOTENCY_TTL_S` (3600). It is fixed at admission and recorded as `key_expires_at`; a later join never changes it. The answer lives `metadata_days`, but artifacts only `artifact_days` unless pinned (`artifacts_available`). 0 joins only while the run lives.
+
+### Run after another run
+
+`run(..., after={"key": "gate:M5:4c091dca", "when": "succeeded", "match": {"ok": true}})` admits the run at once into the state `held`: it takes no slot and spends none of its deadline. When the earlier run ends, the held run joins its server's queue if the condition holds, or ends `cancelled` with `error.code` `execution.after_unmet` (its message names the earlier run and the reason) if not.
+
+- `after` takes exactly one of `run` (a run id) or `key` (an idempotency key, resolved to its newest run; no such run is `admission.after_unknown`), `when` (`succeeded`, the default, or `ended`: any terminal state) and `match` (equality on top-level fields of the earlier run's `result.json`; refused `admission.invalid_args` with `when: "ended"`). A `result.json` that is absent, too large or not an object is unmet, each with its own reason.
+- A held run shows `state: "held"` and `after_run_id`; `cancel` accepts it. `run(completion="terminal")` waits through the hold and the run. A hold never outlives the earlier run's deadline plus its margin and 20 s (`hold_expired`). If the earlier run's server dies it ends `interrupted`, so `when: "succeeded"` is unmet; a re-sent repeatable key starts a new run and does not revive the held one.
+- Chains work (C after B after A). `after` is part of a key's identity beside the arguments: re-sending a key with another `after` is `admission.idempotency_key_conflict`. Held runs count against the server's `[operator] max_held_runs` (256), not `queue_depth`.
 
 <!-- K-1 -->
 ### The same idempotency key joins its run after a republish (K-1)

@@ -1695,3 +1695,46 @@ docs = []
 due_checkpoint = "v0.4 step 5"
 direction = "additive"
 authorized_by = "v0.4 design (shared home), Feature 1 and Wire and compatibility (new codes in codes.py)"
+
+# v0.4 step 6 (Feature 3): run(after={...}), the held state's run view field after_run_id, and the
+# two new codes.
+
+[[entry]]
+id = "ADD-tools-list-run-after"
+facet = "tools_list"
+row_or_k = "MC-16"
+docs = []
+due_checkpoint = "v0.4 step 6"
+direction = "additive"
+keys = ["$.tools[0].inputSchema.properties.after"]
+authorized_by = "v0.4 design (shared home), Feature 3 and Wire and compatibility (run(after={...}))"
+
+[[entry]]
+id = "ADD-runview-after-run-id"
+facet = "runview_shape"
+row_or_k = "MC-06"
+docs = []
+due_checkpoint = "v0.4 step 6"
+direction = "additive"
+items = [{ path = "$.fields", value = ["after_run_id", "str | None"] }]
+authorized_by = "v0.4 design (shared home), Feature 3 and Wire and compatibility (run view field after_run_id)"
+
+[[entry]]
+id = "ADD-code-admission-after-unknown"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.after_unknown"]
+docs = []
+due_checkpoint = "v0.4 step 6"
+direction = "additive"
+authorized_by = "v0.4 design (shared home), Feature 3 and Wire and compatibility (new codes in codes.py)"
+
+[[entry]]
+id = "ADD-code-execution-after-unmet"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.after_unmet"]
+docs = []
+due_checkpoint = "v0.4 step 6"
+direction = "additive"
+authorized_by = "v0.4 design (shared home), Feature 3 and Wire and compatibility (new codes in codes.py)"

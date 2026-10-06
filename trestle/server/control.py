@@ -83,6 +83,10 @@ class ControlSurface:
         self.scheduler.on_expire = self.conductor.finalize_unspawned
         # v0.4: a cancel flag another server wrote for a run waiting here, seen on the 250 ms pass
         self.scheduler.on_cancel = self.conductor.cancel_flag_written
+        # Feature 3: the same pass decides a held run: release it, or end it cancelled (unmet)
+        self.scheduler.on_held_check = self.conductor.check_held
+        self.scheduler.on_release = self.conductor.release_held
+        self.scheduler.on_unmet = self.conductor.finalize_unmet
 
     def submit_admit(self, request: AdmitRequest) -> Future[AdmitResult]:
         """MC-30: refresh the registry, then admit, on the admission thread."""
@@ -100,6 +104,14 @@ class ControlSurface:
         marker = read_marker(self.admission.home, order.run_id) or {}
         key = marker.get("lease_key")
         deadline = marker.get("deadline")
+        if marker.get("state") == "held":
+            # Feature 3: a run sent with `after` waits in the FIFO as an entry that cannot start
+            self.scheduler.hold(
+                order,
+                key=key if isinstance(key, str) else None,
+                arrival=epoch(marker.get("arrival")) if "arrival" in marker else None,
+            )
+            return
         self.scheduler.enqueue(
             order,
             self.conductor.admitted_deadline(order),
@@ -122,6 +134,7 @@ class ControlSurface:
         caller_session: str | None = None,
         deadline_s: float | None = None,
         idempotency_ttl_s: float | None = None,
+        after: dict[str, Any] | None = None,
     ) -> RequestOutcome | RunView:
         refused = _refuse_completion(completion, wait_ms)
         if refused is not None:
@@ -135,6 +148,7 @@ class ControlSurface:
                 caller_session=caller_session,
                 deadline_s=deadline_s,
                 idempotency_ttl_s=idempotency_ttl_s,
+                after=after,
             )
         ).result()
         if result.tag == "refused":
@@ -185,6 +199,7 @@ class ControlSurface:
         caller_session: str | None = None,
         deadline_s: float | None = None,
         idempotency_ttl_s: float | None = None,
+        after: dict[str, Any] | None = None,
     ) -> RequestOutcome | RunView:
         refused = _refuse_completion(completion, wait_ms)
         if refused is not None:
@@ -200,6 +215,7 @@ class ControlSurface:
                 caller_session=caller_session,
                 deadline_s=deadline_s,
                 idempotency_ttl_s=idempotency_ttl_s,
+                after=after,
             )
         )
         try:

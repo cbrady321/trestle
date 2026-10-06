@@ -23,7 +23,7 @@ from trestle.child.validate import (
 )
 from trestle.common import codes, redact
 from trestle.common.errtext import sanitize
-from trestle.common.fsutil import atomic_write, atomic_write_json
+from trestle.common.fsutil import atomic_write, atomic_write_json, read_ndjson
 from trestle.common.limits import CaptureLimits, capture_limits
 from trestle.common.plan import formats
 from trestle.common.plan.compiler import AdmittedPlan
@@ -74,7 +74,11 @@ def main(argv: list[str] | None = None) -> int:
     except (formats.PlanInvalid, formats.UnknownPlanFormat) as exc:
         # the admitted plan does not verify: nothing has run, and nothing may (B1-E7)
         return _fail(evidence, "admitted", codes.DECLARATION_STALE, exc, roots, secrets)
-    deadline = datetime.fromisoformat(spec.deadline) if spec.deadline else datetime.now(tz=UTC)
+    # a run that was held (Feature 3) runs to the deadline its `released` row minted, not the
+    # latest possible one its spec fixed
+    minted = _released_deadline(evidence)
+    spec_deadline = minted if minted is not None else spec.deadline
+    deadline = datetime.fromisoformat(spec_deadline) if spec_deadline else datetime.now(tz=UTC)
     limits = capture_limits()
     ctx = RuntimeContext(
         work=work,
@@ -103,6 +107,16 @@ def main(argv: list[str] | None = None) -> int:
         return _call_plugin(fn, ctx, plugin_args, limits, evidence, roots, secrets)
     finally:
         ctx.flush_limits()  # the run's limit markers carry their totals, one line per kind
+
+
+def _released_deadline(evidence: Path) -> str | None:
+    """The deadline the ledger's `released` row minted (Feature 3), or None: the run was never
+    held. Read-only; the owner writes the row before the run is spawned."""
+    for row in reversed(read_ndjson(evidence / "ledger.ndjson")):
+        if row.get("kind") == "released":
+            minted = row.get("deadline")
+            return minted if isinstance(minted, str) else None
+    return None
 
 
 def _workflow_plan(spec: RunSpec) -> AdmittedPlan | None:

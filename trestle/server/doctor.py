@@ -125,7 +125,8 @@ def build_doctor_report(
     else:
         storage_bytes = _storage_bytes(trestle_home)
     health = "ok"
-    if run_counts.get("running", 0):
+    # a run in flight, a held one included (Feature 3), degrades health
+    if any(run_counts.get(state, 0) for state in ("running", "held")):
         health = "degraded"
     counts_by_dir = kernel.registry.plugin_counts_by_dir()
 

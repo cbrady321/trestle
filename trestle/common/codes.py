@@ -21,6 +21,9 @@ ADMISSION_HOME_BUSY = "admission.home_busy"
 # v0.4 (Feature 2): `idempotency_ttl_s` negative, not an integer or above `[keys] max_ttl_s`;
 # refused before any run id.
 ADMISSION_TTL_OUT_OF_RANGE = "admission.ttl_out_of_range"
+# v0.4 (Feature 3): `after` names a run (or a key whose runs) that does not exist; refused before
+# any run id.
+ADMISSION_AFTER_UNKNOWN = "admission.after_unknown"
 NOT_IMPLEMENTED = "projection.not_implemented"
 INVALID_HANDLE = "projection.invalid_handle"
 NOT_OWNER = "projection.not_owner"
@@ -61,6 +64,10 @@ EXECUTION_CANCELLED = "execution.cancelled"
 EXECUTION_DEADLINE_EXCEEDED = "execution.deadline_exceeded"
 EXECUTION_WORKER_EXIT = "execution.worker_exit"
 EXECUTION_INTERRUPTED = "execution.interrupted"
+# v0.4 (Feature 3): a held run whose `after` condition was not met ends cancelled with this code
+# in its `error_record`; its message names the earlier run and the reason. Not in
+# EXECUTION_CODES: no process of the run ever existed to raise it.
+EXECUTION_AFTER_UNMET = "execution.after_unmet"
 
 
 # L.SV-4.2 (DM-16): the single-level node and publication codes of `trestle.common.plan.vocabulary`

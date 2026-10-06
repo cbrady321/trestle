@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from trestle.common.plan.declared import canonical_json
-from trestle.server.ledger import evidence_dir
+from trestle.server.ledger import RunLedger, evidence_dir, ledger_path
 
 LEASE_KEY_FIELD = "lease_key"
 
@@ -36,10 +36,12 @@ def request_key(env_arg: str | None, args: Mapping[str, Any]) -> str | None:
 
 
 def deadline_epoch(run_dir: Path) -> float | None:
-    """The run's admitted deadline from its spec (`evidence/spec.json`), or None when unreadable."""
+    """The run's admitted deadline, or None when unreadable: the one its `released` row minted
+    when it was held (Feature 3), else its spec's (`evidence/spec.json`)."""
     try:
+        minted = RunLedger.open(ledger_path(run_dir)).released_deadline()
         spec = json.loads((evidence_dir(run_dir) / "spec.json").read_text(encoding="utf-8"))
-        fixed = datetime.fromisoformat(str(spec["deadline"]))
+        fixed = datetime.fromisoformat(minted if minted is not None else str(spec["deadline"]))
     except (OSError, ValueError, KeyError, TypeError):
         return None
     if fixed.tzinfo is None:

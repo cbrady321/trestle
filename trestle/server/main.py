@@ -239,6 +239,7 @@ def run_server(
         completion: str = "bounded",
         deadline_s: float | None = None,
         idempotency_ttl_s: float | None = None,
+        after: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Start a plugin run and optionally wait for a status frame."""
         return _wire_result(
@@ -252,6 +253,7 @@ def run_server(
                 caller_session=_caller_session(),
                 deadline_s=deadline_s,
                 idempotency_ttl_s=idempotency_ttl_s,
+                after=after,
             )
         )
 

@@ -466,6 +466,17 @@ def flip_marker(home: Path, run_id: str, state_name: str) -> bool:
     return True
 
 
+def release_marker(home: Path, run_id: str, deadline: float) -> bool:
+    """Feature 3: a released run's marker goes held -> queued with the deadline its `released` row
+    minted, so `home/sched.json` lists it from the same locked step. False when the marker is gone
+    (the run was finished meanwhile)."""
+    marker = read_marker(home, run_id)
+    if marker is None:
+        return False
+    write_marker(home, run_id, {**marker, "state": "queued", "deadline": deadline})
+    return True
+
+
 # --- a server's handle on the pool ---------------------------------------------------------------
 
 

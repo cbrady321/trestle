@@ -40,6 +40,8 @@ class AdmitRequest:
     # v0.4 Feature 2: how long the key stays joinable after the run ends, in seconds (None: the
     # server's `idempotency_ttl_s`); bounded by `[keys] max_ttl_s`
     idempotency_ttl_s: float | None = None
+    # v0.4 Feature 3: hold the run until another ends: {run | key, when, match} (None: no hold)
+    after: dict[str, Any] | None = None
 
 
 @dataclass
@@ -277,6 +279,8 @@ class RunView:
     # v0.4 Feature 1: the key a view was reached through (await_runs by key); absent otherwise, so
     # a view reached by run id is byte-identical to before
     idempotency_key: str | None = None
+    # v0.4 Feature 3: the run this one was sent to wait for (`after`); absent on any other run
+    after_run_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -319,6 +323,8 @@ class RunView:
             out["deadline_source"] = self.deadline_source
         if self.idempotency_key is not None:
             out["idempotency_key"] = self.idempotency_key
+        if self.after_run_id is not None:
+            out["after_run_id"] = self.after_run_id
         return out
 
 

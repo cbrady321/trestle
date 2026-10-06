@@ -51,6 +51,13 @@ class RunLedger:
     def has_kind(self, kind: str) -> bool:
         return any(record.get("kind") == kind for record in self.records)
 
+    def released_deadline(self) -> str | None:
+        """The deadline a held run's `released` row minted (ISO, release time + `deadline_s`), or
+        None: a run that was never held keeps `spec.deadline` (Feature 3)."""
+        released = self.last_kind("released")
+        minted = released.get("deadline") if released is not None else None
+        return minted if isinstance(minted, str) else None
+
     def terminal_state(self) -> str | None:
         for record in reversed(self.records):
             kind = record.get("kind")
@@ -69,6 +76,10 @@ class RunLedger:
             return "running"
         if self.has_kind("started"):
             return "running"
+        # Feature 3: a `held` row with no `released` row after it is the held state; a run that
+        # ends held (cancelled, unmet, reaped) reaches its terminal row through the branch above
+        if self.has_kind("held") and not self.has_kind("released"):
+            return "held"
         if self.has_kind("admitted"):
             return "queued"
         return "queued"
@@ -78,13 +89,15 @@ TERMINAL_KINDS = frozenset(
     {"succeeded", "failed", "cancelled", "timed_out", "worker_exit", "crashed", "interrupted"}
 )
 _TERMINAL_KINDS = TERMINAL_KINDS
-NON_TERMINAL_STATES = frozenset({"queued", "running"})
+NON_TERMINAL_STATES = frozenset({"queued", "running", "held"})
 
 # The rows that change what evidence/state.json says (v0.4 Problem C); state.json is rewritten
 # after each of them, and after no other row.
 STATE_KINDS = frozenset(
     {
         "created",
+        "held",
+        "released",
         "admitted",
         "started",
         "execution_ended",
@@ -122,6 +135,7 @@ def state_record(evidence: Path, records: list[dict[str, Any]]) -> dict[str, Any
         "spec_hash": created.get("spec_hash"),
         "key": created.get("idempotency_key"),
         "retry_of": created.get("retry_of"),
+        "after_run_id": created.get("after_run_id"),
         "deadline_s": deadline_s,
         "deadline_source": created.get("deadline_source"),
         "state": state,

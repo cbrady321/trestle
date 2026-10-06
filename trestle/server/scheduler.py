@@ -18,6 +18,7 @@ from typing import Literal
 from trestle.common import codes
 from trestle.common.types import AdmitResultRefused, Handle, RequestOutcome, WorkOrder
 from trestle.server import pool as pools
+from trestle.server.chain import HeldVerdict
 from trestle.server.config import (
     MAX_HELD_RUNS_DEFAULT,
     MAX_RUNNING_RUNS_DEFAULT,
@@ -49,16 +50,28 @@ class _Waiting:
 
 
 @dataclass
+class _Held:
+    """A held run handed to this server (Feature 3): not startable, in this server's FIFO at its
+    arrival position, until its owner's pass releases it or ends it unmet."""
+
+    order: WorkOrder
+    key: str | None
+    arrival: float
+
+
+@dataclass
 class Scheduler:
     # every run admitted and not yet completed: waiting, running or not yet enqueued
     queue: deque[Handle] = field(default_factory=deque)
     draining: bool = False
     max_running: int = MAX_RUNNING_RUNS_DEFAULT
     queue_depth: int = QUEUE_DEPTH_DEFAULT
-    # Feature 3's seam: held runs sit outside `queue_depth`, bounded by `max_held` (per server,
-    # read at start); `held` is the in-memory count. Nothing is held until step 6.
+    # Feature 3: held runs sit outside `queue_depth`, bounded by `max_held` (per server, read at
+    # start); `held` counts them in memory from their admission, `_held` is those already handed
+    # to this server's FIFO (the ones its pass can release)
     max_held: int = MAX_HELD_RUNS_DEFAULT
     held: set[Handle] = field(default_factory=set)
+    _held: dict[Handle, _Held] = field(default_factory=dict, repr=False)
     running: set[Handle] = field(default_factory=set)
     waiting: deque[_Waiting] = field(default_factory=deque)
     # start a dispatched run / finalize a run whose deadline passed while it waited
@@ -77,10 +90,19 @@ class Scheduler:
     # v0.4: a cancel flag found on a waiting run by the 250 ms pass (any server's `cancel` writes
     # it); the conductor finalizes the run as cancelled while queued
     on_cancel: Callable[[Handle], None] | None = None
+    # Feature 3, on the 250 ms pass: `on_held_check` decides a held run (None keeps it held);
+    # `on_release` writes its `released` row and returns its minted deadline (monotonic, epoch);
+    # `on_unmet` ends it cancelled, `execution.after_unmet`
+    on_held_check: Callable[[WorkOrder], HeldVerdict | None] | None = None
+    on_release: Callable[[WorkOrder, HeldVerdict], tuple[float, float]] | None = None
+    on_unmet: Callable[[WorkOrder, HeldVerdict], object] | None = None
+    # released runs whose live marker still says held (flipped at the next locked step), by the
+    # epoch deadline their `released` row minted
+    _released: dict[Handle, float] = field(default_factory=dict, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
     _pass_thread: threading.Thread | None = field(default=None, repr=False, compare=False)
 
-    def check_admit_capacity(self) -> AdmitResultRefused | None:
+    def check_admit_capacity(self, *, held: bool = False) -> AdmitResultRefused | None:
         if self.draining:
             return AdmitResultRefused(
                 tag="refused",
@@ -91,8 +113,12 @@ class Scheduler:
                     origin="admission",
                 ),
             )
-        # slots plus the bounded FIFO: a run beyond both is refused before it has a run dir
-        if len(self.queue) >= self.max_running + self.queue_depth:
+        # slots plus the bounded FIFO: a run beyond both is refused before it has a run dir. A held
+        # run is not in the FIFO's count (it has its own bound, `check_hold_capacity`), and a
+        # request to hold one is not refused for a full FIFO.
+        if held:
+            return None
+        if len(self.queue) - len(self.held) >= self.max_running + self.queue_depth:
             return AdmitResultRefused(
                 tag="refused",
                 outcome=RequestOutcome(
@@ -119,9 +145,13 @@ class Scheduler:
             ),
         )
 
-    def mint(self, run_id: Handle, snapshot_id: str, spec_hash: str) -> WorkOrder:
+    def mint(
+        self, run_id: Handle, snapshot_id: str, spec_hash: str, *, held: bool = False
+    ) -> WorkOrder:
         with self._lock:
             self.queue.append(run_id)
+            if held:
+                self.held.add(run_id)  # counted from admission, before its hand-off
         return WorkOrder(run_id=run_id, snapshot_id=snapshot_id, spec_hash=spec_hash)
 
     def enqueue(
@@ -159,6 +189,79 @@ class Scheduler:
             self._expire_waiting(order.run_id)
         self.dispatch()
         return Enqueued(tag="queued")
+
+    def hold(
+        self, order: WorkOrder, *, key: str | None = None, arrival: float | None = None
+    ) -> None:
+        """Hand an admitted held run to this server's FIFO as an entry that cannot start (Feature
+        3): it takes no slot and no timer, and the 250 ms pass decides it."""
+        with self._lock:
+            self.held.add(order.run_id)
+            self._held[order.run_id] = _Held(
+                order=order, key=key, arrival=time.time() if arrival is None else arrival
+            )
+        self._ensure_pass()
+
+    def _check_held(self) -> None:
+        """The release check, on this server's pass: ask `on_held_check` about each held run;
+        a released run becomes startable in place (ahead of later arrivals, behind earlier ones), an
+        unmet one ends cancelled. A draining server keeps checking (rule 9)."""
+        if self.on_held_check is None:
+            return
+        with self._lock:
+            entries = list(self._held.values())
+        for entry in entries:
+            try:
+                verdict = self.on_held_check(entry.order)
+            except (OSError, ValueError):
+                continue  # a run directory being written or removed: decided at the next pass
+            if verdict is None:
+                continue
+            with self._lock:
+                if self._held.pop(entry.order.run_id, None) is None:  # cancelled first
+                    continue
+                self.held.discard(entry.order.run_id)
+            if verdict.release:
+                self._release(entry, verdict)
+            else:
+                try:
+                    if self.on_unmet is not None:
+                        self.on_unmet(entry.order, verdict)
+                finally:
+                    self.complete(entry.order.run_id)
+
+    def _release(self, entry: _Held, verdict: HeldVerdict) -> None:
+        assert self.on_release is not None
+        deadline, deadline_epoch = self.on_release(entry.order, verdict)
+        run_id = entry.order.run_id
+        waiting = _Waiting(
+            order=entry.order,
+            deadline=deadline,
+            key=entry.key,
+            arrival=entry.arrival,
+            deadline_epoch=deadline_epoch,
+        )
+        remaining = deadline - time.monotonic()
+        with self._lock:
+            # insert by arrival, not append (rule 4): behind earlier arrivals, ahead of later ones
+            order_key = pools.arrival_order(waiting.arrival, run_id)
+            at = next(
+                (
+                    index
+                    for index, other in enumerate(self.waiting)
+                    if pools.arrival_order(other.arrival, other.order.run_id) > order_key
+                ),
+                len(self.waiting),
+            )
+            self.waiting.insert(at, waiting)
+            self._released[run_id] = deadline_epoch
+            if remaining > 0:
+                waiting.timer = threading.Timer(remaining, self._expire_waiting, [run_id])
+                waiting.timer.daemon = True
+                waiting.timer.start()
+        if remaining <= 0:
+            self._expire_waiting(run_id)
+        self.dispatch()
 
     def dispatch(self) -> None:
         """Start waiting runs, oldest first, while a slot is free (called on enqueue and on
@@ -238,6 +341,9 @@ class Scheduler:
             keys = [entry.key for entry in self.waiting]
         if self.pool.has_pending():
             return True
+        with self._lock:
+            if self._released:
+                return True  # a released run's marker still says held
         if not keys:
             return False
         state = self.pool.pre_read()
@@ -268,6 +374,12 @@ class Scheduler:
             pass  # a config.toml being rewritten: last values
         now = time.time()
         start: list[WorkOrder] = []
+        with self._lock:
+            released, self._released = self._released, {}
+        for run_id, deadline_epoch in released.items():
+            # Feature 3: the released run's marker goes held -> queued with its minted deadline,
+            # before this step's grants (its own `sync_own` below lists it as waiting)
+            pools.release_marker(pool.home, run_id, deadline_epoch)
         with self._lock:
             wants = [
                 pools.Want(
@@ -336,6 +448,7 @@ class Scheduler:
                     for run_id in run_ids:
                         if self.pool.cancel_requested(run_id):
                             self.on_cancel(run_id)
+                self._check_held()
                 self.dispatch()
             except Exception:  # noqa: BLE001 (a failed pass is retried at the next one)
                 continue
@@ -356,12 +469,18 @@ class Scheduler:
         with self._lock:
             entry = next((w for w in self.waiting if w.order.run_id == run_id), None)
             if entry is None:
-                return False
-            self.waiting.remove(entry)
-            if entry.timer is not None:
-                entry.timer.cancel()
+                held = self._held.pop(run_id, None)
+                if held is None:
+                    return False
+                self.held.discard(run_id)  # a held run (Feature 3) is cancelled where it waits
+                order = held.order
+            else:
+                order = entry.order
+                self.waiting.remove(entry)
+                if entry.timer is not None:
+                    entry.timer.cancel()
         try:
-            finalize(entry.order)
+            finalize(order)
         finally:
             self.complete(run_id)
         return True
@@ -381,6 +500,9 @@ class Scheduler:
                 pass
             self.running.discard(run_id)
             self.running_keys.pop(run_id, None)
+            self.held.discard(run_id)
+            self._held.pop(run_id, None)
+            self._released.pop(run_id, None)
         if self.pool is not None:
             self.pool.completed(run_id)  # its slot and key go at the completion's locked step
         if self.on_complete is not None:

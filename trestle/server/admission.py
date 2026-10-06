@@ -29,8 +29,8 @@ from trestle.common.types import (
     RequestOutcome,
     RunSpec,
 )
+from trestle.server import chain, lease
 from trestle.server import idempotency as keys
-from trestle.server import lease
 from trestle.server import pool as pools
 from trestle.server.config import ProfileConfig, load_config
 from trestle.server.home import (
@@ -78,18 +78,30 @@ class KeyCall:
     args_hash: str
     # the call's `deadline_s` argument (Feature 0; None: omitted, the declaration applies)
     call_deadline_s: float | None = None
-    # Feature 3 seam: the call's `after`, canonical JSON (None: omitted)
+    # the call's `after` (Feature 3), canonical JSON (None: omitted)
     after: str | None = None
 
 
 def key_call(snap: PluginSnapshot, req: AdmitRequest, a_hash: str) -> KeyCall:
-    """The call's join identity. Feature 3 fills `after` from `req`."""
+    """The call's join identity: `admit` has already checked `after`'s shape."""
     call = req.deadline_s
+    after = chain.parse_after(req.after) if req.after is not None else None
     return KeyCall(
         plugin=snap.plugin,
         args_hash=a_hash,
         call_deadline_s=float(call) if call is not None else None,
+        after=after.canonical() if isinstance(after, chain.After) else None,
     )
+
+
+@dataclass(frozen=True)
+class HoldPlan:
+    """What a held run records at admission (Feature 3): its `after` (canonical JSON), the earlier
+    run it waits for and `hold_until`, the latest moment that run can have ended, epoch seconds."""
+
+    after: str
+    after_run_id: str
+    hold_until: float
 
 
 @dataclass(frozen=True)
@@ -98,6 +110,15 @@ class KeyClaim:
     (c)); `retry_of` names the interrupted run of a repeatable plugin it replaces."""
 
     retry_of: str | None = None
+
+
+def _refused(code: str, message: str) -> AdmitResultRefused:
+    return AdmitResultRefused(
+        tag="refused",
+        outcome=RequestOutcome(
+            code=code, message=message[:200], retryable=False, origin="admission"
+        ),
+    )
 
 
 def _home_busy(busy: HomeBusy) -> AdmitResultRefused:
@@ -145,7 +166,10 @@ class Admission:
         # applies without a restart (TRESTLE_MAX_RUNNING_RUNS is ignored)
         config = load_config(self.home)
         self.scheduler.max_running = config.max_running_runs
-        capacity = self.scheduler.check_admit_capacity()
+        held = req.after is not None
+        capacity = self.scheduler.check_admit_capacity(held=held)
+        if capacity is None and held:
+            capacity = self.scheduler.check_hold_capacity()
         if capacity is not None:
             return capacity
 
@@ -219,6 +243,9 @@ class Admission:
         refused_ttl = _refuse_ttl(req, config.max_ttl_s)
         if refused_ttl is not None:
             return refused_ttl
+        after = chain.parse_after(req.after) if req.after is not None else None
+        if isinstance(after, str):
+            return _refused(codes.INVALID_ARGS, after)
 
         if req.idempotency_key is not None:
             # a lock-free pre-read: a join or a conflict answers before the plan is built, as it
@@ -236,7 +263,14 @@ class Admission:
             return planned
         try:
             with admission_lock(self.home):
-                return self._admit_locked(req, snap, a_hash, deadline_s, planned)
+                return self._admit_locked(
+                    req,
+                    snap,
+                    a_hash,
+                    deadline_s,
+                    planned,
+                    after if isinstance(after, chain.After) else None,
+                )
         except HomeBusy as busy:
             return _home_busy(busy)
 
@@ -247,6 +281,7 @@ class Admission:
         a_hash: str,
         deadline_s: float,
         planned: AdmittedPlan,
+        after: chain.After | None = None,
     ) -> AdmitResult:
         """v0.4 rule 7: the admission's locked section, its steps in order. Everything slow
         (registry refresh, import validation, schema validation, compile and carve) ran before the
@@ -264,19 +299,42 @@ class Admission:
             if not isinstance(decided, KeyClaim):
                 return decided
             claim = decided
-        # (3) the busy pre-check (rule 6), from home/sched.json: every server's runs.
-        busy = self._environment_busy(planned, deadline_s, state)
-        if busy is not None:
-            return busy
+        hold: HoldPlan | None = None
+        if after is not None:
+            resolved = chain.resolve(self.home, after)
+            if resolved is None:
+                what = f"run {after.run}" if after.run is not None else f"key {after.key}"
+                return _refused(codes.ADMISSION_AFTER_UNKNOWN, f"after names no run: {what}")
+            earlier_id, earlier_dir = resolved
+            hold = HoldPlan(
+                after=after.canonical(),
+                after_run_id=earlier_id,
+                hold_until=chain.hold_until(earlier_dir),
+            )
+        # (3) the busy pre-check (rule 6), from home/sched.json: every server's runs. A held run
+        #     takes no environment until it is released and granted, so it is not checked here.
+        if hold is None:
+            busy = self._environment_busy(planned, deadline_s, state)
+            if busy is not None:
+                return busy
         # (4) admission steps (a) to (d): built hidden, owner-locked, renamed into place.
         admitted = write_admitted_run(
-            self.home, snap, req, planned, ownership=self.ownership, retry_of=claim.retry_of
+            self.home,
+            snap,
+            req,
+            planned,
+            ownership=self.ownership,
+            retry_of=claim.retry_of,
+            hold=hold,
         )
-        self.scheduler.mint(admitted.run_id, snap.snapshot_id, admitted.spec_hash)
+        self.scheduler.mint(
+            admitted.run_id, snap.snapshot_id, admitted.spec_hash, held=hold is not None
+        )
         # (5) a new waiting run, (7) write home/sched.json. (6) The run's grant comes with its
         #     hand-off to this server's FIFO (`Scheduler.enqueue`), whose pass takes the lock again:
         #     its work order (with the secrets) exists only after admission returns.
-        if pool is not None and state is not None:
+        #     A held run is in neither: it is not startable and `home/sched.json` lists no held run.
+        if pool is not None and state is not None and hold is None:
             pools.add_waiting(
                 state,
                 self.server_id,
@@ -520,6 +578,7 @@ class AdmittedRun:
     deadline_epoch: float = 0.0
     run_dir: Path = Path()
     arrival: float = 0.0  # created.at, epoch seconds: a key's waiters start in this order
+    held: bool = False  # Feature 3: admitted into the held state, no slot until released
     secrets: dict[str, object] = field(default_factory=dict, repr=False, compare=False)
 
 
@@ -545,6 +604,7 @@ def write_admitted_run(
     *,
     ownership: Ownership,
     retry_of: str | None = None,
+    hold: HoldPlan | None = None,
 ) -> AdmittedRun:
     """The post-refusal half of admission (MC-B2-08): mint the run id and build the run, lock
     before visible (v0.4 rule 1). Every refusal has already happened, and the caller holds the
@@ -583,8 +643,15 @@ def write_admitted_run(
         raise RuntimeError(f"owner lock of a new run is held: {run_id}")
     try:
         _admission_step("b")
-        deadline = datetime.now(tz=UTC) + timedelta(seconds=deadline_s)
-        admitted_at = keys.now()  # the key window's start (the key clock; a test moves it)
+        # a held run's spec deadline is the latest possible one, `hold_until + deadline_s` (the
+        # run's own is minted at release); its key window starts at `hold_until` (Feature 3)
+        if hold is None:
+            deadline = datetime.now(tz=UTC) + timedelta(seconds=deadline_s)
+            # the key window's start (the key clock; a test moves it)
+            admitted_at = keys.now()
+        else:
+            deadline = datetime.fromtimestamp(hold.hold_until + deadline_s, tz=UTC)
+            admitted_at = hold.hold_until
         declared = load_declared(snap)
         spec = RunSpec(
             plugin=snap.plugin,
@@ -641,7 +708,6 @@ def write_admitted_run(
             # Feature 2: the call's own ttl (validated by `admit`), else the server's
             call_ttl = call_ttl_s(req)
             ttl_s = call_ttl if call_ttl is not None else load_config(home).idempotency_ttl_s
-            # Feature 3 seam: a held run's window starts at its hold_until
             key_expires_at = admitted_at + key_window_s(deadline_s, ttl_s)
             created_fields["idempotency_key"] = req.idempotency_key
             created_fields["idempotency_ttl_s"] = ttl_s
@@ -660,12 +726,18 @@ def write_admitted_run(
             )
         if retry_of is not None:
             created_fields["retry_of"] = retry_of
+        if hold is not None:
+            created_fields["after"] = hold.after
+            created_fields["after_run_id"] = hold.after_run_id
+            created_fields["hold_until"] = hold.hold_until
         # WR-OWN-8: the environment key the run holds a lease on, when it holds one; absent
         # otherwise, so a run that declares no environment writes the same row as before
         lease_key = plan.lease_set[0] if plan.lease_set else None
         if lease_key is not None:
             created_fields[lease.LEASE_KEY_FIELD] = lease_key
         created = ledger.append("created", **created_fields)
+        if hold is not None:
+            ledger.append("held", run_id=run_id, after_run_id=hold.after_run_id)
         _admission_step("created")
 
         if req.idempotency_key is not None and key_entry is not None:
@@ -678,7 +750,7 @@ def write_admitted_run(
             {
                 "owner": ownership.server_id,
                 "month": month_dir.name,
-                "state": "queued",
+                "state": "held" if hold is not None else "queued",
                 "lease_key": lease_key,
                 "deadline": deadline.timestamp(),
                 "arrival": created["at"],
@@ -701,5 +773,6 @@ def write_admitted_run(
         deadline_epoch=deadline.timestamp(),
         run_dir=run_dir,
         arrival=pools.epoch(created["at"]),
+        held=hold is not None,
         secrets=secrets,
     )

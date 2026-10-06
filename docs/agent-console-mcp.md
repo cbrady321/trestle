@@ -202,11 +202,11 @@ Long jobs: call `run(..., wait_ms=<above zero>, completion="terminal")`; one cal
 - `any`: when at least one run is terminal;
 - `first_failure`: when any run's `state` is terminal and not `succeeded`, or when all are terminal. It reads `state`, not `answer`, so it does not wake on a workflow's `failed` or `blocked` answer; join workflow runs with `all` and read each `answer.outcome`.
 
-When `timeout_ms` passes first, the views come back as they are, some still `queued` or `running`; call again. Any other `mode` is refused `projection.invalid_args`.
+When `timeout_ms` passes first, the views come back as they are, some still `queued`, `held` or `running`; call again. Any other `mode` is refused `projection.invalid_args`.
 
 ### Run states
 
-A run is `queued`, `running`, or one terminal state: `succeeded`, `failed`,
+A run is `queued`, `held` (sent with the after argument, waiting for another run), `running`, or one terminal state: `succeeded`, `failed`,
 `cancelled`, `timed_out`, `worker_exit` or `interrupted`. `crashed` is a
 **reserved** ledger kind that no code path writes. The producer of each state
 is listed in [`agents.md`](agents.md) (Run states).
