@@ -55,6 +55,10 @@ sweep_parallelism: int = int(os.environ.get("TRESTLE_SWEEP_PARALLELISM", "4"))
 # It is the interval the conductor has always polled at.
 poll_interval: float = 0.05
 
+# How often a waiter (await_runs, run(completion="terminal")) re-reads its runs (v0.4 Problem C):
+# each poll reads one small state.json per run. The supervision poll above is unchanged.
+await_poll_interval: float = 0.25
+
 # The finalization margin (B2 `OperatorLimits` name, MC-09, published by CS-4): how long after the
 # admitted deadline a call may still be answered. A deadline stop of a plugin that ignores SIGTERM
 # takes `grace` + `kill`, and the sweep of a root's release targets takes the rest of B2-C2 (5)'s

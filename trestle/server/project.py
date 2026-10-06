@@ -46,6 +46,7 @@ from trestle.server.projection import (
 )
 from trestle.server.registry import Registry
 from trestle.server.runs import RunRegistry
+from trestle.server.runstate import trusted_state
 from trestle.server.snapshots import load_declared
 
 DEFAULT_SUMMARY_BUDGET = 4096
@@ -96,7 +97,14 @@ class Project:
         L.TR-2.4); a root view is unscoped, as it has been. A call outside an MCP session
         (`caller_session` None: the operator's CLI or console) is not scoped."""
         with self._status_lock:
-            ledger = self._ledger_for(run_id)
+            # v0.4 Problem C: a live run is answered from its small state.json; the ledger is read
+            # only for a terminal view, an old run, or a non-terminal state.json whose owner lock
+            # is free (the owner may have died before writing it)
+            run_dir = self._run_dir_for(run_id)
+            state = trusted_state(run_dir) if run_dir is not None else None
+            if run_dir is not None and state is not None and state["state"] in _NON_TERMINAL_STATES:
+                return _live_view(run_id, run_dir, state)
+            ledger = RunLedger.open(ledger_path(run_dir)) if run_dir is not None else None
             if ledger is None:
                 child = self._child_view(run_id, caller_session)
                 if child is not None:
@@ -155,7 +163,7 @@ class Project:
             if time.monotonic() >= probe_at:
                 self._wake_if_owner_gone([run_id])
                 probe_at = time.monotonic() + OWNER_PROBE_S
-            time.sleep(clock.poll_interval)
+            time.sleep(clock.await_poll_interval)
 
     async def await_terminal_async(
         self, run_id: Handle, caller_session: str | None = None
@@ -171,7 +179,7 @@ class Project:
             if time.monotonic() >= probe_at:
                 await asyncio.to_thread(self._wake_if_owner_gone, [run_id])
                 probe_at = time.monotonic() + OWNER_PROBE_S
-            await asyncio.sleep(clock.poll_interval)
+            await asyncio.sleep(clock.await_poll_interval)
 
     def _terminal_bound_s(self, run_id: Handle) -> float:
         """Seconds from now to the moment the terminal wait gives up: the run's admitted
@@ -226,7 +234,7 @@ class Project:
             if time.monotonic() >= probe_at:
                 await asyncio.to_thread(self._wake_if_owner_gone, run_ids)
                 probe_at = time.monotonic() + OWNER_PROBE_S
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(clock.await_poll_interval)
 
     def await_many(
         self,
@@ -249,7 +257,7 @@ class Project:
             if time.monotonic() >= probe_at:
                 self._wake_if_owner_gone(run_ids)
                 probe_at = time.monotonic() + OWNER_PROBE_S
-            time.sleep(0.05)
+            time.sleep(clock.await_poll_interval)
 
     def _collect_run_views(
         self,
@@ -627,6 +635,40 @@ class Project:
             timeout_s=run_spec.timeout_s,
         )
         return load_declared(snap).summary_fields
+
+
+def _live_view(run_id: Handle, run_dir: Path, state: dict[str, Any]) -> RunView:
+    """The view of a run that has not ended, from its state.json (v0.4 Problem C): the same
+    fields `_run_view` reads from the ledger for such a run, which has no summary, cleanup, error,
+    outcome or answer yet."""
+    evidence = evidence_dir(run_dir)
+    meta: dict[str, object] = {}
+    try:
+        loaded = json.loads((evidence / "meta.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        loaded = None
+    if isinstance(loaded, dict):
+        meta = loaded
+    duration_ms = state.get("duration_ms")
+    if not isinstance(duration_ms, int):
+        meta_duration = meta.get("duration_ms")
+        duration_ms = meta_duration if isinstance(meta_duration, int) else None
+    limits_exceeded = meta.get("limits_exceeded")
+    if limits_exceeded is None:
+        limits_exceeded = state.get("limits_exceeded")
+    raw_artifact_count = meta.get("artifact_count", 0)
+    artifact_count = raw_artifact_count if isinstance(raw_artifact_count, int) else 0
+    if artifact_count == 0:
+        recorded = state.get("artifact_count")
+        artifact_count = recorded if isinstance(recorded, int) else 0
+    return RunView(
+        run_id=run_id,
+        state=str(state["state"]),
+        duration_ms=duration_ms,
+        event_count=count_events(evidence),
+        artifact_count=artifact_count,
+        limits_exceeded=limits_exceeded if isinstance(limits_exceeded, list) else None,
+    )
 
 
 def _read_spec(evidence: Path) -> dict[str, object] | None:

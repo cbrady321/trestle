@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from trestle.common.fsutil import append_ndjson, read_ndjson
+from trestle.common.fsutil import append_ndjson, atomic_write_json, read_ndjson
 from trestle.common.types import Handle
+
+LEDGER_FILE = "ledger.ndjson"
+STATE_FILE = "state.json"
 
 
 @dataclass
@@ -31,6 +35,10 @@ class RunLedger:
         }
         append_ndjson(self.path, record)
         self.records.append(record)
+        # v0.4 Problem C: the ledger row first (the authority), then evidence/state.json by atomic
+        # rename. Only the run's lock holder appends, so only it writes state.json.
+        if kind in STATE_KINDS and self.path.name == LEDGER_FILE:
+            write_state(self.path.parent, self.records)
         return record
 
     def last_kind(self, kind: str) -> dict[str, Any] | None:
@@ -70,6 +78,79 @@ TERMINAL_KINDS = frozenset(
     {"succeeded", "failed", "cancelled", "timed_out", "worker_exit", "crashed", "interrupted"}
 )
 _TERMINAL_KINDS = TERMINAL_KINDS
+NON_TERMINAL_STATES = frozenset({"queued", "running"})
+
+# The rows that change what evidence/state.json says (v0.4 Problem C); state.json is rewritten
+# after each of them, and after no other row.
+STATE_KINDS = frozenset(
+    {
+        "created",
+        "admitted",
+        "started",
+        "execution_ended",
+        "artifact_available",
+        "limit_exceeded",
+        "evidence_finalized",
+        *TERMINAL_KINDS,
+    }
+)
+
+
+def state_record(evidence: Path, records: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """What evidence/state.json holds for a ledger's rows (None before the `created` row): the
+    small file status(), the waiters and the run listings read instead of the ledger. `seq` is the
+    last ledger row it reflects."""
+    ledger = RunLedger(path=evidence / LEDGER_FILE, records=records)
+    created = ledger.last_kind("created")
+    if created is None:
+        return None
+    state = ledger.projected_state()
+    started = ledger.last_kind("started")
+    ended = ledger.last_kind("execution_ended")
+    terminal = ledger.last_kind(state) if state in TERMINAL_KINDS else None
+    limits = ledger.last_kind("limit_exceeded")
+    markers = limits.get("markers") if limits is not None else None
+    duration = ended.get("duration_ms") if ended is not None else None
+    deadline_s = created.get("deadline_s")
+    if not isinstance(deadline_s, int | float) or isinstance(deadline_s, bool):
+        deadline_s = _spec_timeout_s(evidence)
+    return {
+        "run_id": created.get("run_id"),
+        "plugin": created.get("plugin"),
+        "version": created.get("version"),
+        "owner": created.get("owner"),
+        "spec_hash": created.get("spec_hash"),
+        "key": created.get("idempotency_key"),
+        "deadline_s": deadline_s,
+        "state": state,
+        "finalized": ledger.has_kind("evidence_finalized"),
+        "created_at": created.get("at"),
+        "started_at": started.get("at") if started is not None else None,
+        "ended_at": ended.get("at") if ended is not None else None,
+        "terminal_at": terminal.get("at") if terminal is not None else None,
+        "duration_ms": duration if isinstance(duration, int) else None,
+        "artifact_count": sum(1 for r in records if r.get("kind") == "artifact_available"),
+        "limits_exceeded": markers if isinstance(markers, list) else None,
+        # where the run's summary comes from once it is terminal: the finalized answer
+        "summary": "evidence/answer.json" if terminal is not None else None,
+        "seq": int(records[-1].get("seq") or len(records)) if records else 0,
+    }
+
+
+def write_state(evidence: Path, records: list[dict[str, Any]]) -> None:
+    record = state_record(evidence, records)
+    if record is not None:
+        atomic_write_json(evidence / STATE_FILE, record)
+
+
+def _spec_timeout_s(evidence: Path) -> float | None:
+    """A run whose `created` row predates `deadline_s`: its spec's `timeout_s`."""
+    try:
+        spec = json.loads((evidence / "spec.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    timeout = spec.get("timeout_s") if isinstance(spec, dict) else None
+    return float(timeout) if isinstance(timeout, int | float) else None
 
 
 def run_dir_for(home: Path, run_id: Handle, *, month: str | None = None) -> Path:
@@ -107,7 +188,21 @@ def work_dir(run_dir: Path) -> Path:
 
 
 def ledger_path(run_dir: Path) -> Path:
-    return evidence_dir(run_dir) / "ledger.ndjson"
+    return evidence_dir(run_dir) / LEDGER_FILE
+
+
+def state_path(run_dir: Path) -> Path:
+    return evidence_dir(run_dir) / STATE_FILE
+
+
+def read_state(run_dir: Path) -> dict[str, Any] | None:
+    """The run's evidence/state.json, or None when it is missing (a run admitted before v0.4) or
+    unreadable. Lock-free: it is replaced by atomic rename."""
+    try:
+        loaded = json.loads(state_path(run_dir).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return loaded if isinstance(loaded, dict) and isinstance(loaded.get("state"), str) else None
 
 
 def _now_iso() -> str:

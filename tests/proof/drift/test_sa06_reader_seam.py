@@ -8,6 +8,8 @@ import pytest
 
 from tests.proof import harness, records, tolerances
 
+CORE_KINDS = {"process_identity", "process_summary", "group_stop"}
+
 
 @pytest.mark.parametrize("sa", ["SA-06"])
 def test_seam_reads_harness_run(sa: str) -> None:
@@ -22,7 +24,7 @@ def test_seam_reads_harness_run(sa: str) -> None:
     kinds = [row.get("kind") for row in rows.rows]
     # core ledger kinds (process identity, MC-14) are additive: the seam sees the S0 kinds around
     # them unchanged, and tests/proof/drift/core/test_sa06_core_kinds.py holds their own claims
-    kinds = [kind for kind in kinds if kind not in {"process_identity", "group_stop"}]
+    kinds = [kind for kind in kinds if kind not in CORE_KINDS]
     assert kinds == [
         "created",
         "admitted",
@@ -33,5 +35,5 @@ def test_seam_reads_harness_run(sa: str) -> None:
     ]
 
     node = records.node_record(run_dir)
-    assert [k for k in node.kinds if k not in {"process_identity", "group_stop"}] == kinds
+    assert [k for k in node.kinds if k not in CORE_KINDS] == kinds
     assert node.terminal == "succeeded"

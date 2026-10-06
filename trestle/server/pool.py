@@ -18,7 +18,8 @@ Each server grants only its own runs (it must spawn them), in its own FIFO order
   ranked before S, `idle` the other servers owed a reserve slot.
 - Reserve. A server that holds no slot, has nothing waiting, is not draining, holds its server
   lock and was seen by its own reaper under 30 s ago is owed one free slot, so its first run starts
-  at once.
+  at once. The reserve is capped at `max_running_runs - 1` slots, so it never takes
+  the last one.
 - Environment keys. A run with a key starts only when no running run (any server, v0.3.0 runs
   included) holds the key and no older run with the key waits on a candidate server (arrival order
   is created.at, then run id); checked in the same locked step as the grant and the marker flip.
@@ -432,7 +433,9 @@ def choose_grants(
         candidates = [s for s in others if not capped(s) and startable(s)]
         ahead = [s for s in candidates if rank(s) < rank(me)]
         idle = [s for s in servers if s != me and s not in candidates and owed_reserve(s)]
-        if free <= len(ahead) + len(idle):
+        # the reserve never takes the last slot: with a pool of 1, an idle server's reserve
+        # would otherwise block every other server for good
+        if free <= len(ahead) + min(len(idle), max_running - 1):
             break
         state["running"][pick.run_id] = {"server": me, "key": pick.key, "deadline": pick.deadline}
         forget_waiting(state, pick.run_id)

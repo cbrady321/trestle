@@ -24,6 +24,8 @@ from trestle.common.types import RequestOutcome, WorkOrder
 from trestle.server import pool as pools
 from trestle.server.main import create_kernel
 
+NO_WAIT_MS = 0
+
 _out = threading.Lock()
 
 
@@ -60,7 +62,7 @@ def main() -> int:
             scheduler.draining = True
             emit({"answer": {"draining": True}})
             continue
-        view = kernel.control.run(command["plugin"], command.get("args", {}), wait_ms=0)
+        view = kernel.control.run(command["plugin"], command.get("args", {}), wait_ms=NO_WAIT_MS)
         if isinstance(view, RequestOutcome):
             emit({"answer": view.to_dict()})
         else:

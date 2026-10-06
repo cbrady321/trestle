@@ -7,6 +7,8 @@ import time
 
 from trestle.plugin.surface import Context, trestle
 
+POLL_S = 0.05
+
 
 @trestle(secrets=["token"])
 def gate_log(ctx: Context, seconds: float = 30.0, token: str = "") -> dict[str, bool]:
@@ -15,5 +17,5 @@ def gate_log(ctx: Context, seconds: float = 30.0, token: str = "") -> dict[str, 
     while time.monotonic() < deadline:
         if ctx.cancelled:
             return {"cancelled": True}
-        time.sleep(0.05)
+        time.sleep(POLL_S)
     return {"done": True}

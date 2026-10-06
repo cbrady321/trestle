@@ -33,6 +33,7 @@ from trestle.server import procident
 from trestle.server.ledger import RunLedger, ledger_path
 from trestle.server.procident import ProcessSource, Signaller
 from trestle.server.recovery import recover_run_dir
+from trestle.server.runstate import refresh_state
 
 REAP_INTERVAL_S = 10.0
 
@@ -133,6 +134,7 @@ class Reaper:
         # a takeover re-opens the ledger: seq comes from the rows in memory (rule 2)
         ledger = RunLedger.open(ledger_path(run_dir))
         if ledger.terminal_state() is not None and ledger.has_kind("evidence_finalized"):
+            refresh_state(run_dir, ledger)  # the owner may have died before its state.json
             return "finished"
         created = ledger.last_kind("created") or {}
         legacy = "owner" not in created

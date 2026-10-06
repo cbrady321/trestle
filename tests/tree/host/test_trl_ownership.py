@@ -380,7 +380,7 @@ def _restart(host: mcp_host.McpHost) -> None:
         assert run_dir is not None and run_dir.name == run_id
         assert len(_inventory(run_dir)) == 2
         assert support.wait_until(
-            lambda: len([r for r in _rows(run_dir) if r["kind"] == "process_identity"]) >= 4,
+            lambda: len(support.rows_of(run_dir, "process_identity")) >= 4,
             tolerances.JOIN_WAIT_S,
         )
         host.kill_server()

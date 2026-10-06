@@ -1,7 +1,9 @@
 """Process identity and attribution (MC-CORE-05; B2-C16, V-2.3, DM-66).
 
-One `ProcessIdentity` ledger row per process the run supervisor attributes to a run, appended
-before the supervisor relies on the attribution (signals the process or counts it gone). A
+One `ProcessIdentity` row per process the run supervisor attributes to a run, appended before the
+supervisor relies on the attribution (signals the process or counts it gone). Since v0.4 (Problem
+C) the rows go to the run's sidecar, `evidence/processes.ndjson` (`append_ndjson`: durable before
+any signal); the ledger keeps only the leader's row, and one `process_summary` row at the stop. A
 process is *attributable to a run* when a snapshot of the process table, taken after spawn, at
 each liveness poll and immediately before a signal, shows it is the run's leader, a member of the
 run's recorded process group, or a descendant by parent id of a process already attributable,
@@ -21,6 +23,7 @@ from __future__ import annotations
 import ctypes
 import ctypes.util
 import functools
+import json
 import os
 import signal
 import subprocess
@@ -29,7 +32,10 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
+
+from trestle.common.fsutil import append_ndjson, atomic_write, read_ndjson
 
 # --- the process table -------------------------------------------------------------------------
 
@@ -259,6 +265,93 @@ def identity_rows(records: list[dict[str, Any]]) -> list[Identity]:
             if ident is not None:
                 found.append(ident)
     return found
+
+
+def merged_identities(*row_lists: list[dict[str, Any]]) -> list[Identity]:
+    """The well-formed identity rows of several sources (the ledger, then the sidecar), each
+    identity once, in first-seen order."""
+    seen: set[tuple[int, str, int]] = set()
+    found: list[Identity] = []
+    for rows in row_lists:
+        for ident in identity_rows(rows):
+            if (ident.pid, ident.boot, ident.start) not in seen:
+                seen.add((ident.pid, ident.boot, ident.start))
+                found.append(ident)
+    return found
+
+
+# --- the sidecar (v0.4 Problem C) ----------------------------------------------------------------
+
+SIDECAR_FILE = "processes.ndjson"
+# Past this many rows the owner rewrites the sidecar to the leader and the identities alive at that
+# moment. A module constant, read at each use, so a test can lower it.
+COMPACT_ROWS = 1000
+
+
+def sidecar_path(evidence: Path) -> Path:
+    return evidence / SIDECAR_FILE
+
+
+class Sidecar:
+    """A run's `evidence/processes.ndjson`: its process identity rows, outside the ledger. Only the
+    run's owner (or the reaper that took over its lock) writes it."""
+
+    def __init__(self, path: Path, run_id: str) -> None:
+        self.path = path
+        self.run_id = run_id
+        self.rows = len(read_ndjson(path)) if path.exists() else 0
+
+    def records(self) -> list[dict[str, Any]]:
+        return read_ndjson(self.path) if self.path.exists() else []
+
+    def append(self, ident: Identity) -> None:
+        """One identity row, fsynced (file and directory) before the caller may signal it."""
+        append_ndjson(self.path, self._row(ident))
+        self.rows += 1
+
+    def compact(self, keep: list[Identity]) -> None:
+        """Rewrite the sidecar to `keep` alone (`atomic_write`). The caller holds the run's
+        Attribution lock, so no observe() adds a row between the read and the rename."""
+        data = b"".join(
+            json.dumps(self._row(ident), separators=(",", ":"), ensure_ascii=False).encode() + b"\n"
+            for ident in keep
+        )
+        atomic_write(self.path, data)
+        self.rows = len(keep)
+
+    def _row(self, ident: Identity) -> dict[str, Any]:
+        return {"kind": "process_identity", "run_id": self.run_id, **ident.fields()}
+
+
+def compact_sidecar(attribution: Attribution, sidecar: Sidecar) -> bool:
+    """Past `COMPACT_ROWS` rows, rewrite the sidecar to the leader and the identities alive now,
+    under the Attribution lock. An exited process cannot be signalled again, so dropping its row
+    loses nothing recovery needs. True when it compacted."""
+    if sidecar.rows <= COMPACT_ROWS:
+        return False
+    with attribution.lock:
+        alive = attribution.alive()
+        keep = [
+            ident
+            for ident in attribution.identities
+            if ident.leader or (ident.pid in alive and alive[ident.pid].start == ident.start)
+        ]
+        sidecar.compact(keep)
+    return True
+
+
+def count_alive(idents: tuple[Identity, ...] | list[Identity], source: ProcessSource) -> int:
+    """How many of `idents` name a live process with their recorded boot and start."""
+    boot_now = source.boot_id()
+    table = source.table()
+    return sum(
+        1
+        for ident in idents
+        if ident.boot == boot_now
+        and (row := table.get(ident.pid)) is not None
+        and not row.zombie
+        and row.start == ident.start
+    )
 
 
 # --- attribution -------------------------------------------------------------------------------
@@ -513,10 +606,14 @@ class RecoveryDecision:
 
 
 def recovery_decision(
-    records: list[dict[str, Any]], source: ProcessSource | None = None
+    records: list[dict[str, Any]],
+    source: ProcessSource | None = None,
+    *,
+    sidecar: list[dict[str, Any]] | None = None,
 ) -> RecoveryDecision:
-    """Read the run's `process_identity` rows and take one branch, comparing `(boot, start)` as
-    integers and never as text:
+    """Read the run's `process_identity` rows (the ledger's, and the sidecar's `sidecar` rows) and
+    take one branch, comparing `(boot, start)` as integers and never as text. The leader is read
+    from the ledger alone, which always keeps its row (v0.4 Problem C):
 
     (i) no leader row (a run started by a version that records no identity, K-19, or interrupted
         between spawn and the append): no signal, `confirmed_gone` false, cleanup unknown;
@@ -528,8 +625,8 @@ def recovery_decision(
         processes; only this branch sends a signal.
     """
     src = source if source is not None else SYSTEM
-    idents = tuple(identity_rows(records))
-    leader = next((i for i in idents if i.leader), None)
+    idents = tuple(merged_identities(records, sidecar or []))
+    leader = next((i for i in identity_rows(records) if i.leader), None)
     if leader is None:
         return RecoveryDecision("i", "no_identity", False, idents, None)
     boot_now = src.boot_id()

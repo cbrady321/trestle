@@ -14,7 +14,14 @@ from trestle.common.limits import CaptureLimits, capture_limits
 from trestle.common.types import Handle, RequestOutcome
 from trestle.query import views as view_defs
 from trestle.query.conformance import validate_envelope
-from trestle.server.ledger import TERMINAL_KINDS, RunLedger, evidence_dir, ledger_path
+from trestle.server.ledger import (
+    TERMINAL_KINDS,
+    RunLedger,
+    evidence_dir,
+    ledger_path,
+    read_state,
+    state_path,
+)
 from trestle.server.pins import PinStore
 
 _FAILURE_STATES = TERMINAL_KINDS - frozenset({"succeeded"})
@@ -187,7 +194,10 @@ class FilesystemQueryBackend:
                 path = ledger_path(run_dir)
                 if not path.exists():
                     continue
-                size = path.stat().st_size
+                # v0.4 Problem C: a run is listed from its small state.json; an old run without
+                # one is read from its ledger, as before
+                listed = state_path(run_dir)
+                size = (listed if listed.exists() else path).stat().st_size
                 scan_bytes += size
                 if scan_bytes > self.limits.max_scan_bytes:
                     scan_truncated = True
@@ -302,17 +312,20 @@ def _load_run_record(run_id: str, run_dir: Path) -> RunRecord | None:
     path = ledger_path(run_dir)
     if not path.exists():
         return None
-    ledger = RunLedger.open(path)
-    created = ledger.last_kind("created")
-    if created is None:
-        return None
-
     spec_path = evidence_dir(run_dir) / "spec.json"
     spec: dict[str, object] = {}
     if spec_path.exists():
         loaded = json.loads(spec_path.read_text(encoding="utf-8"))
         if isinstance(loaded, dict):
             spec = loaded
+    state_file = read_state(run_dir)
+    if state_file is not None:
+        return _record_from_state(run_id, run_dir, state_file, spec)
+
+    ledger = RunLedger.open(path)
+    created = ledger.last_kind("created")
+    if created is None:
+        return None
 
     started_at = str(created.get("at", ""))
     ended = ledger.last_kind("execution_ended")
@@ -342,6 +355,35 @@ def _load_run_record(run_id: str, run_dir: Path) -> RunRecord | None:
         finalized=ledger.has_kind("evidence_finalized"),
         snapshot_id=str(spec.get("snapshot_id", "")),
         spec_hash=str(created.get("spec_hash", "")),
+        args_hash=str(spec.get("args_hash", "")),
+        source_sha256=str(spec.get("source_sha256", "")),
+        resolved_artifacts=resolved,
+    )
+
+
+def _record_from_state(
+    run_id: str, run_dir: Path, st: dict[str, Any], spec: dict[str, object]
+) -> RunRecord:
+    """A run's record from its state.json (v0.4 Problem C), with what the ledger read gives."""
+    state = str(st["state"])
+    ended_at = st.get("ended_at")
+    terminal_at = st.get("terminal_at")
+    resolved_raw = spec.get("resolved_artifacts", {})
+    resolved: dict[str, str] = {}
+    if isinstance(resolved_raw, dict):
+        resolved = {str(k): str(v) for k, v in resolved_raw.items()}
+    return RunRecord(
+        run_id=run_id,
+        run_dir=run_dir,
+        plugin=str(st.get("plugin") or spec.get("plugin", "")),
+        version=str(st.get("version") or spec.get("version", "")),
+        state=state,
+        started_at=str(st.get("created_at") or ""),
+        ended_at=str(ended_at) if ended_at is not None else None,
+        failed_at=str(terminal_at) if state in _FAILURE_STATES and terminal_at else None,
+        finalized=st.get("finalized") is True,
+        snapshot_id=str(spec.get("snapshot_id", "")),
+        spec_hash=str(st.get("spec_hash") or ""),
         args_hash=str(spec.get("args_hash", "")),
         source_sha256=str(spec.get("source_sha256", "")),
         resolved_artifacts=resolved,

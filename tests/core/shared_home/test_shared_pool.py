@@ -42,6 +42,10 @@ WAIT_S = 10.0
 # rule 5's hand-off bound: one pass (250 ms) plus the candidacy window (1 s), and room for a run's
 # own completion and a loaded machine
 HANDOFF_S = 2.5
+POLL_S = 0.02
+QUIET_S = 0.5  # a window in which nothing may start
+ANSWER_WAIT_S = 30.0
+NO_WAIT_MS = 0
 
 
 @pytest.fixture
@@ -55,7 +59,7 @@ def _wait(predicate: Callable[[], bool], bound_s: float = WAIT_S) -> bool:
     while time.monotonic() < deadline:
         if predicate():
             return True
-        time.sleep(0.02)
+        time.sleep(POLL_S)
     return predicate()
 
 
@@ -137,7 +141,7 @@ class Server:
         assert self.proc.stdin is not None
         self.proc.stdin.write(json.dumps(command) + "\n")
         self.proc.stdin.flush()
-        return self.answers.get(timeout=30)
+        return self.answers.get(timeout=ANSWER_WAIT_S)
 
     def run(self, plugin: str, **args: Any) -> dict[str, Any]:
         return self.send({"op": "run", "plugin": plugin, "args": args})
@@ -193,7 +197,7 @@ def test_one_waiting_run_starts_next_while_another_server_has_50_waiting(
     assert _wait(lambda: len(_running(home, a.server_id)) == 2)
     b = servers(home)
     b_run, _ = b.gated(gates)
-    time.sleep(0.5)
+    time.sleep(QUIET_S)  # absence-window
     assert _running(home) == sorted(run for run, _ in a_runs[:2])  # no free slot: b waits
     gates.open(a_runs[0][1])
     assert _wait(lambda: b_run in _running(home), HANDOFF_S)
@@ -232,7 +236,7 @@ def test_idle_server_keeps_one_slot_and_its_first_run_starts_at_once(
     for _ in range(5):
         a.gated(gates)
     assert _wait(lambda: len(_running(home, a.server_id)) == 2)
-    time.sleep(1.0)
+    time.sleep(2 * QUIET_S)  # absence-window
     assert len(_running(home)) == 2  # one slot stays free for the idle server
     # at once: a's runs hold their slots until the test ends, so only the kept slot can start it
     b_run, _ = b.gated(gates)
@@ -240,15 +244,27 @@ def test_idle_server_keeps_one_slot_and_its_first_run_starts_at_once(
     assert len(_running(home, a.server_id)) == 2
 
 
+def test_reserve_never_takes_the_last_slot(
+    tmp_path: Path, servers: Callable[..., Server], gates: Gates
+) -> None:
+    """The reserve is capped at max_running_runs - 1: with a pool of 1, an idle server's reserve
+    must not block the other server forever."""
+    home = _home(tmp_path, 1)
+    a, b = servers(home), servers(home)
+    assert _wait(lambda: b.server_id in _sched(home)["servers"])
+    run_id, _ = a.gated(gates)
+    assert _wait(lambda: run_id in _running(home), HANDOFF_S)
+
+
 def test_max_share_caps_one_server(tmp_path: Path, gates: Gates) -> None:
     home = _home(tmp_path, 4, "[operator]\nmax_share = 2\n")
     kernel = create_kernel(home=home, plugin_dirs=[PLUGINS], skip_recovery=True)
     try:
         for _ in range(3):
-            view = kernel.control.run("gated", {"gate": gates.new()}, wait_ms=0)
+            view = kernel.control.run("gated", {"gate": gates.new()}, wait_ms=NO_WAIT_MS)
             assert isinstance(view, RunView), view
         assert _wait(lambda: len(_running(home)) == 2)
-        time.sleep(0.75)  # three passes: the free slots stay free
+        time.sleep(3 * pools.PASS_INTERVAL_S)  # absence-window: three passes, slots stay free
         assert len(_running(home)) == 2 and len(kernel.control.scheduler.waiting) == 1
     finally:
         gates.open_all()
@@ -317,7 +333,7 @@ def test_server_killed_between_grant_and_spawn_keeps_its_slot_until_reaped(
     deadline = time.monotonic() + WAIT_S
     while second not in _running(home) and time.monotonic() < deadline:
         assert consistent()
-        time.sleep(0.02)
+        time.sleep(POLL_S)
     assert second in _running(home)
     assert "interrupted" in _kinds(home, b_run) and b_run not in _running(home)
     assert "started" not in _kinds(home, b_run)
@@ -381,7 +397,7 @@ def test_one_env_key_on_two_servers_runs_one_at_a_time_in_arrival_order(
         (run_id,) = _running(home)
         started.append(run_id)
         gate = dict(sent)[run_id]
-        time.sleep(0.3)  # a pass on each server: still one
+        time.sleep(pools.PASS_INTERVAL_S)  # absence-window: a pass on each server, still one
         assert _running(home) == [run_id]
         gates.open(gate)
         assert _wait(lambda run_id=run_id: run_id not in _running(home))  # type: ignore[misc]
@@ -409,16 +425,16 @@ def test_v030_run_holds_its_key_and_takes_no_slot(tmp_path: Path, gates: Gates) 
     try:
         # the busy pre-check counts it: its deadline is past the one a new run would get
         old_run(600)
-        busy = kernel.control.run("env_gated", keyed_args, wait_ms=0)
+        busy = kernel.control.run("env_gated", keyed_args, wait_ms=NO_WAIT_MS)
         assert isinstance(busy, RequestOutcome), busy
         assert busy.code == codes.ADMISSION_ENVIRONMENT_BUSY
         old_run(30)
-        keyed = kernel.control.run("env_gated", keyed_args, wait_ms=0)
-        plain = kernel.control.run("gated", {"gate": gates.new()}, wait_ms=0)
+        keyed = kernel.control.run("env_gated", keyed_args, wait_ms=NO_WAIT_MS)
+        plain = kernel.control.run("gated", {"gate": gates.new()}, wait_ms=NO_WAIT_MS)
         assert isinstance(keyed, RunView) and isinstance(plain, RunView)
         assert _wait(lambda: plain.run_id in _running(home))  # the one slot was free
         assert _sched(home)["running"][old]["server"] is None
-        time.sleep(0.5)
+        time.sleep(QUIET_S)  # absence-window
         assert keyed.run_id not in _running(home)  # its key is the old run's
         assert keyed.run_id in [run for run, _ in pools.key_runs(_sched(home), '"shared"')]
         # the old run is reaped (its marker goes): its key is free at the next pass
@@ -440,11 +456,11 @@ def test_full_queue_on_one_server_never_refuses_another_servers_run(
     b = create_kernel(home=home, plugin_dirs=[PLUGINS], skip_recovery=True)
     a.control.scheduler.queue_depth = 0  # a's own bound: one slot's worth of runs
     try:
-        first = a.control.run("gated", {"gate": gates.new()}, wait_ms=0)
+        first = a.control.run("gated", {"gate": gates.new()}, wait_ms=NO_WAIT_MS)
         assert isinstance(first, RunView)
-        full = a.control.run("gated", {"gate": gates.new()}, wait_ms=0)
+        full = a.control.run("gated", {"gate": gates.new()}, wait_ms=NO_WAIT_MS)
         assert isinstance(full, RequestOutcome) and full.code == codes.QUEUE_FULL
-        other = b.control.run("gated", {"gate": gates.new()}, wait_ms=0)
+        other = b.control.run("gated", {"gate": gates.new()}, wait_ms=NO_WAIT_MS)
         assert isinstance(other, RunView) and other.state == "queued", other
     finally:
         gates.open_all()
@@ -455,8 +471,8 @@ def test_queued_run_cancelled_by_flag_ends_on_its_owners_pass(tmp_path: Path, ga
     home = _home(tmp_path, 1)
     kernel = create_kernel(home=home, plugin_dirs=[PLUGINS], skip_recovery=True)
     try:
-        holder = kernel.control.run("gated", {"gate": gates.new()}, wait_ms=0)
-        waiter = kernel.control.run("gated", {"gate": gates.new()}, wait_ms=0)
+        holder = kernel.control.run("gated", {"gate": gates.new()}, wait_ms=NO_WAIT_MS)
+        waiter = kernel.control.run("gated", {"gate": gates.new()}, wait_ms=NO_WAIT_MS)
         assert isinstance(holder, RunView) and isinstance(waiter, RunView)
         assert _wait(lambda: holder.run_id in _running(home))
         run_dir = find_run_dir(home, waiter.run_id)

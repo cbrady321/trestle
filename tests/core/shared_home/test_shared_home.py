@@ -56,6 +56,9 @@ LONG_S = 60
 WAIT_S = 15.0
 # the reaped run's stop: grace 0 plus kill 1, and room for the finalization writes
 STOP_S = 3.0
+POLL_S = 0.05
+RUN_WAIT_MS = 5000
+NO_WAIT_MS = 0
 
 _HOLD_ADMISSION_LOCK = """
 import sys, time
@@ -87,7 +90,7 @@ def _wait(predicate: Callable[[], bool], bound_s: float = WAIT_S) -> bool:
     while time.monotonic() < deadline:
         if predicate():
             return True
-        time.sleep(0.05)
+        time.sleep(POLL_S)
     return predicate()
 
 
@@ -255,7 +258,7 @@ def test_admission_lock_held_past_2s_is_home_busy_and_doctor_names_holder(
     try:
         assert holder.stdout is not None and holder.stdout.readline().strip() == "held"
         began = time.monotonic()
-        refused = kernel.control.run(plugin="echo", args={"message": "busy"}, wait_ms=0)
+        refused = kernel.control.run(plugin="echo", args={"message": "busy"}, wait_ms=NO_WAIT_MS)
         waited = time.monotonic() - began
         assert isinstance(refused, RequestOutcome), refused
         assert (refused.code, refused.retryable) == (codes.ADMISSION_HOME_BUSY, True)
@@ -269,7 +272,7 @@ def test_admission_lock_held_past_2s_is_home_busy_and_doctor_names_holder(
         holder.kill()
         holder.wait()
     assert admission_holder(home) is None
-    view = kernel.control.run(plugin="echo", args={"message": "free"}, wait_ms=5000)
+    view = kernel.control.run(plugin="echo", args={"message": "free"}, wait_ms=RUN_WAIT_MS)
     assert isinstance(view, RunView) and view.state == "succeeded"
 
 
@@ -311,7 +314,7 @@ def test_crash_at_each_admission_step_leaves_no_run_or_a_reapable_one(
         assert RunLedger.open(ledger_path(run_dir)).projected_state() == "interrupted"
     assert report.reaped == [run_dir.name for run_dir in visible]
 
-    after = kernel.control.run(plugin="echo", args={"message": "after"}, wait_ms=5000)
+    after = kernel.control.run(plugin="echo", args={"message": "after"}, wait_ms=RUN_WAIT_MS)
     assert isinstance(after, RunView) and after.state == "succeeded"
 
 
@@ -320,7 +323,7 @@ def test_gc_query_and_key_rebuild_never_touch_an_admission_in_flight(
 ) -> None:
     home = tmp_path / "home"
     kernel = create_kernel(home=home, plugin_dirs=[FIXTURE_PLUGINS], skip_recovery=True)
-    done = kernel.control.run(plugin="echo", args={"message": "old"}, wait_ms=5000)
+    done = kernel.control.run(plugin="echo", args={"message": "old"}, wait_ms=RUN_WAIT_MS)
     assert isinstance(done, RunView) and done.state == "succeeded"
     seen: dict[str, Path] = {}
     keep_nothing = TrestleConfig(
@@ -418,7 +421,7 @@ def test_pool_size_is_read_from_config_at_each_admission(
     monkeypatch.setenv("TRESTLE_MAX_RUNNING_RUNS", "7")  # ignored, and doctor says so
     kernel = create_kernel(home=home, plugin_dirs=[FIXTURE_PLUGINS], skip_recovery=True)
     (home / "config.toml").write_text("max_running_runs = 2\n", encoding="utf-8")
-    view = kernel.control.run(plugin="echo", args={"message": "pool"}, wait_ms=5000)
+    view = kernel.control.run(plugin="echo", args={"message": "pool"}, wait_ms=RUN_WAIT_MS)
     assert isinstance(view, RunView) and view.state == "succeeded"
     assert kernel.control.scheduler.max_running == 2
     report = build_doctor_report(home=home, plugin_dirs=[FIXTURE_PLUGINS])

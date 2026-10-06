@@ -22,7 +22,16 @@ from trestle.common.types import WorkOrder
 from trestle.server import answer, fold, sweep
 from trestle.server.config import load_config
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, work_dir
-from trestle.server.procident import Attribution, GroupStop, Identity, ProcessSource, stop_group
+from trestle.server.procident import (
+    Attribution,
+    GroupStop,
+    Identity,
+    ProcessSource,
+    Sidecar,
+    compact_sidecar,
+    sidecar_path,
+    stop_group,
+)
 from trestle.server.projection import count_events
 from trestle.server.runs import RunRegistry, cancel_flag_path, release_point_flag_path
 from trestle.server.scheduler import Scheduler
@@ -159,10 +168,12 @@ class Conductor:
             start_new_session=True,
         )
         # B2-C16: the leader's identity row goes down after spawn and before the first liveness
-        # poll; the wrapper does not wait on it.
+        # poll; the wrapper does not wait on it. Every identity row goes to the sidecar, the
+        # leader's to the ledger too (v0.4 Problem C).
+        sidecar = Sidecar(sidecar_path(evidence_dir(run_dir)), order.run_id)
         attribution = Attribution(
             group=proc.pid,
-            record=lambda ident: _record_identity(ledger, order.run_id, ident),
+            record=lambda ident: _record_identity(ledger, sidecar, order.run_id, ident),
             source=self.process_source,
         )
         attribution.attribute_leader(proc.pid)
@@ -183,6 +194,7 @@ class Conductor:
         try:
             while proc.poll() is None:
                 attribution.observe()
+                compact_sidecar(attribution, sidecar)
                 now = time.monotonic()
                 if stop_row_at is None:
                     # B2-C10: the cancel flag, or the release point (U2 writes its flag itself);
@@ -225,6 +237,7 @@ class Conductor:
                             )
                         else:
                             stop = self.stopper(attribution)
+                seen, alive = len(attribution.identities), len(attribution.alive())
                 attribution.close()
             if proc.stdout is not None:
                 proc.stdout.close()
@@ -236,6 +249,8 @@ class Conductor:
                 pass
 
         assert stop is not None
+        # v0.4 Problem C: the identities stay in the sidecar; the ledger gets their count
+        ledger.append("process_summary", run_id=order.run_id, seen=seen, alive=alive)
         # MC-32: one group_stop per spawned run, after the kill and before evidence_finalized
         ledger.append(
             "group_stop",
@@ -577,8 +592,12 @@ def _read_child_error(home: Path, run_dir: Path) -> dict[str, str] | None:
     }
 
 
-def _record_identity(ledger: RunLedger, run_id: str, ident: Identity) -> None:
-    ledger.append("process_identity", run_id=run_id, **ident.fields())
+def _record_identity(ledger: RunLedger, sidecar: Sidecar, run_id: str, ident: Identity) -> None:
+    """The identity's durable row, before the process can be signalled: the sidecar's (and, for
+    the leader, the ledger's first, so recovery's branch (i) still reads the ledger alone)."""
+    if ident.leader:
+        ledger.append("process_identity", run_id=run_id, **ident.fields())
+    sidecar.append(ident)
 
 
 def _read_ndjson(path: Path) -> list[dict[str, object]]:

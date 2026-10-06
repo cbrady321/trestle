@@ -353,7 +353,7 @@ PRODUCERS: dict[str, Callable[[Path], None]] = {
 
 # Ledger kinds core adds to a run (MC-14, MC-32). They are additive to the S0 projection `DECLARED`
 # speaks in: a head-produced run holds them, an S0 fossil never does.
-CORE_KINDS = frozenset({"process_identity", "group_stop"})
+CORE_KINDS = frozenset({"process_identity", "process_summary", "group_stop"})
 
 
 def declared_projection(run_dir: Path) -> dict[str, Any]:

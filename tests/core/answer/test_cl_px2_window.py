@@ -17,7 +17,7 @@ from trestle.common.types import RequestOutcome
 from trestle.query import catalog
 from trestle.query import views as view_defs
 from trestle.query.fs import FilesystemQueryBackend
-from trestle.server.ledger import RunLedger, ledger_path
+from trestle.server.ledger import RunLedger, ledger_path, state_path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MONTH = "2026-01"
@@ -90,8 +90,9 @@ def test_recency_cap_filled_exactly_is_not_marked(tmp_path: Path) -> None:
 @pytest.mark.proves("WR-EVID-7", "WR-EVID-7:window-hidden-run-marked", "core", "core", "PROC", "CI")
 def test_run_hidden_by_scan_budget_marked(tmp_path: Path) -> None:
     ids = _seed_runs(tmp_path, 6)
-    one_ledger = ledger_path(tmp_path / "runs" / MONTH / ids[0]).stat().st_size
-    budget = CaptureLimits(max_scan_bytes=one_ledger * 3 + 1)
+    # the scan counts each run's state.json (v0.4 Problem C), its ledger only for an old run
+    one_run = state_path(tmp_path / "runs" / MONTH / ids[0]).stat().st_size
+    budget = CaptureLimits(max_scan_bytes=one_run * 3 + 1)
     backend = FilesystemQueryBackend(tmp_path, limits=budget)
 
     pages = _pages(backend, "recent_runs")

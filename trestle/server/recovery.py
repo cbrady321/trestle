@@ -22,6 +22,7 @@ from trestle.server.ledger import (
     work_dir,
 )
 from trestle.server.procident import ProcessSource, Signaller
+from trestle.server.runstate import refresh_state
 
 _MID_EXECUTION_KINDS = frozenset(
     {
@@ -300,21 +301,33 @@ def _record_group_stop(
     existing = ledger.last_kind("group_stop")
     if existing is not None:
         return existing.get("confirmed_gone") is True
-    decision = procident.recovery_decision(ledger.records, source)
+    # v0.4 Problem C: the identities are in the ledger (the leader's) and the sidecar, and the
+    # recovery's own rows go to the sidecar
+    sidecar = procident.Sidecar(procident.sidecar_path(ledger.path.parent), run_id)
+    decision = procident.recovery_decision(ledger.records, source, sidecar=sidecar.records())
+    src = source if source is not None else procident.SYSTEM
+    recorded: list[procident.Identity] = []
     if decision.branch == "iii":
 
         def record(ident: procident.Identity) -> None:
-            ledger.append("process_identity", run_id=run_id, **ident.fields())
+            sidecar.append(ident)
+            recorded.append(ident)
 
         stop = procident.stop_recovered(decision, record=record, source=source, signaller=signaller)
         confirmed = stop.confirmed_gone
     else:
         confirmed = bool(decision.confirmed_gone)
+    if not ledger.has_kind("process_summary"):
+        idents = [*decision.identities, *recorded]
+        # branch (i) has nothing recorded, and reads no process table
+        alive = 0 if confirmed or not idents else procident.count_alive(idents, src)
+        ledger.append("process_summary", run_id=run_id, seen=len(idents), alive=alive)
     ledger.append("group_stop", run_id=run_id, confirmed_gone=confirmed, method=decision.method)
     return confirmed
 
 
 def rematerialize_meta(run_dir: Path, ledger: RunLedger) -> None:
+    refresh_state(run_dir, ledger)  # v0.4 Problem C: state.json follows the ledger's last row
     evidence = evidence_dir(run_dir)
     run_id = str(ledger.records[0].get("run_id", run_dir.name))
     terminal = ledger.terminal_state() or "interrupted"
