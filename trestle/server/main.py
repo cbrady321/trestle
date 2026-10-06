@@ -15,7 +15,6 @@ from trestle.common.bind import LOOPBACK_HOST
 from trestle.common.ids import generate_server_id
 from trestle.common.types import PublishView, RequestOutcome, RunView
 from trestle.query.catalog import VIEW_CATALOG_URI, view_catalog
-from trestle.server import lease
 from trestle.server.admission import Admission
 from trestle.server.conductor import Conductor
 from trestle.server.config import ProfileConfig, load_config
@@ -29,6 +28,7 @@ from trestle.server.home import (
 )
 from trestle.server.mcp_schema import FetchWindowArg, QueryViewArg
 from trestle.server.plugin_paths import resolve_plugin_dirs
+from trestle.server.pool import Pool
 from trestle.server.project import Project
 from trestle.server.reaper import Reaper
 from trestle.server.registry import Registry
@@ -72,6 +72,7 @@ class Kernel:
         if self.reaper is not None:
             self.control.project.on_owner_gone = self.reaper.wake
             self.reaper.start()
+            self.reaper.wake()  # a first pass now: this server's seen_at (rule 5's reserve)
 
 
 def create_kernel(
@@ -105,9 +106,14 @@ def create_kernel(
     registry = Registry(home=trestle_home, plugin_dirs=dirs)
     registry.refresh()
     config = load_config(trestle_home)
-    holders = lease.rebuild_holders(trestle_home)
+    # v0.4 rules 4 and 5: this server's FIFO, bounded per server (read at start), and the home's
+    # one slot pool (home/sched.json), whose size is read from config.toml at each grant
+    pool = Pool(home=trestle_home, server_id=ownership.server_id)
     scheduler = Scheduler(
-        max_running=config.max_running_runs, queue_depth=config.queue_depth, holders=holders
+        max_running=config.max_running_runs,
+        queue_depth=config.queue_depth,
+        max_held=config.max_held_runs,
+        pool=pool,
     )
     run_registry = RunRegistry()
     admission = Admission(
@@ -116,12 +122,16 @@ def create_kernel(
         scheduler=scheduler,
         ownership=ownership,
         profile=config.profile,
-        # WR-OWN-8: the lease is defined over the ledgers, so the holder index is rebuilt from
-        # them after recovery (there is no lease store file)
-        holders=holders,
     )
-    # the owner removes a finished run's marker and closes its owner lock (v0.4 rule 2)
-    scheduler.on_complete = ownership.release
+
+    def complete(run_id: str) -> None:
+        # the owner removes a finished run's marker, frees its slot (its home/sched.json entry)
+        # and closes its owner lock, in one locked step (v0.4 rules 2 and 7)
+        ownership.release(run_id, locked=pool.settle)
+
+    scheduler.on_complete = complete
+    # each reaper pass (every 10 s) writes this server's seen_at, the reserve's liveness (rule 5)
+    reaper.on_pass = scheduler.seen
     conductor = Conductor(
         home=trestle_home,
         scheduler=scheduler,

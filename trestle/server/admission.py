@@ -30,6 +30,7 @@ from trestle.common.types import (
     RunSpec,
 )
 from trestle.server import lease
+from trestle.server import pool as pools
 from trestle.server.config import ProfileConfig, load_config
 from trestle.server.home import (
     ADMISSION_WAIT_S,
@@ -86,8 +87,6 @@ class Admission:
     # the owner locks this server holds (v0.4 rule 1); its `server_id` is `created.owner`
     ownership: Ownership
     profile: ProfileConfig = ProfileConfig()
-    # the runs that may hold an environment lease (WR-OWN-8), rebuilt from the ledgers at startup
-    holders: lease.Holders = field(default_factory=lease.Holders)
 
     @property
     def server_id(self) -> str:
@@ -221,30 +220,37 @@ class Admission:
     ) -> AdmitResult:
         """v0.4 rule 7: the admission's locked section, its steps in order. Everything slow
         (registry refresh, import validation, schema validation, compile and carve) ran before the
-        lock; process start runs after it. Step 1b's shared pool fills the marked seams."""
-        # (1) shared state. 1b: read home/sched.json (rebuilt from home/live/ when missing) and
-        #     the shared settings; drop rows of servers whose lock is free.
+        lock; process start runs after it."""
+        # (1) shared state: home/sched.json (rebuilt from home/live/ when missing), dead servers'
+        #     rows dropped; the pool's settings were read from config.toml in `admit`.
+        pool = self.scheduler.pool
+        state = pool.load() if pool is not None else None
         # (2) the idempotency key: join, else claim (the claim is written in step 4 (c); Problem
         #     B replaces the store with home/keys/<sha256(key)>.json, claimed here).
         if req.idempotency_key is not None:
             known = self._key_step(req.idempotency_key, snap, a_hash, locked=True)
             if known is not None:
                 return known
-        # (3) the busy pre-check (rule 6). 1b: from home/sched.json; today this server's holders.
-        busy = self._environment_busy(planned, deadline_s)
+        # (3) the busy pre-check (rule 6), from home/sched.json: every server's runs.
+        busy = self._environment_busy(planned, deadline_s, state)
         if busy is not None:
             return busy
         # (4) admission steps (a) to (d): built hidden, owner-locked, renamed into place.
         admitted = write_admitted_run(self.home, snap, req, planned, ownership=self.ownership)
-        if admitted.lease_key is not None:
-            self.holders.prune()
-            self.holders.add(
-                lease.Holder(admitted.run_id, admitted.lease_key, admitted.deadline_epoch),
-                admitted.run_dir,
-            )
         self.scheduler.mint(admitted.run_id, snap.snapshot_id, admitted.spec_hash)
-        # (5) marker state changes, (6) slot grants, (7) write home/sched.json: 1b. Today each
-        #     server grants its own slots in memory (`Scheduler.dispatch`).
+        # (5) a new waiting run, (7) write home/sched.json. (6) The run's grant comes with its
+        #     hand-off to this server's FIFO (`Scheduler.enqueue`), whose pass takes the lock again:
+        #     its work order (with the secrets) exists only after admission returns.
+        if pool is not None and state is not None:
+            pools.add_waiting(
+                state,
+                self.server_id,
+                admitted.run_id,
+                admitted.lease_key,
+                admitted.arrival,
+                admitted.deadline_epoch,
+            )
+            pool.write(state)
         # the real values travel in memory to the run's WorkOrder and no further
         return AdmitResultAdmitted(tag="admitted", run_id=admitted.run_id, secrets=admitted.secrets)
 
@@ -282,15 +288,19 @@ class Admission:
             ),
         )
 
-    def _environment_busy(self, plan: AdmittedPlan, deadline_s: float) -> AdmitResultRefused | None:
+    def _environment_busy(
+        self, plan: AdmittedPlan, deadline_s: float, state: pools.State | None
+    ) -> AdmitResultRefused | None:
         """B2 ordering step 2, the lease pre-check (WR-OWN-8, B2-C5): a request whose environment
-        is held is queued FIFO within its deadline (`ControlSurface`), unless the holders'
-        recorded deadlines leave it less than the plan's worst case plus release slice before its
-        own would-be deadline: then it is refused `admission.environment_busy` (retryable) with no
-        run id, since waiting could not end in a run that fits."""
-        if not plan.lease_set:
+        is held is queued FIFO within its deadline (`ControlSurface`), unless the latest recorded
+        deadline among the key's queued and running runs on every server (`home/sched.json`, held
+        runs excluded, v0.3.0 runs included) leaves it less than the plan's worst case plus
+        release slice before its own would-be deadline: then it is refused
+        `admission.environment_busy` (retryable) with no run id, since waiting could not end in a
+        run that fits."""
+        if not plan.lease_set or state is None:
             return None
-        free_at = self.holders.latest_deadline(plan.lease_set[0])
+        free_at = pools.busy_until(state, plan.lease_set[0])
         if free_at is None:
             return None
         worst_case = carving.worst_case_s(plan, clock.FINALIZATION_RESERVE_S)
@@ -391,6 +401,7 @@ class AdmittedRun:
     lease_key: str | None = None
     deadline_epoch: float = 0.0
     run_dir: Path = Path()
+    arrival: float = 0.0  # created.at, epoch seconds: a key's waiters start in this order
     secrets: dict[str, object] = field(default_factory=dict, repr=False, compare=False)
 
 
@@ -539,5 +550,6 @@ def write_admitted_run(
         lease_key=lease_key,
         deadline_epoch=deadline.timestamp(),
         run_dir=run_dir,
+        arrival=pools.epoch(created["at"]),
         secrets=secrets,
     )

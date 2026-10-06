@@ -20,6 +20,8 @@ from trestle.common.types import (
 )
 from trestle.server.admission import Admission
 from trestle.server.conductor import Conductor
+from trestle.server.home import read_marker
+from trestle.server.pool import epoch
 from trestle.server.project import Project
 from trestle.server.scheduler import Scheduler
 
@@ -79,6 +81,8 @@ class ControlSurface:
         self.lane = AdmissionLane(self.admission)
         self.scheduler.on_dispatch = self._start
         self.scheduler.on_expire = self.conductor.finalize_unspawned
+        # v0.4: a cancel flag another server wrote for a run waiting here, seen on the 250 ms pass
+        self.scheduler.on_cancel = self.conductor.cancel_flag_written
 
     def submit_admit(self, request: AdmitRequest) -> Future[AdmitResult]:
         """MC-30: refresh the registry, then admit, on the admission thread."""
@@ -91,10 +95,17 @@ class ControlSurface:
     def _drive_background(self, order: WorkOrder) -> None:
         """Hand an admitted run to the dispatcher: it starts now if a slot is free, else it waits
         in the FIFO with its admitted deadline still running (MC-30, B2-C5)."""
+        # the run's environment key, arrival and deadline, as admission recorded them in its live
+        # marker (the pool orders a key's waiters across servers by arrival, rule 6)
+        marker = read_marker(self.admission.home, order.run_id) or {}
+        key = marker.get("lease_key")
+        deadline = marker.get("deadline")
         self.scheduler.enqueue(
             order,
             self.conductor.admitted_deadline(order),
-            key=self.admission.holders.key_of(order.run_id),
+            key=key if isinstance(key, str) else None,
+            arrival=epoch(marker.get("arrival")) if "arrival" in marker else None,
+            deadline_epoch=float(deadline) if isinstance(deadline, int | float) else None,
         )
 
     def _start(self, order: WorkOrder) -> None:

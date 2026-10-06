@@ -318,13 +318,20 @@ value keeps what it left in `work/outputs/` (and staged artifacts) as artifacts:
 
 ## Run capacity
 
-A service runs at most `max_running_runs` runs at once; a run admitted beyond that waits in a FIFO
-of at most `queue_depth` runs, its deadline running from admission, and a run that would exceed
-both is refused `admission.queue_full` before it has a run id. Both are settable in the operator's
-`config.toml`; `max_running_runs` is read from it at each admission (no restart needed) and
-`TRESTLE_MAX_RUNNING_RUNS` is ignored (`trestle doctor` warns when it is set), while
-`queue_depth` is read at start and `TRESTLE_QUEUE_DEPTH` still overrides it. Each server process on
-a home counts its own runs.
+A home runs at most `max_running_runs` runs at once, shared by every server on it (one pool, not
+one per server). Each server queues the runs it admitted in its own FIFO, its deadline running
+from admission; a server whose running and waiting runs reach `max_running_runs + queue_depth`
+refuses `admission.queue_full` before a run id exists, and a full queue on one server never
+refuses another server's runs. Free slots go to the server holding the fewest, then the one
+granted longest ago; a server with nothing running and nothing waiting keeps one slot free
+until its first run (while it was seen in the last 30 s), and `[operator] max_share` caps one
+server's slots (unset by default). Runs that name one environment start one at a time across all
+servers, in admission order. A stopped server's turn passes on within about 1.5 s; a dead
+server's running runs keep their slots until another server's reaper ends them. `max_running_runs`
+and `max_share` are read from `config.toml` at each admission and grant (no restart needed;
+`TRESTLE_MAX_RUNNING_RUNS` is ignored and `trestle doctor` warns when it is set); `queue_depth`
+(`TRESTLE_QUEUE_DEPTH` still overrides it) and `[operator] max_held_runs` (256) are per server, read
+at start. The shared state is `home/sched.json`, rebuilt from `home/live/` when missing.
 
 <!-- capacity -->
 Defaults: `max_running_runs` = 31 (measured), `queue_depth` = 256 (not measured); ratio bound = 2.0.
@@ -483,7 +490,7 @@ independent runs with `run(plugin="…", args={…}, wait_ms=0)` (each returns i
 
 When `timeout_ms` passes first, the call returns the views as they are (some still running): call
 it again. An unknown id fails the whole call. Cancel runs one `run_id` at a time. The service runs
-at most `max_running_runs` at once and queues up to `queue_depth` more (see
+at most `max_running_runs` at once per home and each server queues up to `queue_depth` more (see
 [Run capacity](#run-capacity)); past both, `run` is refused `admission.queue_full`.
 
 Do not author a tree with `publish_plugin` for a one-off task. A tree is a registered workflow:

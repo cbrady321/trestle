@@ -45,9 +45,9 @@ class Conductor:
 
     def __post_init__(self) -> None:
         # B2-C12: a cancel written for a run still waiting in the queue finalizes it there
-        self.run_registry.on_cancel_flag = self._cancel_flag_written
+        self.run_registry.on_cancel_flag = self.cancel_flag_written
 
-    def _cancel_flag_written(self, run_id: str) -> None:
+    def cancel_flag_written(self, run_id: str) -> None:
         self.scheduler.cancel_waiting(
             run_id, lambda order: self.finalize_queued(order, fold.CAUSE_CANCEL)
         )

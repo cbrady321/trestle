@@ -20,6 +20,10 @@ _GB = 1024**3
 # is bounded by its own deadline, not by the depth.
 MAX_RUNNING_RUNS_DEFAULT = 31
 QUEUE_DEPTH_DEFAULT = 256
+# v0.4: `max_running_runs` is one pool per home, shared by every server on it (`[operator]
+# max_share`, unset by default, caps one server's slots); `queue_depth` and `[operator]
+# max_held_runs` (Feature 3's held runs) bound each server's own FIFO, read at start.
+MAX_HELD_RUNS_DEFAULT = 256
 # v0.4: the environment override of the pool size, now ignored (doctor warns when it is set)
 IGNORED_MAX_RUNNING_ENV = "TRESTLE_MAX_RUNNING_RUNS"
 
@@ -81,6 +85,8 @@ class TrestleConfig:
     queue_depth: int = QUEUE_DEPTH_DEFAULT
     profile: ProfileConfig = ProfileConfig()
     operator_limits: OperatorLimits = field(default_factory=OperatorLimits)
+    max_share: int | None = None
+    max_held_runs: int = MAX_HELD_RUNS_DEFAULT
 
     @classmethod
     def defaults(cls) -> TrestleConfig:
@@ -115,6 +121,8 @@ class TrestleConfig:
             queue_depth=max(0, _env_int("TRESTLE_QUEUE_DEPTH", self.queue_depth)),
             profile=self.profile,
             operator_limits=self.operator_limits,
+            max_share=self.max_share,
+            max_held_runs=self.max_held_runs,
         )
 
 
@@ -150,6 +158,7 @@ def load_config(home: Path) -> TrestleConfig:
                 queue_depth=int(raw.get("queue_depth", cfg.queue_depth)),
             )
         cfg = replace(cfg, profile=_load_profile(raw.get("profile")))
+        cfg = _load_pool_operator(cfg, raw.get("operator"))
         executables = _load_release_executables(raw.get("operator"))
         if executables:
             limits = replace(cfg.operator_limits, release_executables=executables)
@@ -173,6 +182,24 @@ def _load_profile(raw: object) -> ProfileConfig:
     if not isinstance(allowlist, list) or not all(isinstance(item, str) for item in allowlist):
         raise ValueError("config.toml [profile] allowlist must be a list of plugin names")
     return ProfileConfig(mode=mode, allowlist=tuple(allowlist))
+
+
+def _load_pool_operator(cfg: TrestleConfig, raw: object) -> TrestleConfig:
+    """`[operator] max_share` (a cap on one server's slots of the home's pool, at least 1; unset:
+    no cap) and `max_held_runs` (each server's bound on held runs, at least 0)."""
+    if not isinstance(raw, dict):
+        return cfg
+    if "max_share" in raw:
+        share = raw["max_share"]
+        if not isinstance(share, int) or isinstance(share, bool) or share < 1:
+            raise ValueError("config.toml [operator] max_share must be an integer of at least 1")
+        cfg = replace(cfg, max_share=share)
+    if "max_held_runs" in raw:
+        held = raw["max_held_runs"]
+        if not isinstance(held, int) or isinstance(held, bool) or held < 0:
+            raise ValueError("config.toml [operator] max_held_runs must be an integer >= 0")
+        cfg = replace(cfg, max_held_runs=held)
+    return cfg
 
 
 def _load_release_executables(raw: object) -> frozenset[str]:

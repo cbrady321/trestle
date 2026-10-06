@@ -5,8 +5,9 @@ tree. For each live marker it tries the run's owner lock without blocking: held,
 alive and the run is left alone; taken, the owner is dead, so the reaper re-reads the ledger and,
 unless it is already terminal, stops the run's processes, promotes its outputs when it had no
 secret values, and finalizes it `interrupted` (all outside the admission lock, since a stop can
-take grace + kill). Then, under the admission lock, it removes the marker (1b: and the run's
-`home/sched.json` entry) and releases the owner lock. The reaper is the only code that takes over
+take grace + kill). Then, under the admission lock, it removes the marker and the run's
+`home/sched.json` entry (its slot and environment key are free only now) and releases the owner
+lock. The reaper is the only code that takes over
 a dead owner's lock; a waiter that finds its run's lock free only wakes it (`wake`).
 
 A v0.3.0 run (its `created` row names no owner) has no lock holder: it is finalized only once its
@@ -27,6 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from trestle.server import home as homes
+from trestle.server import pool as pools
 from trestle.server import procident
 from trestle.server.ledger import RunLedger, ledger_path
 from trestle.server.procident import ProcessSource, Signaller
@@ -52,7 +54,8 @@ class Reaper:
     source: ProcessSource | None = None
     signaller: Signaller | None = None
     interval_s: float = REAP_INTERVAL_S
-    # 1b's seam: each pass writes this server's `seen_at` (rule 5's reserve) through this hook
+    # each pass writes this server's `seen_at` (rule 5's reserve) through this hook
+    # (`Scheduler.seen`)
     on_pass: Callable[[], None] | None = None
     _wake: threading.Event = field(default_factory=threading.Event, repr=False, compare=False)
     _thread: threading.Thread | None = field(default=None, repr=False, compare=False)
@@ -153,6 +156,7 @@ class Reaper:
     ) -> None:
         try:
             with homes.admission_lock(self.home):
+                gone = list(finished)
                 for run_id in finished:
                     homes.remove_marker(self.home, run_id)
                     report.markers_removed += 1
@@ -169,8 +173,15 @@ class Reaper:
                             report.debris_removed += 1
                     homes.remove_marker(self.home, run_id)
                     report.markers_removed += 1
+                    gone.append(run_id)
                 if scan_debris:
                     report.debris_removed += _remove_admission_debris(self.home)
+                if gone:
+                    # the reaped runs leave the pool: their slots and keys are free now
+                    state = pools.load_sched(self.home)
+                    for run_id in gone:
+                        pools.forget(state, run_id)
+                    pools.write_sched(self.home, state)
         except homes.HomeBusy:
             report.busy = True  # tried again at the next pass
 

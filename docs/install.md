@@ -144,7 +144,9 @@ trestle init --upgrade
 and then runs the retention sweep; `trestle doctor` lists the live servers, the live runs by owner
 and, when an admission lock is stuck (a server stopped with Ctrl-Z or a debugger), who holds it.
 A server stopped with SIGTERM drains: it refuses new runs and keeps starting and finishing the
-runs it admitted; stop it once `doctor` shows it has no live runs.
+runs it admitted; stop it once `doctor` shows it has no live runs. All servers on a home share one
+pool of `max_running_runs` slots (31 by default: three servers no longer get 93), fairly, with one
+slot kept free for each other idle server; see [Run capacity](agents.md#run-capacity).
 
 ## Troubleshooting
 

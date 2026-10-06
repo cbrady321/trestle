@@ -26,7 +26,7 @@ import shutil
 import sys
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -64,7 +64,7 @@ NETWORK_FS_TYPES = frozenset(
 _LEGACY_ENTRIES = ("service_epoch", "runs", "idempotency.json")
 
 # The one admission lock per process (rule 10): the admission thread, conductor threads, the
-# reaper (and, in 1b, the 250 ms pass) all take it around the admission flock.
+# reaper and the 250 ms pass all take it around the admission flock.
 admission_mutex = threading.Lock()
 
 
@@ -323,7 +323,8 @@ def marker_path(home: Path, run_id: str) -> Path:
 def write_marker(home: Path, run_id: str, fields: dict[str, Any]) -> None:
     """The live marker of a run that is not terminal: the reaper's index. It carries the run's
     owner (`server_id`, None for a v0.3.0 run), its month (where the run directory is), its
-    arrival, environment key and deadline (what 1b's `home/sched.json` caches)."""
+    arrival, environment key and deadline, and its state (queued, running; held in Feature 3):
+    what `home/sched.json` caches (`trestle.server.pool`)."""
     atomic_write_json(marker_path(home, run_id), fields)
 
 
@@ -392,12 +393,13 @@ class Ownership:
         with self._lock:
             return sorted(self._fds)
 
-    def release(self, run_id: str) -> None:
+    def release(self, run_id: str, *, locked: Callable[[], None] | None = None) -> None:
         """The run's owner is done with it (`Scheduler.complete`, after its terminal row): remove
-        its live marker under the admission lock (a completion runs rule 7's steps 1 and 5 to 7;
-        1b also drops its `home/sched.json` entry there), then close the lock. A run that is not
-        terminal (its conductor raised) keeps its marker: with the lock closed, the reaper
-        finalizes it. A busy admission lock leaves the marker to the reaper too."""
+        its live marker under the admission lock and run `locked` there too (a completion runs
+        rule 7's steps 1 and 5 to 7: the pool drops the run's `home/sched.json` entry, freeing its
+        slot), then close the lock. A run that is not terminal (its conductor raised) keeps its
+        marker: with the lock closed, the reaper finalizes it. A busy admission lock leaves the
+        marker to the reaper too (and the slot to the pool's next locked step)."""
         with self._lock:
             fd = self._fds.pop(run_id, None)
         if fd is None:
@@ -409,9 +411,12 @@ class Ownership:
                 run_dir is not None
                 and RunLedger.open(ledger_path(run_dir)).terminal_state() is not None
             )
-            if terminal:
+            if terminal or locked is not None:
                 with admission_lock(self.home):
-                    remove_marker(self.home, run_id)
+                    if terminal:
+                        remove_marker(self.home, run_id)
+                    if locked is not None:
+                        locked()
         except (HomeBusy, OSError):
             pass
         finally:
