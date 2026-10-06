@@ -216,6 +216,9 @@ class Admission:
         if refused_deadline is not None:
             return refused_deadline
         deadline_s, _ = effective_deadline(snap, req.deadline_s)
+        refused_ttl = _refuse_ttl(req, config.max_ttl_s)
+        if refused_ttl is not None:
+            return refused_ttl
 
         if req.idempotency_key is not None:
             # a lock-free pre-read: a join or a conflict answers before the plan is built, as it
@@ -393,6 +396,40 @@ def _refuse_deadline(
         tag="refused",
         outcome=RequestOutcome(
             code=codes.BUDGET_DOES_NOT_FIT, message=message, retryable=False, origin="admission"
+        ),
+    )
+
+
+def call_ttl_s(req: AdmitRequest) -> int | None:
+    """The call's `idempotency_ttl_s` as whole seconds, None when omitted or not a whole number
+    (an integer, or a float with no fraction; never a bool or NaN)."""
+    ttl = req.idempotency_ttl_s
+    if isinstance(ttl, bool) or not isinstance(ttl, int | float):
+        return None
+    if isinstance(ttl, float) and not ttl.is_integer():
+        return None
+    return int(ttl)
+
+
+def _refuse_ttl(req: AdmitRequest, max_ttl_s: int) -> AdmitResultRefused | None:
+    """Feature 2: `idempotency_ttl_s` omitted (the server's ttl applies) or a whole number of
+    seconds from 0 to `[keys] max_ttl_s` (read from config.toml at each admission); anything else is
+    refused `admission.ttl_out_of_range` before a run id."""
+    if req.idempotency_ttl_s is None:
+        return None
+    ttl = call_ttl_s(req)
+    if ttl is not None and 0 <= ttl <= max_ttl_s:
+        return None
+    return AdmitResultRefused(
+        tag="refused",
+        outcome=RequestOutcome(
+            code=codes.ADMISSION_TTL_OUT_OF_RANGE,
+            message=(
+                f"idempotency_ttl_s {req.idempotency_ttl_s!r} must be a whole number of seconds "
+                f"from 0 to {max_ttl_s}"
+            )[:200],
+            retryable=False,
+            origin="admission",
         ),
     )
 
@@ -601,7 +638,9 @@ def write_admitted_run(
         key_entry: keys.KeyEntry | None = None
         if req.idempotency_key is not None:
             call = key_call(snap, req, a_hash)
-            ttl_s = load_config(home).idempotency_ttl_s  # Feature 2 seam: the call's own ttl
+            # Feature 2: the call's own ttl (validated by `admit`), else the server's
+            call_ttl = call_ttl_s(req)
+            ttl_s = call_ttl if call_ttl is not None else load_config(home).idempotency_ttl_s
             # Feature 3 seam: a held run's window starts at its hold_until
             key_expires_at = admitted_at + key_window_s(deadline_s, ttl_s)
             created_fields["idempotency_key"] = req.idempotency_key

@@ -177,7 +177,7 @@ Plugins that only use `ctx.log()` may produce **empty** `run_tail` — use `run_
 
 ### Named views (`query`)
 
-`run`, `last_error`, `run_tail`, `run_events`, `recent_runs`, `recent_failures`, `run_provenance`, `run_artifacts`, `artifact_refs`
+`run`, `last_error`, `run_tail`, `run_events`, `recent_runs`, `recent_failures`, `run_provenance`, `run_artifacts`, `artifact_refs`, `run_by_key`
 
 Every `BoundedView` includes `backend`, `as_of`, `items`, `truncated`, `next_cursor`.
 
@@ -594,6 +594,8 @@ See [`plugins.md`](plugins.md) for authoring, filesystem drop-in, and `publish_p
 | `fetch("/tmp/…")` | `projection.invalid_handle` | Use handle from `RunView` / `query` |
 | `query` before finalize | `projection.not_finalized` | `await_runs` or wait for terminal |
 | Run-scoped `query` for an older run | `projection.outside_window` | The run exists but lies past the recency window; it cannot be reached by `query` |
+| `await_runs(keys=[…])` for a key no run used | `projection.unknown_key` (names the key) | `query(view="run_by_key")` shows what a key has; send the run first |
+| `idempotency_ttl_s` negative, not whole seconds or above `[keys] max_ttl_s` | `admission.ttl_out_of_range` (no run id) | Send 0 to the maximum |
 | Unknown view name | `projection.invalid_view` | Read `trestle://views`; do not invent names or send SQL |
 | Empty catalog | `admission.plugin_not_found` | `trestle init` or `publish_plugin` |
 | Bad plugin args (including a naive or malformed date/datetime) | `admission.invalid_args` | `describe_plugin` then retry `run` |
@@ -601,6 +603,12 @@ See [`plugins.md`](plugins.md) for authoring, filesystem drop-in, and `publish_p
 | Reused idempotency key, different args | `admission.idempotency_key_conflict` | New key or same args |
 | Admission while another process holds the home's admission lock over 2 s | `admission.home_busy` (retryable, no run id) | Retry; `trestle doctor` names the holder |
 | Two servers publish the same plugin name at once | `publication.registry_conflict` (names the winner) | `describe_plugin`, then republish if needed |
+
+### Find a run by its key, wait on keys, keep an answer longer
+
+- `query(view="run_by_key", params={"idempotency_key": "…"})` lists the runs that used a key, newest first: `state`, `started_at`, `ended_at`, `deadline_s`, `outcome_class`, `error_code`, `summary` (`summary_truncated`), `artifact_count` and `artifacts_available` (artifacts GC has not collected), `retry_of`, and `joinable` with `key_expires_at` (whether re-sending the key now joins that run). The first row is the run a re-send would join. An unknown key is an empty page. It reads one key file, never the recent-runs window, so an old run is found as long as its metadata lives, and it changes nothing.
+- `await_runs(run_ids=[…], keys=[…], mode=…, timeout_ms=…)` also takes keys: each resolves to its newest run before the wait, and the answer lists the run ids, then the keys, each in the order given. A view reached through a key carries `idempotency_key`; the others are unchanged. `run_ids` stays a required argument of the tool, so send `run_ids: []` with `keys`; neither given is `projection.invalid_args`, and an unknown key refuses the call with `projection.unknown_key`.
+- `run(idempotency_ttl_s=…)` sets how long after the run's deadline plus margin the key stays joinable, in whole seconds from 0 to `[keys] max_ttl_s` in `config.toml` (default 604800, at most `metadata_days`; read at each admission). Omitted: the server's `TRESTLE_IDEMPOTENCY_TTL_S` (3600). It is fixed at admission and recorded as `key_expires_at`; a later join never changes it. The answer lives `metadata_days`, but artifacts only `artifact_days` unless pinned (`artifacts_available`). 0 joins only while the run lives.
 
 <!-- K-1 -->
 ### The same idempotency key joins its run after a republish (K-1)

@@ -1631,3 +1631,67 @@ due_checkpoint = "v0.4 step 4"
 direction = "additive"
 keys = ["$.tools[0].inputSchema.properties.deadline_s"]
 authorized_by = "v0.4 design (shared home), Feature 0 and Wire and compatibility (run(deadline_s=...))"
+
+# v0.4 step 5 (Features 1 and 2): run(idempotency_ttl_s=...), await_runs(keys=[...]) (run_ids stays
+# required in the published schema: golden S0 fixes it, so a keys-only call sends run_ids: []),
+# the run_by_key view name, the run view's idempotency_key, and the two new codes.
+
+[[entry]]
+id = "ADD-tools-list-run-idempotency-ttl-s"
+facet = "tools_list"
+row_or_k = "MC-16"
+docs = []
+due_checkpoint = "v0.4 step 5"
+direction = "additive"
+keys = ["$.tools[0].inputSchema.properties.idempotency_ttl_s"]
+authorized_by = "v0.4 design (shared home), Feature 2 and Wire and compatibility (run(idempotency_ttl_s=...))"
+
+[[entry]]
+id = "ADD-tools-list-await-runs-keys"
+facet = "tools_list"
+row_or_k = "MC-16"
+docs = []
+due_checkpoint = "v0.4 step 5"
+direction = "additive"
+keys = ["$.tools[1].inputSchema.properties.keys"]
+authorized_by = "v0.4 design (shared home), Feature 1 and Wire and compatibility (await_runs(keys=[...]))"
+
+[[entry]]
+id = "ADD-tools-list-query-view-run-by-key"
+facet = "tools_list"
+row_or_k = "MC-16"
+docs = []
+due_checkpoint = "v0.4 step 5"
+direction = "additive"
+items = [{ path = "$.tools[3].inputSchema.properties.view.enum", value = "run_by_key" }]
+authorized_by = "v0.4 design (shared home), Feature 1 and Wire and compatibility (query view run_by_key)"
+
+[[entry]]
+id = "ADD-runview-idempotency-key"
+facet = "runview_shape"
+row_or_k = "MC-06"
+docs = []
+due_checkpoint = "v0.4 step 5"
+direction = "additive"
+items = [{ path = "$.fields", value = ["idempotency_key", "str | None"] }]
+authorized_by = "v0.4 design (shared home), Feature 1 (run view field idempotency_key, only on views reached through a key)"
+
+[[entry]]
+id = "ADD-code-admission-ttl-out-of-range"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.ttl_out_of_range"]
+docs = []
+due_checkpoint = "v0.4 step 5"
+direction = "additive"
+authorized_by = "v0.4 design (shared home), Feature 2 and Wire and compatibility (new codes in codes.py)"
+
+[[entry]]
+id = "ADD-code-projection-unknown-key"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["projection.unknown_key"]
+docs = []
+due_checkpoint = "v0.4 step 5"
+direction = "additive"
+authorized_by = "v0.4 design (shared home), Feature 1 and Wire and compatibility (new codes in codes.py)"

@@ -299,6 +299,7 @@ When to pick each view vs `fetch`: MCP resource **`trestle://views`**. That cata
 | `run_provenance` | `run_id` | Snapshot, hashes |
 | `run_artifacts` | `run_id` | Artifact ids for the run |
 | `artifact_refs` | `artifact_id` | Producer / referrers |
+| `run_by_key` | `idempotency_key` | Runs that used one key, newest first, with outcome and summary |
 
 Every `BoundedView` includes `backend`, `as_of`, `items`, `truncated`, `next_cursor`.
 

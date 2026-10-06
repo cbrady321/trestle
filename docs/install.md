@@ -160,6 +160,7 @@ slot kept free for each other idle server; see [Run capacity](agents.md#run-capa
 | Wrong home / missing plugins | Set `TRESTLE_HOME` (or `--home`) to the directory you initialized |
 | `a v0.3.0 home` | Stop every v0.3.0 server, then `trestle init --upgrade` |
 | `admission.home_busy` | Another process held the home's admission lock over 2 s; retry, and see `trestle doctor` |
+| `admission.ttl_out_of_range` | `idempotency_ttl_s` is negative, not whole seconds or above `[keys] max_ttl_s` in `config.toml` (default 604800) |
 
 ## Next
 

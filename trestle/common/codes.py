@@ -18,6 +18,9 @@ ADMISSION_ENVIRONMENT_BUSY = "admission.environment_busy"
 # v0.4 (Problem A, rule 7; retryable): the home's admission lock stayed held past its 2 s bound
 # (another server holds it, or one stopped while holding it); refused before any run id.
 ADMISSION_HOME_BUSY = "admission.home_busy"
+# v0.4 (Feature 2): `idempotency_ttl_s` negative, not an integer or above `[keys] max_ttl_s`;
+# refused before any run id.
+ADMISSION_TTL_OUT_OF_RANGE = "admission.ttl_out_of_range"
 NOT_IMPLEMENTED = "projection.not_implemented"
 INVALID_HANDLE = "projection.invalid_handle"
 NOT_OWNER = "projection.not_owner"
@@ -35,6 +38,8 @@ PROJECTION_INVALID_ARGS = "projection.invalid_args"
 MISSING = "projection.missing"
 EXPIRED = "projection.expired"
 TERMINAL_WAIT_EXCEEDED = "projection.terminal_wait_exceeded"
+# v0.4 (Feature 1): `await_runs(keys=[...])` named a key no run used (or whose runs are all gone).
+PROJECTION_UNKNOWN_KEY = "projection.unknown_key"
 PUBLICATION_INVALID_SOURCE = "publication.invalid_source"
 PUBLICATION_NO_ENTRYPOINT = "publication.no_entrypoint"
 PUBLICATION_NAME_MISMATCH = "publication.name_mismatch"

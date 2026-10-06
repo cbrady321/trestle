@@ -34,6 +34,8 @@ def test_all_nine_views_conform(kernel) -> None:
             params = {}
         elif name == "artifact_refs":
             params = {"artifact_id": "art_missing"}
+        elif name == "run_by_key":
+            params = {"idempotency_key": "never-used"}
         else:
             params = {"run_id": view.run_id}
         out = kernel.control.query(name, params)

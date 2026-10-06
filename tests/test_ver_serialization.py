@@ -85,6 +85,8 @@ def test_tools_list_stays_within_byte_budget(
         wait_ms: int = 2000,
         idempotency_key: str | None = None,
         completion: str = "bounded",
+        deadline_s: float | None = None,
+        idempotency_ttl_s: float | None = None,
     ) -> dict[str, object]:
         return {"stub": True}
 
@@ -93,6 +95,7 @@ def test_tools_list_stays_within_byte_budget(
         run_ids: list[str],
         mode: str = "all",
         timeout_ms: int = 2000,
+        keys: list[str] | None = None,
     ) -> dict[str, object]:
         return {"stub": True}
 

@@ -5,15 +5,17 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from trestle.common import codes
 from trestle.common.limits import CaptureLimits, capture_limits
-from trestle.common.types import Handle, RequestOutcome
+from trestle.common.types import Handle, RequestOutcome, RunView
 from trestle.query import views as view_defs
 from trestle.query.conformance import validate_envelope
+from trestle.server import idempotency
 from trestle.server.ledger import (
     TERMINAL_KINDS,
     RunLedger,
@@ -21,8 +23,11 @@ from trestle.server.ledger import (
     ledger_path,
     read_state,
     state_path,
+    state_record,
 )
 from trestle.server.pins import PinStore
+from trestle.server.recovery import find_run_dir
+from trestle.server.runstate import trusted_state
 
 _FAILURE_STATES = TERMINAL_KINDS - frozenset({"succeeded"})
 
@@ -48,9 +53,17 @@ class RunRecord:
 class FilesystemQueryBackend:
     backend = view_defs.BACKEND_NAME
 
-    def __init__(self, home: Path, *, limits: CaptureLimits | None = None) -> None:
+    def __init__(
+        self,
+        home: Path,
+        *,
+        limits: CaptureLimits | None = None,
+        run_view: Callable[[str], RunView | RequestOutcome] | None = None,
+    ) -> None:
         self.home = home
         self.limits = limits or capture_limits()
+        # the run view of one run (`Project.status`): `run_by_key`'s outcome and summary columns
+        self._run_view = run_view
         self._cache_token: str | None = None
         self._cache_runs: list[RunRecord] = []
 
@@ -67,6 +80,10 @@ class FilesystemQueryBackend:
                 retryable=False,
                 origin="projection",
             )
+
+        if view == "run_by_key":
+            # its own path: one key file, never the capped recency window below
+            return self._run_by_key(params, cursor)
 
         runs, window_incomplete = self._load_runs()
         as_of = _now_iso()
@@ -161,6 +178,106 @@ class FilesystemQueryBackend:
         if errors:
             raise RuntimeError(f"query conformance failed for {view}: {errors[0]}")
         return envelope
+
+    def _run_by_key(
+        self, params: dict[str, object], cursor: Handle | None
+    ) -> dict[str, Any] | RequestOutcome:
+        """v0.4 Feature 1: the runs that used one idempotency key, newest first, from the key's
+        file and each run's state.json (and, once terminal, its run view). Reads without the
+        admission lock and starts, joins and changes nothing; an unknown key is an empty page, and
+        an entry whose run directory is missing is omitted. `truncated` is the page's own: the
+        recency window is not consulted."""
+        key = params.get("idempotency_key")
+        if not isinstance(key, str) or not key:
+            return RequestOutcome(
+                code=codes.PROJECTION_INVALID_ARGS,
+                message="idempotency_key required for view run_by_key",
+                retryable=False,
+                origin="projection",
+            )
+        joining = idempotency.lookup(self.home, key)
+        rows: list[dict[str, object]] = []
+        for entry in idempotency.read_entries(self.home, key):
+            run_dir = find_run_dir(self.home, entry.run_id)
+            if run_dir is None:
+                continue
+            row = self._run_by_key_row(key, entry, run_dir, joining)
+            if row is not None:
+                rows.append(row)
+        token = hashlib.sha256(
+            ",".join(str(row["run_id"]) for row in rows).encode("utf-8")
+        ).hexdigest()[:16]
+        offset = 0
+        if cursor is not None:
+            decoded = view_defs.decode_cursor(cursor)
+            if decoded is None or decoded[0] != "run_by_key" or decoded[2] != token:
+                return RequestOutcome(
+                    code=codes.CURSOR_EXPIRED,
+                    message="invalid or stale cursor",
+                    retryable=True,
+                    origin="projection",
+                )
+            offset = decoded[1]
+        items, next_cursor, page_truncated = view_defs.paginate_rows(
+            rows, view="run_by_key", offset=offset, token=token
+        )
+        envelope = view_defs.bounded_envelope(
+            view="run_by_key",
+            items=items,
+            next_cursor=next_cursor,
+            truncated=page_truncated,
+            as_of=_now_iso(),
+        )
+        errors = validate_envelope("run_by_key", envelope)
+        if errors:
+            raise RuntimeError(f"query conformance failed for run_by_key: {errors[0]}")
+        return envelope
+
+    def _run_by_key_row(
+        self,
+        key: str,
+        entry: idempotency.KeyEntry,
+        run_dir: Path,
+        joining: idempotency.KeyEntry | None,
+    ) -> dict[str, object] | None:
+        st = trusted_state(run_dir)
+        if st is None:  # no state.json (an old run), or a dead owner's: the ledger says
+            st = state_record(evidence_dir(run_dir), RunLedger.open(ledger_path(run_dir)).records)
+        if st is None:
+            return None
+        state = str(st["state"])
+        terminal = state in TERMINAL_KINDS
+        run_view = self._run_view(entry.run_id) if terminal and self._run_view else None
+        view = run_view if isinstance(run_view, RunView) else None
+        outcome = view.outcome if view is not None else None
+        error = view.error if view is not None else None
+        artifact_count = view.artifact_count if view is not None else st.get("artifact_count")
+        count = artifact_count if isinstance(artifact_count, int) else 0
+        ended_at = st.get("ended_at") or st.get("terminal_at")
+        return {
+            "idempotency_key": key,
+            "run_id": entry.run_id,
+            "plugin": entry.plugin,
+            "retry_of": entry.retry_of,
+            "state": state,
+            "started_at": st.get("started_at"),
+            "ended_at": ended_at if terminal else st.get("ended_at"),
+            "deadline_s": st.get("deadline_s"),
+            "outcome_class": outcome.get("class") if isinstance(outcome, dict) else None,
+            "error_code": error.get("code") if isinstance(error, dict) else None,
+            # a re-send joins the newest run while its key is live, except an interrupted run of a
+            # repeatable plugin, which the re-send replaces
+            "joinable": (
+                joining is not None
+                and joining.run_id == entry.run_id
+                and not (entry.repeatable and state == "interrupted")
+            ),
+            "key_expires_at": entry.key_expires_at,
+            "summary": view.summary if view is not None else None,
+            "summary_truncated": view.truncated if view is not None else False,
+            "artifact_count": count,
+            "artifacts_available": _artifacts_available(run_dir) if count else 0,
+        }
 
     def _load_runs(self) -> tuple[list[RunRecord], bool]:
         """Load the recency window; the flag is True when a run was left out of it.
@@ -563,6 +680,17 @@ def _run_artifact_rows(record: RunRecord, home: Path) -> list[dict[str, object]]
             }
         )
     return rows
+
+
+def _artifacts_available(run_dir: Path) -> int:
+    """How many of a run's recorded artifacts GC has not collected."""
+    ledger = RunLedger.open(ledger_path(run_dir))
+    return sum(
+        1
+        for item in ledger.records
+        if item.get("kind") == "artifact_available"
+        and (evidence_dir(run_dir) / "artifacts" / str(item.get("artifact_id", ""))).exists()
+    )
 
 
 def _now_iso() -> str:

@@ -16,6 +16,7 @@ ViewName = Literal[
     "run_provenance",
     "run_artifacts",
     "artifact_refs",
+    "run_by_key",
 ]
 
 VIEW_NAME_VALUES: tuple[str, ...] = get_args(ViewName)
@@ -36,6 +37,26 @@ VIEW_ROW_FIELDS: dict[str, frozenset[str]] = {
     ),
     "run_artifacts": frozenset({"run_id", "artifact_id", "name", "retention_class", "state"}),
     "artifact_refs": frozenset({"artifact_id", "producer_run_id", "referrer_run_id"}),
+    "run_by_key": frozenset(
+        {
+            "idempotency_key",
+            "run_id",
+            "plugin",
+            "retry_of",
+            "state",
+            "started_at",
+            "ended_at",
+            "deadline_s",
+            "outcome_class",
+            "error_code",
+            "joinable",
+            "key_expires_at",
+            "summary",
+            "summary_truncated",
+            "artifact_count",
+            "artifacts_available",
+        }
+    ),
 }
 
 RUN_SCOPED_VIEWS: frozenset[str] = frozenset(

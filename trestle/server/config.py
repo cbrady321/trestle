@@ -28,6 +28,10 @@ MAX_HELD_RUNS_DEFAULT = 256
 # clock's 3,600 s, so nothing changes until an operator raises it); a value above the hard cap
 # stops the load.
 DEADLINE_CEILING_MAX_S = 86400
+# v0.4 Feature 2: `[keys] max_ttl_s`, the longest `idempotency_ttl_s` a call may ask for (7 days;
+# held to `metadata_days` when that is shorter, and an explicit value above it stops the load)
+MAX_TTL_S_DEFAULT = 604800
+_DAY_S = 86400
 # v0.4: the environment override of the pool size, now ignored (doctor warns when it is set)
 IGNORED_MAX_RUNNING_ENV = "TRESTLE_MAX_RUNNING_RUNS"
 
@@ -91,6 +95,7 @@ class TrestleConfig:
     operator_limits: OperatorLimits = field(default_factory=OperatorLimits)
     max_share: int | None = None
     max_held_runs: int = MAX_HELD_RUNS_DEFAULT
+    max_ttl_s: int = MAX_TTL_S_DEFAULT
 
     @classmethod
     def defaults(cls) -> TrestleConfig:
@@ -127,15 +132,18 @@ class TrestleConfig:
             operator_limits=self.operator_limits,
             max_share=self.max_share,
             max_held_runs=self.max_held_runs,
+            max_ttl_s=self.max_ttl_s,
         )
 
 
 def load_config(home: Path) -> TrestleConfig:
     """Load config.toml when present; otherwise use documented defaults."""
     cfg = TrestleConfig.defaults()
+    explicit_max_ttl: int | None = None
     path = home / "config.toml"
     if path.exists():
         raw = tomllib.loads(path.read_text(encoding="utf-8"))
+        explicit_max_ttl = _load_max_ttl(raw.get("keys"))
         retention_raw = raw.get("retention", {})
         if isinstance(retention_raw, dict):
             metadata_days = int(retention_raw.get("metadata_days", cfg.retention.metadata_days))
@@ -170,7 +178,7 @@ def load_config(home: Path) -> TrestleConfig:
             cfg = replace(cfg, operator_limits=limits)
     if cfg.service_log is None:
         cfg = replace(cfg, service_log=home / "service.log")
-    return cfg.with_env_overrides()
+    return _with_ttl_maximum(cfg.with_env_overrides(), explicit_max_ttl)
 
 
 def _load_profile(raw: object) -> ProfileConfig:
@@ -205,6 +213,36 @@ def _load_pool_operator(cfg: TrestleConfig, raw: object) -> TrestleConfig:
             raise ValueError("config.toml [operator] max_held_runs must be an integer >= 0")
         cfg = replace(cfg, max_held_runs=held)
     return cfg
+
+
+def _load_max_ttl(raw: object) -> int | None:
+    """`[keys] max_ttl_s` (seconds, at least 0): the longest `idempotency_ttl_s` a call may ask
+    for (Feature 2). None when unset; a malformed value stops the load."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("config.toml [keys] must be a table")
+    if "max_ttl_s" not in raw:
+        return None
+    ttl = raw["max_ttl_s"]
+    if not isinstance(ttl, int) or isinstance(ttl, bool) or ttl < 0:
+        raise ValueError("config.toml [keys] max_ttl_s must be an integer >= 0")
+    return ttl
+
+
+def _with_ttl_maximum(cfg: TrestleConfig, explicit: int | None) -> TrestleConfig:
+    """Settle `max_ttl_s` against the final retention: a key must not outlive the metadata that
+    answers it, so an explicit maximum above `metadata_days` stops the load, and an unset one is
+    held to `metadata_days` when that is shorter than the 7-day default."""
+    limit = cfg.retention.metadata_days * _DAY_S
+    if explicit is None:
+        return replace(cfg, max_ttl_s=min(MAX_TTL_S_DEFAULT, limit))
+    if explicit > limit:
+        raise ValueError(
+            f"config.toml [keys] max_ttl_s {explicit} is above metadata_days "
+            f"({cfg.retention.metadata_days} days = {limit} s)"
+        )
+    return replace(cfg, max_ttl_s=explicit)
 
 
 def _load_deadline_ceiling(cfg: TrestleConfig, raw: object) -> TrestleConfig:

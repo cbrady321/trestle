@@ -37,6 +37,9 @@ class AdmitRequest:
     # v0.4 Feature 0: the call's own deadline in seconds (None: the plugin's declared deadline, else
     # 300 s, applies)
     deadline_s: float | None = None
+    # v0.4 Feature 2: how long the key stays joinable after the run ends, in seconds (None: the
+    # server's `idempotency_ttl_s`); bounded by `[keys] max_ttl_s`
+    idempotency_ttl_s: float | None = None
 
 
 @dataclass
@@ -271,6 +274,9 @@ class RunView:
     # default); absent on a run admitted before v0.4
     deadline_s: float | None = None
     deadline_source: str | None = None
+    # v0.4 Feature 1: the key a view was reached through (await_runs by key); absent otherwise, so
+    # a view reached by run id is byte-identical to before
+    idempotency_key: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -311,6 +317,8 @@ class RunView:
             out["deadline_s"] = self.deadline_s
         if self.deadline_source is not None:
             out["deadline_source"] = self.deadline_source
+        if self.idempotency_key is not None:
+            out["idempotency_key"] = self.idempotency_key
         return out
 
 

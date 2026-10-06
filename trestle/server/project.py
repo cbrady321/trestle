@@ -28,7 +28,7 @@ from trestle.common.types import (
 )
 from trestle.query.fs import FilesystemQueryBackend
 from trestle.server import answer as answer_mod
-from trestle.server import fold
+from trestle.server import fold, idempotency
 from trestle.server.home import is_locked, marked_run_dir, marker_path, owner_lock_path, read_marker
 from trestle.server.ledger import (
     TERMINAL_KINDS,
@@ -44,12 +44,22 @@ from trestle.server.projection import (
     load_index,
     write_summary_json,
 )
+from trestle.server.recovery import find_run_dir
 from trestle.server.registry import Registry
 from trestle.server.runs import RunRegistry
 from trestle.server.runstate import trusted_state
 from trestle.server.snapshots import load_declared
 
 DEFAULT_SUMMARY_BUDGET = 4096
+
+
+@dataclass(frozen=True)
+class _Handles:
+    """The handles an `await_runs` call waits on, run ids first and then each key's newest run;
+    `labels[i]` is the key handle i was reached through (None for a run id)."""
+
+    handles: list[Handle]
+    labels: list[str | None]
 
 
 @dataclass(frozen=True)
@@ -211,18 +221,55 @@ class Project:
             remaining = float(timeout) if isinstance(timeout, (int, float)) else 300.0
         return max(remaining, 0.0) + clock.finalization_margin
 
+    def resolve_handles(
+        self, run_ids: list[Handle] | None, keys: list[str] | None
+    ) -> _Handles | RequestOutcome:
+        """What `await_runs` waits on (Feature 1): its run ids, then each key resolved to its
+        newest run before the wait. Neither given is `projection.invalid_args`; a key no run used
+        refuses the whole call `projection.unknown_key`, naming it, as an unknown run id does."""
+        if not run_ids and not keys:
+            return RequestOutcome(
+                code=codes.PROJECTION_INVALID_ARGS,
+                message="await_runs needs run_ids or keys",
+                retryable=False,
+                origin="projection",
+            )
+        handles = list(run_ids or [])
+        labels: list[str | None] = [None] * len(handles)
+        for key in keys or []:
+            run_id = self._newest_run_of_key(key)
+            if run_id is None:
+                return RequestOutcome(
+                    code=codes.PROJECTION_UNKNOWN_KEY,
+                    message=f"unknown idempotency key: {key}"[:REFUSAL_TEXT_MAX],
+                    retryable=False,
+                    origin="projection",
+                )
+            handles.append(run_id)
+            labels.append(key)
+        return _Handles(handles, labels)
+
+    def _newest_run_of_key(self, key: str) -> Handle | None:
+        """The newest run that used `key` whose directory exists, expired or not (an expired key
+        stays history until GC removes its run); None for a key no run used."""
+        for entry in idempotency.read_entries(self.home, key):
+            if find_run_dir(self.home, entry.run_id) is not None:
+                return entry.run_id
+        return None
+
     async def await_many_async(
         self,
         run_ids: list[Handle],
         mode: JoinMode,
         timeout_ms: int,
         caller_session: str | None = None,
+        key_labels: list[str | None] | None = None,
     ) -> list[RunView] | RequestOutcome:
         deadline = time.monotonic() + (timeout_ms / 1000.0)
         probe_at = time.monotonic() + OWNER_PROBE_S
         while True:
             views, outcome = await asyncio.to_thread(
-                self._collect_run_views, run_ids, caller_session
+                self._collect_run_views, run_ids, caller_session, key_labels
             )
             if outcome is not None:
                 return outcome
@@ -242,11 +289,12 @@ class Project:
         mode: JoinMode,
         timeout_ms: int,
         caller_session: str | None = None,
+        key_labels: list[str | None] | None = None,
     ) -> list[RunView] | RequestOutcome:
         deadline = time.monotonic() + (timeout_ms / 1000.0)
         probe_at = time.monotonic() + OWNER_PROBE_S
         while True:
-            views, outcome = self._collect_run_views(run_ids, caller_session)
+            views, outcome = self._collect_run_views(run_ids, caller_session, key_labels)
             if outcome is not None:
                 return outcome
             assert views is not None
@@ -263,12 +311,15 @@ class Project:
         self,
         run_ids: list[Handle],
         caller_session: str | None = None,
+        key_labels: list[str | None] | None = None,
     ) -> tuple[list[RunView] | None, RequestOutcome | None]:
         views: list[RunView] = []
-        for run_id in run_ids:
+        for index, run_id in enumerate(run_ids):
             view = self.status(run_id, caller_session)
             if isinstance(view, RequestOutcome):
                 return None, view
+            if key_labels is not None:
+                view.idempotency_key = key_labels[index]
             views.append(view)
         return views, None
 
@@ -354,7 +405,7 @@ class Project:
         params: dict[str, object],
         cursor: Handle | None = None,
     ) -> dict[str, object] | RequestOutcome:
-        return FilesystemQueryBackend(self.home).query(view, params, cursor)
+        return FilesystemQueryBackend(self.home, run_view=self.status).query(view, params, cursor)
 
     def fetch(
         self,

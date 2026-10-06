@@ -238,6 +238,7 @@ def run_server(
         idempotency_key: str | None = None,
         completion: str = "bounded",
         deadline_s: float | None = None,
+        idempotency_ttl_s: float | None = None,
     ) -> dict[str, Any]:
         """Start a plugin run and optionally wait for a status frame."""
         return _wire_result(
@@ -250,6 +251,7 @@ def run_server(
                 completion=completion,
                 caller_session=_caller_session(),
                 deadline_s=deadline_s,
+                idempotency_ttl_s=idempotency_ttl_s,
             )
         )
 
@@ -258,10 +260,11 @@ def run_server(
         run_ids: list[str],
         mode: str = "all",
         timeout_ms: int = 2000,
+        keys: list[str] | None = None,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Wait for existing runs to reach a terminal state."""
         result = await kernel.control.await_runs_async(
-            run_ids, mode=mode, timeout_ms=timeout_ms, caller_session=_caller_session()
+            run_ids, mode=mode, timeout_ms=timeout_ms, caller_session=_caller_session(), keys=keys
         )
         if isinstance(result, RequestOutcome):
             return result.to_dict()
