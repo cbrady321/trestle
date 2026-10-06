@@ -29,6 +29,7 @@ from trestle.common.types import (
     RequestOutcome,
     RunSpec,
 )
+from trestle.server import idempotency as keys
 from trestle.server import lease
 from trestle.server import pool as pools
 from trestle.server.config import ProfileConfig, load_config
@@ -42,13 +43,13 @@ from trestle.server.home import (
     try_lock,
     write_marker,
 )
-from trestle.server.idempotency import IdempotencyStore
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, run_dir_for, work_dir
 from trestle.server.plugin_paths import CATALOG_HINT_PACKS_MISSING
 from trestle.server.plugin_schema import ArgsError, validate_args
 from trestle.server.plugin_validate import validate_plugin_imports
 from trestle.server.recovery import find_run_dir
 from trestle.server.registry import Registry
+from trestle.server.runstate import trusted_state
 from trestle.server.scheduler import Scheduler
 from trestle.server.snapshots import (
     deadline_of,
@@ -59,9 +60,37 @@ from trestle.server.snapshots import (
 
 # K-1 (MC-CORE-12, OQ-1 recorded default): the same idempotency key joins the run it named even
 # after the plugin was republished, and the key's window covers the run's whole life. A join needs
-# the same plugin, the same `args_hash` and the run present (the snapshot is not compared); the
-# entry lives `key_expires_at - admitted_at = deadline_s + finalization_margin + ttl` (v0.4 "Fix
-# first"), `deadline_s` being the run's own deadline (`deadline_of`), never the snapshot default.
+# the same plugin, the same `args_hash`, the same call deadline argument and `after`, and the run
+# present (the snapshot is not compared); the entry lives `key_expires_at - admitted_at =
+# deadline_s + finalization_margin + ttl` (v0.4 "Fix first"), `deadline_s` being the run's own
+# deadline (`deadline_of`), never the snapshot default. v0.4 Problem B: `key_expires_at` is fixed
+# here and recorded in `created` and `home/keys/<sha256(key)>.json`.
+
+
+@dataclass(frozen=True)
+class KeyCall:
+    """What a keyed call is joined on (Problem B's join rule), beside its key: the plugin, the
+    hash of the real arguments, the call's own `deadline_s` argument and its `after`."""
+
+    plugin: str
+    args_hash: str
+    # Feature 0 seam: the call's `deadline_s` argument (None: omitted, the declaration applies)
+    call_deadline_s: float | None = None
+    # Feature 3 seam: the call's `after`, canonical JSON (None: omitted)
+    after: str | None = None
+
+
+def key_call(snap: PluginSnapshot, req: AdmitRequest, a_hash: str) -> KeyCall:
+    """The call's join identity. Features 0 and 3 fill `call_deadline_s` and `after` from `req`."""
+    return KeyCall(plugin=snap.plugin, args_hash=a_hash)
+
+
+@dataclass(frozen=True)
+class KeyClaim:
+    """The key step's answer when the call starts a run: it claims the key (written in step 4
+    (c)); `retry_of` names the interrupted run of a repeatable plugin it replaces."""
+
+    retry_of: str | None = None
 
 
 def _home_busy(busy: HomeBusy) -> AdmitResultRefused:
@@ -193,8 +222,8 @@ class Admission:
         if req.idempotency_key is not None:
             # a lock-free pre-read: a join or a conflict answers before the plan is built, as it
             # always has; the locked step below decides for good
-            known = self._key_step(req.idempotency_key, snap, a_hash, locked=False)
-            if known is not None:
+            known = self._key_step(req.idempotency_key, key_call(snap, req, a_hash))
+            if not isinstance(known, KeyClaim):
                 return known
 
         # B2-C2: every root is compiled and carved to a plan before any run id exists (a refusal
@@ -225,18 +254,23 @@ class Admission:
         #     rows dropped; the pool's settings were read from config.toml in `admit`.
         pool = self.scheduler.pool
         state = pool.load() if pool is not None else None
-        # (2) the idempotency key: join, else claim (the claim is written in step 4 (c); Problem
-        #     B replaces the store with home/keys/<sha256(key)>.json, claimed here).
+        # (2) the idempotency key: join, else claim (Problem B: home/keys/<sha256(key)>.json,
+        #     decided here and written in step 4 (c), before the commit rename). Feature 3 resolves
+        #     `after` here too.
+        claim = KeyClaim()
         if req.idempotency_key is not None:
-            known = self._key_step(req.idempotency_key, snap, a_hash, locked=True)
-            if known is not None:
-                return known
+            decided = self._key_step(req.idempotency_key, key_call(snap, req, a_hash))
+            if not isinstance(decided, KeyClaim):
+                return decided
+            claim = decided
         # (3) the busy pre-check (rule 6), from home/sched.json: every server's runs.
         busy = self._environment_busy(planned, deadline_s, state)
         if busy is not None:
             return busy
         # (4) admission steps (a) to (d): built hidden, owner-locked, renamed into place.
-        admitted = write_admitted_run(self.home, snap, req, planned, ownership=self.ownership)
+        admitted = write_admitted_run(
+            self.home, snap, req, planned, ownership=self.ownership, retry_of=claim.retry_of
+        )
         self.scheduler.mint(admitted.run_id, snap.snapshot_id, admitted.spec_hash)
         # (5) a new waiting run, (7) write home/sched.json. (6) The run's grant comes with its
         #     hand-off to this server's FIFO (`Scheduler.enqueue`), whose pass takes the lock again:
@@ -260,24 +294,31 @@ class Admission:
         with admission_lock(self.home):
             return write_admitted_run(self.home, snap, req, plan, ownership=self.ownership)
 
-    def _key_step(
-        self, key: str, snap: PluginSnapshot, a_hash: str, *, locked: bool
-    ) -> AdmitResult | None:
-        """The idempotency key's join or conflict, or None (a claim follows). A join needs the
-        same plugin, the same `args_hash` and the run present (K-1). Unlocked, nothing is
-        written; locked (rule 7 step 2), expired entries are purged."""
-        store = IdempotencyStore.open(self.home)
-        if locked:
-            store.purge_expired()
-        existing = store.entries.get(key)
-        if existing is None or existing.expires_at <= time.time():
-            return None
-        if (
-            existing.plugin == snap.plugin
-            and existing.args_hash == a_hash
-            and find_run_dir(self.home, existing.run_id) is not None
+    def _key_step(self, key: str, call: KeyCall) -> AdmitResult | KeyClaim:
+        """Problem B's join rule, read from the key's file and never writing it (the unlocked
+        pre-read and rule 7 step 2 alike; the claim is written in step 4 (c)). The key joins its
+        newest run while that run's `key_expires_at` is in the future and its directory exists:
+        an expired key, or one whose run is gone (an admission that died, a run GC removed), is
+        free, never a conflict. A join compares plugin, `args_hash`, the call's deadline argument
+        and `after`; a mismatch is `admission.idempotency_key_conflict`. One exception frees a
+        live key: when the newest run ended interrupted and its plugin was `repeatable` when it
+        was admitted, the identical call claims the key for a fresh run (`retry_of`)."""
+        entries = keys.read_entries(self.home, key)
+        newest = entries[0] if entries else None
+        if newest is None or newest.key_expires_at <= keys.now():
+            return KeyClaim()
+        run_dir = find_run_dir(self.home, newest.run_id)
+        if run_dir is None:
+            return KeyClaim()
+        if newest.same_call(
+            plugin=call.plugin,
+            args_hash=call.args_hash,
+            call_deadline_s=call.call_deadline_s,
+            after=call.after,
         ):
-            return AdmitResultAdmitted(tag="admitted", run_id=existing.run_id, existing=True)
+            if newest.repeatable and _run_state(run_dir) == "interrupted":
+                return KeyClaim(retry_of=newest.run_id)
+            return AdmitResultAdmitted(tag="admitted", run_id=newest.run_id, existing=True)
         return AdmitResultRefused(
             tag="refused",
             outcome=RequestOutcome(
@@ -405,6 +446,15 @@ class AdmittedRun:
     secrets: dict[str, object] = field(default_factory=dict, repr=False, compare=False)
 
 
+def _run_state(run_dir: Path) -> str:
+    """A run's state for a decision that needs certainty (a join): its state.json, unless that is
+    non-terminal while the owner lock is free, then its ledger (v0.4 Problem C)."""
+    state = trusted_state(run_dir)
+    if state is not None:
+        return str(state["state"])
+    return RunLedger.open(ledger_path(run_dir)).projected_state()
+
+
 def _admission_step(step: str) -> None:
     """A test seam: called after each step of `write_admitted_run` (`a`, `b`, `spec`, `created`,
     `key`, `marker`, `d`), so a test can crash an admission between any two of them."""
@@ -417,6 +467,7 @@ def write_admitted_run(
     plan: AdmittedPlan,
     *,
     ownership: Ownership,
+    retry_of: str | None = None,
 ) -> AdmittedRun:
     """The post-refusal half of admission (MC-B2-08): mint the run id and build the run, lock
     before visible (v0.4 rule 1). Every refusal has already happened, and the caller holds the
@@ -427,8 +478,8 @@ def write_admitted_run(
         rmdir cannot strand it, and the work directories;
     (b) `flock(LOCK_EX|LOCK_NB)` on `evidence/owner.lock`, held by `ownership` until the run's
         terminal row;
-    (c) `spec.json` (with `plan`), the `created` row (owner, has_secrets), the idempotency claim
-        and the live marker `home/live/<run_id>`;
+    (c) `spec.json` (with `plan`), the `created` row (owner, has_secrets, the key's recorded
+        expiry), the key's claim in `home/keys/` and the live marker `home/live/<run_id>`;
     (d) the rename to `runs/<month>/<run_id>` and an fsync of the month directory: the commit
         point, so a visible run always has a lock holder or a dead owner.
 
@@ -456,6 +507,7 @@ def write_admitted_run(
     try:
         _admission_step("b")
         deadline = datetime.now(tz=UTC) + timedelta(seconds=deadline_s)
+        admitted_at = keys.now()  # the key window's start (the key clock; a test moves it)
         declared = load_declared(snap)
         spec = RunSpec(
             plugin=snap.plugin,
@@ -499,9 +551,35 @@ def write_admitted_run(
             "snapshot_id": snap.snapshot_id,
             "args_hash": a_hash,
             "caller_session": req.caller_session,
+            # v0.4 Problem B: the inputs of the key's window, recorded so no later process (a
+            # rebuild, another server) recomputes it; the margin is this owner's own (rule 11)
+            "deadline_s": deadline_s,
+            "finalization_margin_s": clock.finalization_margin,
+            "repeatable": declared.repeatable,
         }
+        key_entry: keys.KeyEntry | None = None
         if req.idempotency_key is not None:
+            call = key_call(snap, req, a_hash)
+            ttl_s = load_config(home).idempotency_ttl_s  # Feature 2 seam: the call's own ttl
+            # Feature 3 seam: a held run's window starts at its hold_until
+            key_expires_at = admitted_at + key_window_s(deadline_s, ttl_s)
             created_fields["idempotency_key"] = req.idempotency_key
+            created_fields["idempotency_ttl_s"] = ttl_s
+            created_fields["key_expires_at"] = key_expires_at
+            created_fields["call_deadline_s"] = call.call_deadline_s
+            key_entry = keys.KeyEntry(
+                run_id=run_id,
+                plugin=snap.plugin,
+                args_hash=a_hash,
+                key_expires_at=key_expires_at,
+                deadline_s=deadline_s,
+                call_deadline_s=call.call_deadline_s,
+                after=call.after,
+                repeatable=declared.repeatable,
+                retry_of=retry_of,
+            )
+        if retry_of is not None:
+            created_fields["retry_of"] = retry_of
         # WR-OWN-8: the environment key the run holds a lease on, when it holds one; absent
         # otherwise, so a run that declares no environment writes the same row as before
         lease_key = plan.lease_set[0] if plan.lease_set else None
@@ -510,16 +588,8 @@ def write_admitted_run(
         created = ledger.append("created", **created_fields)
         _admission_step("created")
 
-        if req.idempotency_key is not None:
-            cfg = load_config(home)
-            IdempotencyStore.open(home).remember(
-                req.idempotency_key,
-                run_id=run_id,
-                plugin=snap.plugin,
-                snapshot_id=snap.snapshot_id,
-                args_hash=a_hash,
-                ttl_s=key_window_s(deadline_s, cfg.idempotency_ttl_s),
-            )
+        if req.idempotency_key is not None and key_entry is not None:
+            keys.claim(home, req.idempotency_key, key_entry)
         _admission_step("key")
 
         write_marker(

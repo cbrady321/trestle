@@ -18,7 +18,7 @@ Worked example: [`examples/plugins/echo.py`](../examples/plugins/echo.py).
 
 <!-- K-5 -->
 The decorator has two forms with the same runtime effect: bare `@trestle`, and the call form
-`@trestle(deadline=..., summary_fields=..., packages=..., env_arg=..., secrets=...)`. The call form
+`@trestle(deadline=..., summary_fields=..., packages=..., env_arg=..., secrets=..., repeatable=...)`. The call form
 is read statically from the source at publication, so every value must be a literal; an unknown
 keyword or a non-literal value is refused at publication (`publication.validation_failed`). The
 entry point must be a plain `def`: an `async def` entry is refused at publication with a message
@@ -40,6 +40,12 @@ to whole seconds.
 
 `summary_fields`, `env_arg` and `secrets` are declared and recorded in the snapshot's
 `manifest.json` (`declared`) and count toward its identity; nothing acts on them yet.
+
+`repeatable` (`True` or `False`, default `False`; v0.4) says a run of this plugin is safe to repeat:
+when one ends `interrupted` (its server died), re-sending the same idempotency key with the same
+arguments starts a fresh run (`retry_of` names the interrupted one) instead of returning the
+interrupted answer. Declare it only when a half-done run can be run again. `describe_plugin`
+shows it (`repeatable`).
 
 `packages` names the modules or packages the plugin imports from outside its own file, and is
 **recorded, not snapshotted** (R-J). Publication resolves each name on the import path the child

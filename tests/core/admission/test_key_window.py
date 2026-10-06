@@ -13,7 +13,7 @@ import pytest
 
 from trestle.common import clock
 from trestle.common.types import AdmitRequest
-from trestle.server.idempotency import IdempotencyStore
+from trestle.server import idempotency
 from trestle.server.ledger import RunLedger, ledger_path
 from trestle.server.main import create_kernel
 from trestle.server.recovery import find_run_dir
@@ -48,8 +48,11 @@ def test_key_expiry_is_deadline_plus_margin_plus_ttl(
     created = RunLedger.open(ledger_path(run_dir)).last_kind("created")
     assert created is not None
     created_at = datetime.fromisoformat(str(created["at"]).replace("Z", "+00:00")).timestamp()
-    record = IdempotencyStore.open(kernel.home).lookup("gate:part-1")
+    record = idempotency.lookup(kernel.home, "gate:part-1")
     assert record is not None and record.run_id == result.run_id
     want = DEADLINE_S + clock.finalization_margin + TTL_S
     # the created row's time is whole seconds (truncated), so the difference is within 1 s
-    assert abs((record.expires_at - created_at) - want) <= 1.0, record.expires_at - created_at
+    assert abs((record.key_expires_at - created_at) - want) <= 1.0, (
+        record.key_expires_at - created_at
+    )
+    assert record.key_expires_at == created["key_expires_at"]  # recorded once (Problem B)

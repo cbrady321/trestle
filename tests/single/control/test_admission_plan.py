@@ -18,8 +18,8 @@ from trestle.common import clock
 from trestle.common.plan import bounds, carving
 from trestle.common.plan.compiler import AdmittedPlan
 from trestle.common.types import AdmitRequest, AdmitResultAdmitted
+from trestle.server import idempotency
 from trestle.server.admission import plan_for_admission
-from trestle.server.idempotency import IdempotencyStore
 from trestle.server.main import Kernel
 from trestle.server.snapshots import load_declared_tree
 
@@ -199,5 +199,5 @@ def test_write_admitted_run_equals_admit_for_one_vertex(tmp_path: Path) -> None:
     for key in ("kind", "plugin", "version", "snapshot_id", "args_hash", "caller_session"):
         assert rows["admit"][key] == rows["write"][key], key
     # the idempotency record is written by both
-    store = IdempotencyStore.open(kernel.home)
-    assert store.lookup("key-1") is not None and store.lookup("key-2") is not None
+    assert idempotency.lookup(kernel.home, "key-1") is not None
+    assert idempotency.lookup(kernel.home, "key-2") is not None

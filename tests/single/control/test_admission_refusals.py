@@ -16,7 +16,7 @@ from tests.proof import ancestry
 from tests.single.control import support
 from trestle.common import clock, codes
 from trestle.common.types import AdmitRequest, AdmitResultAdmitted, RequestOutcome, RunView
-from trestle.server.idempotency import IdempotencyStore
+from trestle.server import idempotency
 from trestle.server.main import Kernel
 
 REPO = Path(__file__).resolve().parents[3]
@@ -95,7 +95,7 @@ def _refused(kernel: Kernel, plugin: str, args: dict[str, object] | None = None)
     assert outcome.origin == "admission" and outcome.retryable is False
     assert "run_id" not in outcome.to_dict()
     assert _run_dirs(kernel) == []
-    assert IdempotencyStore.open(kernel.home).lookup(KEY) is None
+    assert idempotency.lookup(kernel.home, KEY) is None
     assert _descendants() == before  # MC-13: no process was spawned
     return outcome
 
@@ -173,7 +173,7 @@ def _refused_beside(kernel: Kernel, plugin: str, existing: list[Path]) -> Reques
     assert isinstance(outcome, RequestOutcome), outcome
     assert outcome.origin == "admission" and "run_id" not in outcome.to_dict()
     assert _run_dirs(kernel) == existing  # nothing new: no run dir, no ledger
-    assert IdempotencyStore.open(kernel.home).lookup(KEY) is None
+    assert idempotency.lookup(kernel.home, KEY) is None
     return outcome
 
 

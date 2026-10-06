@@ -11,7 +11,6 @@ from trestle.server.config import IGNORED_MAX_RUNNING_ENV, TrestleConfig, load_c
 from trestle.server.gc import GCReport, count_runs, run_gc
 from trestle.server.home import (
     admission_holder,
-    admission_lock,
     check_home,
     home_format,
     live_run_ids,
@@ -176,6 +175,7 @@ def run_doctor(
     home: str | None = None,
     run_gc_pass: bool = False,
     cli_plugin_dirs: list[Path] | None = None,
+    rebuild_keys: bool = False,
 ) -> int:
     trestle_home = Path(home) if home else default_home()
     report = build_doctor_report(
@@ -185,6 +185,13 @@ def run_doctor(
     )
     for line in report.lines():
         print(line)
+    if rebuild_keys:
+        # Problem B's repair: home/keys/ replayed from the created rows (an expired key stays
+        # expired), one key at a time under the admission lock
+        from trestle.server.idempotency import rebuild_keys as rebuild
+
+        rewritten = rebuild(trestle_home, ttl_s=load_config(trestle_home).idempotency_ttl_s)
+        print(f"keys rebuilt: {rewritten}")
     return 0
 
 
@@ -194,11 +201,7 @@ def run_recover(*, home: str | None = None) -> int:
     trestle_home = Path(home) if home else default_home()
     check_home(trestle_home)
     config = load_config(trestle_home)
-    from trestle.server.idempotency import rebuild_from_ledgers
-
     reaped = reap_home(trestle_home)
-    with admission_lock(trestle_home):  # Problem B makes the rebuild a repair (doctor)
-        rebuild_from_ledgers(trestle_home, ttl_s=config.idempotency_ttl_s)
     gc_report = run_gc(trestle_home, config)
     print(f"trestle home: {trestle_home}")
     print(f"reaped: {len(reaped.reaped)}")

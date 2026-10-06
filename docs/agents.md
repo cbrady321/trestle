@@ -601,6 +601,8 @@ The key also stays valid for as long as the run can: it expires the `TRESTLE_IDE
 This is a knowing change (K-1): before it, any code change made the same key a conflict, and the key could lapse while its run was still going. It is permanent: v0.4 removed the `JOIN_ACROSS_REPUBLISH` switch, and the identity a join names stays `outcome.identity.snapshot_id`.
 <!-- /K-1 -->
 
+Since v0.4 a key's expiry is fixed once, at admission, and recorded with the run (`key_expires_at` in its `created` row); a server restart never revives an expired key. A key whose run no longer exists (removed by retention) is free: re-sending it starts a new run instead of answering a conflict. A plugin that declares `@trestle(repeatable=True)` frees its key when its run ends `interrupted` (its server died): the identical re-send starts a fresh run, whose view carries `retry_of` naming the interrupted one. Every other ending, and every plugin that does not declare it, still returns the recorded answer.
+
 ---
 
 ## Operator vs agent

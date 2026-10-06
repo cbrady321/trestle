@@ -22,7 +22,6 @@ from trestle.server.control import ControlSurface
 from trestle.server.home import (
     Ownership,
     ServerLock,
-    admission_lock,
     check_home,
     raise_nofile_limit,
 )
@@ -91,13 +90,9 @@ def create_kernel(
     ownership = Ownership(home=trestle_home, server_id=generate_server_id())
     reaper = Reaper(trestle_home, server_id=ownership.server_id)
     if not skip_recovery:
+        # no key rebuild at start (Problem B): home/keys/ is repaired only by
+        # `trestle doctor --rebuild-keys` and `trestle init --upgrade`
         reaper.pass_once(scan_debris=True)
-        from trestle.server.idempotency import rebuild_from_ledgers
-
-        # Problem B (step 3) makes this a repair only; until then it runs at start, as before,
-        # under the admission lock since it rewrites idempotency.json
-        with admission_lock(trestle_home):
-            rebuild_from_ledgers(trestle_home, ttl_s=load_config(trestle_home).idempotency_ttl_s)
 
     if plugin_dirs is not None:
         dirs = plugin_dirs

@@ -140,8 +140,10 @@ upgraded, and v0.3.0 and v0.4 servers must never share a home:
 trestle init --upgrade
 ```
 
-`trestle init` never recovers runs. `trestle recover` reaps now (only runs whose server is gone)
-and then runs the retention sweep; `trestle doctor` lists the live servers, the live runs by owner
+`trestle init` never recovers runs. Idempotency keys live in `home/keys/` (one file per key, each
+run's expiry fixed at admission); nothing rebuilds them at start, `init --upgrade` seeds them from
+the runs (a key that had expired stays expired), and `trestle doctor --rebuild-keys` repairs them.
+`trestle recover` reaps now (only runs whose server is gone) and then runs the retention sweep; `trestle doctor` lists the live servers, the live runs by owner
 and, when an admission lock is stuck (a server stopped with Ctrl-Z or a debugger), who holds it.
 A server stopped with SIGTERM drains: it refuses new runs and keeps starting and finishing the
 runs it admitted; stop it once `doctor` shows it has no live runs. All servers on a home share one

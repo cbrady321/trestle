@@ -41,6 +41,7 @@ from trestle.server.snapshots import (
     deadline_of,
     discover_plugin_name,
     discover_plugin_name_from_source,
+    load_declared,
     load_declared_tree,
     load_snapshot_return_schema,
     load_snapshot_schema,
@@ -326,6 +327,8 @@ class Registry:
             # deadline plus the same finalization margin the terminal wait uses (never a config
             # field, MC-B2-04). Discoverable here so a host sizes its own timeout before calling.
             "max_call_duration_s": deadline_s + clock.finalization_margin,
+            # v0.4 Feature 2: an interrupted run of this plugin frees its idempotency key
+            "repeatable": load_declared(snap).repeatable,
             "input_schema": load_snapshot_schema(snap),
             "return_schema": load_snapshot_return_schema(snap),
         }

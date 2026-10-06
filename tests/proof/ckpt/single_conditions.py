@@ -29,7 +29,7 @@ from tests.proof import ancestry, mcp_host, tolerances
 from tests.proof.ckpt import single, single_vertex_audit
 from tests.proof.suites.workflows import SLICE_A_WORKFLOWS
 from trestle.common import clock, codes
-from trestle.server.idempotency import IdempotencyStore
+from trestle.server import idempotency
 
 ROOT = Path(__file__).resolve().parents[3]
 FIXTURES = ROOT / "tests" / "fixtures" / "workflows"
@@ -95,7 +95,7 @@ def test_condition_a(tmp_path: Path) -> None:
             assert refused["code"] == codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED, refused
             assert "run_id" not in refused, refused
             assert _home_run_files(host.home) == [], f"{name}: a refusal left a run directory"
-            assert IdempotencyStore.open(host.home).lookup(f"{KEY}-{name}") is None
+            assert idempotency.lookup(host.home, f"{KEY}-{name}") is None
         assert _descendants() == before, "a refused root spawned a process (MC-13)"
 
 

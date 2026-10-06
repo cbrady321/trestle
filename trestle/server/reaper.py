@@ -28,8 +28,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from trestle.server import home as homes
+from trestle.server import idempotency, procident
 from trestle.server import pool as pools
-from trestle.server import procident
 from trestle.server.ledger import RunLedger, ledger_path
 from trestle.server.procident import ProcessSource, Signaller
 from trestle.server.recovery import recover_run_dir
@@ -46,6 +46,7 @@ class ReapReport:
     markers_removed: int = 0
     debris_removed: int = 0
     busy: bool = False
+    keys_purged: int = 0
 
 
 @dataclass
@@ -116,6 +117,9 @@ class Reaper:
             finally:
                 for fd in held.values():
                     os.close(fd)
+            # Problem B: expired key entries whose run is gone leave home/keys/ here, never on a
+            # read
+            report.keys_purged = idempotency.purge(self.home)
             return report
 
     def _reap_one(self, run_id: str, held: dict[str, int], report: ReapReport) -> str:

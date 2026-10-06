@@ -601,6 +601,7 @@ class Project:
             error=_error_view(ledger, state),
             outcome=_outcome_view(ledger, state, evidence),
             answer=_answer_view(ledger, state, run_dir),
+            retry_of=_retry_of(ledger),
         )
 
     def _summary_budget(self, spec: dict[str, object] | None) -> int:
@@ -668,7 +669,14 @@ def _live_view(run_id: Handle, run_dir: Path, state: dict[str, Any]) -> RunView:
         event_count=count_events(evidence),
         artifact_count=artifact_count,
         limits_exceeded=limits_exceeded if isinstance(limits_exceeded, list) else None,
+        retry_of=state.get("retry_of") if isinstance(state.get("retry_of"), str) else None,
     )
+
+
+def _retry_of(ledger: RunLedger) -> str | None:
+    created = ledger.last_kind("created")
+    retry_of = created.get("retry_of") if created is not None else None
+    return retry_of if isinstance(retry_of, str) else None
 
 
 def _read_spec(evidence: Path) -> dict[str, object] | None:

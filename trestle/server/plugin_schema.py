@@ -340,7 +340,14 @@ def find_trestle_function(tree: ast.AST) -> _FnDef | None:
     return fn
 
 
-DECLARED_KEYWORDS = ("deadline", "summary_fields", "packages", "env_arg", "secrets")
+DECLARED_KEYWORDS = (
+    "deadline",
+    "summary_fields",
+    "packages",
+    "env_arg",
+    "secrets",
+    "repeatable",
+)
 _TIMEDELTA_UNITS = {
     "weeks": 604800.0,
     "days": 86400.0,
@@ -395,7 +402,16 @@ def declared_from_function(fn: _FnDef) -> DeclaredMetadata:
         packages=_declared_names(values.get("packages"), "packages"),
         env_arg=_declared_env_arg(values["env_arg"]) if "env_arg" in values else None,
         secrets=frozenset(_declared_names(values.get("secrets"), "secrets", allow_set=True)),
+        repeatable=_declared_bool(values["repeatable"], "repeatable")
+        if "repeatable" in values
+        else False,
     )
+
+
+def _declared_bool(node: ast.expr, keyword: str) -> bool:
+    if isinstance(node, ast.Constant) and isinstance(node.value, bool):
+        return node.value
+    raise DeclarationError(f"@trestle: {keyword} must be True or False")
 
 
 def _trestle_call(fn: _FnDef) -> ast.Call | None:

@@ -11,6 +11,7 @@ from pathlib import Path
 
 from trestle.server.config import RetentionConfig, TrestleConfig, load_config
 from trestle.server.home import GC_LOCK, file_lock, locks_dir, marker_path, served_snapshots
+from trestle.server.idempotency import forget_run
 from trestle.server.ledger import RunLedger, evidence_dir, iter_run_dirs, ledger_path, work_dir
 from trestle.server.pins import PinStore
 from trestle.server.recovery import sweep_run_dir
@@ -96,6 +97,10 @@ def _run_gc(
             bytes_freed += _dir_size(run_dir)
             shutil.rmtree(run_dir, ignore_errors=True)
             runs_removed += 1
+            created = ledger.last_kind("created")
+            key = created.get("idempotency_key") if created is not None else None
+            if isinstance(key, str) and key:  # its entry leaves the key's file (Problem B)
+                forget_run(home, key, run_id)
             continue
 
         collected, freed = _collect_unpinned_artifacts(

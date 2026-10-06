@@ -89,6 +89,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Run a retention sweep and include gc stats",
     )
+    doctor.add_argument(
+        "--rebuild-keys",
+        action="store_true",
+        help="Repair home/keys/ from the runs' created rows (expired keys stay expired)",
+    )
 
     recover = sub.add_parser(
         "recover", help="Reap runs whose server died, then run a retention sweep"
@@ -136,6 +141,7 @@ def _dispatch(args: argparse.Namespace) -> int:
             home=args.home,
             run_gc_pass=getattr(args, "gc", False),
             cli_plugin_dirs=_cli_plugin_dirs(getattr(args, "plugin_dirs", None)),
+            rebuild_keys=getattr(args, "rebuild_keys", False),
         )
     if args.command == "recover":
         return run_recover(home=args.home)

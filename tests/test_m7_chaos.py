@@ -11,10 +11,10 @@ import pytest
 
 from trestle.common import codes
 from trestle.common.types import AdmitRequest, RequestOutcome, RunView
+from trestle.server import idempotency
 from trestle.server.config import load_config
 from trestle.server.doctor import build_doctor_report, run_recover
 from trestle.server.gc import run_gc
-from trestle.server.idempotency import IdempotencyStore, rebuild_from_ledgers
 from trestle.server.ledger import RunLedger, ledger_path
 from trestle.server.main import create_kernel
 from trestle.server.recovery import recover_run_dir, seed_interrupted_run
@@ -86,11 +86,11 @@ def test_idempotency_rebuild_from_ledger(ops_kernel) -> None:
         idempotency_key=key,
     )
     assert isinstance(view, RunView)
-    (ops_kernel.home / "idempotency.json").unlink(missing_ok=True)
+    idempotency.key_path(ops_kernel.home, key).unlink()
 
-    rebuild_from_ledgers(ops_kernel.home, ttl_s=3600)
-    store = IdempotencyStore.open(ops_kernel.home)
-    record = store.lookup(key)
+    # the repair (`doctor --rebuild-keys`) replays the created row's recorded expiry
+    assert idempotency.rebuild_keys(ops_kernel.home, ttl_s=3600) == 1
+    record = idempotency.lookup(ops_kernel.home, key)
     assert record is not None
     assert record.run_id == view.run_id
 

@@ -24,6 +24,7 @@ from trestle.common import codes
 from trestle.common.types import AdmitRequest, RequestOutcome, RunView
 from trestle.server import admission as admission_mod
 from trestle.server import home as home_mod
+from trestle.server import idempotency
 from trestle.server.config import RetentionConfig, TrestleConfig
 from trestle.server.doctor import build_doctor_report
 from trestle.server.gc import run_gc
@@ -41,7 +42,6 @@ from trestle.server.home import (
     owner_lock_path,
     read_marker,
 )
-from trestle.server.idempotency import IdempotencyStore, rebuild_from_ledgers
 from trestle.server.ledger import RunLedger, iter_run_dirs, ledger_path, work_dir
 from trestle.server.main import create_kernel
 from trestle.server.reaper import REAP_INTERVAL_S, reap_home
@@ -341,8 +341,8 @@ def test_gc_query_and_key_rebuild_never_touch_an_admission_in_flight(
         listed = kernel.control.query("recent_runs", {})
         assert isinstance(listed, dict)
         assert all(not str(item["run_id"]).startswith(".") for item in listed["items"])
-        rebuild_from_ledgers(home, ttl_s=60)
-        assert "in-flight-key" not in IdempotencyStore.open(home).entries
+        idempotency.rebuild_keys(home, ttl_s=60, lock=False)  # the admission holds the lock
+        assert idempotency.read_entries(home, "in-flight-key") == []
         assert sorted(p.relative_to(building) for p in building.rglob("*")) == before
 
     monkeypatch.setattr(admission_mod, "_admission_step", during)

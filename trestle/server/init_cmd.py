@@ -77,9 +77,14 @@ def upgrade_home(home: Path) -> UpgradeReport:
 
 
 def seed_keys(home: Path) -> None:
-    """Problem B's hook (step 3): seed `home/keys/` from the created rows (and the expiries
-    `idempotency.json` recorded), replayed by created.at then run id. Until then the v0.3.0 store
-    `idempotency.json` stays the key store and needs no seeding."""
+    """Problem B: seed `home/keys/` from the created rows, replayed by created.at then run id. A
+    v0.3.0 row takes the expiry `idempotency.json` recorded for its run, else v0.3.0's own
+    formula, so an expired key stays expired; `idempotency.json` is read here once and then left
+    in place, unused."""
+    from trestle.server.config import load_config
+    from trestle.server.idempotency import rebuild_keys
+
+    rebuild_keys(home, ttl_s=load_config(home).idempotency_ttl_s, legacy=True)
 
 
 def _spec_deadline(run_dir: Path) -> float | None:

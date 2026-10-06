@@ -172,6 +172,9 @@ class DeclaredMetadata:
     packages: tuple[str, ...] = ()
     env_arg: str | None = None
     secrets: frozenset[str] = frozenset()
+    # v0.4 Feature 2: a run of this plugin that ends interrupted frees its idempotency key, so an
+    # identical re-send starts a fresh run (`retry_of`). Only the author knows a repeat is safe.
+    repeatable: bool = False
     # Recorded at publication, not declared in source: each declared package's digest as the
     # publication validator resolved it. Empty for a plugin that declares no packages.
     package_digests: dict[str, str] = field(default_factory=dict)
@@ -185,6 +188,8 @@ class DeclaredMetadata:
             "env_arg": self.env_arg,
             "secrets": sorted(self.secrets),
             "package_digests": {k: self.package_digests[k] for k in sorted(self.package_digests)},
+            # only when declared, so the manifest (and identity) of every other plugin is unchanged
+            **({"repeatable": True} if self.repeatable else {}),
         }
 
     @classmethod
@@ -205,6 +210,7 @@ class DeclaredMetadata:
             packages=tuple(str(x) for x in declared.get("packages", ())),
             env_arg=str(env_arg) if isinstance(env_arg, str) else None,
             secrets=frozenset(str(x) for x in declared.get("secrets", ())),
+            repeatable=declared.get("repeatable") is True,
             package_digests={
                 str(k): str(v)
                 for k, v in (
@@ -255,6 +261,9 @@ class RunView:
     root_run_id: str | None = None
     path: str | None = None
     disposition: str | None = None
+    # v0.4 Feature 2: the interrupted run this one replaced, when it was started by re-sending a
+    # repeatable plugin's key; absent otherwise
+    retry_of: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -289,6 +298,8 @@ class RunView:
             out["outcome"] = self.outcome
         if self.answer is not None:
             out["answer"] = self.answer
+        if self.retry_of is not None:
+            out["retry_of"] = self.retry_of
         return out
 
 
