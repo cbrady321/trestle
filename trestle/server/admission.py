@@ -46,12 +46,10 @@ from trestle.server.snapshots import (
 )
 
 # K-1 (MC-CORE-12, OQ-1 recorded default): the same idempotency key joins the run it named even
-# after the plugin was republished, and the key's window covers the run's whole life. A join then
-# needs the same plugin, the same `args_hash` and the run present (the snapshot is not compared);
-# the entry lives until the admitted deadline plus the finalization margin plus the ttl. Cleared,
-# both revert to S0: an equal `snapshot_id` is required and the entry lives `ttl` from admission.
-# The CK-1 decline patch (CM-7) flips this constant.
-JOIN_ACROSS_REPUBLISH: bool = True
+# after the plugin was republished, and the key's window covers the run's whole life. A join needs
+# the same plugin, the same `args_hash` and the run present (the snapshot is not compared); the
+# entry lives `key_expires_at - admitted_at = deadline_s + finalization_margin + ttl` (v0.4 "Fix
+# first"), `deadline_s` being the run's own deadline (`deadline_of`), never the snapshot default.
 
 
 @dataclass
@@ -166,7 +164,6 @@ class Admission:
             if existing is not None:
                 if (
                     existing.plugin == snap.plugin
-                    and (JOIN_ACROSS_REPUBLISH or existing.snapshot_id == snap.snapshot_id)
                     and existing.args_hash == a_hash
                     and find_run_dir(self.home, existing.run_id) is not None
                 ):
@@ -298,6 +295,13 @@ def plan_for_admission(
     return carving.attach(plan, slices, release_slice)
 
 
+def key_window_s(deadline_s: float, idempotency_ttl_s: float) -> float:
+    """How long after admission an idempotency key stays joinable: `key_expires_at = admitted_at +
+    deadline_s + finalization_margin + idempotency_ttl_s`, the run's own deadline (not the 300 s
+    snapshot default) plus the margin plus the ttl, so the key outlives its run by the ttl."""
+    return deadline_s + clock.finalization_margin + idempotency_ttl_s
+
+
 @dataclass(frozen=True)
 class AdmittedRun:
     """What `write_admitted_run` minted: the run id, the hash of its spec (the run's identity,
@@ -399,12 +403,7 @@ def write_admitted_run(
             plugin=snap.plugin,
             snapshot_id=snap.snapshot_id,
             args_hash=a_hash,
-            ttl_s=cfg.idempotency_ttl_s
-            + (
-                math.ceil(snap.timeout_s + clock.finalization_margin)
-                if JOIN_ACROSS_REPUBLISH
-                else 0
-            ),
+            ttl_s=key_window_s(deadline_s, cfg.idempotency_ttl_s),
         )
 
     return AdmittedRun(

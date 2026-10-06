@@ -576,9 +576,9 @@ See [`plugins.md`](plugins.md) for authoring, filesystem drop-in, and `publish_p
 
 Re-issuing a key with the same plugin and the same arguments returns the run that key named, even when the plugin was republished in between: no second run starts, and the answer is that run's own. The answer says which code ran: `outcome.identity.snapshot_id` is the snapshot the run was admitted against, not the plugin's current one, so a retry after a republish still shows the original id. A different plugin or different arguments under the same key is still `admission.idempotency_key_conflict`.
 
-The key also stays valid for as long as the run can: it expires the `TRESTLE_IDEMPOTENCY_TTL_S` window (default one hour) after the run's admitted deadline plus the finalization margin, not after admission, so a retry that arrives while a long run is still going joins it.
+The key also stays valid for as long as the run can: it expires the `TRESTLE_IDEMPOTENCY_TTL_S` window (default one hour) after the run's own deadline (the plugin's declared `deadline`, else 300 s) plus the finalization margin, not after admission, so a retry that arrives while a long run is still going joins it.
 
-This is a knowing change (K-1): before it, any code change made the same key a conflict, and the key could lapse while its run was still going. It is on by default (`JOIN_ACROSS_REPUBLISH` in `trestle/server/admission.py`).
+This is a knowing change (K-1): before it, any code change made the same key a conflict, and the key could lapse while its run was still going. It is permanent: v0.4 removed the `JOIN_ACROSS_REPUBLISH` switch, and the identity a join names stays `outcome.identity.snapshot_id`.
 <!-- /K-1 -->
 
 ---

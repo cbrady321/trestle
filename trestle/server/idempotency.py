@@ -88,7 +88,7 @@ class IdempotencyStore:
         plugin: str,
         snapshot_id: str,
         args_hash: str,
-        ttl_s: int,
+        ttl_s: float,
     ) -> None:
         self.entries[key] = IdempotencyRecord(
             run_id=run_id,
