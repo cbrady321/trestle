@@ -323,7 +323,7 @@ def test_refused_busy_when_holder_deadline_leaves_too_little(tmp_path: Path) -> 
     runs = kernel.home / "runs"
 
     def run_dirs() -> int:
-        return len(list(runs.glob("*/*"))) if runs.exists() else 0
+        return len(list(runs.glob("*/r_*"))) if runs.exists() else 0
 
     # a holder admitted with the default deadline; a request whose deadline ends before the
     # holder's can never run after it: refused busy, retryable, with no run id and no run dir

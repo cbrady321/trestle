@@ -174,26 +174,26 @@ def test_run_by_key_finds_a_run_far_beyond_the_recency_window_and_takes_no_lock(
 ) -> None:
     home = _home(tmp_path)
     kernel = _kernel(home)
-    old = _send(kernel, "gate:old")
-    for n in range(3):
-        _send(kernel, f"other:{n}", args={"message": f"m{n}"})
+    sent = {f"gate:{n}": _send(kernel, f"gate:{n}", args={"message": f"m{n}"}) for n in range(4)}
     monkeypatch.setattr(view_defs, "RECENCY_CACHE_SIZE", 2)
     recent = kernel.control.query("recent_runs", {})
     assert isinstance(recent, dict) and recent["truncated"] is True  # the window is incomplete
-    assert old.run_id not in [r["run_id"] for r in recent["items"]]
-    # run_by_key never reads the window: the old run is found, and the page is not truncated
-    page = _rows(kernel, "gate:old")
+    # the window's order is the run id's, which only roughly follows time: take a run it left out
+    listed = {r["run_id"] for r in recent["items"]}
+    key, old = next((k, v) for k, v in sent.items() if v.run_id not in listed)
+    # run_by_key never reads the window: the left-out run is found, and the page is not truncated
+    page = _rows(kernel, key)
     assert [r["run_id"] for r in page["items"]] == [old.run_id] and page["truncated"] is False
     # ... and while another process holds the admission lock the read still answers at once
     answered: list[dict[str, Any]] = []
     with admission_lock(home):
-        reader = threading.Thread(target=lambda: answered.append(_rows(kernel, "gate:old")))
+        reader = threading.Thread(target=lambda: answered.append(_rows(kernel, key)))
         reader.start()
         reader.join(timeout=JOIN_S)
         assert not reader.is_alive(), "run_by_key waited for the admission lock"
     assert answered[0]["items"][0]["run_id"] == old.run_id
     # the bare backend (no Project) answers the same rows' identity
-    bare = FilesystemQueryBackend(home).query("run_by_key", {"idempotency_key": "gate:old"})
+    bare = FilesystemQueryBackend(home).query("run_by_key", {"idempotency_key": key})
     assert isinstance(bare, dict) and bare["items"][0]["run_id"] == old.run_id
 
 

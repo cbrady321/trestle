@@ -70,7 +70,7 @@ def _host(tmp_path: Path) -> Iterator[mcp_host.McpHost]:
 
 
 def _only_run_dir(host: mcp_host.McpHost) -> Path:
-    (found,) = sorted((host.home / "runs").glob("*/*"))
+    (found,) = sorted((host.home / "runs").glob("*/r_*"))
     return found
 
 
@@ -97,7 +97,7 @@ def _start_held(host: mcp_host.McpHost) -> tuple[int, Path, float]:
     sent = time.monotonic()
     req = host.hold("run", _request())
     assert support.wait_until(
-        lambda: bool(list((host.home / "runs").glob("*/*"))), STARTUP_WAIT_S
+        lambda: bool(list((host.home / "runs").glob("*/r_*"))), STARTUP_WAIT_S
     ), "the run was never admitted"
     run_dir = _only_run_dir(host)
     assert support.wait_until(lambda: _issued(run_dir), STARTUP_WAIT_S), "no marker yet"
@@ -131,7 +131,7 @@ def test_pin_sever_today(tmp_path: Path) -> None:
     with mcp_host.McpHost(home=tmp_path / "host-home", timeout_s=HOST_TIMEOUT_S) as host:
         held = host.hold("run", {"plugin": "slow", "args": {"seconds": 1.0}, "wait_ms": 10_000})
         assert support.wait_until(
-            lambda: bool(list((host.home / "runs").glob("*/*"))), STARTUP_WAIT_S
+            lambda: bool(list((host.home / "runs").glob("*/r_*"))), STARTUP_WAIT_S
         )
         host.sever("cancel_notification", req_id=held)
         with pytest.raises(RuntimeError, match="cancelled"):
@@ -201,4 +201,4 @@ def test_resend_joins_single_execution_terminal(tmp_path: Path, mode: str) -> No
             assert answer["state"] == _terminal(run_dir), answer
             assert answer["answer"]["cleanup"]["clean"] is True, answer
             assert _created_rows(run_dir) == 1
-            assert len(list((host.home / "runs").glob("*/*"))) == 1
+            assert len(list((host.home / "runs").glob("*/r_*"))) == 1
