@@ -42,6 +42,8 @@ class DoctorReport:
     live_runs: dict[str | None, int] = field(default_factory=dict)
     admission_holder: str | None = None
     warnings: tuple[str, ...] = ()
+    # watched folders that do not exist: shown as missing, not as holding 0 plugins
+    missing_plugin_dirs: tuple[str, ...] = ()
 
     def lines(self) -> list[str]:
         rows = [
@@ -64,7 +66,10 @@ class DoctorReport:
             rows.append(f"  {state}: {self.run_counts[state]}")
         rows.append("plugin_search_paths:")
         for path, count in self.plugin_search_paths:
-            rows.append(f"  - {path} ({count} plugins)")
+            if path in self.missing_plugin_dirs:
+                rows.append(f"  - {path} (missing)")
+            else:
+                rows.append(f"  - {path} ({count} plugins)")
         rows.append(f"plugins: {self.plugin_count}")
         for plugin_id in self.plugins:
             rows.append(f"  - {plugin_id}")
@@ -129,6 +134,10 @@ def build_doctor_report(
     if any(run_counts.get(state, 0) for state in ("running", "held")):
         health = "degraded"
     counts_by_dir = kernel.registry.plugin_counts_by_dir()
+    missing_dirs = [path for path in kernel.registry.plugin_dirs if not path.is_dir()]
+    # no watched folder exists: the server has nowhere to find plugins
+    if missing_dirs and len(missing_dirs) == len(kernel.registry.plugin_dirs):
+        health = "degraded"
 
     return DoctorReport(
         home=trestle_home,
@@ -149,6 +158,7 @@ def build_doctor_report(
         live_runs=_live_runs_by_owner(trestle_home),
         admission_holder=admission_holder(trestle_home),
         warnings=_warnings(),
+        missing_plugin_dirs=tuple(str(path) for path in missing_dirs),
     )
 
 

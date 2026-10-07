@@ -44,6 +44,8 @@ trestle doctor
 trestle serve --plugin-dir ./tools --plugin-dir ./packages/scripts
 ```
 
+A `--plugin-dir` folder that does not exist refuses the start (exit 2). A relative `--plugin-dir` is resolved against the working directory; a relative path in `config.toml` or `TRESTLE_PLUGIN_DIRS` against `$TRESTLE_HOME`. A missing folder from config or env is logged to `service.log` and shown as `(missing)` by `trestle doctor`, which reports `health: degraded` when no watched folder exists.
+
 Or persist in `$TRESTLE_HOME/config.toml`:
 
 ```toml

@@ -26,7 +26,7 @@ from trestle.server.home import (
     raise_nofile_limit,
 )
 from trestle.server.mcp_schema import FetchWindowArg, QueryViewArg
-from trestle.server.plugin_paths import resolve_plugin_dirs
+from trestle.server.plugin_paths import check_plugin_dirs, resolve_plugin_dirs
 from trestle.server.pool import Pool
 from trestle.server.project import Project
 from trestle.server.reaper import Reaper
@@ -87,6 +87,12 @@ def create_kernel(
     dead are finalized, never a live server's (startup recovery of every run is gone)."""
     trestle_home = home or default_home()
     check_home(trestle_home)
+    if plugin_dirs is not None:
+        dirs = plugin_dirs
+    else:
+        dirs = resolve_plugin_dirs(trestle_home, cli_dirs=cli_plugin_dirs)
+        # before any work: a missing --plugin-dir folder refuses the start
+        check_plugin_dirs(trestle_home, dirs, from_cli=bool(cli_plugin_dirs))
     ownership = Ownership(home=trestle_home, server_id=generate_server_id())
     reaper = Reaper(trestle_home, server_id=ownership.server_id)
     if not skip_recovery:
@@ -94,10 +100,6 @@ def create_kernel(
         # `trestle doctor --rebuild-keys` and `trestle init --upgrade`
         reaper.pass_once(scan_debris=True)
 
-    if plugin_dirs is not None:
-        dirs = plugin_dirs
-    else:
-        dirs = resolve_plugin_dirs(trestle_home, cli_dirs=cli_plugin_dirs)
     registry = Registry(home=trestle_home, plugin_dirs=dirs)
     registry.refresh()
     config = load_config(trestle_home)

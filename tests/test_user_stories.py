@@ -250,7 +250,16 @@ def test_us24_plugin_imports_surface_only() -> None:
 def test_live_cli_doctor(trestle_home: Path, plugin_dir: Path) -> None:
     create_kernel(home=trestle_home, plugin_dirs=[plugin_dir], skip_recovery=True)
     proc = subprocess.run(
-        [sys.executable, "-m", "trestle.cli", "doctor", "--home", str(trestle_home)],
+        [
+            sys.executable,
+            "-m",
+            "trestle.cli",
+            "doctor",
+            "--home",
+            str(trestle_home),
+            "--plugin-dir",
+            str(plugin_dir),
+        ],
         capture_output=True,
         text=True,
         check=False,

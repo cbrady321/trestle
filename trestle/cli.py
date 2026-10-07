@@ -11,6 +11,7 @@ from trestle.server.doctor import run_doctor, run_recover
 from trestle.server.home import HomeRefused
 from trestle.server.init_cmd import run_init
 from trestle.server.main import create_kernel, default_home, run_server
+from trestle.server.plugin_paths import PluginDirMissing
 
 
 def _add_home_arg(parser: argparse.ArgumentParser) -> None:
@@ -23,7 +24,10 @@ def _add_plugin_dir_arg(parser: argparse.ArgumentParser) -> None:
         action="append",
         dest="plugin_dirs",
         metavar="PATH",
-        help="Plugin directory to watch (repeatable; replaces config/env when set)",
+        help=(
+            "Plugin directory to watch, relative to the working directory "
+            "(repeatable; replaces config/env when set)"
+        ),
     )
 
 
@@ -113,6 +117,9 @@ def main(argv: list[str] | None = None) -> int:
         return _dispatch(args)
     except HomeRefused as exc:
         # v0.3.1: every entry point checks home/format and the local-mount rule first
+        print(f"trestle: {exc}", file=sys.stderr)
+        return 2
+    except PluginDirMissing as exc:
         print(f"trestle: {exc}", file=sys.stderr)
         return 2
 

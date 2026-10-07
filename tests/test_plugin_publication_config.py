@@ -9,7 +9,11 @@ import pytest
 from trestle.cli import main
 from trestle.server.doctor import build_doctor_report
 from trestle.server.main import create_kernel
-from trestle.server.plugin_paths import CATALOG_HINT_EMPTY, resolve_plugin_dirs
+from trestle.server.plugin_paths import (
+    CATALOG_HINT_EMPTY,
+    PluginDirMissing,
+    resolve_plugin_dirs,
+)
 
 
 def test_resolve_plugin_dirs_defaults_to_home_plugins(tmp_path: Path) -> None:
@@ -31,6 +35,24 @@ def test_resolve_plugin_dirs_cli_overrides_config(
     )
     monkeypatch.setenv("TRESTLE_PLUGIN_DIRS", str(tmp_path / "env-plugins"))
     assert resolve_plugin_dirs(home, cli_dirs=[cli_dir]) == [cli_dir.resolve()]
+
+
+def test_relative_cli_plugin_dir_resolves_against_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "trestle"
+    home.mkdir()
+    repo = tmp_path / "repo"
+    (repo / "tools").mkdir(parents=True)
+    monkeypatch.chdir(repo)
+    assert resolve_plugin_dirs(home, cli_dirs=[Path("./tools")]) == [(repo / "tools").resolve()]
+
+
+def test_relative_config_plugin_dir_resolves_against_home(tmp_path: Path) -> None:
+    home = tmp_path / "trestle"
+    home.mkdir()
+    (home / "config.toml").write_text('[plugins]\npaths = ["tools"]\n', encoding="utf-8")
+    assert resolve_plugin_dirs(home) == [(home / "tools").resolve()]
 
 
 def test_resolve_plugin_dirs_config_before_env(
@@ -117,3 +139,61 @@ def test_trestle_init_creates_home_and_seeds_echo(
     assert main(["init"]) == 0
     assert (home / "plugins" / "echo.py").exists()
     assert (home / "format").read_text(encoding="utf-8").strip() == "2"
+
+
+def test_missing_cli_plugin_dir_refuses_start(tmp_path: Path) -> None:
+    home = tmp_path / "trestle"
+    home.mkdir()
+    with pytest.raises(PluginDirMissing, match="does not exist"):
+        create_kernel(home=home, cli_plugin_dirs=[tmp_path / "typo"], skip_recovery=True)
+
+
+def test_serve_with_missing_plugin_dir_exits_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    home = tmp_path / "trestle"
+    home.mkdir()
+    missing = tmp_path / "typo"
+    assert main(["serve", "--home", str(home), "--plugin-dir", str(missing)]) == 2
+    assert f"--plugin-dir folder does not exist: {missing.resolve()}" in capsys.readouterr().err
+
+
+def test_missing_configured_plugin_dir_is_logged(tmp_path: Path) -> None:
+    home = tmp_path / "trestle"
+    home.mkdir()
+    gone = tmp_path / "gone"
+    (home / "config.toml").write_text(f'[plugins]\npaths = ["{gone}"]\n', encoding="utf-8")
+    create_kernel(home=home, skip_recovery=True)
+    log = (home / "service.log").read_text(encoding="utf-8")
+    assert f"plugin folder {gone.resolve()} does not exist" in log
+
+
+def test_cli_plugin_dir_logs_what_it_replaced(tmp_path: Path) -> None:
+    home = tmp_path / "trestle"
+    home.mkdir()
+    cli_dir = tmp_path / "cli-plugins"
+    cli_dir.mkdir()
+    (home / "config.toml").write_text(
+        f'[plugins]\npaths = ["{tmp_path / "config-plugins"}"]\n', encoding="utf-8"
+    )
+    create_kernel(home=home, cli_plugin_dirs=[cli_dir], skip_recovery=True)
+    log = (home / "service.log").read_text(encoding="utf-8")
+    assert "--plugin-dir replaces config.toml [plugins] paths" in log
+
+
+def test_doctor_shows_missing_plugin_dir_and_degrades(tmp_path: Path) -> None:
+    home = tmp_path / "trestle"
+    home.mkdir()
+    gone = tmp_path / "gone"
+    report = build_doctor_report(home=home, plugin_dirs=[gone])
+    assert report.health == "degraded"
+    assert f"  - {gone} (missing)" in report.lines()
+
+
+def test_doctor_stays_ok_when_one_plugin_dir_exists(tmp_path: Path, plugin_dir: Path) -> None:
+    home = tmp_path / "trestle"
+    home.mkdir()
+    gone = tmp_path / "gone"
+    report = build_doctor_report(home=home, plugin_dirs=[plugin_dir, gone])
+    assert report.health == "ok"
+    assert f"  - {gone} (missing)" in report.lines()
