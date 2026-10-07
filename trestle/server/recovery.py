@@ -8,8 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from trestle.common import codes
-from trestle.common.fsutil import atomic_write, atomic_write_json, fsync_dir
-from trestle.common.ids import generate_service_epoch
+from trestle.common.fsutil import atomic_write_json, fsync_dir
 from trestle.common.plan.compiler import AdmittedPlan
 from trestle.common.plan.formats import PlanInvalid, UnknownPlanFormat
 from trestle.server import answer, fold, procident, sweep
@@ -23,6 +22,7 @@ from trestle.server.ledger import (
     work_dir,
 )
 from trestle.server.procident import ProcessSource, Signaller
+from trestle.server.runstate import refresh_state
 
 _MID_EXECUTION_KINDS = frozenset(
     {
@@ -34,31 +34,6 @@ _MID_EXECUTION_KINDS = frozenset(
 )
 
 
-def recover_on_startup(
-    home: Path, *, source: ProcessSource | None = None, signaller: Signaller | None = None
-) -> str:
-    """Sweep run dirs, then mint a new service epoch."""
-    home.mkdir(parents=True, exist_ok=True)
-    recover_all_runs(home, source=source, signaller=signaller)
-    epoch = generate_service_epoch()
-    atomic_write(home / "service_epoch", epoch.encode("utf-8"))
-    return epoch
-
-
-def recover_all_runs(
-    home: Path, *, source: ProcessSource | None = None, signaller: Signaller | None = None
-) -> None:
-    runs_root = home / "runs"
-    if not runs_root.exists():
-        return
-    for month_dir in sorted(runs_root.iterdir()):
-        if not month_dir.is_dir():
-            continue
-        for run_dir in sorted(month_dir.iterdir()):
-            if run_dir.is_dir():
-                recover_run_dir(run_dir, source=source, signaller=signaller)
-
-
 def recover_run_dir(
     run_dir: Path,
     *,
@@ -66,10 +41,14 @@ def recover_run_dir(
     signaller: Signaller | None = None,
     limits: OperatorLimits | None = None,
     sweep_io: sweep.SweepIO | None = None,
+    promote: bool = False,
 ) -> None:
-    """Recover one run directory (B2-C11). `limits` and `sweep_io` are test seams for the release
-    sweep (the operator's limits, the command runner and the clock); a caller passing neither
-    (the server at startup, the d2 driver) gets the configured limits and real commands."""
+    """Recover one run directory (B2-C11): the reaper's takeover of a dead owner's run, which it
+    reaches only while holding the run's owner lock (v0.3.1 rule 3). `limits` and `sweep_io` are
+    test seams for the release sweep (the operator's limits, the command runner and the clock); a
+    caller passing neither (the reaper, the d2 driver) gets the configured limits and real
+    commands. `promote`: the run had no secret values, so its outputs are promoted as the owner
+    would have (rule 3), after the process stop and before the staged files are swept."""
     path = ledger_path(run_dir)
     if not path.exists():
         sweep_run_dir(run_dir)
@@ -101,23 +80,42 @@ def recover_run_dir(
                 signaller=signaller,
                 limits=limits,
                 sweep_io=sweep_io,
+                promote=promote,
             )
         return
 
     if last_kind == "execution_ended":
         append_recovery_suffix(
-            run_dir, ledger, source=source, signaller=signaller, limits=limits, sweep_io=sweep_io
+            run_dir,
+            ledger,
+            source=source,
+            signaller=signaller,
+            limits=limits,
+            sweep_io=sweep_io,
+            promote=promote,
         )
         return
 
     if last_kind in {"created", "admitted", "started"} or last_kind in _MID_EXECUTION_KINDS:
         append_recovery_suffix(
-            run_dir, ledger, source=source, signaller=signaller, limits=limits, sweep_io=sweep_io
+            run_dir,
+            ledger,
+            source=source,
+            signaller=signaller,
+            limits=limits,
+            sweep_io=sweep_io,
+            promote=promote,
         )
         return
 
     append_recovery_suffix(
-        run_dir, ledger, source=source, signaller=signaller, limits=limits, sweep_io=sweep_io
+        run_dir,
+        ledger,
+        source=source,
+        signaller=signaller,
+        limits=limits,
+        sweep_io=sweep_io,
+        promote=promote,
     )
 
 
@@ -151,10 +149,13 @@ def append_recovery_suffix(
     signaller: Signaller | None = None,
     limits: OperatorLimits | None = None,
     sweep_io: sweep.SweepIO | None = None,
+    promote: bool = False,
 ) -> None:
     run_id = str(ledger.records[0].get("run_id", run_dir.name))
     # B2-C11: the run's processes are dealt with before anything is finalized
     group_confirmed = _record_group_stop(ledger, run_id, source=source, signaller=signaller)
+    if promote:
+        _promote_reaped(run_dir, ledger, run_id)
     sweep_tmp_partial(run_dir)
     # B2-C11: the lane is folded, and swept in plan release rank, before anything is finalized and
     # before `interrupted`; a run with no lane (or one already folded before the restart) writes
@@ -207,6 +208,21 @@ def append_recovery_suffix(
 
     fsync_dir(evidence_dir(run_dir))
     rematerialize_meta(run_dir, ledger)
+
+
+def _promote_reaped(run_dir: Path, ledger: RunLedger, run_id: str) -> None:
+    """v0.3.1 rule 3: a reaped run with no secret values keeps what it left, as artifacts. With no
+    secrets the owner's scrub (`redact.Scrubber` over the run's roots) writes the same bytes in any
+    process; names the dead owner already promoted are skipped."""
+    from trestle.common import redact
+    from trestle.server.conductor import promote_outputs
+
+    home = run_dir.parents[2]
+    markers: list[dict[str, object]] = []
+    scrubber = redact.Scrubber(roots=redact.run_roots(run_dir, home))
+    promote_outputs(run_dir, ledger, run_id, scrubber, markers, skip_available=True)
+    if markers:
+        ledger.append("limit_exceeded", run_id=run_id, markers=markers)
 
 
 def _read_spec(run_dir: Path) -> dict[str, object]:
@@ -285,21 +301,33 @@ def _record_group_stop(
     existing = ledger.last_kind("group_stop")
     if existing is not None:
         return existing.get("confirmed_gone") is True
-    decision = procident.recovery_decision(ledger.records, source)
+    # v0.3.1 Problem C: the identities are in the ledger (the leader's) and the sidecar, and the
+    # recovery's own rows go to the sidecar
+    sidecar = procident.Sidecar(procident.sidecar_path(ledger.path.parent), run_id)
+    decision = procident.recovery_decision(ledger.records, source, sidecar=sidecar.records())
+    src = source if source is not None else procident.SYSTEM
+    recorded: list[procident.Identity] = []
     if decision.branch == "iii":
 
         def record(ident: procident.Identity) -> None:
-            ledger.append("process_identity", run_id=run_id, **ident.fields())
+            sidecar.append(ident)
+            recorded.append(ident)
 
         stop = procident.stop_recovered(decision, record=record, source=source, signaller=signaller)
         confirmed = stop.confirmed_gone
     else:
         confirmed = bool(decision.confirmed_gone)
+    if not ledger.has_kind("process_summary"):
+        idents = [*decision.identities, *recorded]
+        # branch (i) has nothing recorded, and reads no process table
+        alive = 0 if confirmed or not idents else procident.count_alive(idents, src)
+        ledger.append("process_summary", run_id=run_id, seen=len(idents), alive=alive)
     ledger.append("group_stop", run_id=run_id, confirmed_gone=confirmed, method=decision.method)
     return confirmed
 
 
 def rematerialize_meta(run_dir: Path, ledger: RunLedger) -> None:
+    refresh_state(run_dir, ledger)  # v0.3.1 Problem C: state.json follows the ledger's last row
     evidence = evidence_dir(run_dir)
     run_id = str(ledger.records[0].get("run_id", run_dir.name))
     terminal = ledger.terminal_state() or "interrupted"
@@ -365,7 +393,8 @@ def find_run_dir(home: Path, run_id: str) -> Path | None:
 
 
 def seed_interrupted_run(home: Path, run_id: str, *, last_kind: str = "started") -> Path:
-    """Test helper — create a run dir stopped mid-flight."""
+    """Test helper — create a run dir stopped mid-flight: a run with no owner (its `created` row
+    names none, as a v0.3.0 run's) and its live marker, so the reaper finalizes it."""
     run_dir = run_dir_for(home, run_id, month="2099-01")
     evidence = evidence_dir(run_dir)
     work = work_dir(run_dir)
@@ -400,4 +429,7 @@ def seed_interrupted_run(home: Path, run_id: str, *, last_kind: str = "started")
             completeness="partial",
             result_state="absent",
         )
+    from trestle.server.home import write_marker
+
+    write_marker(home, run_id, {"owner": None, "month": "2099-01", "lease_key": None})
     return run_dir

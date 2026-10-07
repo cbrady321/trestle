@@ -314,7 +314,14 @@ POLICY: dict[tuple[str, str], str] = {
     ("run", "wait_ms"): "validated",  # a bound; zero means do not wait
     ("run", "idempotency_key"): "text",  # matched against earlier keys, never interpreted
     ("run", "completion"): "closed",  # bounded | terminal
+    ("run", "deadline_s"): "validated",  # above 0 and at most the operator's ceiling
+    ("run", "idempotency_ttl_s"): "validated",  # 0 to the operator's [keys] max_ttl_s
+    (
+        "run",
+        "after",
+    ): "validated",  # one of run and key, when, match; an unknown run refused
     ("await_runs", "run_ids"): "validated",  # handles that must resolve
+    ("await_runs", "keys"): "validated",  # keys some run used
     ("await_runs", "mode"): "closed",  # all | any | first_failure
     ("await_runs", "timeout_ms"): "validated",
     ("cancel", "run_id"): "validated",

@@ -13,7 +13,7 @@ from tests.proof import harness, records
 
 FIXTURE = Path(__file__).resolve().parents[4] / "tests" / "fixtures" / "workflows" / "spine_leaf.py"
 # kinds the core and single phases add around the S0 sequence (MC-14, MC-19, B2-C7)
-ADDITIVE_KINDS = {"process_identity", "group_stop", "lane_folded"}
+ADDITIVE_KINDS = {"process_identity", "process_summary", "group_stop", "lane_folded"}
 S0_KINDS = ["created", "admitted", "started", "execution_ended", "evidence_finalized", "succeeded"]
 
 

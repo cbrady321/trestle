@@ -12,7 +12,7 @@ from trestle.common import codes
 from trestle.common.types import AdmitRequest, RequestOutcome, RunView
 from trestle.server.doctor import build_doctor_report
 from trestle.server.main import create_kernel
-from trestle.server.recovery import recover_on_startup
+from trestle.server.recovery import recover_run_dir
 
 
 def test_us02_refused_request_has_no_run_id(kernel) -> None:
@@ -95,7 +95,7 @@ def test_us10_recovery_from_ledger_not_meta(trestle_home: Path, plugin_dir: Path
     run_dir = _find_run(trestle_home, view.run_id)
     meta = run_dir / "evidence" / "meta.json"
     meta.unlink()
-    recover_on_startup(trestle_home)
+    recover_run_dir(run_dir)  # v0.3.1: a start reaps only dead owners' runs; this is the repair
     assert meta.exists()
 
 
@@ -210,7 +210,7 @@ def test_us22_doctor_cli_operator_surface(trestle_home: Path, plugin_dir: Path) 
     create_kernel(home=trestle_home, plugin_dirs=[plugin_dir], skip_recovery=True)
     report = build_doctor_report(home=trestle_home, plugin_dirs=[plugin_dir])
     assert report.health == "ok"
-    assert report.service_epoch
+    assert report.home_format == 2
     assert "echo" in report.plugins
 
 

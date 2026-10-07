@@ -121,3 +121,19 @@ def test_release_slice_vs_margin_refused(
     outcome = refused(tree_kernel, slow)
     assert outcome.code == codes.BUDGET_DOES_NOT_FIT
     assert "finalization" in outcome.message, outcome.message
+
+
+def test_call_deadline_is_the_carve_and_release_slice_deadline(tree_kernel: Kernel) -> None:
+    """v0.3.1 Feature 0: a call's own `deadline_s` replaces the declared one in the carve, so a
+    deadline too short to hold the root budget and the release slice is refused
+    `budget_does_not_fit` before a run id, and one that fits is admitted."""
+    walk = publish(tree_kernel, with_release_effect(source("shared_diamond"), 2))
+    need = 240.0 + clock.release_slice  # the root's budget and the release slice (as above)
+    short = tree_kernel.control.admission.admit(
+        AdmitRequest(plugin=walk, args={}, deadline_s=need - 1.0)
+    )
+    assert short.tag == "refused" and short.outcome.code == codes.BUDGET_DOES_NOT_FIT
+    assert "release slice" in short.outcome.message, short.outcome.message
+    assert not list((tree_kernel.home / "runs").glob("*/*"))
+    fits = tree_kernel.control.admission.admit(AdmitRequest(plugin=walk, args={}, deadline_s=need))
+    assert fits.tag == "admitted", fits

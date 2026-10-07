@@ -48,7 +48,7 @@ def _host(tmp_path: Path) -> Iterator[mcp_host.McpHost]:
 
 
 def _runs(host: mcp_host.McpHost) -> list[Path]:
-    return sorted((host.home / "runs").glob("*/*")) if (host.home / "runs").exists() else []
+    return sorted((host.home / "runs").glob("*/r_*")) if (host.home / "runs").exists() else []
 
 
 def _no_contract(host: mcp_host.McpHost) -> None:

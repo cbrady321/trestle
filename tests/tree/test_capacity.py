@@ -208,7 +208,7 @@ def test_default_holds_slice_a_workload(monkeypatch: pytest.MonkeyPatch, tmp_pat
     """At the default capacity the Slice A workload, run concurrently on the host, ends every run
     within its deadline and leaves no MC-13 survivor (the measurement's own zero-miss,
     zero-survivor condition at `chosen`, on a service that has the default and no override)."""
-    monkeypatch.delenv(capacity.CAPACITY_ENV, raising=False)
+    monkeypatch.delenv("TRESTLE_MAX_RUNNING_RUNS", raising=False)
     monkeypatch.delenv(capacity.DEPTH_ENV, raising=False)
     default = server_config.TrestleConfig.defaults().max_running_runs
     names = capacity.workload()

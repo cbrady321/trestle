@@ -18,7 +18,7 @@ from tests.proof import ancestry
 from tests.tree import planting
 from trestle.common import codes
 from trestle.common.types import AdmitRequest, AdmitResultAdmitted, PublishView, RequestOutcome
-from trestle.server.idempotency import IdempotencyStore
+from trestle.server import idempotency
 from trestle.server.main import Kernel
 
 REPO = Path(__file__).resolve().parents[2]
@@ -44,7 +44,7 @@ def publish(kernel: Kernel, text: str) -> str:
 
 def run_dirs(kernel: Kernel) -> list[Path]:
     runs = kernel.home / "runs"
-    return sorted(p for p in runs.glob("*/*") if p.is_dir()) if runs.exists() else []
+    return sorted(p for p in runs.glob("*/r_*") if p.is_dir()) if runs.exists() else []
 
 
 def descendants() -> set[int]:
@@ -67,7 +67,7 @@ def refused(kernel: Kernel, plugin: str, args: dict[str, object] | None = None) 
     assert outcome.origin == "admission" and outcome.retryable is False
     assert "run_id" not in outcome.to_dict()
     assert run_dirs(kernel) == []
-    assert IdempotencyStore.open(kernel.home).lookup(KEY) is None
+    assert idempotency.lookup(kernel.home, KEY) is None
     assert descendants() == before
     return outcome
 

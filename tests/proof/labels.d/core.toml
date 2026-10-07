@@ -612,16 +612,6 @@ posture     = "claim"
 declared_by = "L.CK-1.2"
 
 [[label]]
-id          = "WR-IDEM-1:variant-conflict-written"
-row         = "WR-IDEM-1"
-step        = "core"
-slice       = "core"
-tier        = "MCP"
-venue       = "CI"
-posture     = "shape"
-declared_by = "L.CK-1.2"
-
-[[label]]
 id          = "WR-PROOF-10:K-1"
 row         = "WR-PROOF-10"
 step        = "core"

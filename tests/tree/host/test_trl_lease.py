@@ -31,6 +31,7 @@ from tests.proof import records, tolerances
 from tests.tree import hostpath
 from tests.tree.test_tr1_admission import run_dirs, source
 from trestle.common.types import PublishView, RunView
+from trestle.server import pool as pools
 from trestle.server.main import Kernel
 
 proves_clause = pytest.mark.proves("WR-UNIT-4", "A8.5", "A", "tree", "PROC+LOGIC", "CI")
@@ -204,8 +205,7 @@ def test_child_never_queued_behind_root(tree_kernel: Kernel) -> None:
     assert list(scheduler.queue) == [root.run_id]
     assert not scheduler.waiting
     assert scheduler.running_keys == {root.run_id: KEY}
-    (holder,) = tree_kernel.control.admission.holders.held()
-    assert (holder.run_id, holder.key) == (root.run_id, KEY)
+    assert pools.key_runs(pools.load_sched(tree_kernel.home)) == [(root.run_id, KEY)]
     view = root.finish()
     assert view.to_dict()["answer"]["outcome"] == "passed"
 
@@ -230,11 +230,10 @@ def test_direct_call_acquires_before_effect(tree_kernel: Kernel) -> None:
     lease key) and has written no lane entry and opened no mutation, and it opens its own mutation
     only after the root's terminal row."""
     root, direct = root_then_direct(tree_kernel)
-    holders = tree_kernel.control.admission.holders
-    assert [(h.run_id, h.key) for h in holders.held()] == [
+    assert pools.key_runs(pools.load_sched(tree_kernel.home)) == [
         (root.run_id, KEY),
         (direct.run_id, KEY),
-    ]  # in admission order: the direct call acquired at admission, behind the root
+    ]  # the root running, the direct call waiting behind it since its admission
     (created,) = (
         row for row in records.ledger_rows(direct.run_dir).rows if row["kind"] == "created"
     )

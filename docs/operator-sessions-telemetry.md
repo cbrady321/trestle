@@ -122,6 +122,10 @@ A run's `ledger.ndjson` and `events.ndjson` hold one JSON object per line. If a 
 
 This is a knowing change (K-18) and it is forward-only: the repair of a file that already carries a newline-less tail is not undone by downgrading.
 
+### Small ledgers and state.json (v0.3.1)
+
+A run's ledger holds its state changes only, about a dozen rows however many processes the plugin spawns. Each process attributed to the run is recorded in `evidence/processes.ndjson` before it can be signalled; the ledger keeps the leader's `process_identity` row and one `process_summary` row (`seen`, `alive`) at the stop. Past 1,000 rows the owner rewrites `processes.ndjson` to the leader and the processes still alive. `evidence/state.json` (run id, plugin, owner, state, times, key, `deadline_s`, the `seq` of the last ledger row it reflects) follows each state change, after the ledger row; `RunView` polls, `await_runs`, `completion="terminal"`, `recent_runs` and `run` read it, and waiters poll every 250 ms. Runs admitted before v0.3.1 have no `state.json` and are read from their ledger.
+
 ---
 
 ## 4. CLI vs operator HTTP

@@ -29,7 +29,7 @@ from tests.proof import ancestry, mcp_host, tolerances
 from tests.proof.ckpt import single, single_vertex_audit
 from tests.proof.suites.workflows import SLICE_A_WORKFLOWS
 from trestle.common import clock, codes
-from trestle.server.idempotency import IdempotencyStore
+from trestle.server import idempotency
 
 ROOT = Path(__file__).resolve().parents[3]
 FIXTURES = ROOT / "tests" / "fixtures" / "workflows"
@@ -95,7 +95,7 @@ def test_condition_a(tmp_path: Path) -> None:
             assert refused["code"] == codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED, refused
             assert "run_id" not in refused, refused
             assert _home_run_files(host.home) == [], f"{name}: a refusal left a run directory"
-            assert IdempotencyStore.open(host.home).lookup(f"{KEY}-{name}") is None
+            assert idempotency.lookup(host.home, f"{KEY}-{name}") is None
         assert _descendants() == before, "a refused root spawned a process (MC-13)"
 
 
@@ -276,7 +276,6 @@ from tests.proof.foundations import trees
 from trestle.common import clock
 from trestle.common.plan import carving, compiler
 from trestle.common.types import AdmitRequest
-from trestle.server.admission import write_admitted_run
 
 
 def test_planted_admission():
@@ -291,7 +290,7 @@ def test_planted_admission():
     slices = carving.carve(compiled, 300.0, clock.FINALIZATION_RESERVE_S, release_slice)
     plan = carving.attach(compiled, slices, release_slice)
     request = AdmitRequest(plugin="spine_leaf", args={{"env": "dev"}})
-    write_admitted_run(kernel.home, snap, request, plan)
+    kernel.control.admission.write_run(snap, request, plan)
 """
 
 

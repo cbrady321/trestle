@@ -5,17 +5,30 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from trestle.common import codes
+from trestle.common.ids import run_id_recency
 from trestle.common.limits import CaptureLimits, capture_limits
-from trestle.common.types import Handle, RequestOutcome
+from trestle.common.types import Handle, RequestOutcome, RunView
 from trestle.query import views as view_defs
 from trestle.query.conformance import validate_envelope
-from trestle.server.ledger import TERMINAL_KINDS, RunLedger, evidence_dir, ledger_path
+from trestle.server import idempotency
+from trestle.server.ledger import (
+    TERMINAL_KINDS,
+    RunLedger,
+    evidence_dir,
+    ledger_path,
+    read_state,
+    state_path,
+    state_record,
+)
 from trestle.server.pins import PinStore
+from trestle.server.recovery import find_run_dir
+from trestle.server.runstate import trusted_state
 
 _FAILURE_STATES = TERMINAL_KINDS - frozenset({"succeeded"})
 
@@ -41,9 +54,17 @@ class RunRecord:
 class FilesystemQueryBackend:
     backend = view_defs.BACKEND_NAME
 
-    def __init__(self, home: Path, *, limits: CaptureLimits | None = None) -> None:
+    def __init__(
+        self,
+        home: Path,
+        *,
+        limits: CaptureLimits | None = None,
+        run_view: Callable[[str], RunView | RequestOutcome] | None = None,
+    ) -> None:
         self.home = home
         self.limits = limits or capture_limits()
+        # the run view of one run (`Project.status`): `run_by_key`'s outcome and summary columns
+        self._run_view = run_view
         self._cache_token: str | None = None
         self._cache_runs: list[RunRecord] = []
 
@@ -60,6 +81,10 @@ class FilesystemQueryBackend:
                 retryable=False,
                 origin="projection",
             )
+
+        if view == "run_by_key":
+            # its own path: one key file, never the capped recency window below
+            return self._run_by_key(params, cursor)
 
         runs, window_incomplete = self._load_runs()
         as_of = _now_iso()
@@ -155,6 +180,106 @@ class FilesystemQueryBackend:
             raise RuntimeError(f"query conformance failed for {view}: {errors[0]}")
         return envelope
 
+    def _run_by_key(
+        self, params: dict[str, object], cursor: Handle | None
+    ) -> dict[str, Any] | RequestOutcome:
+        """v0.3.1 Feature 1: the runs that used one idempotency key, newest first, from the key's
+        file and each run's state.json (and, once terminal, its run view). Reads without the
+        admission lock and starts, joins and changes nothing; an unknown key is an empty page, and
+        an entry whose run directory is missing is omitted. `truncated` is the page's own: the
+        recency window is not consulted."""
+        key = params.get("idempotency_key")
+        if not isinstance(key, str) or not key:
+            return RequestOutcome(
+                code=codes.PROJECTION_INVALID_ARGS,
+                message="idempotency_key required for view run_by_key",
+                retryable=False,
+                origin="projection",
+            )
+        joining = idempotency.lookup(self.home, key)
+        rows: list[dict[str, object]] = []
+        for entry in idempotency.read_entries(self.home, key):
+            run_dir = find_run_dir(self.home, entry.run_id)
+            if run_dir is None:
+                continue
+            row = self._run_by_key_row(key, entry, run_dir, joining)
+            if row is not None:
+                rows.append(row)
+        token = hashlib.sha256(
+            ",".join(str(row["run_id"]) for row in rows).encode("utf-8")
+        ).hexdigest()[:16]
+        offset = 0
+        if cursor is not None:
+            decoded = view_defs.decode_cursor(cursor)
+            if decoded is None or decoded[0] != "run_by_key" or decoded[2] != token:
+                return RequestOutcome(
+                    code=codes.CURSOR_EXPIRED,
+                    message="invalid or stale cursor",
+                    retryable=True,
+                    origin="projection",
+                )
+            offset = decoded[1]
+        items, next_cursor, page_truncated = view_defs.paginate_rows(
+            rows, view="run_by_key", offset=offset, token=token
+        )
+        envelope = view_defs.bounded_envelope(
+            view="run_by_key",
+            items=items,
+            next_cursor=next_cursor,
+            truncated=page_truncated,
+            as_of=_now_iso(),
+        )
+        errors = validate_envelope("run_by_key", envelope)
+        if errors:
+            raise RuntimeError(f"query conformance failed for run_by_key: {errors[0]}")
+        return envelope
+
+    def _run_by_key_row(
+        self,
+        key: str,
+        entry: idempotency.KeyEntry,
+        run_dir: Path,
+        joining: idempotency.KeyEntry | None,
+    ) -> dict[str, object] | None:
+        st = trusted_state(run_dir)
+        if st is None:  # no state.json (an old run), or a dead owner's: the ledger says
+            st = state_record(evidence_dir(run_dir), RunLedger.open(ledger_path(run_dir)).records)
+        if st is None:
+            return None
+        state = str(st["state"])
+        terminal = state in TERMINAL_KINDS
+        run_view = self._run_view(entry.run_id) if terminal and self._run_view else None
+        view = run_view if isinstance(run_view, RunView) else None
+        outcome = view.outcome if view is not None else None
+        error = view.error if view is not None else None
+        artifact_count = view.artifact_count if view is not None else st.get("artifact_count")
+        count = artifact_count if isinstance(artifact_count, int) else 0
+        ended_at = st.get("ended_at") or st.get("terminal_at")
+        return {
+            "idempotency_key": key,
+            "run_id": entry.run_id,
+            "plugin": entry.plugin,
+            "retry_of": entry.retry_of,
+            "state": state,
+            "started_at": st.get("started_at"),
+            "ended_at": ended_at if terminal else st.get("ended_at"),
+            "deadline_s": st.get("deadline_s"),
+            "outcome_class": outcome.get("class") if isinstance(outcome, dict) else None,
+            "error_code": error.get("code") if isinstance(error, dict) else None,
+            # a re-send joins the newest run while its key is live, except an interrupted run of a
+            # repeatable plugin, which the re-send replaces
+            "joinable": (
+                joining is not None
+                and joining.run_id == entry.run_id
+                and not (entry.repeatable and state == "interrupted")
+            ),
+            "key_expires_at": entry.key_expires_at,
+            "summary": view.summary if view is not None else None,
+            "summary_truncated": view.truncated if view is not None else False,
+            "artifact_count": count,
+            "artifacts_available": _artifacts_available(run_dir) if count else 0,
+        }
+
     def _load_runs(self) -> tuple[list[RunRecord], bool]:
         """Load the recency window; the flag is True when a run was left out of it.
 
@@ -175,18 +300,24 @@ class FilesystemQueryBackend:
         deadline = None if budget_ms is None else time.monotonic() + budget_ms / 1000.0
 
         for month_dir in sorted(runs_root.iterdir(), reverse=True):
-            if not month_dir.is_dir():
+            if not month_dir.is_dir() or month_dir.name.startswith("."):
                 continue
-            for run_dir in sorted(month_dir.iterdir(), reverse=True):
+            for run_dir in sorted(
+                month_dir.iterdir(), key=lambda p: run_id_recency(p.name), reverse=True
+            ):
                 if deadline is not None and time.monotonic() > deadline:
                     scan_truncated = True
                     break
-                if not run_dir.is_dir():
+                # an admission in flight (`.adm-<run_id>`, v0.3.1) is not a run
+                if not run_dir.is_dir() or run_dir.name.startswith("."):
                     continue
                 path = ledger_path(run_dir)
                 if not path.exists():
                     continue
-                size = path.stat().st_size
+                # v0.3.1 Problem C: a run is listed from its small state.json; an old run without
+                # one is read from its ledger, as before
+                listed = state_path(run_dir)
+                size = (listed if listed.exists() else path).stat().st_size
                 scan_bytes += size
                 if scan_bytes > self.limits.max_scan_bytes:
                     scan_truncated = True
@@ -200,7 +331,7 @@ class FilesystemQueryBackend:
             if scan_truncated:
                 break
 
-        candidates.sort(key=lambda item: item[0], reverse=True)
+        candidates.sort(key=lambda item: run_id_recency(item[0]), reverse=True)
         token = hashlib.sha256(
             ",".join(run_id for run_id, _ in candidates).encode("utf-8")
         ).hexdigest()[:16]
@@ -301,17 +432,20 @@ def _load_run_record(run_id: str, run_dir: Path) -> RunRecord | None:
     path = ledger_path(run_dir)
     if not path.exists():
         return None
-    ledger = RunLedger.open(path)
-    created = ledger.last_kind("created")
-    if created is None:
-        return None
-
     spec_path = evidence_dir(run_dir) / "spec.json"
     spec: dict[str, object] = {}
     if spec_path.exists():
         loaded = json.loads(spec_path.read_text(encoding="utf-8"))
         if isinstance(loaded, dict):
             spec = loaded
+    state_file = read_state(run_dir)
+    if state_file is not None:
+        return _record_from_state(run_id, run_dir, state_file, spec)
+
+    ledger = RunLedger.open(path)
+    created = ledger.last_kind("created")
+    if created is None:
+        return None
 
     started_at = str(created.get("at", ""))
     ended = ledger.last_kind("execution_ended")
@@ -341,6 +475,35 @@ def _load_run_record(run_id: str, run_dir: Path) -> RunRecord | None:
         finalized=ledger.has_kind("evidence_finalized"),
         snapshot_id=str(spec.get("snapshot_id", "")),
         spec_hash=str(created.get("spec_hash", "")),
+        args_hash=str(spec.get("args_hash", "")),
+        source_sha256=str(spec.get("source_sha256", "")),
+        resolved_artifacts=resolved,
+    )
+
+
+def _record_from_state(
+    run_id: str, run_dir: Path, st: dict[str, Any], spec: dict[str, object]
+) -> RunRecord:
+    """A run's record from its state.json (v0.3.1 Problem C), with what the ledger read gives."""
+    state = str(st["state"])
+    ended_at = st.get("ended_at")
+    terminal_at = st.get("terminal_at")
+    resolved_raw = spec.get("resolved_artifacts", {})
+    resolved: dict[str, str] = {}
+    if isinstance(resolved_raw, dict):
+        resolved = {str(k): str(v) for k, v in resolved_raw.items()}
+    return RunRecord(
+        run_id=run_id,
+        run_dir=run_dir,
+        plugin=str(st.get("plugin") or spec.get("plugin", "")),
+        version=str(st.get("version") or spec.get("version", "")),
+        state=state,
+        started_at=str(st.get("created_at") or ""),
+        ended_at=str(ended_at) if ended_at is not None else None,
+        failed_at=str(terminal_at) if state in _FAILURE_STATES and terminal_at else None,
+        finalized=st.get("finalized") is True,
+        snapshot_id=str(spec.get("snapshot_id", "")),
+        spec_hash=str(st.get("spec_hash") or ""),
         args_hash=str(spec.get("args_hash", "")),
         source_sha256=str(spec.get("source_sha256", "")),
         resolved_artifacts=resolved,
@@ -520,6 +683,17 @@ def _run_artifact_rows(record: RunRecord, home: Path) -> list[dict[str, object]]
             }
         )
     return rows
+
+
+def _artifacts_available(run_dir: Path) -> int:
+    """How many of a run's recorded artifacts GC has not collected."""
+    ledger = RunLedger.open(ledger_path(run_dir))
+    return sum(
+        1
+        for item in ledger.records
+        if item.get("kind") == "artifact_available"
+        and (evidence_dir(run_dir) / "artifacts" / str(item.get("artifact_id", ""))).exists()
+    )
 
 
 def _now_iso() -> str:

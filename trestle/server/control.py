@@ -20,7 +20,9 @@ from trestle.common.types import (
 )
 from trestle.server.admission import Admission
 from trestle.server.conductor import Conductor
-from trestle.server.project import Project
+from trestle.server.home import read_marker
+from trestle.server.pool import epoch
+from trestle.server.project import Project, _Handles
 from trestle.server.scheduler import Scheduler
 
 COMPLETIONS = frozenset({"bounded", "terminal"})
@@ -79,6 +81,12 @@ class ControlSurface:
         self.lane = AdmissionLane(self.admission)
         self.scheduler.on_dispatch = self._start
         self.scheduler.on_expire = self.conductor.finalize_unspawned
+        # v0.3.1: a cancel flag another server wrote for a run waiting here, seen on the 250 ms pass
+        self.scheduler.on_cancel = self.conductor.cancel_flag_written
+        # Feature 3: the same pass decides a held run: release it, or end it cancelled (unmet)
+        self.scheduler.on_held_check = self.conductor.check_held
+        self.scheduler.on_release = self.conductor.release_held
+        self.scheduler.on_unmet = self.conductor.finalize_unmet
 
     def submit_admit(self, request: AdmitRequest) -> Future[AdmitResult]:
         """MC-30: refresh the registry, then admit, on the admission thread."""
@@ -91,10 +99,25 @@ class ControlSurface:
     def _drive_background(self, order: WorkOrder) -> None:
         """Hand an admitted run to the dispatcher: it starts now if a slot is free, else it waits
         in the FIFO with its admitted deadline still running (MC-30, B2-C5)."""
+        # the run's environment key, arrival and deadline, as admission recorded them in its live
+        # marker (the pool orders a key's waiters across servers by arrival, rule 6)
+        marker = read_marker(self.admission.home, order.run_id) or {}
+        key = marker.get("lease_key")
+        deadline = marker.get("deadline")
+        if marker.get("state") == "held":
+            # Feature 3: a run sent with `after` waits in the FIFO as an entry that cannot start
+            self.scheduler.hold(
+                order,
+                key=key if isinstance(key, str) else None,
+                arrival=epoch(marker.get("arrival")) if "arrival" in marker else None,
+            )
+            return
         self.scheduler.enqueue(
             order,
             self.conductor.admitted_deadline(order),
-            key=self.admission.holders.key_of(order.run_id),
+            key=key if isinstance(key, str) else None,
+            arrival=epoch(marker.get("arrival")) if "arrival" in marker else None,
+            deadline_epoch=float(deadline) if isinstance(deadline, int | float) else None,
         )
 
     def _start(self, order: WorkOrder) -> None:
@@ -109,6 +132,9 @@ class ControlSurface:
         idempotency_key: str | None = None,
         completion: str = "bounded",
         caller_session: str | None = None,
+        deadline_s: float | None = None,
+        idempotency_ttl_s: float | None = None,
+        after: dict[str, Any] | None = None,
     ) -> RequestOutcome | RunView:
         refused = _refuse_completion(completion, wait_ms)
         if refused is not None:
@@ -120,6 +146,9 @@ class ControlSurface:
                 version=version,
                 idempotency_key=idempotency_key,
                 caller_session=caller_session,
+                deadline_s=deadline_s,
+                idempotency_ttl_s=idempotency_ttl_s,
+                after=after,
             )
         ).result()
         if result.tag == "refused":
@@ -168,6 +197,9 @@ class ControlSurface:
         idempotency_key: str | None = None,
         completion: str = "bounded",
         caller_session: str | None = None,
+        deadline_s: float | None = None,
+        idempotency_ttl_s: float | None = None,
+        after: dict[str, Any] | None = None,
     ) -> RequestOutcome | RunView:
         refused = _refuse_completion(completion, wait_ms)
         if refused is not None:
@@ -181,6 +213,9 @@ class ControlSurface:
                 version=version,
                 idempotency_key=idempotency_key,
                 caller_session=caller_session,
+                deadline_s=deadline_s,
+                idempotency_ttl_s=idempotency_ttl_s,
+                after=after,
             )
         )
         try:
@@ -245,29 +280,47 @@ class ControlSurface:
 
     def await_runs(
         self,
-        run_ids: list[str],
+        run_ids: list[str] | None = None,
         mode: str = "all",
         timeout_ms: int = 2000,
         caller_session: str | None = None,
+        keys: list[str] | None = None,
     ) -> list[RunView] | RequestOutcome:
-        if mode not in {"all", "any", "first_failure"}:
-            return RequestOutcome(
-                code=codes.PROJECTION_INVALID_ARGS,
-                message=f"invalid join mode: {mode}",
-                retryable=False,
-                origin="projection",
-            )
+        resolved = self._handles(run_ids, keys, mode)
+        if isinstance(resolved, RequestOutcome):
+            return resolved
         return self.project.await_many(
-            run_ids, cast(JoinMode, mode), timeout_ms, caller_session=caller_session
+            resolved.handles,
+            cast(JoinMode, mode),
+            timeout_ms,
+            caller_session=caller_session,
+            key_labels=resolved.labels,
         )
 
     async def await_runs_async(
         self,
-        run_ids: list[str],
+        run_ids: list[str] | None = None,
         mode: str = "all",
         timeout_ms: int = 2000,
         caller_session: str | None = None,
+        keys: list[str] | None = None,
     ) -> list[RunView] | RequestOutcome:
+        resolved = await asyncio.to_thread(self._handles, run_ids, keys, mode)
+        if isinstance(resolved, RequestOutcome):
+            return resolved
+        return await self.project.await_many_async(
+            resolved.handles,
+            cast(JoinMode, mode),
+            timeout_ms,
+            caller_session=caller_session,
+            key_labels=resolved.labels,
+        )
+
+    def _handles(
+        self, run_ids: list[str] | None, keys: list[str] | None, mode: str
+    ) -> _Handles | RequestOutcome:
+        """`await_runs`' handles: the join mode checked, then the run ids and each key's newest
+        run (Feature 1), run ids first, each in the order given."""
         if mode not in {"all", "any", "first_failure"}:
             return RequestOutcome(
                 code=codes.PROJECTION_INVALID_ARGS,
@@ -275,9 +328,7 @@ class ControlSurface:
                 retryable=False,
                 origin="projection",
             )
-        return await self.project.await_many_async(
-            run_ids, cast(JoinMode, mode), timeout_ms, caller_session=caller_session
-        )
+        return self.project.resolve_handles(run_ids, keys)
 
     def cancel(self, run_id: str, caller_session: str | None = None) -> RequestOutcome:
         return self.project.cancel(run_id, caller_session=caller_session)

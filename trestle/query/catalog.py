@@ -68,6 +68,14 @@ _VIEW_WHEN: dict[str, dict[str, str]] = {
         "use_when": "Producer and referrer runs for one artifact_id.",
         "params": "artifact_id",
     },
+    "run_by_key": {
+        "use_when": (
+            "The runs that used one idempotency key, newest first, each with its state, outcome "
+            "and summary; the first row is the run a re-send would join (joinable). Empty for an "
+            "unknown key. Not limited to the recent runs."
+        ),
+        "params": "idempotency_key",
+    },
 }
 
 _FETCH_TARGETS: dict[str, str] = {

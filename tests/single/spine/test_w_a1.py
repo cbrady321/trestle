@@ -329,7 +329,7 @@ def test_composite_roots_are_admitted(tmp_path: Path) -> None:
             )
             assert "code" not in admitted and admitted["run_id"].startswith("r_"), admitted
             assert admitted["state"] in ("succeeded", "failed", "cancelled", "timed_out"), admitted
-            assert len(list((host.home / "runs").glob("*/*"))) == count  # one directory per run
+            assert len(list((host.home / "runs").glob("*/r_*"))) == count  # one directory per run
 
 
 def test_plan_vertex_count_is_one(tmp_path: Path) -> None:

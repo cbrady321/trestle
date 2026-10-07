@@ -22,10 +22,11 @@ from typing import Any
 import pytest
 
 from tests.proof import ancestry, harness, records, tolerances
+from trestle.common.fsutil import read_ndjson
 from trestle.common.types import AdmitRequest, RequestOutcome, WorkOrder
 from trestle.server.ledger import RunLedger, ledger_path, run_dir_for
 from trestle.server.main import Kernel
-from trestle.server.procident import Attribution, Identity, ProcRow
+from trestle.server.procident import SIDECAR_FILE, Attribution, Identity, ProcRow
 
 START = 1_000  # a process start token in the planted tables below
 
@@ -94,7 +95,17 @@ def kinds(run_dir: Path) -> list[str]:
 
 
 def rows_of(run_dir: Path, kind: str) -> list[dict[str, Any]]:
-    return [row for row in rows(run_dir) if row.get("kind") == kind]
+    """The ledger's rows of `kind`; for `process_identity`, the sidecar's too (v0.3.1 Problem C:
+    the ledger keeps only the leader's row, every identity is in `evidence/processes.ndjson`),
+    each identity once."""
+    found = [row for row in rows(run_dir) if row.get("kind") == kind]
+    if kind == "process_identity":
+        seen = {(r.get("pid"), r.get("start")) for r in found}
+        for row in read_ndjson(run_dir / "evidence" / SIDECAR_FILE):
+            if (row.get("pid"), row.get("start")) not in seen:
+                seen.add((row.get("pid"), row.get("start")))
+                found.append(row)
+    return found
 
 
 def wait_ready(run_dir: Path) -> None:
@@ -216,9 +227,7 @@ class SignalRecorder:
             for p in snap
             if (pid is not None and p.pid == pid) or (group is not None and p.pgid == group)
         }
-        rowed = {
-            int(row["pid"]) for row in rows(self.run_dir) if row.get("kind") == "process_identity"
-        }
+        rowed = {int(row["pid"]) for row in rows_of(self.run_dir, "process_identity")}
         with self._lock:
             self.sent.append(
                 Signal(signum, frozenset(reached & mine), frozenset(rowed), time.time())

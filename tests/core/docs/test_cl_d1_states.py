@@ -102,6 +102,16 @@ def worker_exit_state() -> str:
         return records.node_record(run_dir).terminal or "none"
 
 
+def held_state() -> str:
+    """A run admitted with `after` (Feature 3): `created` then `held`, read back through the
+    ledger's projection."""
+    with tempfile.TemporaryDirectory(prefix="cl-d1-held-") as tmp:
+        ledger = RunLedger.open(ledger_path(Path(tmp) / "r_held"))
+        ledger.append("created", run_id="r_held")
+        ledger.append("held", run_id="r_held")
+        return ledger.projected_state()
+
+
 def violations(
     states: dict[str, tuple[str, str]],
     produced_by_fixtures: set[str],
@@ -128,7 +138,7 @@ def _vocabulary_problems() -> list[str]:
     produced_by_source: set[str] = set()
     for sub in SOURCE_DIRS:
         produced_by_source |= source_producers(REPO_ROOT / "trestle" / sub)
-    produced_by_fixtures = fixture_states() | {worker_exit_state()}
+    produced_by_fixtures = fixture_states() | {worker_exit_state(), held_state()}
     return violations(states, produced_by_fixtures, produced_by_source)
 
 
@@ -144,6 +154,7 @@ def test_each_documented_state_has_verifier_or_reserved() -> None:
     states = documented_states(AGENTS_DOC.read_text(encoding="utf-8"))
     expected = {
         "queued",
+        "held",
         "running",
         "succeeded",
         "failed",
@@ -158,7 +169,7 @@ def test_each_documented_state_has_verifier_or_reserved() -> None:
     assert set(states) >= TERMINAL_KINDS  # TERMINAL_KINDS itself is untouched (BFD-09 Leave)
     assert console_states(CONSOLE_DOC.read_text(encoding="utf-8")) == expected
 
-    produced = fixture_states() | {worker_exit_state()}
+    produced = fixture_states() | {worker_exit_state(), held_state()}
     assert produced >= expected - {"crashed"}, expected - {"crashed"} - produced
     assert "crashed" not in produced
     assert _vocabulary_problems() == []
@@ -166,7 +177,7 @@ def test_each_documented_state_has_verifier_or_reserved() -> None:
 
 def test_planted_undocumented_producer_fails(tmp_path: Path) -> None:
     states = documented_states(AGENTS_DOC.read_text(encoding="utf-8"))
-    produced = fixture_states()
+    produced = fixture_states() | {held_state()}
 
     planted = tmp_path / "planted.py"
     planted.write_text('classification = "vanished"\n', encoding="utf-8")
@@ -183,7 +194,7 @@ def test_planted_undocumented_producer_fails(tmp_path: Path) -> None:
 def test_planted_documentation_gaps_fail() -> None:
     text = AGENTS_DOC.read_text(encoding="utf-8")
     states = documented_states(text)
-    produced = fixture_states() | {"worker_exit"}
+    produced = fixture_states() | {"worker_exit", held_state()}
 
     missing = {k: v for k, v in states.items() if k != "interrupted"}
     assert violations(missing, produced, set()) == ["terminal kind 'interrupted' is not documented"]

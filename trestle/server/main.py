@@ -7,22 +7,29 @@ import os
 import signal
 import socket
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from trestle.common.bind import LOOPBACK_HOST
+from trestle.common.ids import generate_server_id
 from trestle.common.types import PublishView, RequestOutcome, RunView
 from trestle.query.catalog import VIEW_CATALOG_URI, view_catalog
-from trestle.server import lease
 from trestle.server.admission import Admission
 from trestle.server.conductor import Conductor
 from trestle.server.config import ProfileConfig, load_config
 from trestle.server.control import ControlSurface
+from trestle.server.home import (
+    Ownership,
+    ServerLock,
+    check_home,
+    raise_nofile_limit,
+)
 from trestle.server.mcp_schema import FetchWindowArg, QueryViewArg
 from trestle.server.plugin_paths import resolve_plugin_dirs
+from trestle.server.pool import Pool
 from trestle.server.project import Project
-from trestle.server.recovery import recover_on_startup
+from trestle.server.reaper import Reaper
 from trestle.server.registry import Registry
 from trestle.server.runs import RunRegistry
 from trestle.server.scheduler import Scheduler
@@ -38,6 +45,33 @@ class Kernel:
     control: ControlSurface
     registry: Registry
     profile: ProfileConfig = ProfileConfig()
+    # v0.3.1 Problem A: this process's server identity (`created.owner`), its owner locks, its
+    # reaper and, once it serves, its server lock file
+    ownership: Ownership | None = None
+    reaper: Reaper | None = None
+    server_lock: ServerLock | None = field(default=None, repr=False)
+
+    @property
+    def server_id(self) -> str:
+        assert self.ownership is not None
+        return self.ownership.server_id
+
+    def start_service(self, *, port: int | None = None) -> None:
+        """What a serving process adds to its kernel (`trestle serve`, `trestle ops serve`): the
+        soft RLIMIT_NOFILE raised to the hard limit, its lock file `home/servers/<id>.lock`
+        (naming the snapshots it serves, kept current on every registry change) and the reaper
+        thread, every 10 s, woken early by a waiter whose run's owner is gone."""
+        if self.server_lock is not None:
+            return
+        raise_nofile_limit()
+        lock = ServerLock.acquire(self.home, self.server_id, port=port)
+        self.server_lock = lock
+        lock.update(snap.snapshot_id for snap in self.registry.snapshots.values())
+        self.registry.on_change = lambda snaps: lock.update(s.snapshot_id for s in snaps.values())
+        if self.reaper is not None:
+            self.control.project.on_owner_gone = self.reaper.wake
+            self.reaper.start()
+            self.reaper.wake()  # a first pass now: this server's seen_at (rule 5's reserve)
 
 
 def create_kernel(
@@ -47,14 +81,18 @@ def create_kernel(
     cli_plugin_dirs: list[Path] | None = None,
     skip_recovery: bool = False,
 ) -> Kernel:
+    """Build a kernel on `home`. Before anything else the home must be on a local file system
+    and have format 2 (a fresh home is given it; a v0.3.0 home is refused until `trestle init
+    --upgrade`). Unless `skip_recovery`, the start runs one reaper pass: only runs whose owner is
+    dead are finalized, never a live server's (startup recovery of every run is gone)."""
     trestle_home = home or default_home()
-    if skip_recovery and trestle_home.exists() and (trestle_home / "service_epoch").exists():
-        service_epoch = (trestle_home / "service_epoch").read_text(encoding="utf-8").strip()
-    else:
-        service_epoch = recover_on_startup(trestle_home)
-        from trestle.server.idempotency import rebuild_from_ledgers
-
-        rebuild_from_ledgers(trestle_home, ttl_s=load_config(trestle_home).idempotency_ttl_s)
+    check_home(trestle_home)
+    ownership = Ownership(home=trestle_home, server_id=generate_server_id())
+    reaper = Reaper(trestle_home, server_id=ownership.server_id)
+    if not skip_recovery:
+        # no key rebuild at start (Problem B): home/keys/ is repaired only by
+        # `trestle doctor --rebuild-keys` and `trestle init --upgrade`
+        reaper.pass_once(scan_debris=True)
 
     if plugin_dirs is not None:
         dirs = plugin_dirs
@@ -63,21 +101,32 @@ def create_kernel(
     registry = Registry(home=trestle_home, plugin_dirs=dirs)
     registry.refresh()
     config = load_config(trestle_home)
-    holders = lease.rebuild_holders(trestle_home)
+    # v0.3.1 rules 4 and 5: this server's FIFO, bounded per server (read at start), and the home's
+    # one slot pool (home/sched.json), whose size is read from config.toml at each grant
+    pool = Pool(home=trestle_home, server_id=ownership.server_id)
     scheduler = Scheduler(
-        max_running=config.max_running_runs, queue_depth=config.queue_depth, holders=holders
+        max_running=config.max_running_runs,
+        queue_depth=config.queue_depth,
+        max_held=config.max_held_runs,
+        pool=pool,
     )
     run_registry = RunRegistry()
     admission = Admission(
         home=trestle_home,
         registry=registry,
         scheduler=scheduler,
-        service_epoch=service_epoch,
+        ownership=ownership,
         profile=config.profile,
-        # WR-OWN-8: the lease is defined over the ledgers, so the holder index is rebuilt from
-        # them after recovery (there is no lease store file)
-        holders=holders,
     )
+
+    def complete(run_id: str) -> None:
+        # the owner removes a finished run's marker, frees its slot (its home/sched.json entry)
+        # and closes its owner lock, in one locked step (v0.3.1 rules 2 and 7)
+        ownership.release(run_id, locked=pool.settle)
+
+    scheduler.on_complete = complete
+    # each reaper pass (every 10 s) writes this server's seen_at, the reserve's liveness (rule 5)
+    reaper.on_pass = scheduler.seen
     conductor = Conductor(
         home=trestle_home,
         scheduler=scheduler,
@@ -95,7 +144,14 @@ def create_kernel(
         conductor=conductor,
         scheduler=scheduler,
     )
-    return Kernel(home=trestle_home, control=control, registry=registry, profile=config.profile)
+    return Kernel(
+        home=trestle_home,
+        control=control,
+        registry=registry,
+        profile=config.profile,
+        ownership=ownership,
+        reaper=reaper,
+    )
 
 
 def _wire_result(value: RequestOutcome | RunView | PublishView | dict[str, Any]) -> dict[str, Any]:
@@ -169,6 +225,7 @@ def run_server(
     from fastmcp import FastMCP
 
     kernel = create_kernel(home=home, cli_plugin_dirs=cli_plugin_dirs)
+    kernel.start_service(port=port if transport == "streamable-http" else None)
     mcp = FastMCP("trestle")
     attach_registry_version_mirror(mcp, kernel)
 
@@ -180,6 +237,9 @@ def run_server(
         wait_ms: int = 2000,
         idempotency_key: str | None = None,
         completion: str = "bounded",
+        deadline_s: float | None = None,
+        idempotency_ttl_s: float | None = None,
+        after: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Start a plugin run and optionally wait for a status frame."""
         return _wire_result(
@@ -191,6 +251,9 @@ def run_server(
                 idempotency_key=idempotency_key,
                 completion=completion,
                 caller_session=_caller_session(),
+                deadline_s=deadline_s,
+                idempotency_ttl_s=idempotency_ttl_s,
+                after=after,
             )
         )
 
@@ -199,10 +262,11 @@ def run_server(
         run_ids: list[str],
         mode: str = "all",
         timeout_ms: int = 2000,
+        keys: list[str] | None = None,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Wait for existing runs to reach a terminal state."""
         result = await kernel.control.await_runs_async(
-            run_ids, mode=mode, timeout_ms=timeout_ms, caller_session=_caller_session()
+            run_ids, mode=mode, timeout_ms=timeout_ms, caller_session=_caller_session(), keys=keys
         )
         if isinstance(result, RequestOutcome):
             return result.to_dict()
@@ -280,6 +344,8 @@ def run_server(
         return view_catalog()
 
     def _handle_sigterm(_signum: int, _frame: object | None) -> None:
+        # D4: a draining server refuses new runs and keeps starting and finishing what it
+        # admitted; it never exits on SIGTERM (the operator stops it once its live runs are 0)
         kernel.control.scheduler.draining = True
 
     signal.signal(signal.SIGTERM, _handle_sigterm)

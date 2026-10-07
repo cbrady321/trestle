@@ -2,8 +2,10 @@
 
 The key is the canonical JSON of the request argument `declared.env_arg` names (opaque to the
 host), recorded in the `created` row and in the plan's `lease_set`; a run holds the lease from its
-`created` row until a terminal row or its admitted deadline; there is no lease store file; a
-restart rebuilds the same holder set from the ledgers (WR-OWN-8, L.SL-8.2 queues on it)."""
+`created` row until its completion or its admitted deadline; there is no lease store file. v0.3.1
+(rule 6): the key's queued and running runs are counted in the home's pool (`home/sched.json`),
+which a restart reads back and which is rebuilt from the live markers when missing (WR-OWN-8,
+L.SL-8.2 queues on it)."""
 
 from __future__ import annotations
 
@@ -30,10 +32,12 @@ from trestle.common.types import (
     WorkOrder,
 )
 from trestle.server import lease, procident
+from trestle.server import pool as pools
+from trestle.server.home import read_marker
 from trestle.server.ledger import RunLedger, ledger_path
 from trestle.server.main import Kernel, create_kernel
 from trestle.server.procident import Attribution, GroupStop, Identity
-from trestle.server.recovery import recover_on_startup
+from trestle.server.reaper import reap_home
 from trestle.server.scheduler import Scheduler
 
 PLUGINS = Path(__file__).resolve().parent / "plugins"
@@ -95,6 +99,16 @@ def _end(kernel: Kernel, run_id: str, kind: str = "failed") -> None:
     ledger.append(kind, run_id=run_id)
 
 
+def _key_runs(kernel: Kernel, key: str | None = None, **kw: Any) -> list[tuple[str, str]]:
+    """The runs the pool counts for an environment key (what the busy pre-check reads)."""
+    return pools.key_runs(pools.load_sched(kernel.home), key, **kw)
+
+
+def _complete(kernel: Kernel, run_id: str) -> None:
+    """The owner is done with the run: its slot and key leave the pool."""
+    kernel.control.scheduler.complete(run_id)
+
+
 def test_key_from_env_arg_opaque(tmp_path: Path) -> None:
     kernel = _kernel(tmp_path)
     plain = _admit(kernel, "envplain", {"env": "prod", "note": "a"})
@@ -117,7 +131,7 @@ def test_key_from_env_arg_opaque(tmp_path: Path) -> None:
     echo = _admit(kernel, "echo", {"message": "hi"})
     assert "lease_key" not in _created(kernel, echo)
     assert _plan(kernel, echo).lease_set == ()
-    assert echo not in {h.run_id for h in kernel.control.admission.holders.snapshot()}
+    assert echo not in {run_id for run_id, _ in _key_runs(kernel)}
 
     # an environment plugin whose request names no environment holds nothing
     unnamed = _admit(kernel, "envplain", {})
@@ -128,36 +142,34 @@ def test_key_from_env_arg_opaque(tmp_path: Path) -> None:
     assert not [p for p in kernel.home.rglob("*") if "lease" in p.name.lower()]
 
 
-def test_lease_definition_over_ledger(tmp_path: Path) -> None:
+def test_lease_counted_in_the_pool(tmp_path: Path) -> None:
     kernel = _kernel(tmp_path)
-    holders = kernel.control.admission.holders
     run_id = _admit(kernel, "envplain", {"env": "prod"})
     run_dir = support.run_dir_of(kernel, run_id)
 
-    held = lease.holder_of(run_dir)
-    assert held is not None and held.run_id == run_id and held.key == '"prod"'
-    assert holders.held('"prod"') == (held,)
-    assert holders.held('"staging"') == ()
+    assert _key_runs(kernel, '"prod"') == [(run_id, '"prod"')]
+    assert _key_runs(kernel, '"staging"') == []
+    deadline = lease.deadline_epoch(run_dir)
+    assert deadline is not None
+    (entry,) = pools.load_sched(kernel.home)["waiting_keys"]['"prod"']
+    assert abs(entry["deadline"] - deadline) < 1
 
     # the deadline ends the lease (wall clock, the admitted deadline)
-    assert lease.holder_of(run_dir, now=held.deadline_epoch - 1) == held
-    assert lease.holder_of(run_dir, now=held.deadline_epoch) is None
-    assert holders.held('"prod"', now=held.deadline_epoch + 1) == ()
+    assert _key_runs(kernel, '"prod"', now=deadline - 1) == [(run_id, '"prod"')]
+    assert _key_runs(kernel, '"prod"', now=entry["deadline"]) == []
+    state = pools.load_sched(kernel.home)
+    assert pools.busy_until(state, '"prod"', now=entry["deadline"]) is None
 
-    # a terminal row ends it, before anything else is recorded (OQ-34 fixes the row, not the sweep)
+    # the run's completion ends it: its marker and its pool entry go in one locked step
     second = _admit(kernel, "envplain", {"env": "prod"})
-    assert {h.run_id for h in holders.held('"prod"')} == {run_id, second}
+    assert [r for r, _ in _key_runs(kernel, '"prod"')] == [run_id, second]
     _end(kernel, run_id, "timed_out")
-    assert lease.holder_of(run_dir) is None
-    assert [h.run_id for h in holders.held('"prod"')] == [second]
-
-    # no created row, no lease
-    empty = tmp_path / "empty-run"
-    (empty / "evidence").mkdir(parents=True)
-    assert lease.holder_of(empty) is None
+    _complete(kernel, run_id)
+    assert [r for r, _ in _key_runs(kernel, '"prod"')] == [second]
+    assert read_marker(kernel.home, run_id) is None
 
 
-def test_lease_rebuilt_after_restart(tmp_path: Path) -> None:
+def test_lease_survives_restart_and_rebuild(tmp_path: Path) -> None:
     kernel = _kernel(tmp_path)
     first = _admit(kernel, "envplain", {"env": "prod"})
     second = _admit(kernel, "envwf", {"name": "wfenv"})
@@ -165,22 +177,27 @@ def test_lease_rebuilt_after_restart(tmp_path: Path) -> None:
     _admit(kernel, "echo", {"message": "hi"})
     ended = _admit(kernel, "envplain", {"env": "prod", "note": "ended"})
     _end(kernel, ended, "cancelled")
-    before = kernel.control.admission.holders.snapshot()
-    assert {h.run_id for h in before} == {first, second, third}
+    _complete(kernel, ended)
+    before = _key_runs(kernel)
+    assert {run_id for run_id, _ in before} == {first, second, third}
+    assert [r for r, _ in _key_runs(kernel, '"prod"')] == [first]
 
-    # a restart without recovery: the ledgers alone give back the identical holder set, in order
+    # a restart without recovery reads the same pool; with home/sched.json gone (or unreadable)
+    # it is rebuilt from the live markers, identical
     restarted = create_kernel(
         home=kernel.home, plugin_dirs=[tmp_path / "plugin-src"], skip_recovery=True
     )
-    after = restarted.control.admission.holders
-    assert after.snapshot() == before
-    assert [h.run_id for h in after.held()] == sorted([first, second, third])
-    assert [h.run_id for h in after.held('"prod"')] == [first]
-    assert lease.rebuild_holders(kernel.home).snapshot() == before
+    assert _key_runs(restarted) == before
+    pools.sched_path(kernel.home).unlink()
+    assert sorted(_key_runs(restarted)) == sorted(before)
+    pools.sched_path(kernel.home).write_text("{not json", encoding="utf-8")
+    assert sorted(_key_runs(restarted)) == sorted(before)
 
-    # a restart with recovery ends every unfinished run at a terminal row: nothing is held
+    # the first server dies (its owner locks go with it): a restart's reaper pass ends every
+    # unfinished run at a terminal row and takes it out of the pool, so nothing is held
+    kernel.ownership.drop_all()
     recovered = create_kernel(home=kernel.home, plugin_dirs=[tmp_path / "plugin-src"])
-    assert recovered.control.admission.holders.snapshot() == frozenset()
+    assert _key_runs(recovered) == []
 
 
 # -- L.SL-8.2: per-key capacity 1 behind the MC-30 queue, the busy refusal, the lease's end ------
@@ -306,7 +323,7 @@ def test_refused_busy_when_holder_deadline_leaves_too_little(tmp_path: Path) -> 
     runs = kernel.home / "runs"
 
     def run_dirs() -> int:
-        return len(list(runs.glob("*/*"))) if runs.exists() else 0
+        return len(list(runs.glob("*/r_*"))) if runs.exists() else 0
 
     # a holder admitted with the default deadline; a request whose deadline ends before the
     # holder's can never run after it: refused busy, retryable, with no run id and no run dir
@@ -406,7 +423,8 @@ def _restarted(tmp_path: Path) -> Iterator[_Ended]:
     ledger.append("process_identity", run_id=holder.run_id, **recorded.fields())
     host = FakeHost()
     host.add(104, 1, 100, start=spine.START + 600)  # in the group, but started after the record
-    recover_on_startup(kernel.home, source=host, signaller=host)
+    kernel.ownership.drop_all()  # the server died: the kernel dropped its owner locks
+    reap_home(kernel.home, source=host, signaller=host)
     assert host.sent == []
     restarted = create_kernel(home=kernel.home, plugin_dirs=[PLUGINS], skip_recovery=True)
     yield _Ended(restarted, holder_dir, spine.run_dir_of(kernel, waiter.run_id))
@@ -429,12 +447,15 @@ def test_lease_ends_at_terminal_row_even_unconfirmed(
         assert cleanup["lease_ended_unconfirmed"] is True
         assert cleanup["clean"] is False and cleanup["group_confirmed_gone"] is False
         assert ended.view().cleanup is not None and ended.view().cleanup.processes == "unknown"
-        # the lease ends at the terminal row (B2-C10, OQ-34): defined over the ledger, so no run
-        # of this environment is held, whatever the stop's confirmation said
-        assert lease.holder_of(ended.holder_dir) is None
-        assert ended.holder_dir.name not in {
-            h.run_id for h in ended.kernel.control.admission.holders.held('"prod"')
-        }
+        # the lease ends with the terminal row (B2-C10, OQ-34): the owner's completion (or the
+        # reap) takes the run out of the pool, whatever the stop's confirmation said
+        assert spine.wait_until(
+            lambda: (
+                ended.holder_dir.name
+                not in {run_id for run_id, _ in _key_runs(ended.kernel, '"prod"')}
+            ),
+            tolerances.JOIN_WAIT_S,
+        )
 
 
 @pytest.mark.proves(
@@ -492,6 +513,6 @@ def test_key_released_in_finally() -> None:
         conductor.drive(first)  # the finally releases the slot and the key
     assert started == [first.run_id, second.run_id]
     assert scheduler.running_keys == {second.run_id: '"prod"'}
-    # the failed run no longer holds the lease in the index either
-    assert scheduler.holders is not None
-    assert first.run_id not in {h.run_id for h in scheduler.holders.held()}
+    # the failed run no longer holds a slot or the key in the home's pool either
+    running = pools.load_sched(kernel.home)["running"]
+    assert first.run_id not in running and running[second.run_id]["key"] == '"prod"'

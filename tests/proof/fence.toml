@@ -8,10 +8,15 @@
 # `query_row_shapes`, `spec_keys` instead of a file glob.
 
 leave = [
-  "trestle/ops/**",
+  "trestle/ops/__init__.py",
+  "trestle/ops/actions.py",
+  "trestle/ops/gateway.py",
+  "trestle/ops/health.py",
+  "trestle/ops/host_wiring.py",
+  "trestle/ops/registry.py",
+  "trestle/ops/sessions.py",
+  "trestle/ops/telemetry.py",
   "console/**",
-  "trestle/server/pins.py",
-  "trestle/server/gc.py",
 ]
 record_exempt = ["tests/proof/host/host-*/*.json"]
 
@@ -63,3 +68,8 @@ release = ["wr/release/"]
 # v03 prepares v0.3 on top of the release: the wait interface and the remaining race leads
 # (delivery-close PR-PLAN-wait-interface.md); its one PR creates fence.d/v03.toml.
 v03 = ["wr/v03/"]
+# v04 is the shared-home design (released as 0.3.1): N servers on one home, key lookup, retention
+# and run chaining; its one PR creates fence.d/v04.toml. The design changes GC and pins on purpose,
+# so trestle/server/gc.py, trestle/server/pins.py and trestle/ops/serve.py (ops serve reaps like
+# any server) left the Leave list with it.
+v04 = ["wr/v04/"]

@@ -30,17 +30,6 @@ removed_by        = "L.TR-6.8"
 permanent         = false
 
 [[entry]]
-id                = "TM-C4a"
-mechanism         = "OQ-1=conflict variant test, xfail(condition=JOIN_ACROSS_REPUBLISH, strict=True)"
-introduced_by     = "L.CK-1.2"
-serves            = []
-probe             = "grep -q 'variant:OQ-1' tests/core/admission/test_ck1_join.py"
-removal_condition = "named-not-removed: confirm-gated variant (root C.9)"
-removed_by        = "named-not-removed"
-permanent         = false
-citation          = "root C.9 (K-1, OQ-1 recorded default; both variants written)"
-
-[[entry]]
 id                = "TM-C4b"
 mechanism         = "OQ-3=refuse variant test, xfail(strict=True)"
 introduced_by     = "L.CK-3/4.3"

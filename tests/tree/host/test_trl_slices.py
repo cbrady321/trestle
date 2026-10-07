@@ -62,7 +62,7 @@ def _publish(kernel: Kernel, name: str) -> str:
 
 def _run_dirs(kernel: Kernel) -> list[Path]:
     runs = kernel.home / "runs"
-    return sorted(p for p in runs.glob("*/*") if p.is_dir()) if runs.exists() else []
+    return sorted(p for p in runs.glob("*/r_*") if p.is_dir()) if runs.exists() else []
 
 
 def _marked(marker: str) -> set[ancestry.ProcInfo]:

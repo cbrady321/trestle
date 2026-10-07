@@ -45,7 +45,7 @@ def _shape(value: Any) -> Any:
 
 
 def _fossil_run_id(home: Path) -> str:
-    return next(p.name for p in sorted((home / "runs").glob("*/*")) if p.is_dir())
+    return next(p.name for p in sorted((home / "runs").glob("*/r_*")) if p.is_dir())
 
 
 # View row fields added since S0 (MC-18: the provenance view lists `packages`), listed after the

@@ -1571,3 +1571,170 @@ docs = []
 due_checkpoint = "RB-9 (leaf L.RB-9.3)"
 direction = "additive"
 authorized_by = "interfaces/00-shared-vocabulary.md V-11 HOST_SCOPE_UNREADABLE (CB-8; B3-C18 HostScopeUnreadable, V-9.7); plans/b-slice-b.md L.RB-9.3/L.RB-9.4; B-GRANT-RETURN plan gap 1"
+
+# v0.3.1 Problem A (N processes on one home, step 1a): the admission lock's bound and a lost publish
+# race each answer with their own code.
+
+[[entry]]
+id = "ADD-code-admission-home-busy"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.home_busy"]
+docs = []
+due_checkpoint = "v0.3.1 step 1a"
+direction = "additive"
+authorized_by = "v0.3.1 design (shared home), Problem A rule 7 and Wire and compatibility (new codes in codes.py)"
+
+[[entry]]
+id = "ADD-code-publication-registry-conflict"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.registry_conflict"]
+docs = []
+due_checkpoint = "v0.3.1 step 1a"
+direction = "additive"
+authorized_by = "v0.3.1 design (shared home), Problem A (registry version) and Wire and compatibility (new codes in codes.py)"
+
+# v0.3.1 step 3 (Feature 2): the run view's retry_of; step 4 (Feature 0): the run view's deadline_s and
+# deadline_source, and run(deadline_s=...). All additive (Wire and compatibility).
+
+[[entry]]
+id = "ADD-runview-retry-of"
+facet = "runview_shape"
+row_or_k = "MC-06"
+docs = []
+due_checkpoint = "v0.3.1 step 3"
+direction = "additive"
+items = [{ path = "$.fields", value = ["retry_of", "str | None"] }]
+authorized_by = "v0.3.1 design (shared home), Feature 2 and Wire and compatibility (run view field retry_of)"
+
+[[entry]]
+id = "ADD-runview-deadline"
+facet = "runview_shape"
+row_or_k = "MC-06"
+docs = []
+due_checkpoint = "v0.3.1 step 4"
+direction = "additive"
+keys = ["$.frames.*.deadline_s", "$.frames.*.deadline_source"]
+items = [
+  { path = "$.fields", value = ["deadline_s", "float | None"] },
+  { path = "$.fields", value = ["deadline_source", "str | None"] },
+]
+authorized_by = "v0.3.1 design (shared home), Feature 0 (the run view shows deadline_s and deadline_source)"
+
+[[entry]]
+id = "ADD-tools-list-run-deadline-s"
+facet = "tools_list"
+row_or_k = "MC-16"
+docs = []
+due_checkpoint = "v0.3.1 step 4"
+direction = "additive"
+keys = ["$.tools[0].inputSchema.properties.deadline_s"]
+authorized_by = "v0.3.1 design (shared home), Feature 0 and Wire and compatibility (run(deadline_s=...))"
+
+# v0.3.1 step 5 (Features 1 and 2): run(idempotency_ttl_s=...), await_runs(keys=[...]) (run_ids stays
+# required in the published schema: golden S0 fixes it, so a keys-only call sends run_ids: []),
+# the run_by_key view name, the run view's idempotency_key, and the two new codes.
+
+[[entry]]
+id = "ADD-tools-list-run-idempotency-ttl-s"
+facet = "tools_list"
+row_or_k = "MC-16"
+docs = []
+due_checkpoint = "v0.3.1 step 5"
+direction = "additive"
+keys = ["$.tools[0].inputSchema.properties.idempotency_ttl_s"]
+authorized_by = "v0.3.1 design (shared home), Feature 2 and Wire and compatibility (run(idempotency_ttl_s=...))"
+
+[[entry]]
+id = "ADD-tools-list-await-runs-keys"
+facet = "tools_list"
+row_or_k = "MC-16"
+docs = []
+due_checkpoint = "v0.3.1 step 5"
+direction = "additive"
+keys = ["$.tools[1].inputSchema.properties.keys"]
+authorized_by = "v0.3.1 design (shared home), Feature 1 and Wire and compatibility (await_runs(keys=[...]))"
+
+[[entry]]
+id = "ADD-tools-list-query-view-run-by-key"
+facet = "tools_list"
+row_or_k = "MC-16"
+docs = []
+due_checkpoint = "v0.3.1 step 5"
+direction = "additive"
+items = [{ path = "$.tools[3].inputSchema.properties.view.enum", value = "run_by_key" }]
+authorized_by = "v0.3.1 design (shared home), Feature 1 and Wire and compatibility (query view run_by_key)"
+
+[[entry]]
+id = "ADD-runview-idempotency-key"
+facet = "runview_shape"
+row_or_k = "MC-06"
+docs = []
+due_checkpoint = "v0.3.1 step 5"
+direction = "additive"
+items = [{ path = "$.fields", value = ["idempotency_key", "str | None"] }]
+authorized_by = "v0.3.1 design (shared home), Feature 1 (run view field idempotency_key, only on views reached through a key)"
+
+[[entry]]
+id = "ADD-code-admission-ttl-out-of-range"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.ttl_out_of_range"]
+docs = []
+due_checkpoint = "v0.3.1 step 5"
+direction = "additive"
+authorized_by = "v0.3.1 design (shared home), Feature 2 and Wire and compatibility (new codes in codes.py)"
+
+[[entry]]
+id = "ADD-code-projection-unknown-key"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["projection.unknown_key"]
+docs = []
+due_checkpoint = "v0.3.1 step 5"
+direction = "additive"
+authorized_by = "v0.3.1 design (shared home), Feature 1 and Wire and compatibility (new codes in codes.py)"
+
+# v0.3.1 step 6 (Feature 3): run(after={...}), the held state's run view field after_run_id, and the
+# two new codes.
+
+[[entry]]
+id = "ADD-tools-list-run-after"
+facet = "tools_list"
+row_or_k = "MC-16"
+docs = []
+due_checkpoint = "v0.3.1 step 6"
+direction = "additive"
+keys = ["$.tools[0].inputSchema.properties.after"]
+authorized_by = "v0.3.1 design (shared home), Feature 3 and Wire and compatibility (run(after={...}))"
+
+[[entry]]
+id = "ADD-runview-after-run-id"
+facet = "runview_shape"
+row_or_k = "MC-06"
+docs = []
+due_checkpoint = "v0.3.1 step 6"
+direction = "additive"
+items = [{ path = "$.fields", value = ["after_run_id", "str | None"] }]
+authorized_by = "v0.3.1 design (shared home), Feature 3 and Wire and compatibility (run view field after_run_id)"
+
+[[entry]]
+id = "ADD-code-admission-after-unknown"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.after_unknown"]
+docs = []
+due_checkpoint = "v0.3.1 step 6"
+direction = "additive"
+authorized_by = "v0.3.1 design (shared home), Feature 3 and Wire and compatibility (new codes in codes.py)"
+
+[[entry]]
+id = "ADD-code-execution-after-unmet"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["execution.after_unmet"]
+docs = []
+due_checkpoint = "v0.3.1 step 6"
+direction = "additive"
+authorized_by = "v0.3.1 design (shared home), Feature 3 and Wire and compatibility (new codes in codes.py)"

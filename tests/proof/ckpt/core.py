@@ -17,8 +17,8 @@ The conditions are plans/core.md `### J-CORE`, (a)-(k):
   (d) no core P0 target is still xfail; each passes under `--runxfail`
   (e) CSC-14, mechanically: the straddle node set S registers only the one claim label
   (f) `meta register` is clean; TM-C1..3 present, T-1/T-2/T-3/TM-P0-1/TM-P0-12 absent
-  (g) the TM-C4a and TM-C4b variants are present as strict xfail (TM-C4a runs and passes when K-1
-      is declined)
+  (g) the TM-C4b variant is present as strict xfail (TM-C4a, the K-1 variant, left with
+      JOIN_ACROSS_REPUBLISH in v0.3.1)
   (h) cell A9 is fully green and claimed
   (i) RV-1, RV-3, RV-4 and RV-5 core review records pass and are shown by the ledger
   (j) the core fossils are MANIFEST-complete; d2 (reader s0) has 0 diffs; d1 --strict has none
@@ -112,7 +112,6 @@ NAMED_NOT_REMOVED = "named-not-removed"
 
 # (g) the written variants (C.9): merge whose decline relaxes it -> (label, entry)
 VARIANTS = {
-    "TM-C4a": ("WR-IDEM-1:variant-conflict-written", "CK-1"),
     "TM-C4b": ("WR-PLAN-9:variant-refuse-written", "CK-3/4"),
 }
 
@@ -429,13 +428,13 @@ def _primary_k(decline: dict[str, Any]) -> str:
 
 def verdict_g(w: World) -> tuple[bool, str]:
     problems = []
-    for entry_id, (label, merge) in VARIANTS.items():
+    for entry_id, (label, _merge) in VARIANTS.items():
         nodeids = [n["nodeid"] for n in w.nodes if label in n.get("labels", [])]
         if not nodeids:
             problems.append(f"{entry_id}: no node registers {label}")
             continue
         outcomes = w.run_nodes(nodeids)
-        want = "passed" if merge == "CK-1" and merge in w.declined else "xfailed"
+        want = "xfailed"
         for nodeid in nodeids:
             got = outcomes.get(nodeid)
             if got != want:

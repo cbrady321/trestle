@@ -8,7 +8,7 @@ import subprocess
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from trestle.common import clock, codes, redact
@@ -19,10 +19,19 @@ from trestle.common.limits import capture_limits
 from trestle.common.plan.compiler import AdmittedPlan
 from trestle.common.pyenv import build_child_env, python_argv
 from trestle.common.types import WorkOrder
-from trestle.server import answer, fold, sweep
+from trestle.server import answer, chain, fold, sweep
 from trestle.server.config import load_config
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, work_dir
-from trestle.server.procident import Attribution, GroupStop, Identity, ProcessSource, stop_group
+from trestle.server.procident import (
+    Attribution,
+    GroupStop,
+    Identity,
+    ProcessSource,
+    Sidecar,
+    compact_sidecar,
+    sidecar_path,
+    stop_group,
+)
 from trestle.server.projection import count_events
 from trestle.server.runs import RunRegistry, cancel_flag_path, release_point_flag_path
 from trestle.server.scheduler import Scheduler
@@ -45,9 +54,9 @@ class Conductor:
 
     def __post_init__(self) -> None:
         # B2-C12: a cancel written for a run still waiting in the queue finalizes it there
-        self.run_registry.on_cancel_flag = self._cancel_flag_written
+        self.run_registry.on_cancel_flag = self.cancel_flag_written
 
-    def _cancel_flag_written(self, run_id: str) -> None:
+    def cancel_flag_written(self, run_id: str) -> None:
         self.scheduler.cancel_waiting(
             run_id, lambda order: self.finalize_queued(order, fold.CAUSE_CANCEL)
         )
@@ -63,31 +72,75 @@ class Conductor:
             self.scheduler.complete(order.run_id)
 
     def admitted_deadline(self, order: WorkOrder) -> float:
-        """The run's admitted deadline on the monotonic clock (B2-C5), read from its spec."""
-        return _monotonic_deadline(self._read_spec(self._find_run_dir(order.run_id)))
+        """The run's admitted deadline on the monotonic clock (B2-C5): the one its `released` row
+        minted when it was held, else its spec's."""
+        return self._deadline_of(self._find_run_dir(order.run_id))
+
+    def _deadline_of(self, run_dir: Path) -> float:
+        released = RunLedger.open(ledger_path(run_dir)).released_deadline()
+        return _monotonic_deadline(self._read_spec(run_dir), released)
+
+    # -- Feature 3: held runs ---------------------------------------------------------------------
+
+    def check_held(self, order: WorkOrder) -> chain.HeldVerdict | None:
+        """The release check of a held run, read-only (the scheduler's 250 ms pass)."""
+        return chain.evaluate(self.home, self._find_run_dir(order.run_id))
+
+    def release_held(self, order: WorkOrder, verdict: chain.HeldVerdict) -> tuple[float, float]:
+        """Append the `released` row: the deadline is minted now (release time + `deadline_s`) and
+        is the one every reader takes from here on. Returns it on the monotonic clock and as epoch
+        seconds."""
+        run_dir = self._find_run_dir(order.run_id)
+        ledger = RunLedger.open(ledger_path(run_dir))
+        created = ledger.last_kind("created") or {}
+        raw = created.get("deadline_s")
+        deadline_s = float(raw) if isinstance(raw, int | float) else 300.0
+        minted = datetime.now(tz=UTC) + timedelta(seconds=deadline_s)
+        ledger.append(
+            "released",
+            run_id=order.run_id,
+            deadline=minted.isoformat(),
+            reason=verdict.reason,
+            after_run_id=created.get("after_run_id"),
+        )
+        return time.monotonic() + deadline_s, minted.timestamp()
+
+    def finalize_unmet(self, order: WorkOrder, verdict: chain.HeldVerdict) -> str:
+        """End a held run whose `after` is unmet: cancelled, `execution.after_unmet`, never run."""
+        return self.finalize_queued(order, fold.CAUSE_CANCEL, unmet=verdict)
 
     def finalize_unspawned(self, order: WorkOrder) -> str:
         """End a run that reached its deadline while queued, without ever starting it (B2-C5,
         B2-C12): the scheduler's expiry callback."""
         return self.finalize_queued(order, fold.CAUSE_RELEASE_POINT)
 
-    def finalize_queued(self, order: WorkOrder, cause: str) -> str:
+    def finalize_queued(
+        self, order: WorkOrder, cause: str, *, unmet: chain.HeldVerdict | None = None
+    ) -> str:
         """End a run that was stopped before any process was spawned (B2-C12): a cancel, or its
         deadline passing, while it waited. U2 appends `StopRow(cause, lane_committed_length=0)`
         and finalizes `cancelled` / `timed_out` with no process, lane, kill, fold or sweep; the
         run has no `started`, `process_identity` or `group_stop` row, since no process group
         exists to stop, and the answer reads it as an empty fold, an empty cleanup and a
         confirmed-gone group (CB-6). The rows follow a spawned run's order after the stop row:
-        `error_record`, then `evidence_finalized`, then the terminal row."""
+        `error_record`, then `evidence_finalized`, then the terminal row. A run that was held
+        (Feature 3) ends the same way: cancelled by the caller, or by `unmet` (its `after` was not
+        met: `execution.after_unmet`, phase `hold`)."""
         run_dir = self._find_run_dir(order.run_id)
         ledger = RunLedger.open(ledger_path(run_dir))
+        held = ledger.has_kind("held") and not ledger.has_kind("released")
         fold.record_stop(run_dir, ledger, cause, queued=True)
-        if cause == fold.CAUSE_CANCEL:
+        if unmet is not None:
+            classification = "cancelled"
+            error = _composed(codes.EXECUTION_AFTER_UNMET, "hold", unmet.message)
+        elif cause == fold.CAUSE_CANCEL:
             classification = "cancelled"
             error = _composed(
                 codes.EXECUTION_CANCELLED,
-                "queue",
-                "the run was cancelled while queued and was never started",
+                "hold" if held else "queue",
+                "the run was cancelled while "
+                + ("held" if held else "queued")
+                + " and was never started",
             )
         else:
             classification = "timed_out"
@@ -102,7 +155,9 @@ class Conductor:
             {
                 "run_id": order.run_id,
                 "classification": classification,
-                "duration_ms": _admitted_age_ms(self._read_spec(run_dir)),
+                "duration_ms": _admitted_age_ms(
+                    self._read_spec(run_dir), ledger.last_kind("created")
+                ),
                 "result_state": "absent",
                 "artifact_count": 0,
                 "limits_exceeded": None,
@@ -135,10 +190,11 @@ class Conductor:
         # or a deadline that fell while it waited) ends it as a queued run: nothing to stop
         if cancel_flag_path(run_dir).exists():
             return self.finalize_queued(order, fold.CAUSE_CANCEL)
-        if time.monotonic() >= _monotonic_deadline(spec):
+        ledger = RunLedger.open(ledger_path(run_dir))
+        released = ledger.released_deadline()
+        if time.monotonic() >= _monotonic_deadline(spec, released):
             return self.finalize_queued(order, fold.CAUSE_RELEASE_POINT)
 
-        ledger = RunLedger.open(ledger_path(run_dir))
         ledger.append("admitted", run_id=order.run_id, snapshot_id=order.snapshot_id)
         ledger.append("started", run_id=order.run_id)
 
@@ -159,16 +215,18 @@ class Conductor:
             start_new_session=True,
         )
         # B2-C16: the leader's identity row goes down after spawn and before the first liveness
-        # poll; the wrapper does not wait on it.
+        # poll; the wrapper does not wait on it. Every identity row goes to the sidecar, the
+        # leader's to the ledger too (v0.3.1 Problem C).
+        sidecar = Sidecar(sidecar_path(evidence_dir(run_dir)), order.run_id)
         attribution = Attribution(
             group=proc.pid,
-            record=lambda ident: _record_identity(ledger, order.run_id, ident),
+            record=lambda ident: _record_identity(ledger, sidecar, order.run_id, ident),
             source=self.process_source,
         )
         attribution.attribute_leader(proc.pid)
         self.run_registry.register(order.run_id, proc, attribution)
         cancel_flag = cancel_flag_path(run_dir)
-        deadline = _monotonic_deadline(spec)
+        deadline = _monotonic_deadline(spec, released)
         release_slice = _release_slice(spec)
         release_point = deadline - release_slice
         stop: GroupStop | None = None
@@ -183,6 +241,7 @@ class Conductor:
         try:
             while proc.poll() is None:
                 attribution.observe()
+                compact_sidecar(attribution, sidecar)
                 now = time.monotonic()
                 if stop_row_at is None:
                     # B2-C10: the cancel flag, or the release point (U2 writes its flag itself);
@@ -225,6 +284,7 @@ class Conductor:
                             )
                         else:
                             stop = self.stopper(attribution)
+                seen, alive = len(attribution.identities), len(attribution.alive())
                 attribution.close()
             if proc.stdout is not None:
                 proc.stdout.close()
@@ -236,6 +296,8 @@ class Conductor:
                 pass
 
         assert stop is not None
+        # v0.3.1 Problem C: the identities stay in the sidecar; the ledger gets their count
+        ledger.append("process_summary", run_id=order.run_id, seen=seen, alive=alive)
         # MC-32: one group_stop per spawned run, after the kill and before evidence_finalized
         ledger.append(
             "group_stop",
@@ -367,65 +429,8 @@ class Conductor:
         scrubber: redact.Scrubber = redact.NO_SCRUB,
         markers: list[dict[str, object]] | None = None,
     ) -> list[str]:
-        """Promote what a run left to artifacts: `outputs/` (auto-promote) and every staged
-        `ctx.artifact()` file that was never attached (a staged file is promoted or refused with a
-        marker, never left out, WR-EVID-6). Every promoted file passes the write-path scrub
-        (MC-CORE-13): text is copied with declared secrets and host paths scrubbed, and a binary
-        file holding a secret is not promoted at all: a `secret_in_binary` marker is appended to
-        `markers` in its place (nothing is written that later needs scrubbing). The run's count
-        and byte caps hold across everything the run has as artifacts, those the child attached
-        included: a file that would pass either is not promoted and a marker names the limit."""
-        work = work_dir(run_dir)
-        candidates: list[tuple[Path, str, str]] = []
-        outputs_dir = work / "outputs"
-        if outputs_dir.exists():
-            candidates += [
-                (path, path.name, "auto_promote")
-                for path in sorted(outputs_dir.iterdir())
-                if path.is_file()
-            ]
-        staging_dir = work / "artifact-staging"
-        if staging_dir.exists():
-            candidates += [
-                (path, path.relative_to(staging_dir).as_posix().removesuffix(".partial"), "staged")
-                for path in sorted(staging_dir.rglob("*.partial"))
-                if path.is_file()
-            ]
-
-        limits = capture_limits()
-        held = [p for p in (evidence_dir(run_dir) / "artifacts").glob("*") if p.is_file()]
-        count = len(held)
-        total_bytes = sum(p.stat().st_size for p in held)
-        artifact_ids: list[str] = []
-        for path, name, source in candidates:
-            size = path.stat().st_size
-            capped = None
-            if count >= limits.max_artifact_count:
-                capped = "max_artifact_count"
-            elif total_bytes + size > limits.max_artifact_bytes:
-                capped = "max_artifact_bytes"
-            if capped is not None:
-                if markers is not None:
-                    markers.append(_artifact_marker(capped, size))
-                continue
-            art_id = generate_artifact_id()
-            dest = evidence_dir(run_dir) / "artifacts" / art_id
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            if redact.copy_scrubbed(path, dest, scrubber):
-                if markers is not None:
-                    markers.append(_artifact_marker(redact.BINARY_LIMIT, size))
-                continue
-            ledger.append(
-                "artifact_available",
-                run_id=run_id,
-                artifact_id=art_id,
-                name=scrubber.text(name),
-                source=source,
-            )
-            artifact_ids.append(art_id)
-            count += 1
-            total_bytes += dest.stat().st_size
-        return artifact_ids
+        """The owner's promotion: `promote_outputs` (kept as a method, a test seam)."""
+        return promote_outputs(run_dir, ledger, run_id, scrubber, markers)
 
     def _find_run_dir(self, run_id: str) -> Path:
         runs_root = self.home / "runs"
@@ -438,11 +443,96 @@ class Conductor:
         raise FileNotFoundError(run_id)
 
 
-def _monotonic_deadline(spec: dict[str, object]) -> float:
+def promote_outputs(
+    run_dir: Path,
+    ledger: RunLedger,
+    run_id: str,
+    scrubber: redact.Scrubber = redact.NO_SCRUB,
+    markers: list[dict[str, object]] | None = None,
+    *,
+    skip_available: bool = False,
+) -> list[str]:
+    """Promote what a run left to artifacts: `outputs/` (auto-promote) and every staged
+    `ctx.artifact()` file that was never attached (a staged file is promoted or refused with a
+    marker, never left out, WR-EVID-6). Every promoted file passes the write-path scrub
+    (MC-CORE-13): text is copied with declared secrets and host paths scrubbed, and a binary
+    file holding a secret is not promoted at all: a `secret_in_binary` marker is appended to
+    `markers` in its place (nothing is written that later needs scrubbing). The run's count
+    and byte caps hold across everything the run has as artifacts, those the child attached
+    included: a file that would pass either is not promoted and a marker names the limit.
+
+    It reads no conductor state: the reaper promotes a dead owner's run through it too (v0.3.1
+    rule 3), with `skip_available`, skipping every name that already has an `artifact_available`
+    row, since the owner may have died mid-promotion."""
+    work = work_dir(run_dir)
+    candidates: list[tuple[Path, str, str]] = []
+    outputs_dir = work / "outputs"
+    if outputs_dir.exists():
+        candidates += [
+            (path, path.name, "auto_promote")
+            for path in sorted(outputs_dir.iterdir())
+            if path.is_file()
+        ]
+    staging_dir = work / "artifact-staging"
+    if staging_dir.exists():
+        candidates += [
+            (path, path.relative_to(staging_dir).as_posix().removesuffix(".partial"), "staged")
+            for path in sorted(staging_dir.rglob("*.partial"))
+            if path.is_file()
+        ]
+
+    limits = capture_limits()
+    held = [p for p in (evidence_dir(run_dir) / "artifacts").glob("*") if p.is_file()]
+    count = len(held)
+    total_bytes = sum(p.stat().st_size for p in held)
+    artifact_ids: list[str] = []
+    available: set[str] = set()
+    if skip_available:
+        available = {
+            str(row.get("name"))
+            for row in ledger.records
+            if row.get("kind") == "artifact_available"
+        }
+    for path, name, source in candidates:
+        if skip_available and scrubber.text(name) in available:
+            continue
+        size = path.stat().st_size
+        capped = None
+        if count >= limits.max_artifact_count:
+            capped = "max_artifact_count"
+        elif total_bytes + size > limits.max_artifact_bytes:
+            capped = "max_artifact_bytes"
+        if capped is not None:
+            if markers is not None:
+                markers.append(_artifact_marker(capped, size))
+            continue
+        art_id = generate_artifact_id()
+        dest = evidence_dir(run_dir) / "artifacts" / art_id
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if redact.copy_scrubbed(path, dest, scrubber):
+            if markers is not None:
+                markers.append(_artifact_marker(redact.BINARY_LIMIT, size))
+            continue
+        ledger.append(
+            "artifact_available",
+            run_id=run_id,
+            artifact_id=art_id,
+            name=scrubber.text(name),
+            source=source,
+        )
+        artifact_ids.append(art_id)
+        count += 1
+        total_bytes += dest.stat().st_size
+    return artifact_ids
+
+
+def _monotonic_deadline(spec: dict[str, object], released: str | None = None) -> float:
     """The moment, on the monotonic clock, the run's admitted deadline falls (B2-C5): the deadline
     `spec.deadline` fixed at admission, not a fresh timeout taken from spawn, so time spent
-    queued or held counts against it. A spec with no deadline falls back to its `timeout_s`."""
-    raw = spec.get("deadline")
+    queued counts against it. A run that was held takes the deadline its `released` row minted
+    (`released`, ISO), since it spends none of its deadline while held. A spec with no deadline
+    falls back to its `timeout_s`."""
+    raw = released if released is not None else spec.get("deadline")
     if isinstance(raw, str):
         try:
             fixed = datetime.fromisoformat(raw)
@@ -472,8 +562,17 @@ def _release_slice(spec: dict[str, object]) -> float:
     return float(raw) if isinstance(raw, (int, float)) and not isinstance(raw, bool) else 0.0
 
 
-def _admitted_age_ms(spec: dict[str, object]) -> int:
-    """Milliseconds since admission, read back from the spec's deadline minus its budget."""
+def _admitted_age_ms(spec: dict[str, object], created: dict[str, object] | None = None) -> int:
+    """Milliseconds since admission: the `created` row's time when there is one (a held run's spec
+    deadline is not admission plus its budget), else the spec's deadline minus its budget."""
+    at = created.get("at") if created is not None else None
+    if isinstance(at, str):
+        try:
+            admitted_at = datetime.fromisoformat(at.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            admitted_at = None
+        if admitted_at is not None:
+            return max(0, int((time.time() - admitted_at) * 1000))
     raw = spec.get("deadline")
     if isinstance(raw, str):
         try:
@@ -551,8 +650,12 @@ def _read_child_error(home: Path, run_dir: Path) -> dict[str, str] | None:
     }
 
 
-def _record_identity(ledger: RunLedger, run_id: str, ident: Identity) -> None:
-    ledger.append("process_identity", run_id=run_id, **ident.fields())
+def _record_identity(ledger: RunLedger, sidecar: Sidecar, run_id: str, ident: Identity) -> None:
+    """The identity's durable row, before the process can be signalled: the sidecar's (and, for
+    the leader, the ledger's first, so recovery's branch (i) still reads the ledger alone)."""
+    if ident.leader:
+        ledger.append("process_identity", run_id=run_id, **ident.fields())
+    sidecar.append(ident)
 
 
 def _read_ndjson(path: Path) -> list[dict[str, object]]:

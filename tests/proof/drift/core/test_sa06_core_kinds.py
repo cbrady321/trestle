@@ -1,7 +1,7 @@
 """SA-06 in core (L.CS-2.1, .6): the proof court reads the core ledger kinds through the
-independent `tests.proof.records` seam alone. `process_identity` (MC-14) and `group_stop` (MC-32)
-are more kinds on that seam, each in its place in the row order, and never displace the S0 kinds
-around them."""
+independent `tests.proof.records` seam alone. `process_identity` (MC-14), `process_summary`
+(v0.3.1) and `group_stop` (MC-32) are more kinds on that seam, each in its place in the row order,
+and never displace the S0 kinds around them."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ S0_KINDS = [
     "evidence_finalized",
     "succeeded",
 ]
-CORE_KINDS = {"process_identity", "group_stop"}
+CORE_KINDS = {"process_identity", "process_summary", "group_stop"}
 
 
 @pytest.mark.parametrize("sa", ["SA-06"])
@@ -44,3 +44,5 @@ def test_seam_reads_process_identity_in_row_order(sa: str) -> None:
     stop_at = kinds.index("group_stop")
     assert stop_at < finalized
     assert all(i < stop_at for i, k in enumerate(kinds) if k == "process_identity")
+    # v0.3.1 Problem C: the identities' count, one row just before the stop's
+    assert kinds.count("process_summary") == 1 and kinds[stop_at - 1] == "process_summary"

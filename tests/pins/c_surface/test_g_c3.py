@@ -1,7 +1,7 @@
 """G-C3 (BFD-26), flipped by L.CK-1.1: the same idempotency key after a source edit joins the
 run it named instead of being refused `IDEMPOTENCY_KEY_CONFLICT` (K-1 recorded default,
-`admission.JOIN_ACROSS_REPUBLISH`). The S0 pin is deleted; it lives on as the OQ-1 = conflict
-variant (TM-C4a, L.CK-1.2), which runs and passes once K-1 is declined.
+`admission.JOIN_ACROSS_REPUBLISH`). The S0 pin is deleted; the OQ-1 = conflict variant (TM-C4a)
+and the switch left in v0.3.1, where K-1 is permanent.
 """
 
 from __future__ import annotations

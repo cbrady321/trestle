@@ -133,8 +133,7 @@ def test_declared_secret_not_in_spec_ledger_or_store(tmp_path: Path) -> None:
     for needle in (SENTINEL, NESTED_SENTINEL):
         assert (run_dir / "evidence" / "spec.json").read_bytes().count(needle.encode()) == 0
         assert (run_dir / "evidence" / "ledger.ndjson").read_bytes().count(needle.encode()) == 0
-        store = kernel.home / "idempotency.json"
-        assert store.is_file()
+        (store,) = (kernel.home / "keys").glob("*.json")  # the key's file (v0.3.1 Problem B)
         assert store.read_bytes().count(needle.encode()) == 0
         # the whole run directory and the home's index files, the result's digests aside
         assert occurrences(run_dir, needle) == []

@@ -73,7 +73,7 @@ def test_dependent_starts_after_http_readiness_pass(kernel: Kernel) -> None:
     view = hostpath.run_tree_via_host(kernel, "reference_env", {schema.ENV_ARG: ENV})
     assert isinstance(view, RunView), view
     assert view.state == "succeeded", view
-    (run_dir,) = sorted(p for p in (kernel.home / "runs").glob("*/*") if p.is_dir())
+    (run_dir,) = sorted(p for p in (kernel.home / "runs").glob("*/r_*") if p.is_dir())
     lane = records.lane_rows(run_dir)
     assert not lane.problems and not lane.torn, lane.problems
     rows: list[dict[str, Any]] = [row.entry for row in lane.rows]

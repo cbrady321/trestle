@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 from trestle.common import codes
 from trestle.common.types import RequestOutcome
-from trestle.server.idempotency import IdempotencyStore
+from trestle.server import idempotency
 from trestle.server.main import Kernel, create_kernel
 from trestle.workflow.declarations import Vantage
 
@@ -57,7 +57,7 @@ def refused(kernel: Kernel, args: dict[str, Any]) -> RequestOutcome:
     assert "run_id" not in outcome.to_dict()
     runs = kernel.home / "runs"
     assert not runs.exists() or not [p for p in runs.glob("*/*") if p.is_dir()]
-    assert IdempotencyStore.open(kernel.home).lookup(KEY) is None
+    assert idempotency.lookup(kernel.home, KEY) is None
     return outcome
 
 

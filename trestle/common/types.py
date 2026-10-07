@@ -34,6 +34,14 @@ class AdmitRequest:
     # The MCP session the call arrived on (None outside an MCP session); written on the `created`
     # row so the restricted profile can scope `cancel` to the session that started a run.
     caller_session: str | None = None
+    # v0.3.1 Feature 0: the call's own deadline in seconds (None: the plugin's declared deadline,
+    # else 300 s, applies)
+    deadline_s: float | None = None
+    # v0.3.1 Feature 2: how long the key stays joinable after the run ends, in seconds (None: the
+    # server's `idempotency_ttl_s`); bounded by `[keys] max_ttl_s`
+    idempotency_ttl_s: float | None = None
+    # v0.3.1 Feature 3: hold the run until another ends: {run | key, when, match} (None: no hold)
+    after: dict[str, Any] | None = None
 
 
 @dataclass
@@ -172,6 +180,9 @@ class DeclaredMetadata:
     packages: tuple[str, ...] = ()
     env_arg: str | None = None
     secrets: frozenset[str] = frozenset()
+    # v0.3.1 Feature 2: a run of this plugin that ends interrupted frees its idempotency key, so an
+    # identical re-send starts a fresh run (`retry_of`). Only the author knows a repeat is safe.
+    repeatable: bool = False
     # Recorded at publication, not declared in source: each declared package's digest as the
     # publication validator resolved it. Empty for a plugin that declares no packages.
     package_digests: dict[str, str] = field(default_factory=dict)
@@ -185,6 +196,8 @@ class DeclaredMetadata:
             "env_arg": self.env_arg,
             "secrets": sorted(self.secrets),
             "package_digests": {k: self.package_digests[k] for k in sorted(self.package_digests)},
+            # only when declared, so the manifest (and identity) of every other plugin is unchanged
+            **({"repeatable": True} if self.repeatable else {}),
         }
 
     @classmethod
@@ -205,6 +218,7 @@ class DeclaredMetadata:
             packages=tuple(str(x) for x in declared.get("packages", ())),
             env_arg=str(env_arg) if isinstance(env_arg, str) else None,
             secrets=frozenset(str(x) for x in declared.get("secrets", ())),
+            repeatable=declared.get("repeatable") is True,
             package_digests={
                 str(k): str(v)
                 for k, v in (
@@ -255,6 +269,18 @@ class RunView:
     root_run_id: str | None = None
     path: str | None = None
     disposition: str | None = None
+    # v0.3.1 Feature 2: the interrupted run this one replaced, when it was started by re-sending a
+    # repeatable plugin's key; absent otherwise
+    retry_of: str | None = None
+    # v0.3.1 Feature 0: the run's effective deadline and where it came from (call, declared or
+    # default); absent on a run admitted before v0.3.1
+    deadline_s: float | None = None
+    deadline_source: str | None = None
+    # v0.3.1 Feature 1: the key a view was reached through (await_runs by key); absent otherwise, so
+    # a view reached by run id is byte-identical to before
+    idempotency_key: str | None = None
+    # v0.3.1 Feature 3: the run this one was sent to wait for (`after`); absent on any other run
+    after_run_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -289,6 +315,16 @@ class RunView:
             out["outcome"] = self.outcome
         if self.answer is not None:
             out["answer"] = self.answer
+        if self.retry_of is not None:
+            out["retry_of"] = self.retry_of
+        if self.deadline_s is not None:
+            out["deadline_s"] = self.deadline_s
+        if self.deadline_source is not None:
+            out["deadline_source"] = self.deadline_source
+        if self.idempotency_key is not None:
+            out["idempotency_key"] = self.idempotency_key
+        if self.after_run_id is not None:
+            out["after_run_id"] = self.after_run_id
         return out
 
 

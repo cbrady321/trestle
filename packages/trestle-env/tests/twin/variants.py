@@ -14,6 +14,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from tests.core.spine import support
 from tests.proof import mcp_host, records, tolerances
 from trestle.common import clock
 
@@ -177,8 +178,7 @@ def identities_recorded(host: mcp_host.McpHost, run_id: str, at_least: int = 2) 
     found = sorted((host.home / "runs").glob(f"*/{run_id}"))
     if not found:
         return False
-    rows = records.ledger_rows(found[0]).rows
-    return len([r for r in rows if r.get("kind") == "process_identity"]) >= at_least
+    return len(support.rows_of(found[0], "process_identity")) >= at_least
 
 
 def kill_and_recover(host: mcp_host.McpHost, run_id: str) -> dict[str, Any]:

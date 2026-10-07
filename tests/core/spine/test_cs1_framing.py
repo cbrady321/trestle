@@ -188,13 +188,14 @@ def test_terminal_row_without_newline_recovers_as_terminal(tmp_path: Path) -> No
     assert [row["kind"] for row in rows] == [
         "created",
         "started",
+        "process_summary",
         "group_stop",
         "error_record",
         "evidence_finalized",
         "interrupted",
     ]
     # a started run records its stop before it is finalized (CS-2): no identity row, so branch (i)
-    assert (rows[2]["confirmed_gone"], rows[2]["method"]) == (False, "no_identity")
+    assert (rows[3]["confirmed_gone"], rows[3]["method"]) == (False, "no_identity")
     assert records.ledger_rows(torn_dir).merged is False
 
 

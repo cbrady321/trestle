@@ -8,6 +8,7 @@ from pathlib import Path
 
 from trestle.ops.serve import run_ops_server
 from trestle.server.doctor import run_doctor, run_recover
+from trestle.server.home import HomeRefused
 from trestle.server.init_cmd import run_init
 from trestle.server.main import create_kernel, default_home, run_server
 
@@ -74,6 +75,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Create plugins directory without seeding echo.py",
     )
+    init.add_argument(
+        "--upgrade",
+        action="store_true",
+        help="Upgrade a v0.3.0 home to format 2 (stop every v0.3.0 server first)",
+    )
 
     doctor = sub.add_parser("doctor", help="Report service health and configuration")
     _add_home_arg(doctor)
@@ -83,8 +89,15 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Run a retention sweep and include gc stats",
     )
+    doctor.add_argument(
+        "--rebuild-keys",
+        action="store_true",
+        help="Repair home/keys/ from the runs' created rows (expired keys stay expired)",
+    )
 
-    recover = sub.add_parser("recover", help="Run crash recovery sweep")
+    recover = sub.add_parser(
+        "recover", help="Reap runs whose server died, then run a retention sweep"
+    )
     _add_home_arg(recover)
 
     pin = sub.add_parser("pin", help="Pin a run or artifact for retention")
@@ -96,6 +109,15 @@ def main(argv: list[str] | None = None) -> int:
     _add_home_arg(unpin)
 
     args = parser.parse_args(argv)
+    try:
+        return _dispatch(args)
+    except HomeRefused as exc:
+        # v0.3.1: every entry point checks home/format and the local-mount rule first
+        print(f"trestle: {exc}", file=sys.stderr)
+        return 2
+
+
+def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "serve":
         home = Path(args.home) if getattr(args, "home", None) else None
         return run_server(
@@ -113,12 +135,13 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.command == "init":
         trestle_home = Path(args.home) if args.home else default_home()
-        return run_init(home=trestle_home, seed_echo=not args.no_seed)
+        return run_init(home=trestle_home, seed_echo=not args.no_seed, upgrade=args.upgrade)
     if args.command == "doctor":
         return run_doctor(
             home=args.home,
             run_gc_pass=getattr(args, "gc", False),
             cli_plugin_dirs=_cli_plugin_dirs(getattr(args, "plugin_dirs", None)),
+            rebuild_keys=getattr(args, "rebuild_keys", False),
         )
     if args.command == "recover":
         return run_recover(home=args.home)

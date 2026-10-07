@@ -49,7 +49,7 @@ KEEP_CONTAINERS: list[dict[str, Any]] = [
 
 # `run`'s published properties: the S0 set (MC-16 adds `completion` and nothing else).
 S0_RUN_PROPERTIES = {"plugin", "args", "version", "wait_ms", "idempotency_key"}
-RUN_PROPERTIES = S0_RUN_PROPERTIES | {"completion"}
+RUN_PROPERTIES = S0_RUN_PROPERTIES | {"completion", "deadline_s", "idempotency_ttl_s", "after"}
 
 # A property or enum value that names a keep or cleanup choice.
 KEEP_WORDS = ("keep", "cleanup", "clean_up", "retain", "preserve", "persist", "release", "teardown")
@@ -99,7 +99,7 @@ def home_files(home: Path) -> set[str]:
 
 
 def run_dirs(home: Path) -> set[str]:
-    return {p.name for p in (home / "runs").glob("*/*")}
+    return {p.name for p in (home / "runs").glob("*/r_*")}
 
 
 def server_children(host: mcp_host.McpHost) -> set[int]:
@@ -162,7 +162,7 @@ def test_keep_request_refused_invalid_args_before_run_id(tmp_path: Path) -> None
             quiet.assert_unchanged(request)
 
         # the refusals never downgraded to a run without the request: one run exists, the baseline
-        (only,) = sorted((host.home / "runs").glob("*/*"))
+        (only,) = sorted((host.home / "runs").glob("*/r_*"))
         assert only.name == baseline["run_id"]
 
         # and the surface still answers a request without keep, identically

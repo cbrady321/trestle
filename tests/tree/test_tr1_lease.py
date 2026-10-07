@@ -17,6 +17,7 @@ from trestle.common import codes
 from trestle.common.plan.compiler import AdmittedPlan
 from trestle.common.plan.declared import canonical_json
 from trestle.common.types import AdmitRequest
+from trestle.server import pool as pools
 from trestle.server.admission import plan_for_admission
 from trestle.server.main import Kernel
 
@@ -39,7 +40,7 @@ def plan_of(kernel: Kernel, plugin: str, args: dict[str, object]) -> object:
 
 def untouched(kernel: Kernel) -> None:
     """The refusal reached no lease state: no holder, nothing queued or waiting."""
-    assert kernel.control.admission.holders.held() == ()
+    assert pools.key_runs(pools.load_sched(kernel.home)) == []
     assert not kernel.control.scheduler.queue and not kernel.control.scheduler.waiting
     assert run_dirs(kernel) == []
 
@@ -55,9 +56,10 @@ def test_child_env_mismatch_refused_before_run_id(tree_kernel: Kernel) -> None:
     untouched(tree_kernel)
     # the same tree with one value (E, E) is valid: it is admitted (L.TR-L.1) and holds the one
     # lease key of the whole tree
-    admitted(tree_kernel, name, {"env": "dev", "env_b": "dev"})
-    (holder,) = tree_kernel.control.admission.holders.held()
-    assert holder.key == canonical_json("dev")
+    result = admitted(tree_kernel, name, {"env": "dev", "env_b": "dev"})
+    assert pools.key_runs(pools.load_sched(tree_kernel.home)) == [
+        (result.run_id, canonical_json("dev"))
+    ]
 
 
 @proves_mismatch
@@ -96,4 +98,4 @@ def test_root_without_env_not_refused_on_child_env(tree_kernel: Kernel) -> None:
     assert isinstance(plan, AdmittedPlan), plan
     assert plan.lease_set == ()
     admitted(tree_kernel, name, {"env": "dev"})
-    assert tree_kernel.control.admission.holders.held() == ()
+    assert pools.key_runs(pools.load_sched(tree_kernel.home)) == []

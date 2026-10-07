@@ -185,7 +185,7 @@ def test_bundle_lane_refuses_planted_out_of_glob_path(sa: str, tmp_path: Path) -
     assert refused is not None and refused.rule == "R4"
     assert "outside the lane's globs" in refused.message
 
-    leave = head_with("trestle/ops/planted.py")
+    leave = head_with("console/planted.py")
     refused = fence_mod._tree_rules(cfg, repo, BUNDLE_BRANCH, leave, base, warnings)  # noqa: SLF001
     assert refused is not None and refused.rule == "R4"
     assert "is a Leave path" in refused.message

@@ -25,7 +25,8 @@ from tests.core.spine import support
 from tests.proof import harness, records, tolerances
 from trestle.common.plan.declared import canonical_json
 from trestle.common.types import RunView
-from trestle.server import lease
+from trestle.server import pool as pools
+from trestle.server.home import read_marker
 from trestle.server.ledger import run_dir_for
 from trestle.server.main import Kernel
 
@@ -221,14 +222,13 @@ def interval(tmp_path: Path, tag: str) -> tuple[float, float]:
 
 
 def start_tree(kernel: Kernel, args: dict[str, Any] | None = None) -> harness.AdmittedTree:
-    """Admit `lease_tree` as `Admission.admit` would (holder index entry included) and hand it to
-    the scheduler as `ControlSurface.run` does, without waiting."""
+    """Admit `lease_tree` as `Admission.admit` would (its live marker carries the key) and hand it
+    to the scheduler as `ControlSurface.run` does, without waiting."""
     admitted = harness.admit_tree(
         kernel.registry.plugin_dirs[0] / "lease_tree.py", args or {"env": ENV}, kernel=kernel
     )
-    holder = lease.holder_of(admitted.run_dir)
-    assert holder is not None and holder.key == KEY, holder
-    kernel.control.admission.holders.add(holder, admitted.run_dir)
+    marker = read_marker(kernel.home, admitted.run_id)
+    assert marker is not None and marker["lease_key"] == KEY, marker
     kernel.control._drive_background(admitted.order)
     return admitted
 
@@ -278,12 +278,12 @@ def test_child_record_has_no_lease_entry(leased: Kernel) -> None:
     child; the holder index and the scheduler know the root run only."""
     admitted = start_tree(leased)
     run_id, run_dir = admitted.run_id, admitted.run_dir
-    holders = leased.control.admission.holders
+    home = leased.home
     scheduler = leased.control.scheduler
     try:
         assert support.wait_until(lambda: ready(run_dir, "first", "second"), tolerances.JOIN_WAIT_S)
         # both children are mutating now, and the one lease is the root's
-        assert [h.run_id for h in holders.held()] == [run_id]
+        assert pools.key_runs(pools.load_sched(home)) == [(run_id, KEY)]
         assert scheduler.running_keys == {run_id: KEY}
         assert not scheduler.waiting
     finally:
@@ -303,8 +303,10 @@ def test_child_record_has_no_lease_entry(leased: Kernel) -> None:
     assert [row["kind"] for row in with_key] == ["created"] and with_key[0]["lease_key"] == KEY
     assert not [k for k in kinds(run_dir) if k in words or "lease" in k or "queue" in k]
     # the lease ends with the root's terminal row, and nothing is left held or queued
-    assert lease.holder_of(run_dir) is None
-    assert holders.held() == () and scheduler.running_keys == {} and not scheduler.waiting
+    assert support.wait_until(
+        lambda: pools.key_runs(pools.load_sched(home)) == [], tolerances.JOIN_WAIT_S
+    )
+    assert scheduler.running_keys == {} and not scheduler.waiting
 
 
 @proves_not_queued

@@ -2,21 +2,31 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
-from trestle.server.config import TrestleConfig, load_config
+from trestle.server.config import IGNORED_MAX_RUNNING_ENV, TrestleConfig, load_config
 from trestle.server.gc import GCReport, count_runs, run_gc
+from trestle.server.home import (
+    admission_holder,
+    check_home,
+    home_format,
+    live_run_ids,
+    live_servers,
+    read_marker,
+)
 from trestle.server.main import create_kernel, default_home
 from trestle.server.plugin_paths import resolve_plugin_dirs
-from trestle.server.recovery import recover_on_startup
+from trestle.server.reaper import reap_home
 
 
 @dataclass(frozen=True)
 class DoctorReport:
     home: Path
     health: str
-    service_epoch: str
+    home_format: int | None
     registry_version: int
     plugin_count: int
     plugins: tuple[str, ...]
@@ -26,12 +36,18 @@ class DoctorReport:
     config: TrestleConfig
     storage_bytes: int
     gc: GCReport | None = None
+    # v0.3.1: the live servers (their lock files), the live runs by owner (None: a v0.3.0 run),
+    # the admission lock's holder when it is held, and warnings (an ignored environment override)
+    servers: tuple[dict[str, Any], ...] = ()
+    live_runs: dict[str | None, int] = field(default_factory=dict)
+    admission_holder: str | None = None
+    warnings: tuple[str, ...] = ()
 
     def lines(self) -> list[str]:
         rows = [
             f"trestle home: {self.home}",
             f"health: {self.health}",
-            f"service_epoch: {self.service_epoch}",
+            f"home_format: {self.home_format}",
             f"registry_version: {self.registry_version}",
             f"draining: {'true' if self.draining else 'false'}",
             "config:",
@@ -53,6 +69,20 @@ class DoctorReport:
         for plugin_id in self.plugins:
             rows.append(f"  - {plugin_id}")
         rows.append(f"storage_bytes: {self.storage_bytes}")
+        rows.append(f"servers: {len(self.servers)}")
+        for server in self.servers:
+            owned = self.live_runs.get(str(server.get("server_id")), 0)
+            rows.append(
+                f"  - {server.get('server_id')} pid={server.get('pid')} "
+                f"port={server.get('port')} live_runs={owned}"
+            )
+        rows.append(f"live_runs: {sum(self.live_runs.values())}")
+        for owner in sorted(self.live_runs, key=lambda o: (o is None, o or "")):
+            rows.append(f"  {owner or 'v0.3.0 (no owner)'}: {self.live_runs[owner]}")
+        if self.admission_holder is not None:
+            rows.append(f"admission_lock: held by {self.admission_holder}")
+        for warning in self.warnings:
+            rows.append(f"warning: {warning}")
         if self.gc is not None:
             rows.extend(
                 [
@@ -76,6 +106,7 @@ def build_doctor_report(
     cli_plugin_dirs: list[Path] | None = None,
 ) -> DoctorReport:
     trestle_home = home
+    check_home(trestle_home)
     config = load_config(trestle_home)
     resolved_dirs = plugin_dirs
     if resolved_dirs is None:
@@ -87,10 +118,6 @@ def build_doctor_report(
     )
     kernel.registry.refresh()
 
-    epoch_path = trestle_home / "service_epoch"
-    service_epoch = (
-        epoch_path.read_text(encoding="utf-8").strip() if epoch_path.exists() else "unknown"
-    )
     run_counts = count_runs(trestle_home)
     gc_report = run_gc(trestle_home, config) if run_gc_pass else None
     if gc_report is not None:
@@ -98,14 +125,15 @@ def build_doctor_report(
     else:
         storage_bytes = _storage_bytes(trestle_home)
     health = "ok"
-    if run_counts.get("running", 0):
+    # a run in flight, a held one included (Feature 3), degrades health
+    if any(run_counts.get(state, 0) for state in ("running", "held")):
         health = "degraded"
     counts_by_dir = kernel.registry.plugin_counts_by_dir()
 
     return DoctorReport(
         home=trestle_home,
         health=health,
-        service_epoch=service_epoch,
+        home_format=home_format(trestle_home),
         registry_version=kernel.registry.registry_version,
         plugin_count=len(kernel.registry.snapshots),
         plugins=tuple(sorted(kernel.registry.snapshots)),
@@ -117,7 +145,30 @@ def build_doctor_report(
         config=config,
         storage_bytes=storage_bytes,
         gc=gc_report,
+        servers=tuple(live_servers(trestle_home)),
+        live_runs=_live_runs_by_owner(trestle_home),
+        admission_holder=admission_holder(trestle_home),
+        warnings=_warnings(),
     )
+
+
+def _live_runs_by_owner(home: Path) -> dict[str | None, int]:
+    counts: dict[str | None, int] = {}
+    for run_id in live_run_ids(home):
+        owner = (read_marker(home, run_id) or {}).get("owner")
+        key = owner if isinstance(owner, str) else None
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _warnings() -> tuple[str, ...]:
+    found: list[str] = []
+    if os.environ.get(IGNORED_MAX_RUNNING_ENV) is not None:
+        found.append(
+            f"{IGNORED_MAX_RUNNING_ENV} is set and ignored: every server on a home shares one "
+            "pool, sized by max_running_runs in config.toml"
+        )
+    return tuple(found)
 
 
 def run_doctor(
@@ -125,6 +176,7 @@ def run_doctor(
     home: str | None = None,
     run_gc_pass: bool = False,
     cli_plugin_dirs: list[Path] | None = None,
+    rebuild_keys: bool = False,
 ) -> int:
     trestle_home = Path(home) if home else default_home()
     report = build_doctor_report(
@@ -134,20 +186,27 @@ def run_doctor(
     )
     for line in report.lines():
         print(line)
+    if rebuild_keys:
+        # Problem B's repair: home/keys/ replayed from the created rows (an expired key stays
+        # expired), one key at a time under the admission lock
+        from trestle.server.idempotency import rebuild_keys as rebuild
+
+        rewritten = rebuild(trestle_home, ttl_s=load_config(trestle_home).idempotency_ttl_s)
+        print(f"keys rebuilt: {rewritten}")
     return 0
 
 
 def run_recover(*, home: str | None = None) -> int:
+    """`trestle recover`: reap now, then GC (v0.3.1). Only runs whose owner lock is free (their
+    server died) are finalized; a live server's runs are never touched."""
     trestle_home = Path(home) if home else default_home()
+    check_home(trestle_home)
     config = load_config(trestle_home)
-    from trestle.server.idempotency import rebuild_from_ledgers
-
-    recover_on_startup(trestle_home)
-    rebuild_from_ledgers(trestle_home, ttl_s=config.idempotency_ttl_s)
+    reaped = reap_home(trestle_home)
     gc_report = run_gc(trestle_home, config)
-    epoch = (trestle_home / "service_epoch").read_text(encoding="utf-8").strip()
     print(f"trestle home: {trestle_home}")
-    print(f"service_epoch: {epoch}")
+    print(f"reaped: {len(reaped.reaped)}")
+    print(f"live runs left: {reaped.left_live}")
     print("recovery complete")
     print(f"gc runs_removed: {gc_report.runs_removed}")
     print(f"gc artifacts_collected: {gc_report.artifacts_collected}")
