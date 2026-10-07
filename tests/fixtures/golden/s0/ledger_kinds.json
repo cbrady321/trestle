@@ -1,0 +1,147 @@
+{
+  "sequences": {
+    "admitted": [
+      "created",
+      "admitted"
+    ],
+    "artifacts_present": [
+      "created",
+      "admitted",
+      "started",
+      "artifact_available",
+      "execution_ended",
+      "evidence_finalized",
+      "succeeded"
+    ],
+    "cancelled": [
+      "created",
+      "admitted",
+      "started",
+      "execution_ended",
+      "evidence_finalized",
+      "cancelled"
+    ],
+    "created": [
+      "created"
+    ],
+    "execution_ended": [
+      "created",
+      "admitted",
+      "started",
+      "execution_ended"
+    ],
+    "failed": [
+      "created",
+      "admitted",
+      "started",
+      "execution_ended",
+      "evidence_finalized",
+      "failed"
+    ],
+    "finalized_no_terminal": [
+      "created",
+      "admitted",
+      "started",
+      "execution_ended",
+      "evidence_finalized"
+    ],
+    "idempotency_keyed": [
+      "created",
+      "admitted",
+      "started",
+      "execution_ended",
+      "evidence_finalized",
+      "succeeded"
+    ],
+    "interrupted": [
+      "created",
+      "admitted",
+      "started",
+      "evidence_finalized",
+      "interrupted"
+    ],
+    "invalid_synthesized": [
+      "created",
+      "admitted",
+      "started",
+      "execution_ended",
+      "evidence_finalized",
+      "succeeded"
+    ],
+    "newline_less_tail": [
+      "created",
+      "admitted",
+      "started",
+      "execution_ended",
+      "evidence_finalized",
+      "succeeded"
+    ],
+    "partial_limits": [
+      "created",
+      "admitted",
+      "started",
+      "limit_exceeded",
+      "execution_ended",
+      "evidence_finalized",
+      "succeeded"
+    ],
+    "started": [
+      "created",
+      "admitted",
+      "started"
+    ],
+    "straddle": [
+      "created",
+      "admitted",
+      "started"
+    ],
+    "succeeded": [
+      "created",
+      "admitted",
+      "started",
+      "execution_ended",
+      "evidence_finalized",
+      "succeeded"
+    ],
+    "timed_out": [
+      "created",
+      "admitted",
+      "started",
+      "execution_ended",
+      "evidence_finalized",
+      "timed_out"
+    ],
+    "too_large": [
+      "created",
+      "admitted",
+      "started",
+      "execution_ended",
+      "evidence_finalized",
+      "succeeded"
+    ],
+    "torn_tail": [
+      "created",
+      "admitted",
+      "started",
+      "execution_ended",
+      "evidence_finalized"
+    ],
+    "worker_exit": [
+      "created",
+      "admitted",
+      "started",
+      "execution_ended",
+      "evidence_finalized",
+      "worker_exit"
+    ]
+  },
+  "terminal_kinds": [
+    "cancelled",
+    "crashed",
+    "failed",
+    "interrupted",
+    "succeeded",
+    "timed_out",
+    "worker_exit"
+  ]
+}

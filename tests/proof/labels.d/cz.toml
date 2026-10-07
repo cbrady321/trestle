@@ -1,0 +1,45 @@
+# tests/proof/labels.d/cz.toml — phase CZ (plan-workflow-runtime.md `## Closure phase (CZ)`, L.CZ.1). Schema CSC-1 (MC-04),
+# exactly the keys of the other fragments; read by meta audit-rows, meta open-questions and meta register.
+# `WR-PROOF-10:slice-row-doc-syncs` is the label core deferred to CZ (deferrals.toml, CM-8): L.CZ.3 claims it here, and the
+# deferral entry stays (deferrals are written once). Each label's registering node is its declaring leaf's changed_behavior
+# node: L.CZ.1 test_enforce.py, L.CZ.2 test_audit_rows.py, L.CZ.3 test_kdoc.py, L.CZ.4 test_divergence_closure.py.
+
+[[label]]
+id          = "WR-PROOF-1:every-cell-green-or-na"
+row         = "WR-PROOF-1"
+step        = "CZ"
+slice       = "core"
+tier        = "LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CZ.1"
+
+[[label]]
+id          = "WR-PROOF-2:no-unrun-verifier-counts"
+row         = "WR-PROOF-2"
+step        = "CZ"
+slice       = "core"
+tier        = "LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CZ.1"
+
+[[label]]
+id          = "WR-PROOF-10:slice-row-doc-syncs"
+row         = "WR-PROOF-10"
+step        = "CZ"
+slice       = "core"
+tier        = "LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CZ.1"
+
+[[label]]
+id          = "C-PROOF-HONEST:divergence-ledger-closed"
+row         = "C-PROOF-HONEST"
+step        = "CZ"
+slice       = "core"
+tier        = "LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CZ.1"

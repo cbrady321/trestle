@@ -1,0 +1,7 @@
+{"seq":1,"kind":"created","at":"2026-09-30T12:54:46Z","run_id":"r_aaaadihsmg5caasdtns","spec_hash":"80d3b1eef37bb25649e603ea11aad2fe2a4b1db78773014a1ef276b240a2c50a","service_epoch":"epoch_yk3rttmibze2u","plugin":"echo","version":"0.1.0","snapshot_id":"snap_fc8e4c74faa71ce4","args_hash":"4c20abce701df7e9da744651ab41c9231731962ecb626c28c56570ee053ed642","caller_session":null}
+{"seq":2,"kind":"admitted","at":"2026-09-30T12:54:46Z","run_id":"r_aaaadihsmg5caasdtns","snapshot_id":"snap_fc8e4c74faa71ce4"}
+{"seq":3,"kind":"started","at":"2026-09-30T12:54:46Z","run_id":"r_aaaadihsmg5caasdtns"}
+{"seq":4,"kind":"process_identity","at":"2026-09-30T12:54:46Z","run_id":"r_aaaadihsmg5caasdtns","pid":40659,"boot":"9B3D490F-D3E6-460F-9A85-D5CA520BDA5A","start":"1790772886049942","group":40659,"leader":true}
+{"seq":5,"kind":"process_identity","at":"2026-09-30T12:54:46Z","run_id":"r_aaaadihsmg5caasdtns","pid":40660,"boot":"9B3D490F-D3E6-460F-9A85-D5CA520BDA5A","start":"1790772886078805","group":40659,"leader":false}
+{"seq":6,"kind":"group_stop","at":"2026-09-30T12:54:46Z","run_id":"r_aaaadihsmg5caasdtns","confirmed_gone":true,"method":"exit"}
+{"seq":7,"kind":"execution_ended","at":"2026-09-30T12:54:46Z","run_id":"r_aaaadihsmg5caasdtns","classification":"succeeded","exit_code":0,"duration_ms":120}

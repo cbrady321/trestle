@@ -1,0 +1,18 @@
+# RV-4 at J-ROOT (L.J-ROOT.1, CM-5 role 1): stage-critic review of the R-J/R-N/R-O/R-P disclosures and the
+# K-2/K-5/K-9 docs, paired with tests/core/contract/test_cl_c1_docs.py and meta kdoc. Reviewer: stage critic
+# (independent, fable-high), read-only. Round 1 at 5f20c3f FAILED captured_vs_not_stated (R-N not disclosed,
+# R-O partly). Fix 762ef52 (L.CZ.rv-fix1, docs/agents.md + docs/environment.md). Round 2 (a fresh reviewer),
+# pass, at c02b5c8 (origin/wr/cz/cz). Previous RV-4: RV-4-core.toml at 6cef746. Non-gating notes: design L812
+# (R-N) says restart-interrupted where code and docs say worker_exit; K-2 ingredient list omits the declared-tree
+# digest. Packet _tmp/delivery/RV-4-root-r2-packet.md; verdicts RV-4-root-verdict.md (r1), RV-4-root-r2-verdict.md (transcribed via jroot-fix/RV-4-root-r2-verdict.norm.md, headings normalised).
+id = "RV-4"
+mode = "stage-critic review"
+outcome = "pass"
+sha = "c02b5c865ed409063835be8ec1905676b8b7f705"
+paired_check_log = "c02b5c865ed409063835be8ec1905676b8b7f705: locked.sh py.sh -m pytest -q -p no:cacheprovider tests/core/contract/test_cl_c1_docs.py -> 1 passed in 0.02s (exit 0); meta kdoc (report mode, run in the .git-bearing cz-prep worktree at the sha; the .git-less extraction is vacuous) -> every landed K-merge edited its mapped docs (exit 0); meta kdoc --enforce --history wr-ckpt/core..HEAD -> exit 1 before any check ('0 countable results': no proof ledger in a clean worktree), doc-landing audit reproduced in-process with history wr-ckpt/core..HEAD -> 0 problems"
+
+[criteria]
+rj_statement_present = "pass"
+rj_matches_code = "pass"
+k2_k5_k9_docs_accurate = "pass"
+captured_vs_not_stated = "pass"

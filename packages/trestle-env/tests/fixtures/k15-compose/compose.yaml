@@ -1,0 +1,18 @@
+# K-15 on real Docker (L.RB-11.1; MC-B-10, CSC-10). The stack the legacy `integration_pipeline`
+# brings up and must stop exactly once. The image is named by role only (`${TRESTLE_IMAGE_ALPINE}`
+# is exported as `<repo>@sha256:<hex>` by `docker_gate run` from images.toml) and never pulled;
+# every service and network carries the fixture label, so nothing it leaves is unattributable.
+# The legacy `packages/trestle-packs/tests/fixtures/minimal-compose/` stays unedited (L.NW-2.8's
+# live test).
+services:
+  web:
+    image: ${TRESTLE_IMAGE_ALPINE}
+    pull_policy: never
+    command: ["sh", "-c", "trap 'exit 0' TERM; while :; do sleep 1; done"]
+    labels:
+      trestle.proof.fixture: k15
+
+networks:
+  default:
+    labels:
+      trestle.proof.fixture: k15

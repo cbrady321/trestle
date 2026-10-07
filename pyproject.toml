@@ -1,0 +1,74 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[project]
+name = "trestle"
+version = "0.3.1"
+description = "A durable local execution ledger with an MCP control surface"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastmcp==3.4.7",
+    "starlette>=1.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx2>=2.0",
+    # The gate tools are pinned exactly: a new mypy or ruff is a new gate, adopted in its own change
+    # (mypy 2.4.0 and ruff 0.16.10 arrived unannounced on 2026-10-01 and failed CI, not local runs).
+    # Everything else is held by constraints/ci.txt.
+    "mypy==2.4.0",
+    "pytest>=8.0",
+    "ruff==0.16.10",
+]
+packs = [
+    "trestle-packs[all] @ file:packages/trestle-packs",
+]
+env = [
+    "trestle-packs[all] @ file:packages/trestle-packs",
+    "trestle-env @ file:packages/trestle-env",
+]
+
+[project.scripts]
+trestle = "trestle.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["trestle"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+# fossils are byte snapshots of plugin sources (MC-11), not code to lint
+extend-exclude = ["tests/fixtures/fossils"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "packages/trestle-packs/tests", "packages/trestle-env/tests"]
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette.testclient`:starlette.exceptions.StarletteDeprecationWarning",
+]
+addopts = "--strict-markers -m \"not long\""
+markers = [
+    "spine: the unattended one-call acceptance of the core corrections (MC-29; CI job `spine`, gate ci-spine)",
+    "long: a test that outlives the default 300 s deadline (MC-05; deselected from the default session, CI job `long-gate`, gate ci-long)",
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["trestle"]
+
+[[tool.mypy.overrides]]
+module = ["fastmcp", "fastmcp.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["trestle.server.main"]
+disable_error_code = ["untyped-decorator"]

@@ -1,0 +1,41 @@
+# tests/proof/temporary.d/core.toml — phase CORE (plans/core.md). Schema CM-7 (MC-07); permanent = false on every entry.
+[[entry]]
+id                = "TM-C1"
+mechanism         = "one grace+kill stopper applied at both stop call sites; RunRegistry.request_cancel still signals"
+introduced_by     = "L.CS-2.2"
+serves            = []   # no core clause depends on its absence (I-P2-9); SV-3 registers the labels its removal enables
+probe             = "python -c \"import inspect,sys,trestle.server.runs as r;sys.exit(0 if 'stop_group(' in inspect.getsource(r.RunRegistry.request_cancel) else 1)\""
+removal_condition = "U2 sole signaller; request path writes only the cancel flag; stop row (MC-21) present"
+removed_by        = "L.SV-3.6"
+permanent         = false
+
+[[entry]]
+id                = "TM-C2"
+mechanism         = "terminal classification from the first observed cause held in memory"
+introduced_by     = "L.CS-2.3"
+serves            = []
+probe             = "grep -q first_observed_cause trestle/server/conductor.py"
+removal_condition = "stop row carries the cause (MC-21)"
+removed_by        = "L.SV-3.6"
+permanent         = false
+
+[[entry]]
+id                = "TM-C3"
+mechanism         = "provisional max_running_runs / queue_depth defaults"
+introduced_by     = "L.CL-A1.2"
+serves            = []
+probe             = "python -c \"import sys;from trestle.server.config import CAPACITY_DEFAULT_PROVISIONAL as p;sys.exit(0 if p else 1)\""
+removal_condition = "defaults set from the Slice A workload measurement (OQ-10)"
+removed_by        = "L.TR-6.8"
+permanent         = false
+
+[[entry]]
+id                = "TM-C4b"
+mechanism         = "OQ-3=refuse variant test, xfail(strict=True)"
+introduced_by     = "L.CK-3/4.3"
+serves            = []
+probe             = "grep -q 'variant:OQ-3' tests/core/contract/test_ck34_records.py"
+removal_condition = "named-not-removed: confirm-gated variant (root C.9)"
+removed_by        = "named-not-removed"
+permanent         = false
+citation          = "root C.9 (K-3/K-4, OQ-3 recorded default; both variants written)"

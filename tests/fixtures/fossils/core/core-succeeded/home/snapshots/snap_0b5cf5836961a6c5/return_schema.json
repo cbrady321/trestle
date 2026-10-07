@@ -1,0 +1,1 @@
+{"additionalProperties":false,"properties":{"items":{"items":{"type":"integer"},"type":"array"},"note":{"type":"string"}},"required":["items","note"],"type":"object"}

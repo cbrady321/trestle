@@ -1,0 +1,8 @@
+# Import-boundary allowlist (DM-17; L.P0-0d.5). Permanent test
+# infrastructure — not registered (CM-7). The one entry is the
+# brownfield T-4 probe.
+
+[[entry]]
+file = "trestle/server/init_cmd.py"
+line = 38
+reason = "T-4: host's one packs hint import, conditional and caught (init_cmd.py::_packs_hint)"

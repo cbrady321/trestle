@@ -1,0 +1,3 @@
+{"class":"plan","seq":1,"lane_format":1,"declaration_digest":"e5afa491e8698ecba8764e2125ddc92729bcf63a507965b2e4e6dc8ecf793470","args_hash":"3da29e1d6a85d50486f5253771aa792367dae07e272b81210118647774c00a25","selection":{"pick":"pick/steady"},"observations_digest":"257be8188bce75074d28d45d947c1f6ef926a7ed4844135c5b8575c72f8e4ab4"}
+{"class":"issue","seq":2,"path":"pick/steady","effect":"up","attempt":1,"facet":"create","repeat":"safe","lifetime":"run","release":{"form":"in_run_group","helpers_disclosed":false},"remedy":null,"issued_at":"2026-09-30T10:37:50.612031Z"}
+{"class":"confirmation","seq":3,"path":"pick/steady","effect":"up","attempt":1,"status":"applied","code":null,"identity":"fake-d1065dce810d6014"}

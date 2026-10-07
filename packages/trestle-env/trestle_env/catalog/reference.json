@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "env_key": "env",
+  "services": [
+    {"id": "postgres", "selector": "postgres", "depends_on": ["http_support"]},
+    {"id": "http_support", "selector": "http_support"}
+  ],
+  "projects": [
+    {
+      "id": "demo-py",
+      "pin": {"python": "3.12"},
+      "tasks": [
+        {"id": "version", "argv": ["python", "--version"]},
+        {"id": "pytest", "argv": ["python", "-m", "pytest", "-q", "./"]}
+      ]
+    },
+    {
+      "id": "override-app",
+      "pin": {"python": "3.12"},
+      "tasks": [
+        {"id": "launch", "argv": ["python", "./tests/fixtures/apps/override_app.py"]},
+        {"id": "launch-alt", "argv": ["python", "./tests/fixtures/apps/override_app.py", "alt"]}
+      ]
+    },
+    {
+      "id": "system-tests",
+      "pin": {"python": "3.12"},
+      "tasks": [
+        {
+          "id": "run",
+          "argv": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "./suite"],
+          "reports_tests": true
+        }
+      ]
+    },
+    {
+      "id": "demo-jvm",
+      "pin": {"java": "21"},
+      "tasks": [
+        {
+          "id": "build",
+          "argv": [
+            "java",
+            "-classpath",
+            "./gradle/wrapper/gradle-wrapper.jar",
+            "org.gradle.wrapper.GradleWrapperMain",
+            "--no-daemon",
+            "-Porg.gradle.java.installations.auto-download=false",
+            "build"
+          ]
+        }
+      ]
+    }
+  ],
+  "tests": [],
+  "overrides": [
+    {
+      "id": "http_support_local",
+      "service": "http_support",
+      "project": "override-app",
+      "task": "launch"
+    }
+  ],
+  "remediation": [
+    {
+      "code": "adapter.docker_engine_unreachable",
+      "effect": "start_engine",
+      "attempts": 2,
+      "total_s": 60,
+      "cooldown_s": 5
+    }
+  ]
+}

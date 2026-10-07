@@ -1,0 +1,19 @@
+{
+  "name": "reference",
+  "services": {
+    "http_support": {
+      "image": "${TRESTLE_IMAGE_HTTP_SUPPORT}",
+      "pull_policy": "never",
+      "labels": {"trestle.proof.fixture": "closure-compose"}
+    },
+    "postgres": {
+      "image": "${TRESTLE_IMAGE_POSTGRES}",
+      "pull_policy": "never",
+      "depends_on": ["http_support"],
+      "labels": {"trestle.proof.fixture": "closure-compose"}
+    }
+  },
+  "networks": {
+    "default": {"labels": {"trestle.proof.fixture": "closure-compose"}}
+  }
+}

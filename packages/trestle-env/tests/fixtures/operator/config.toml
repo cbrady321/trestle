@@ -1,0 +1,14 @@
+# The reference operator configuration (L.RB-0.3; WR-CANCEL-4 allowlist posture).
+#
+# Read through the `home/config.toml` convention of `trestle/server/plugin_paths.py`
+# (`[plugins] paths`). `@DOCKER@` and `@PLUGIN_DIR@` are filled in by
+# `trestle_env.operator.load_operator_config` with the operator's resolved absolute docker path
+# and the reference plugin directory: only THIS configuration lists a docker executable in the
+# release-executable allowlist (the executables the host sweep may run for an `ArgvRelease`,
+# V-10.1, B2-C9). The library default stays empty (F-11(b), TM-B2-2 named-not-removed).
+
+[plugins]
+paths = ["@PLUGIN_DIR@"]
+
+[operator]
+release_executables = ["@DOCKER@"]

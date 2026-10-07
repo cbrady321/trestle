@@ -1,0 +1,622 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+# C4: a new push to a PR cancels that PR's superseded run. Every other event (push to
+# master, workflow_dispatch) gets its own group, so no master run -- the `ckpt` host --
+# is ever cancelled or displaced by a later one.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.ref) || format('ci-run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Every `pip install` in every job installs the exact third-party set in constraints/ci.txt (pip
+# reads PIP_CONSTRAINT): a new release of a tool or library reaches CI only through a change to
+# that file (mypy 2.4.0 and ruff 0.16.10 turned master red with no code change, 2026-10-01).
+# proof-ledger installs nothing (C2) and is unaffected.
+#
+# G-E2 (tests/pins/e_packs/test_g_e2.py) reads GitHub's GITHUB_EVENT_NAME: on a pull_request run a
+# head with no host-docker record yet is pending (skipped), not failing, so `test`, proof-ledger
+# and the CK drills run before the host session (owner decision 2026-10-02). The record is still
+# required to land (fence rule L1) and at a checkpoint (CM-6).
+env:
+  PIP_CONSTRAINT: ${{ github.workspace }}/constraints/ci.txt
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: pip install -e ".[dev]"
+      - run: ruff check trestle tests packages/trestle-packs packages/trestle-env conftest.py scripts/*.py
+      - run: ruff format --check trestle tests packages/trestle-packs packages/trestle-env conftest.py scripts/*.py
+
+  # K-14 (L.CK-14.1): mypy at zero errors. It needs `.[dev,packs]`: with `.[dev]` alone
+  # trestle_packs is absent and its py.typed marker cannot fix `import-not-found`. The job
+  # produces no proof result (CSC-13); a pull_request job, so a required job (CM-4).
+  # CK-14's decline patch (tests/core/tooling/declines/ck_14.py) flips the `mypy` command.
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            packages/trestle-packs/pyproject.toml
+      - run: pip install -e ".[dev,packs]"
+      - run: mypy
+
+  # The `test` job's work, split into path groups (tests/proof/ci_shards.py SHARDS; C1). Each
+  # node runs in exactly one shard; each package testpath is its own shard in the CSC-12 form (packs, env).
+  # One runner per shard, so shards share no fixture dir, port or results file. Each
+  # shard's proof records get a shard-unique file and artifact name: `proof-ledger` and
+  # `ckpt` merge every `proof-results-*` artifact into one directory.
+  test-shard:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [baseline, planted, fence, proof, pins, core, single, tree-host, tree, misc, packs, env]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      # release-graft (release option (c)): a no-op unless a root commit of HEAD carries a `Release-Of: <sha>`
+      # trailer, i.e. HEAD sits on a squashed release. Then it fetches refs/archive/*, requires the archived
+      # commit's tree to EQUAL the release commit's tree, and grafts the archived history under the release
+      # commit (`git replace --graft`, local to this runner), so this job's CM-6 admissibility, trailer, tag and
+      # checkpoint-anchor reads see the full history. It runs after the checkout's `with:` (full history, tags).
+      - name: release-graft
+        shell: bash
+        run: |
+          set -euo pipefail
+          grafts=0
+          for round in 1 2 3 4 5 6 7 8; do
+            pairs=""
+            for root in $(git rev-list --max-parents=0 HEAD); do
+              of=$(git log -1 --format='%(trailers:key=Release-Of,valueonly)' "$root" | sed -n 1p | tr -d '[:space:]')
+              if [ -n "$of" ]; then pairs="$pairs $root:$of"; fi
+            done
+            if [ -z "$pairs" ]; then echo "release-graft: $grafts graft(s); no root of HEAD carries Release-Of"; exit 0; fi
+            for pair in $pairs; do
+              root=${pair%%:*}; of=${pair#*:}
+              git cat-file -e "$of^{commit}" 2>/dev/null || git fetch -q --no-tags origin '+refs/archive/*:refs/archive/*'
+              git cat-file -e "$of^{commit}" || { echo "release-graft: archived commit $of not found" >&2; exit 1; }
+              if [ "$(git rev-parse "$of^{tree}")" != "$(git rev-parse "$root^{tree}")" ]; then
+                echo "release-graft: tree of $of differs from release commit $root; not grafting" >&2; exit 1
+              fi
+              git replace -f --graft "$root" "$of"
+              echo "release-graft: $root grafted onto $of"
+              grafts=$((grafts + 1))
+            done
+          done
+          echo "release-graft: a Release-Of root is still present after 8 rounds" >&2; exit 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            packages/trestle-packs/pyproject.toml
+            packages/trestle-env/pyproject.toml
+      - run: pip install -e ".[dev,packs,env]"
+      - run: python -m tests.proof.guards clean-path --github-env
+      # The shards' union is exactly the unsharded collection, and the matrix names them all.
+      - if: matrix.shard == 'planted'
+        run: python -m tests.proof.ci_shards check
+      - name: pytest (this shard)
+        env:
+          TRESTLE_PROOF_GATE: ci-test
+        run: |
+          args=$(python -m tests.proof.ci_shards args "${{ matrix.shard }}")
+          pytest -q $args
+      # The packs shard's pytest above is the CSC-12 packs session itself; it is not run again.
+      - if: matrix.shard == 'misc'
+        run: python scripts/smoke_agent_mcp.py
+      - if: matrix.shard == 'misc'
+        run: python scripts/smoke_operator_api.py
+      - if: matrix.shard == 'misc'
+        run: python scripts/smoke_packs.py
+      - if: matrix.shard == 'misc'
+        run: python scripts/demo_pack_workflows.py
+      - name: shard-unique proof record files
+        run: |
+          shopt -s nullglob
+          for f in tests/proof/results/*.jsonl; do mv "$f" "${f%.jsonl}-${{ matrix.shard }}.jsonl"; done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proof-results-ci-test-${{ matrix.shard }}
+          path: tests/proof/results/
+          if-no-files-found: ignore
+
+  # CM-4's required name `test`: it succeeds only when every shard succeeded, and it
+  # reports failure (not skipped) when one did not.
+  test:
+    if: ${{ !cancelled() }}
+    needs: [test-shard]
+    runs-on: ubuntu-latest
+    steps:
+      - run: '[ "$SHARDS" = success ] || { echo "test-shard concluded $SHARDS"; exit 1; }'
+        env:
+          SHARDS: ${{ needs.test-shard.result }}
+
+  compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            packages/trestle-packs/pyproject.toml
+            packages/trestle-env/pyproject.toml
+      - run: pip install -e ".[dev,packs,env]"
+      - run: python -m tests.proof.guards clean-path --github-env
+      - run: pytest -q -m compat
+        env:
+          TRESTLE_PROOF_GATE: ci-compat
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proof-results-ci-compat
+          path: tests/proof/results/
+          if-no-files-found: ignore
+
+  guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            packages/trestle-packs/pyproject.toml
+            packages/trestle-env/pyproject.toml
+      - run: pip install -e ".[dev,packs,env]"
+      - run: python -m tests.proof.guards clean-path --github-env
+      - run: pytest -q tests/proof/selftest/test_guards.py tests/proof/selftest/test_session.py
+        env:
+          TRESTLE_PROOF_GATE: ci-guards
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proof-results-ci-guards
+          path: tests/proof/results/
+          if-no-files-found: ignore
+
+  # MC-29 (L.CS-4.4): the unattended one-call acceptance (W-0, W-0b, W-0c, the deadline stop and
+  # the contract anchors). Runs on pull_request, so it is a required job (CM-4); its results
+  # count under gate ci-spine (tests/proof/gates.d/core.toml, CSC-13).
+  spine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            packages/trestle-packs/pyproject.toml
+            packages/trestle-env/pyproject.toml
+      - run: pip install -e ".[dev,packs,env]"
+      - run: python -m tests.proof.guards clean-path --github-env
+      # L.CZ.8: the junit rides with this job's results, so the `ckpt` job (J-ROOT's root.py) reads it
+      # beside them and holds the gate to its 15-minute budget (tests/proof/selftest/spine_budget_check.py).
+      - run: pytest -q -m spine --junitxml=tests/proof/results/spine-junit.xml
+        env:
+          TRESTLE_PROOF_GATE: ci-spine
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proof-results-ci-spine
+          path: tests/proof/results/
+          if-no-files-found: ignore
+
+  # A5.2 (L.CL-C1.5): a plugin that declares a deadline above 300 s is not killed at 300 s. The test
+  # outlives the default session, so it is deselected there (marker `long`) and runs here alone.
+  # Runs on pull_request, so it is a required job (CM-4); its results count under gate ci-long
+  # (tests/proof/gates.d/core.toml, CSC-13).
+  long-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            packages/trestle-packs/pyproject.toml
+            packages/trestle-env/pyproject.toml
+      - run: pip install -e ".[dev,packs,env]"
+      - run: python -m tests.proof.guards clean-path --github-env
+      - run: pytest -q -m long tests/core/contract/test_cl_c1_deadline.py
+        env:
+          TRESTLE_PROOF_GATE: ci-long
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proof-results-ci-long
+          path: tests/proof/results/
+          if-no-files-found: ignore
+
+  ancestry:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: pip install -e ".[dev]"
+      - run: python -m tests.proof.guards clean-path --github-env
+      - run: pytest -q tests/proof/drift/test_sa10_attribution.py tests/proof/selftest/test_ancestry.py
+        env:
+          TRESTLE_PROOF_GATE: ${{ matrix.os == 'ubuntu-latest' && 'ci-ancestry-linux' || 'ci-ancestry-macos' }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proof-results-ci-ancestry-${{ matrix.os }}
+          path: tests/proof/results/
+          if-no-files-found: ignore
+
+  d2-straddle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      # release-graft (release option (c)): a no-op unless a root commit of HEAD carries a `Release-Of: <sha>`
+      # trailer, i.e. HEAD sits on a squashed release. Then it fetches refs/archive/*, requires the archived
+      # commit's tree to EQUAL the release commit's tree, and grafts the archived history under the release
+      # commit (`git replace --graft`, local to this runner), so this job's CM-6 admissibility, trailer, tag and
+      # checkpoint-anchor reads see the full history. It runs after the checkout's `with:` (full history, tags).
+      - name: release-graft
+        shell: bash
+        run: |
+          set -euo pipefail
+          grafts=0
+          for round in 1 2 3 4 5 6 7 8; do
+            pairs=""
+            for root in $(git rev-list --max-parents=0 HEAD); do
+              of=$(git log -1 --format='%(trailers:key=Release-Of,valueonly)' "$root" | sed -n 1p | tr -d '[:space:]')
+              if [ -n "$of" ]; then pairs="$pairs $root:$of"; fi
+            done
+            if [ -z "$pairs" ]; then echo "release-graft: $grafts graft(s); no root of HEAD carries Release-Of"; exit 0; fi
+            for pair in $pairs; do
+              root=${pair%%:*}; of=${pair#*:}
+              git cat-file -e "$of^{commit}" 2>/dev/null || git fetch -q --no-tags origin '+refs/archive/*:refs/archive/*'
+              git cat-file -e "$of^{commit}" || { echo "release-graft: archived commit $of not found" >&2; exit 1; }
+              if [ "$(git rev-parse "$of^{tree}")" != "$(git rev-parse "$root^{tree}")" ]; then
+                echo "release-graft: tree of $of differs from release commit $root; not grafting" >&2; exit 1
+              fi
+              git replace -f --graft "$root" "$of"
+              echo "release-graft: $root grafted onto $of"
+              grafts=$((grafts + 1))
+            done
+          done
+          echo "release-graft: a Release-Of root is still present after 8 rounds" >&2; exit 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: pip install -e ".[dev]"
+      - run: python -m tests.proof.guards clean-path --github-env
+      - run: python -m tests.proof.fossils generate --checkpoint s0 --states succeeded,failed
+      - run: pytest -q tests/proof/drift/test_sa15_d2_surfaces.py tests/proof/selftest/test_d2.py
+        env:
+          TRESTLE_PROOF_GATE: ci-d2
+      - run: python -m tests.proof.differ d2 --reader s0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proof-results-ci-d2
+          path: tests/proof/results/
+          if-no-files-found: ignore
+
+  proof-ledger:
+    runs-on: ubuntu-latest
+    needs: [test, compat, guards, spine, long-gate, ancestry, d2-straddle]
+    # enforce's `--scope ci` anchor reads the `ckpt` check run of a check_run-marked carrier
+    # (J0, J-ROOT: fence.ckpt_succeeded) through `gh`, as the ckpt job's eval step does.
+    permissions:
+      contents: read
+      checks: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      # release-graft (release option (c)): a no-op unless a root commit of HEAD carries a `Release-Of: <sha>`
+      # trailer, i.e. HEAD sits on a squashed release. Then it fetches refs/archive/*, requires the archived
+      # commit's tree to EQUAL the release commit's tree, and grafts the archived history under the release
+      # commit (`git replace --graft`, local to this runner), so this job's CM-6 admissibility, trailer, tag and
+      # checkpoint-anchor reads see the full history. It runs after the checkout's `with:` (full history, tags).
+      - name: release-graft
+        shell: bash
+        run: |
+          set -euo pipefail
+          grafts=0
+          for round in 1 2 3 4 5 6 7 8; do
+            pairs=""
+            for root in $(git rev-list --max-parents=0 HEAD); do
+              of=$(git log -1 --format='%(trailers:key=Release-Of,valueonly)' "$root" | sed -n 1p | tr -d '[:space:]')
+              if [ -n "$of" ]; then pairs="$pairs $root:$of"; fi
+            done
+            if [ -z "$pairs" ]; then echo "release-graft: $grafts graft(s); no root of HEAD carries Release-Of"; exit 0; fi
+            for pair in $pairs; do
+              root=${pair%%:*}; of=${pair#*:}
+              git cat-file -e "$of^{commit}" 2>/dev/null || git fetch -q --no-tags origin '+refs/archive/*:refs/archive/*'
+              git cat-file -e "$of^{commit}" || { echo "release-graft: archived commit $of not found" >&2; exit 1; }
+              if [ "$(git rev-parse "$of^{tree}")" != "$(git rev-parse "$root^{tree}")" ]; then
+                echo "release-graft: tree of $of differs from release commit $root; not grafting" >&2; exit 1
+              fi
+              git replace -f --graft "$root" "$of"
+              echo "release-graft: $root grafted onto $of"
+              grafts=$((grafts + 1))
+            done
+          done
+          echo "release-graft: a Release-Of root is still present after 8 rounds" >&2; exit 1
+      # No install (C2): `meta report` and `meta enforce` import only the standard library and the checkout.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: proof-results-*
+          path: tests/proof/results
+          merge-multiple: true
+      - run: python -m tests.proof.meta report --json > proof-ledger.json
+      # L.CZ.1 (CM-4): WR-PROOF-1 as the permanent check. HOST, BOTH and DOCKER keys render from the
+      # committed host records at the last successful checkpoint (fetch-depth 0 above); no digest,
+      # no CI artifact beyond this run's own results, and no fresh HOST record per PR.
+      - run: python -m tests.proof.meta enforce --scope ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proof-ledger.json
+          path: proof-ledger.json
+
+  # CM-7's decline drill (L.CS-1.4): every CK merge on HEAD declines cleanly. Runs on
+  # pull_request and push to master, so it is a required job (CM-4); it sets no
+  # TRESTLE_PROOF_GATE and produces no proof result (CSC-13). The drill's scratch worktrees
+  # need full history (trailers, the landing diff, `git log <landing>..HEAD`).
+  # C-ck: each present decline's real-history drill runs in one `ck-drill` part (the
+  # declines' collected node ids, dealt round-robin over the parts), so declines run in
+  # parallel on separate runners; a part with no decline passes at once. A drill nests a
+  # full REG: every default-collected node serially, the packs session, ruff and mypy (25-30
+  # min on master before Slice B; with packages/trestle-env in testpaths it outgrew 40 min,
+  # PR #46 run 36813565949). A hang (a test blocked with no timeout of its own) fails the part
+  # at the job bound instead of GitHub's 6 h default.
+  ck-drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      # release-graft (release option (c)): a no-op unless a root commit of HEAD carries a `Release-Of: <sha>`
+      # trailer, i.e. HEAD sits on a squashed release. Then it fetches refs/archive/*, requires the archived
+      # commit's tree to EQUAL the release commit's tree, and grafts the archived history under the release
+      # commit (`git replace --graft`, local to this runner), so this job's CM-6 admissibility, trailer, tag and
+      # checkpoint-anchor reads see the full history. It runs after the checkout's `with:` (full history, tags).
+      - name: release-graft
+        shell: bash
+        run: |
+          set -euo pipefail
+          grafts=0
+          for round in 1 2 3 4 5 6 7 8; do
+            pairs=""
+            for root in $(git rev-list --max-parents=0 HEAD); do
+              of=$(git log -1 --format='%(trailers:key=Release-Of,valueonly)' "$root" | sed -n 1p | tr -d '[:space:]')
+              if [ -n "$of" ]; then pairs="$pairs $root:$of"; fi
+            done
+            if [ -z "$pairs" ]; then echo "release-graft: $grafts graft(s); no root of HEAD carries Release-Of"; exit 0; fi
+            for pair in $pairs; do
+              root=${pair%%:*}; of=${pair#*:}
+              git cat-file -e "$of^{commit}" 2>/dev/null || git fetch -q --no-tags origin '+refs/archive/*:refs/archive/*'
+              git cat-file -e "$of^{commit}" || { echo "release-graft: archived commit $of not found" >&2; exit 1; }
+              if [ "$(git rev-parse "$of^{tree}")" != "$(git rev-parse "$root^{tree}")" ]; then
+                echo "release-graft: tree of $of differs from release commit $root; not grafting" >&2; exit 1
+              fi
+              git replace -f --graft "$root" "$of"
+              echo "release-graft: $root grafted onto $of"
+              grafts=$((grafts + 1))
+            done
+          done
+          echo "release-graft: a Release-Of root is still present after 8 rounds" >&2; exit 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            packages/trestle-packs/pyproject.toml
+            packages/trestle-env/pyproject.toml
+      - run: pip install -e ".[dev,packs,env]"
+      - run: python -m tests.proof.guards clean-path --github-env
+      - name: this part's decline drills
+        env:
+          TRESTLE_CK_ISOLATION: "1"
+          PART: ${{ strategy.job-index }}
+          PARTS: ${{ strategy.job-total }}
+        run: |
+          set +e
+          out=$(pytest tests/core/tooling/test_ck_drill.py --collect-only -q -p no:cacheprovider -k test_decline_patch_applies_and_isolates)
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 5 ]; then echo "$out"; exit "$rc"; fi
+          ids=$(printf '%s\n' "$out" | sed '/^$/q' | grep '::' | awk -v n="$PARTS" -v k="$PART" '(NR - 1) % n == k' || true)
+          if [ -z "$ids" ]; then echo "part $PART of $PARTS: no CK decline to drill"; exit 0; fi
+          echo "$ids"
+          pytest -q $ids
+
+  # CM-4's required name `ck-isolation`: runs only once every `ck-drill` part succeeded
+  # (a failed part leaves it skipped, which the fence counts as failing), then runs the
+  # drill file's own tests; the real-history drills skip here, having run in the parts.
+  ck-isolation:
+    runs-on: ubuntu-latest
+    needs: [ck-drill]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      # release-graft (release option (c)): a no-op unless a root commit of HEAD carries a `Release-Of: <sha>`
+      # trailer, i.e. HEAD sits on a squashed release. Then it fetches refs/archive/*, requires the archived
+      # commit's tree to EQUAL the release commit's tree, and grafts the archived history under the release
+      # commit (`git replace --graft`, local to this runner), so this job's CM-6 admissibility, trailer, tag and
+      # checkpoint-anchor reads see the full history. It runs after the checkout's `with:` (full history, tags).
+      - name: release-graft
+        shell: bash
+        run: |
+          set -euo pipefail
+          grafts=0
+          for round in 1 2 3 4 5 6 7 8; do
+            pairs=""
+            for root in $(git rev-list --max-parents=0 HEAD); do
+              of=$(git log -1 --format='%(trailers:key=Release-Of,valueonly)' "$root" | sed -n 1p | tr -d '[:space:]')
+              if [ -n "$of" ]; then pairs="$pairs $root:$of"; fi
+            done
+            if [ -z "$pairs" ]; then echo "release-graft: $grafts graft(s); no root of HEAD carries Release-Of"; exit 0; fi
+            for pair in $pairs; do
+              root=${pair%%:*}; of=${pair#*:}
+              git cat-file -e "$of^{commit}" 2>/dev/null || git fetch -q --no-tags origin '+refs/archive/*:refs/archive/*'
+              git cat-file -e "$of^{commit}" || { echo "release-graft: archived commit $of not found" >&2; exit 1; }
+              if [ "$(git rev-parse "$of^{tree}")" != "$(git rev-parse "$root^{tree}")" ]; then
+                echo "release-graft: tree of $of differs from release commit $root; not grafting" >&2; exit 1
+              fi
+              git replace -f --graft "$root" "$of"
+              echo "release-graft: $root grafted onto $of"
+              grafts=$((grafts + 1))
+            done
+          done
+          echo "release-graft: a Release-Of root is still present after 8 rounds" >&2; exit 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            packages/trestle-packs/pyproject.toml
+            packages/trestle-env/pyproject.toml
+      - run: pip install -e ".[dev,packs,env]"
+      - run: python -m tests.proof.guards clean-path --github-env
+      - run: pytest tests/core/tooling/test_ck_drill.py -q
+
+  # CM-5 checkpoint evaluation (L.P0-0d.4). Push to master and
+  # workflow_dispatch only, so it is outside CM-4's required-job list.
+  # Idempotent: `meta ckpt` exits 0 without evaluating on a non-trigger
+  # commit, or when TAG (or a successful `ckpt` run) already marks it.
+  ckpt:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test-shard, test, compat, guards, spine, long-gate, ancestry, d2-straddle, proof-ledger, ck-drill, ck-isolation]
+    permissions:
+      contents: write
+      checks: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      # release-graft (release option (c)): a no-op unless a root commit of HEAD carries a `Release-Of: <sha>`
+      # trailer, i.e. HEAD sits on a squashed release. Then it fetches refs/archive/*, requires the archived
+      # commit's tree to EQUAL the release commit's tree, and grafts the archived history under the release
+      # commit (`git replace --graft`, local to this runner), so this job's CM-6 admissibility, trailer, tag and
+      # checkpoint-anchor reads see the full history. It runs after the checkout's `with:` (full history, tags).
+      - name: release-graft
+        shell: bash
+        run: |
+          set -euo pipefail
+          grafts=0
+          for round in 1 2 3 4 5 6 7 8; do
+            pairs=""
+            for root in $(git rev-list --max-parents=0 HEAD); do
+              of=$(git log -1 --format='%(trailers:key=Release-Of,valueonly)' "$root" | sed -n 1p | tr -d '[:space:]')
+              if [ -n "$of" ]; then pairs="$pairs $root:$of"; fi
+            done
+            if [ -z "$pairs" ]; then echo "release-graft: $grafts graft(s); no root of HEAD carries Release-Of"; exit 0; fi
+            for pair in $pairs; do
+              root=${pair%%:*}; of=${pair#*:}
+              git cat-file -e "$of^{commit}" 2>/dev/null || git fetch -q --no-tags origin '+refs/archive/*:refs/archive/*'
+              git cat-file -e "$of^{commit}" || { echo "release-graft: archived commit $of not found" >&2; exit 1; }
+              if [ "$(git rev-parse "$of^{tree}")" != "$(git rev-parse "$root^{tree}")" ]; then
+                echo "release-graft: tree of $of differs from release commit $root; not grafting" >&2; exit 1
+              fi
+              git replace -f --graft "$root" "$of"
+              echo "release-graft: $root grafted onto $of"
+              grafts=$((grafts + 1))
+            done
+          done
+          echo "release-graft: a Release-Of root is still present after 8 rounds" >&2; exit 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            packages/trestle-packs/pyproject.toml
+            packages/trestle-env/pyproject.toml
+      - run: pip install -e ".[dev,packs,env]"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: proof-results-*
+          path: tests/proof/results
+          merge-multiple: true
+      - id: eval
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eo pipefail
+          mkdir -p ckpt-out
+          for f in tests/proof/ckpt/*.py; do
+            mod=$(basename "$f" .py)
+            [ "$mod" = "__init__" ] && continue
+            # only a condition module declares TRIGGER_MERGE; its helpers (test nodes, pytest plugins) are skipped
+            grep -q '^TRIGGER_MERGE *=' "$f" || continue
+            name="${mod//_/-}"
+            python -m tests.proof.meta ckpt "$name" | tee "ckpt-out/$name.txt"
+            if grep -q "pass; digest=" "ckpt-out/$name.txt"; then
+              tag=$(python -c "from tests.proof import ckpt; print(ckpt.load_module('$name').TAG or '')")
+              if [ -n "$tag" ]; then
+                git config user.name "github-actions[bot]"
+                git config user.email "github-actions[bot]@users.noreply.github.com"
+                git tag -a "$tag" -m "CM-5 checkpoint $name" "$GITHUB_SHA"
+                git push origin "refs/tags/$tag"
+              else
+                echo "artifact=ckpt-$name" >> "$GITHUB_OUTPUT"
+              fi
+            else
+              rm "ckpt-out/$name.txt"
+            fi
+          done
+      - if: steps.eval.outputs.artifact != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.eval.outputs.artifact }}
+          path: ckpt-out/

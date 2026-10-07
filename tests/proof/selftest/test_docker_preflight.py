@@ -1,0 +1,107 @@
+"""Selftest for the host-docker preflight (DM-24; L.P0-0d.6). Recorder
+fake `docker` only — never a real engine, never a pull."""
+
+from __future__ import annotations
+
+from tests.proof.host import docker_gate
+from tests.proof.host.docker_gate import __main__ as docker_gate_main
+from tests.proof.host.docker_gate import preflight as preflight_mod
+
+
+class _Recorder:
+    def __init__(self, returncode: int = 0):
+        self.calls: list[tuple[list[str], dict]] = []
+        self.returncode = returncode
+
+    def __call__(self, args, env):
+        self.calls.append((args, env))
+
+        class R:
+            returncode = self.returncode
+            stdout = ""
+            stderr = "boom"
+
+        return R()
+
+
+def test_cli_absent_records_precondition_unmet():
+    record = preflight_mod.run_preflight(docker_path="", which=lambda _name: None)
+    assert record["status"] == "PRECONDITION_UNMET"
+    assert "docker CLI" in record["engine"]
+
+
+def test_engine_unreachable_records_precondition_unmet():
+    recorder = _Recorder(returncode=1)
+    record = preflight_mod.run_preflight(docker_path="/usr/local/bin/docker", runner=recorder)
+    assert record["status"] == "PRECONDITION_UNMET"
+    assert "unreachable" in record["engine"]
+
+
+def test_unpinned_image_records_precondition_unmet():
+    recorder = _Recorder(returncode=0)
+    record = preflight_mod.run_preflight(
+        docker_path="/usr/local/bin/docker",
+        runner=recorder,
+        images={"alpine": {"ref": "alpine:3.20", "digest": ""}},
+    )
+    assert record["status"] == "PRECONDITION_UNMET"
+    assert any("unpinned" in m for m in record["images"])
+
+
+def test_engine_addressed_on_working_socket_not_default_context():
+    recorder = _Recorder(returncode=0)
+    preflight_mod.run_preflight(
+        docker_path="/usr/local/bin/docker",
+        runner=recorder,
+        images={"alpine": {"ref": "alpine:3.20", "digest": "sha256:" + "a" * 64}},
+    )
+    for _args, env in recorder.calls:
+        assert env["DOCKER_HOST"].endswith(".docker/run/docker.sock")
+        assert env.get("DOCKER_CONTEXT", "") != "default"
+
+
+def test_strict_built(monkeypatch, capsys):
+    """L.NW-2.2 inverts P0's `test_strict_not_built`: `--strict` is built (the flag TM-P0-13's
+    probe reads is True) and no longer exits 2 as "not built"."""
+    assert preflight_mod.STRICT_BUILT is True
+    monkeypatch.setattr(preflight_mod, "strict_preflight", lambda: 3)
+    rc = docker_gate_main.main(["preflight", "--strict"])
+    assert rc == 3
+    assert "not built" not in capsys.readouterr().out
+
+
+def test_run_built(monkeypatch, capsys):
+    """L.NW-2.10 inverts P0's `test_run_not_built`: `run` is built (it reaches the gate's runner,
+    with `--select` ids and the `--` pytest args) and no longer exits 2 as "not built"."""
+    seen = {}
+
+    def fake_run(select_ids=None, pytest_args=None, **kwargs):
+        seen.update(select_ids=select_ids, pytest_args=pytest_args)
+        return 0
+
+    monkeypatch.setattr(docker_gate_main.run_mod, "run", fake_run)
+    rc = docker_gate_main.main(["run", "--select", "t.py::a", "--", "-m", "docker_host"])
+    assert rc == 0
+    assert seen == {"select_ids": ["t.py::a"], "pytest_args": ["-m", "docker_host"]}
+    assert "not built" not in capsys.readouterr().out
+    assert not hasattr(docker_gate_main, "NOT_BUILT_MODES")
+
+
+def test_tm_p0_13_probe_exits_1_absent():
+    """TM-P0-13's probe imports the module and reads `STRICT_BUILT` (side-effect free: no docker
+    call, no record); with the strict mode built it exits 1, i.e. the entry is absent."""
+    import subprocess
+    import sys
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; from tests.proof.host.docker_gate import preflight as p; "
+            "sys.exit(1 if getattr(p, 'STRICT_BUILT', False) else 0)",
+        ],
+        cwd=docker_gate.__file__.rsplit("/tests/", 1)[0],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 1

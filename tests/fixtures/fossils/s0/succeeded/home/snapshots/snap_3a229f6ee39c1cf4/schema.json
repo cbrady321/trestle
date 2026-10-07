@@ -1,0 +1,1 @@
+{"additionalProperties":false,"properties":{"flood_events":{"type":"integer"},"flood_lines":{"type":"integer"}},"type":"object"}
