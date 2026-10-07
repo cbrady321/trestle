@@ -87,7 +87,8 @@ def fixture_states() -> set[str]:
 
 def worker_exit_state() -> str:
     """A live run of a plugin that exits with code 3, read back through the strict oracle."""
-    with tempfile.TemporaryDirectory(prefix="cl-d1-states-") as tmp:
+    # the kernel is never stopped: its pass may still write under the home as the dir is removed
+    with tempfile.TemporaryDirectory(prefix="cl-d1-states-", ignore_cleanup_errors=True) as tmp:
         plugins = Path(tmp) / "plugins"
         plugins.mkdir()
         (plugins / "exit_three.py").write_text(

@@ -844,6 +844,11 @@ REG_SERIAL_NODES = (
     "tests/pins/c_surface/test_g_c4.py::test_pin_index_coarsened_summary_is_field_count",
     "tests/proof/spine/test_stop_offset.py::"
     "test_stop_seen_and_releases_past_the_offset_are_not_counted",
+    "tests/core/admission/test_cl_a1_capacity.py::test_queued_run_gets_no_extra_time",
+    "tests/core/shared_home/test_run_by_key.py::"
+    "test_run_by_key_finds_a_run_far_beyond_the_recency_window_and_takes_no_lock",
+    "tests/single/control/mcp/test_sever_rejoin.py::test_sever_run_continues_bounded_and_cleaned",
+    "tests/single/control/mcp/test_sever_rejoin.py::test_resend_joins_single_execution_terminal",
 )
 # Nodes that read the session's own proof results (`ledger.render()` over tests/proof/results):
 # in the serial step each sees exactly the records of the nodes before it. Each runs alone after
