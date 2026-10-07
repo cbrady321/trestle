@@ -99,7 +99,7 @@ def home_files(home: Path) -> set[str]:
 
 
 def run_dirs(home: Path) -> set[str]:
-    return {p.name for p in (home / "runs").glob("*/*")}
+    return {p.name for p in (home / "runs").glob("*/r_*")}
 
 
 def server_children(host: mcp_host.McpHost) -> set[int]:
@@ -162,7 +162,7 @@ def test_keep_request_refused_invalid_args_before_run_id(tmp_path: Path) -> None
             quiet.assert_unchanged(request)
 
         # the refusals never downgraded to a run without the request: one run exists, the baseline
-        (only,) = sorted((host.home / "runs").glob("*/*"))
+        (only,) = sorted((host.home / "runs").glob("*/r_*"))
         assert only.name == baseline["run_id"]
 
         # and the surface still answers a request without keep, identically

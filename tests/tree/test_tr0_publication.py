@@ -255,7 +255,7 @@ def test_root_entry_eligibility(
         verdict = answer["answer"]
         assert verdict["outcome"] == "failed", answer
         assert verdict["primary"]["code"] == UNCOVERED_IN_NODE, answer
-        (run_dir,) = sorted((host.home / "runs").glob("*/*"))
+        (run_dir,) = sorted((host.home / "runs").glob("*/r_*"))
         lane = records.lane_rows(run_dir)
         assert not lane.problems and not lane.torn, lane.problems
         classes = [row.cls for row in lane.rows]

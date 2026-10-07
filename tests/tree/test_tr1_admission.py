@@ -44,7 +44,7 @@ def publish(kernel: Kernel, text: str) -> str:
 
 def run_dirs(kernel: Kernel) -> list[Path]:
     runs = kernel.home / "runs"
-    return sorted(p for p in runs.glob("*/*") if p.is_dir()) if runs.exists() else []
+    return sorted(p for p in runs.glob("*/r_*") if p.is_dir()) if runs.exists() else []
 
 
 def descendants() -> set[int]:

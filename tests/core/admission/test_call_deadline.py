@@ -77,7 +77,7 @@ def _admit(kernel: Kernel, plugin: str = "declared_gate", **fields: Any) -> Any:
 
 def _runs(kernel: Kernel) -> list[Path]:
     root = kernel.home / "runs"
-    return sorted(root.glob("*/*")) if root.exists() else []
+    return sorted(root.glob("*/r_*")) if root.exists() else []
 
 
 def _created(kernel: Kernel, run_id: str) -> dict[str, Any]:

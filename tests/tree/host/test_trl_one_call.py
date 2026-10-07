@@ -89,7 +89,7 @@ def test_three_step_retry_remedy_one_call(mcp: mcp_host.McpHost) -> None:
     # the frame is the terminal one, admitted as one run, with its terminal row already written
     assert "code" not in answer and str(answer["run_id"]).startswith("r_"), answer
     assert answer["state"] == "succeeded", answer
-    run_dirs = sorted((mcp.home / "runs").glob("*/*"))
+    run_dirs = sorted((mcp.home / "runs").glob("*/r_*"))
     assert [d.name for d in run_dirs] == [answer["run_id"]]
     assert records.node_record(run_dirs[0]).terminal in TERMINAL_KINDS
 
