@@ -1052,7 +1052,7 @@ def register_final_problems(
 ) -> list[str]:
     """`register --final` (L.CZ.5, CM-7): every entry's probe exits non-zero (the mechanism is
     gone), or the entry is `named-not-removed` with a citation and `serves = []` (T-5..T-7,
-    TM-B4-1.x, TM-B2-2, TM-C4a/b: it stays, and serves no clause); nothing is scheduled for later
+    TM-B4-1.x, TM-B2-2, TM-C4b: it stays, and serves no clause); nothing is scheduled for later
     (DM-77), and permanent test infrastructure is never registered. MC-31 records every rollback
     boundary's class, and none is still `pending:` once the merges have landed. SC-5 is met here,
     at J-ROOT."""

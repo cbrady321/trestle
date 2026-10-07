@@ -23,7 +23,6 @@ from tests.proof.host import record as record_mod
 CLAIM = core.CLAIM_LABEL
 BOTH_LABEL = "WR-OWN-6:both-label"
 VARIANT_NODES = {
-    "TM-C4a": ("tests/core/admission/test_ck1_join.py::test_variant_conflict", "WR-IDEM-1"),
     "TM-C4b": ("tests/core/contract/test_ck34_records.py::test_variant_refuse", "WR-PLAN-9"),
 }
 STRADDLE_NODE = "tests/pins/a_lifecycle/test_straddle.py::test_target_s0_straddle"
@@ -117,7 +116,6 @@ def green_world() -> core.World:
     labels += [
         _label(CLAIM, venue="BOTH"),
         _label(BOTH_LABEL, venue="BOTH"),
-        _label("WR-IDEM-1:variant-conflict-written", posture="shape"),
         _label("WR-PLAN-9:variant-refuse-written", posture="shape"),
     ]
     parts_clauses = [{"id": "A1.1", "parts": [{"name": "core"}], "rows": []}]
@@ -146,7 +144,7 @@ def green_world() -> core.World:
     both = core.BOTH_PARTS + [CLAIM, BOTH_LABEL]
     nodes = [{"nodeid": STRADDLE_NODE, "labels": [CLAIM], "gap": "G-A3", "strict_xfail": False}]
     for _entry, (nodeid, row) in VARIANT_NODES.items():
-        label = f"{row}:variant-{'conflict' if row == 'WR-IDEM-1' else 'refuse'}-written"
+        label = f"{row}:variant-refuse-written"
         nodes.append({"nodeid": nodeid, "labels": [label], "gap": None, "strict_xfail": True})
     run_outcomes = {nodeid: "xfailed" for nodeid, _row in VARIANT_NODES.values()}
     return core.World(
@@ -459,14 +457,14 @@ def test_declined_k3_path_passes_a_b_d_f_j_k(world) -> None:
     assert core.row_claims(w, "WR-PLAN-9")[0] == []
 
 
-def test_declined_k1_variant_runs_unxfailed_and_passes(world) -> None:
-    w = decline(world["w"], "CK-1")
-    node = VARIANT_NODES["TM-C4a"][0]
-    w.run_nodes = lambda ids: {i: "passed" if i == node else "xfailed" for i in ids}
-    assert core.verdict_g(w) == (True, "")
+def test_a_variant_that_runs_unxfailed_fails_g(world) -> None:
+    w = world["w"]
+    node = VARIANT_NODES["TM-C4b"][0]
     w.run_nodes = lambda ids: {i: "xfailed" for i in ids}
+    assert core.verdict_g(w) == (True, "")
+    w.run_nodes = lambda ids: {i: "passed" if i == node else "xfailed" for i in ids}
     ok, reason = core.verdict_g(w)
-    assert not ok and "TM-C4a" in reason
+    assert not ok and "TM-C4b" in reason
 
 
 def test_na_without_the_decline_patch_on_head_fails_k(world) -> None:
