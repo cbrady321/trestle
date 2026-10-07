@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from trestle.common import codes
+from trestle.common.ids import run_id_recency
 from trestle.common.limits import CaptureLimits, capture_limits
 from trestle.common.types import Handle, RequestOutcome, RunView
 from trestle.query import views as view_defs
@@ -301,7 +302,9 @@ class FilesystemQueryBackend:
         for month_dir in sorted(runs_root.iterdir(), reverse=True):
             if not month_dir.is_dir() or month_dir.name.startswith("."):
                 continue
-            for run_dir in sorted(month_dir.iterdir(), reverse=True):
+            for run_dir in sorted(
+                month_dir.iterdir(), key=lambda p: run_id_recency(p.name), reverse=True
+            ):
                 if deadline is not None and time.monotonic() > deadline:
                     scan_truncated = True
                     break
@@ -328,7 +331,7 @@ class FilesystemQueryBackend:
             if scan_truncated:
                 break
 
-        candidates.sort(key=lambda item: item[0], reverse=True)
+        candidates.sort(key=lambda item: run_id_recency(item[0]), reverse=True)
         token = hashlib.sha256(
             ",".join(run_id for run_id, _ in candidates).encode("utf-8")
         ).hexdigest()[:16]

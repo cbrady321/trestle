@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from trestle.common.fsutil import append_ndjson, atomic_write_json, read_ndjson
+from trestle.common.ids import run_id_recency
 from trestle.common.types import Handle
 
 LEDGER_FILE = "ledger.ndjson"
@@ -182,15 +183,18 @@ def is_hidden(path: Path) -> bool:
 
 
 def iter_run_dirs(home: Path, *, reverse: bool = False) -> Iterator[Path]:
-    """Every run directory under `home/runs/<month>/`, in name order (`reverse`: newest first),
-    skipping files and dot names at both levels."""
+    """Every run directory under `home/runs/<month>/`, in time order within a month (`reverse`:
+    newest first, by the timestamp the run id carries: ids do not sort by time as text), skipping
+    files and dot names at both levels."""
     runs_root = home / "runs"
     if not runs_root.is_dir():
         return
     for month_dir in sorted(runs_root.iterdir(), reverse=reverse):
         if not month_dir.is_dir() or is_hidden(month_dir):
             continue
-        for run_dir in sorted(month_dir.iterdir(), reverse=reverse):
+        for run_dir in sorted(
+            month_dir.iterdir(), key=lambda p: run_id_recency(p.name), reverse=reverse
+        ):
             if run_dir.is_dir() and not is_hidden(run_dir):
                 yield run_dir
 

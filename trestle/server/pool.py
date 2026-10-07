@@ -30,8 +30,6 @@ its running runs keep their slots and keys until the reaper finalizes each one.
 
 from __future__ import annotations
 
-import base64
-import binascii
 import json
 import math
 import threading
@@ -42,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from trestle.common.fsutil import atomic_write
+from trestle.common.ids import run_id_ms
 from trestle.server.home import (
     is_locked,
     live_run_ids,
@@ -103,17 +102,6 @@ def epoch(value: object, default: float = 0.0) -> float:
         except ValueError:
             return default
     return default
-
-
-def run_id_ms(run_id: str) -> int:
-    """The millisecond timestamp a run id carries (`generate_run_id`: 13 base32 characters after
-    `r_`). Run ids do not sort by time as strings (the base32 digits sort before its letters), so
-    arrival ties are broken on this; 0 when the id is not one."""
-    try:
-        raw = base64.b32decode(run_id[2:15].upper() + "===")
-    except (binascii.Error, ValueError):
-        return 0
-    return int.from_bytes(raw[:8], "big")
 
 
 def arrival_order(arrival: object, run_id: str) -> tuple[float, int, str]:

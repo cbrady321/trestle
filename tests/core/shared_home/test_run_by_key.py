@@ -178,7 +178,7 @@ def test_run_by_key_finds_a_run_far_beyond_the_recency_window_and_takes_no_lock(
     monkeypatch.setattr(view_defs, "RECENCY_CACHE_SIZE", 2)
     recent = kernel.control.query("recent_runs", {})
     assert isinstance(recent, dict) and recent["truncated"] is True  # the window is incomplete
-    # the window's order is the run id's, which only roughly follows time: take a run it left out
+    # the window is newest first: take a run it left out
     listed = {r["run_id"] for r in recent["items"]}
     key, old = next((k, v) for k, v in sent.items() if v.run_id not in listed)
     # run_by_key never reads the window: the left-out run is found, and the page is not truncated
