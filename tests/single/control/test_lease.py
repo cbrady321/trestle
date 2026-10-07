@@ -2,7 +2,7 @@
 
 The key is the canonical JSON of the request argument `declared.env_arg` names (opaque to the
 host), recorded in the `created` row and in the plan's `lease_set`; a run holds the lease from its
-`created` row until its completion or its admitted deadline; there is no lease store file. v0.4
+`created` row until its completion or its admitted deadline; there is no lease store file. v0.3.1
 (rule 6): the key's queued and running runs are counted in the home's pool (`home/sched.json`),
 which a restart reads back and which is rebuilt from the live markers when missing (WR-OWN-8,
 L.SL-8.2 queues on it)."""

@@ -1,4 +1,4 @@
-"""v0.4 "Fix first": an idempotency key's window is sized from the run's own deadline.
+"""v0.3.1 "Fix first": an idempotency key's window is sized from the run's own deadline.
 
 `key_expires_at = admitted_at + deadline_s + finalization_margin + idempotency_ttl_s`, with
 `deadline_s` the plugin's declared deadline (`deadline_of`), never the 300 s snapshot default.

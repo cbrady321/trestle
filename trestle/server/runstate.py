@@ -1,11 +1,11 @@
-"""Reading a run's evidence/state.json (v0.4 Problem C).
+"""Reading a run's evidence/state.json (v0.3.1 Problem C).
 
 The owner writes state.json after each ledger row that changes it (`ledger.STATE_KINDS`), the
 ledger row first and state.json by atomic rename, so state.json can only lag the ledger, never lead
 it. status(), the waiters and the run listings read it instead of parsing the ledger. A reader that
 needs certainty and finds it non-terminal while the run's owner lock is free re-reads the ledger:
 the owner may have died between its terminal row and state.json (the reaper rewrites it). A run
-without state.json (admitted before v0.4) is read from its ledger, as before.
+without state.json (admitted before v0.3.1) is read from its ledger, as before.
 """
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
-"""Like `gated`, but declared repeatable (v0.4 step 3): when a run ends interrupted, re-sending its
-idempotency key starts a fresh run."""
+"""Like `gated`, but declared repeatable (v0.3.1 step 3): when a run ends interrupted,
+re-sending its idempotency key starts a fresh run."""
 
 from __future__ import annotations
 

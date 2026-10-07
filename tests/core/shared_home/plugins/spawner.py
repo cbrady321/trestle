@@ -1,4 +1,4 @@
-"""A run that spawns many short-lived subprocesses, `width` at a time (v0.4 step 2's small-ledger
+"""A run that spawns many short-lived subprocesses, `width` at a time (v0.3.1 step 2's small-ledger
 test): like a pytest suite, each one is attributed to the run and gets an identity row."""
 
 from __future__ import annotations

@@ -160,7 +160,7 @@ def test_torn_ledger_line_tolerance_on_read(durable_kernel) -> None:
 
 
 def test_recover_on_startup_new_epoch_and_sweep(durable_kernel, plugin_dir) -> None:
-    """v0.4: a start reaps (the service epoch is gone): a new kernel has its own server id, and
+    """v0.3.1: a start reaps (the service epoch is gone): a new kernel has its own server id, and
     its start pass finalizes a run whose owner is dead, removing the run's live marker."""
     run_id = "r_test_startup_recovery"
     seed_interrupted_run(durable_kernel.home, run_id, last_kind="admitted")

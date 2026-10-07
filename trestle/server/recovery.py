@@ -44,7 +44,7 @@ def recover_run_dir(
     promote: bool = False,
 ) -> None:
     """Recover one run directory (B2-C11): the reaper's takeover of a dead owner's run, which it
-    reaches only while holding the run's owner lock (v0.4 rule 3). `limits` and `sweep_io` are
+    reaches only while holding the run's owner lock (v0.3.1 rule 3). `limits` and `sweep_io` are
     test seams for the release sweep (the operator's limits, the command runner and the clock); a
     caller passing neither (the reaper, the d2 driver) gets the configured limits and real
     commands. `promote`: the run had no secret values, so its outputs are promoted as the owner
@@ -211,7 +211,7 @@ def append_recovery_suffix(
 
 
 def _promote_reaped(run_dir: Path, ledger: RunLedger, run_id: str) -> None:
-    """v0.4 rule 3: a reaped run with no secret values keeps what it left, as artifacts. With no
+    """v0.3.1 rule 3: a reaped run with no secret values keeps what it left, as artifacts. With no
     secrets the owner's scrub (`redact.Scrubber` over the run's roots) writes the same bytes in any
     process; names the dead owner already promoted are skipped."""
     from trestle.common import redact
@@ -301,7 +301,7 @@ def _record_group_stop(
     existing = ledger.last_kind("group_stop")
     if existing is not None:
         return existing.get("confirmed_gone") is True
-    # v0.4 Problem C: the identities are in the ledger (the leader's) and the sidecar, and the
+    # v0.3.1 Problem C: the identities are in the ledger (the leader's) and the sidecar, and the
     # recovery's own rows go to the sidecar
     sidecar = procident.Sidecar(procident.sidecar_path(ledger.path.parent), run_id)
     decision = procident.recovery_decision(ledger.records, source, sidecar=sidecar.records())
@@ -327,7 +327,7 @@ def _record_group_stop(
 
 
 def rematerialize_meta(run_dir: Path, ledger: RunLedger) -> None:
-    refresh_state(run_dir, ledger)  # v0.4 Problem C: state.json follows the ledger's last row
+    refresh_state(run_dir, ledger)  # v0.3.1 Problem C: state.json follows the ledger's last row
     evidence = evidence_dir(run_dir)
     run_id = str(ledger.records[0].get("run_id", run_dir.name))
     terminal = ledger.terminal_state() or "interrupted"

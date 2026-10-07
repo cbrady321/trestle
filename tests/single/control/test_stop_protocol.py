@@ -253,7 +253,7 @@ def _submit(kernel: Any, seconds: float) -> str:
 def _queue_behind_a_running_run(kernel: Any, holder_seconds: float) -> tuple[str, str]:
     """Fill the only run slot with a live run, then admit a second: it waits in the queue.
     Returns (holder run id, queued run id)."""
-    # the pool size is read from the home's config.toml at each admission (v0.4 rule 11)
+    # the pool size is read from the home's config.toml at each admission (v0.3.1 rule 11)
     (kernel.home / "config.toml").write_text("max_running_runs = 1\n", encoding="utf-8")
     holder = _submit(kernel, holder_seconds)
     queued = _submit(kernel, holder_seconds)
@@ -299,7 +299,7 @@ def test_queued_cancel_stop_row_length_zero_cancelled() -> None:
 
 def test_queued_deadline_stop_row_length_zero_timed_out() -> None:
     kernel = support.spine_kernel()
-    # the pool size is read from the home's config.toml at each admission (v0.4 rule 11)
+    # the pool size is read from the home's config.toml at each admission (v0.3.1 rule 11)
     (kernel.home / "config.toml").write_text("max_running_runs = 1\n", encoding="utf-8")
     holder = _submit(kernel, LONG_S)
     with support.reaping(holder):

@@ -20,19 +20,19 @@ _GB = 1024**3
 # is bounded by its own deadline, not by the depth.
 MAX_RUNNING_RUNS_DEFAULT = 31
 QUEUE_DEPTH_DEFAULT = 256
-# v0.4: `max_running_runs` is one pool per home, shared by every server on it (`[operator]
+# v0.3.1: `max_running_runs` is one pool per home, shared by every server on it (`[operator]
 # max_share`, unset by default, caps one server's slots); `queue_depth` and `[operator]
 # max_held_runs` (Feature 3's held runs) bound each server's own FIFO, read at start.
 MAX_HELD_RUNS_DEFAULT = 256
-# v0.4 Feature 0: `[operator] deadline_ceiling_s` bounds a call's `deadline_s` (default: the
+# v0.3.1 Feature 0: `[operator] deadline_ceiling_s` bounds a call's `deadline_s` (default: the
 # clock's 3,600 s, so nothing changes until an operator raises it); a value above the hard cap
 # stops the load.
 DEADLINE_CEILING_MAX_S = 86400
-# v0.4 Feature 2: `[keys] max_ttl_s`, the longest `idempotency_ttl_s` a call may ask for (7 days;
+# v0.3.1 Feature 2: `[keys] max_ttl_s`, the longest `idempotency_ttl_s` a call may ask for (7 days;
 # held to `metadata_days` when that is shorter, and an explicit value above it stops the load)
 MAX_TTL_S_DEFAULT = 604800
 _DAY_S = 86400
-# v0.4: the environment override of the pool size, now ignored (doctor warns when it is set)
+# v0.3.1: the environment override of the pool size, now ignored (doctor warns when it is set)
 IGNORED_MAX_RUNNING_ENV = "TRESTLE_MAX_RUNNING_RUNS"
 
 
@@ -124,7 +124,7 @@ class TrestleConfig:
             ),
             idempotency_ttl_s=ttl,
             service_log=self.service_log,
-            # v0.4 rule 11: the pool size every server must agree on comes from config.toml only;
+            # v0.3.1 rule 11: the pool size every server must agree on comes from config.toml only;
             # TRESTLE_MAX_RUNNING_RUNS is ignored (doctor warns when it is set)
             max_running_runs=max(1, self.max_running_runs),
             queue_depth=max(0, _env_int("TRESTLE_QUEUE_DEPTH", self.queue_depth)),

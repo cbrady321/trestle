@@ -63,9 +63,9 @@ from trestle.server.snapshots import (
 # after the plugin was republished, and the key's window covers the run's whole life. A join needs
 # the same plugin, the same `args_hash`, the same call deadline argument and `after`, and the run
 # present (the snapshot is not compared); the entry lives `key_expires_at - admitted_at =
-# deadline_s + finalization_margin + ttl` (v0.4 "Fix first"), `deadline_s` being the run's own
+# deadline_s + finalization_margin + ttl` (v0.3.1 "Fix first"), `deadline_s` being the run's own
 # deadline (`effective_deadline`: the call's, else the declared one), never the snapshot default.
-# v0.4 Problem B: `key_expires_at` is fixed here and recorded in `created` and
+# v0.3.1 Problem B: `key_expires_at` is fixed here and recorded in `created` and
 # `home/keys/<sha256(key)>.json`.
 
 
@@ -141,7 +141,7 @@ class Admission:
     home: Path
     registry: Registry
     scheduler: Scheduler
-    # the owner locks this server holds (v0.4 rule 1); its `server_id` is `created.owner`
+    # the owner locks this server holds (v0.3.1 rule 1); its `server_id` is `created.owner`
     ownership: Ownership
     profile: ProfileConfig = ProfileConfig()
 
@@ -162,7 +162,7 @@ class Admission:
                     origin="admission",
                 ),
             )
-        # v0.4 rule 11: the pool's settings come from config.toml at each admission, so a change
+        # v0.3.1 rule 11: the pool's settings come from config.toml at each admission, so a change
         # applies without a restart (TRESTLE_MAX_RUNNING_RUNS is ignored)
         config = load_config(self.home)
         self.scheduler.max_running = config.max_running_runs
@@ -283,7 +283,7 @@ class Admission:
         planned: AdmittedPlan,
         after: chain.After | None = None,
     ) -> AdmitResult:
-        """v0.4 rule 7: the admission's locked section, its steps in order. Everything slow
+        """v0.3.1 rule 7: the admission's locked section, its steps in order. Everything slow
         (registry refresh, import validation, schema validation, compile and carve) ran before the
         lock; process start runs after it."""
         # (1) shared state: home/sched.json (rebuilt from home/live/ when missing), dead servers'
@@ -584,7 +584,7 @@ class AdmittedRun:
 
 def _run_state(run_dir: Path) -> str:
     """A run's state for a decision that needs certainty (a join): its state.json, unless that is
-    non-terminal while the owner lock is free, then its ledger (v0.4 Problem C)."""
+    non-terminal while the owner lock is free, then its ledger (v0.3.1 Problem C)."""
     state = trusted_state(run_dir)
     if state is not None:
         return str(state["state"])
@@ -607,7 +607,7 @@ def write_admitted_run(
     hold: HoldPlan | None = None,
 ) -> AdmittedRun:
     """The post-refusal half of admission (MC-B2-08): mint the run id and build the run, lock
-    before visible (v0.4 rule 1). Every refusal has already happened, and the caller holds the
+    before visible (v0.3.1 rule 1). Every refusal has already happened, and the caller holds the
     admission lock (rule 7 step 4; `Admission.write_run` takes it for the harness's `run_tree`,
     L.SV-5.7). The steps:
 
@@ -685,7 +685,7 @@ def write_admitted_run(
         created_fields: dict[str, object] = {
             "run_id": run_id,
             "spec_hash": spec_hash,
-            # v0.4: the server that admitted the run and holds its owner lock (replaces the
+            # v0.3.1: the server that admitted the run and holds its owner lock (replaces the
             # service epoch), and whether any declared secret had a value in the call (a reaped
             # run without one has its outputs promoted, rule 3)
             "owner": ownership.server_id,
@@ -695,7 +695,7 @@ def write_admitted_run(
             "snapshot_id": snap.snapshot_id,
             "args_hash": a_hash,
             "caller_session": req.caller_session,
-            # v0.4 Problem B: the inputs of the key's window, recorded so no later process (a
+            # v0.3.1 Problem B: the inputs of the key's window, recorded so no later process (a
             # rebuild, another server) recomputes it; the margin is this owner's own (rule 11)
             "deadline_s": deadline_s,
             "deadline_source": deadline_source,

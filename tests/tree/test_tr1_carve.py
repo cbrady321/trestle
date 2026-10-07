@@ -124,7 +124,7 @@ def test_release_slice_vs_margin_refused(
 
 
 def test_call_deadline_is_the_carve_and_release_slice_deadline(tree_kernel: Kernel) -> None:
-    """v0.4 Feature 0: a call's own `deadline_s` replaces the declared one in the carve, so a
+    """v0.3.1 Feature 0: a call's own `deadline_s` replaces the declared one in the carve, so a
     deadline too short to hold the root budget and the release slice is refused
     `budget_does_not_fit` before a run id, and one that fits is admitted."""
     walk = publish(tree_kernel, with_release_effect(source("shared_diamond"), 2))

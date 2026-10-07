@@ -95,7 +95,7 @@ def test_us10_recovery_from_ledger_not_meta(trestle_home: Path, plugin_dir: Path
     run_dir = _find_run(trestle_home, view.run_id)
     meta = run_dir / "evidence" / "meta.json"
     meta.unlink()
-    recover_run_dir(run_dir)  # v0.4: a start reaps only dead owners' runs; this is the repair
+    recover_run_dir(run_dir)  # v0.3.1: a start reaps only dead owners' runs; this is the repair
     assert meta.exists()
 
 

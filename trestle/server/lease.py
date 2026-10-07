@@ -3,7 +3,7 @@
 The environment key is the canonical JSON of the request argument the plugin names in `env_arg`
 (opaque to the host: two requests share an environment exactly when the bytes are equal);
 admission records it in the `created` row (`lease_key`), in the plan's `lease_set` and in the
-run's live marker. There is no lease store file. v0.4 (Problem A, rule 6): one running run per key
+run's live marker. There is no lease store file. v0.3.1 (Problem A, rule 6): one running run per key
 home-wide, in arrival order, checked in `home/sched.json` with the grant (`trestle.server.pool`);
 the busy pre-check reads the key's queued and running runs there. The in-memory holder index
 (`Holders`, `rebuild_holders`, `holder_of`) is retired.

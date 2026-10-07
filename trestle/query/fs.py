@@ -183,7 +183,7 @@ class FilesystemQueryBackend:
     def _run_by_key(
         self, params: dict[str, object], cursor: Handle | None
     ) -> dict[str, Any] | RequestOutcome:
-        """v0.4 Feature 1: the runs that used one idempotency key, newest first, from the key's
+        """v0.3.1 Feature 1: the runs that used one idempotency key, newest first, from the key's
         file and each run's state.json (and, once terminal, its run view). Reads without the
         admission lock and starts, joins and changes nothing; an unknown key is an empty page, and
         an entry whose run directory is missing is omitted. `truncated` is the page's own: the
@@ -308,13 +308,13 @@ class FilesystemQueryBackend:
                 if deadline is not None and time.monotonic() > deadline:
                     scan_truncated = True
                     break
-                # an admission in flight (`.adm-<run_id>`, v0.4) is not a run
+                # an admission in flight (`.adm-<run_id>`, v0.3.1) is not a run
                 if not run_dir.is_dir() or run_dir.name.startswith("."):
                     continue
                 path = ledger_path(run_dir)
                 if not path.exists():
                     continue
-                # v0.4 Problem C: a run is listed from its small state.json; an old run without
+                # v0.3.1 Problem C: a run is listed from its small state.json; an old run without
                 # one is read from its ledger, as before
                 listed = state_path(run_dir)
                 size = (listed if listed.exists() else path).stat().st_size
@@ -484,7 +484,7 @@ def _load_run_record(run_id: str, run_dir: Path) -> RunRecord | None:
 def _record_from_state(
     run_id: str, run_dir: Path, st: dict[str, Any], spec: dict[str, object]
 ) -> RunRecord:
-    """A run's record from its state.json (v0.4 Problem C), with what the ledger read gives."""
+    """A run's record from its state.json (v0.3.1 Problem C), with what the ledger read gives."""
     state = str(st["state"])
     ended_at = st.get("ended_at")
     terminal_at = st.get("terminal_at")

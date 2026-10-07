@@ -1,4 +1,4 @@
-"""The reaper (v0.4 Problem A, rule 3): recovery becomes reaping.
+"""The reaper (v0.3.1 Problem A, rule 3): recovery becomes reaping.
 
 Each server runs one at its start and every 10 s, over `home/live/` only, never the whole runs/
 tree. For each live marker it tries the run's owner lock without blocking: held, the owner is

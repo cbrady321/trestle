@@ -112,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return _dispatch(args)
     except HomeRefused as exc:
-        # v0.4: every entry point checks home/format and the local-mount rule first
+        # v0.3.1: every entry point checks home/format and the local-mount rule first
         print(f"trestle: {exc}", file=sys.stderr)
         return 2
 

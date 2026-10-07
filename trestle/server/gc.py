@@ -38,7 +38,7 @@ def run_gc(
 ) -> GCReport:
     """Sweep expired runs, artifacts, snapshots, and orphan tmp dirs. One GC at a time per home:
     `locks/gc.lock` is taken non-blocking, and a GC that finds it held does nothing (`skipped`).
-    Only `doctor --gc` and `recover` call it (v0.4)."""
+    Only `doctor --gc` and `recover` call it (v0.3.1)."""
     with file_lock(locks_dir(home) / GC_LOCK, blocking=False) as held:
         if not held:
             return GCReport(skipped=True)
@@ -54,7 +54,7 @@ def _run_gc(
     cfg = config or load_config(home)
     current = time.time() if now is None else now
     pins = PinStore.open(home)
-    # the snapshots runs name, and those live servers serve (their lock files, v0.4)
+    # the snapshots runs name, and those live servers serve (their lock files, v0.3.1)
     referenced_snapshots = _referenced_snapshot_ids(home) | served_snapshots(home)
     runs_examined = 0
     runs_removed = 0
@@ -64,7 +64,7 @@ def _run_gc(
 
     for run_dir in iter_run_dirs(home):
         # a run with a live marker is not terminal (or its owner is still finishing it): its
-        # files, work/tmp included, are its owner's (v0.4)
+        # files, work/tmp included, are its owner's (v0.3.1)
         if marker_path(home, run_dir.name).exists():
             continue
         path = ledger_path(run_dir)

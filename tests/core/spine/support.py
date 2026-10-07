@@ -95,7 +95,7 @@ def kinds(run_dir: Path) -> list[str]:
 
 
 def rows_of(run_dir: Path, kind: str) -> list[dict[str, Any]]:
-    """The ledger's rows of `kind`; for `process_identity`, the sidecar's too (v0.4 Problem C:
+    """The ledger's rows of `kind`; for `process_identity`, the sidecar's too (v0.3.1 Problem C:
     the ledger keeps only the leader's row, every identity is in `evidence/processes.ndjson`),
     each identity once."""
     found = [row for row in rows(run_dir) if row.get("kind") == kind]

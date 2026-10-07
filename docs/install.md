@@ -133,7 +133,7 @@ Any number of `trestle serve` (and `trestle ops serve`) processes may share one 
 The home must be on a local file system: every entry point (`serve`, `ops serve`, `init`,
 `recover`, `doctor`, `pin`, `unpin`) refuses an nfs, smbfs, afpfs, webdav or cifs mount. A home
 records its format in `home/format` (2); a home a v0.3.0 server used is refused until it is
-upgraded, and v0.3.0 and v0.4 servers must never share a home:
+upgraded, and v0.3.0 and v0.3.1 servers must never share a home:
 
 ```bash
 # stop every v0.3.0 server on the home first

@@ -1,4 +1,4 @@
-"""v0.4 Problem B, step 3: key expiry survives restarts.
+"""v0.3.1 Problem B, step 3: key expiry survives restarts.
 
 A key's expiry is fixed once at admission and recorded in the `created` row (`key_expires_at`);
 `home/keys/<sha256(key)>.json` lists every run that used the key, newest first, and is looked up

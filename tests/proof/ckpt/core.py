@@ -18,7 +18,7 @@ The conditions are plans/core.md `### J-CORE`, (a)-(k):
   (e) CSC-14, mechanically: the straddle node set S registers only the one claim label
   (f) `meta register` is clean; TM-C1..3 present, T-1/T-2/T-3/TM-P0-1/TM-P0-12 absent
   (g) the TM-C4b variant is present as strict xfail (TM-C4a, the K-1 variant, left with
-      JOIN_ACROSS_REPUBLISH in v0.4)
+      JOIN_ACROSS_REPUBLISH in v0.3.1)
   (h) cell A9 is fully green and claimed
   (i) RV-1, RV-3, RV-4 and RV-5 core review records pass and are shown by the ledger
   (j) the core fossils are MANIFEST-complete; d2 (reader s0) has 0 diffs; d1 --strict has none

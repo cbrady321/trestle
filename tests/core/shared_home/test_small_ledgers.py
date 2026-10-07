@@ -1,4 +1,4 @@
-"""v0.4 Problem C, step 2: ledgers that stay small.
+"""v0.3.1 Problem C, step 2: ledgers that stay small.
 
 Process identities go to the run's sidecar (`evidence/processes.ndjson`, compacted past
 `procident.COMPACT_ROWS` rows); the ledger keeps the leader's row and one `process_summary`.
@@ -233,7 +233,7 @@ def test_status_of_a_live_run_reads_state_json_not_the_ledger(
 def test_run_without_state_json_is_read_from_its_ledger(tmp_path: Path) -> None:
     kernel = _kernel(_home(tmp_path))
     run_dir = _finished(kernel, "echo", {"message": "old"})
-    state_path(run_dir).unlink()  # a run admitted before v0.4
+    state_path(run_dir).unlink()  # a run admitted before v0.3.1
     assert kernel.control.project.status(run_dir.name).state == "succeeded"
     page = kernel.control.project.query("recent_runs", {})
     assert isinstance(page, dict)

@@ -81,7 +81,7 @@ class ControlSurface:
         self.lane = AdmissionLane(self.admission)
         self.scheduler.on_dispatch = self._start
         self.scheduler.on_expire = self.conductor.finalize_unspawned
-        # v0.4: a cancel flag another server wrote for a run waiting here, seen on the 250 ms pass
+        # v0.3.1: a cancel flag another server wrote for a run waiting here, seen on the 250 ms pass
         self.scheduler.on_cancel = self.conductor.cancel_flag_written
         # Feature 3: the same pass decides a held run: release it, or end it cancelled (unmet)
         self.scheduler.on_held_check = self.conductor.check_held

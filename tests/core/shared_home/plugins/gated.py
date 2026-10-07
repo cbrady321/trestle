@@ -1,4 +1,4 @@
-"""A run that holds its slot until its gate file (or `ALL` beside it) exists (v0.4 step 1b's pool
+"""A run that holds its slot until its gate file (or `ALL` beside it) exists (v0.3.1 step 1b's pool
 tests): each test opens the gates one by one and sees which waiting run is granted next."""
 
 from __future__ import annotations

@@ -45,7 +45,7 @@ class PinStore:
 
     @contextlib.contextmanager
     def _locked(self) -> Iterator[None]:
-        """v0.4: pins.json is changed only under `locks/pins.lock`, re-read inside it, so two
+        """v0.3.1: pins.json is changed only under `locks/pins.lock`, re-read inside it, so two
         servers' pins never overwrite each other."""
         from trestle.server.home import PINS_LOCK, file_lock, locks_dir
 

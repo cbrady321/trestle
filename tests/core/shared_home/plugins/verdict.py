@@ -1,5 +1,5 @@
 """A plugin that answers `{"ok": ok, "n": n}`, after its gate file exists when it is given one
-(v0.4 step 6: the earlier run of a chain, whose result `after.match` reads)."""
+(v0.3.1 step 6: the earlier run of a chain, whose result `after.match` reads)."""
 
 from __future__ import annotations
 

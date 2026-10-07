@@ -18,7 +18,7 @@ def run_ops_server(
     cli_plugin_dirs: list[Path] | None = None,
 ) -> int:
     kernel = create_kernel(home=home, cli_plugin_dirs=cli_plugin_dirs)
-    # a full kernel: it registers and reaps like any server (v0.4)
+    # a full kernel: it registers and reaps like any server (v0.3.1)
     kernel.start_service(port=port)
     app = create_app(kernel)
     uvicorn.run(app, host=LOOPBACK_HOST, port=port, log_level="warning")

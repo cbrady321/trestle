@@ -85,7 +85,7 @@ class Project:
     # Status polls run on worker threads (L.CS-4.2), so two of them can overlap: a projection
     # rewrites the run's summary.json through one fixed temporary name, one writer at a time.
     _status_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
-    # v0.4 rule 3: a waiter that finds its run's owner lock free wakes the local reaper (the only
+    # v0.3.1 rule 3: a waiter that finds its run's owner lock free wakes the local reaper (the only
     # code that takes over a dead owner's run) and keeps polling. Set by a serving kernel.
     on_owner_gone: Callable[[], None] | None = field(default=None, repr=False, compare=False)
 
@@ -108,7 +108,7 @@ class Project:
         L.TR-2.4); a root view is unscoped, as it has been. A call outside an MCP session
         (`caller_session` None: the operator's CLI or console) is not scoped."""
         with self._status_lock:
-            # v0.4 Problem C: a live run is answered from its small state.json; the ledger is read
+            # v0.3.1 Problem C: a live run is answered from its small state.json; the ledger is read
             # only for a terminal view, an old run, or a non-terminal state.json whose owner lock
             # is free (the owner may have died before writing it)
             run_dir = self._run_dir_for(run_id)
@@ -696,7 +696,7 @@ class Project:
 
 
 def _live_view(run_id: Handle, run_dir: Path, state: dict[str, Any]) -> RunView:
-    """The view of a run that has not ended, from its state.json (v0.4 Problem C): the same
+    """The view of a run that has not ended, from its state.json (v0.3.1 Problem C): the same
     fields `_run_view` reads from the ledger for such a run, which has no summary, cleanup, error,
     outcome or answer yet."""
     evidence = evidence_dir(run_dir)
@@ -734,7 +734,7 @@ def _live_view(run_id: Handle, run_dir: Path, state: dict[str, Any]) -> RunView:
 
 def _deadline_fields(record: dict[str, Any] | None) -> dict[str, Any]:
     """The run view's `deadline_s` and `deadline_source` (Feature 0), from the `created` row (or
-    state.json); a run admitted before v0.4 has no recorded source and shows neither."""
+    state.json); a run admitted before v0.3.1 has no recorded source and shows neither."""
     if record is None:
         return {}
     source = record.get("deadline_source")
@@ -849,7 +849,7 @@ def _cleanup_view(ledger: RunLedger, state: str) -> CleanupView | None:
     return CleanupView(processes="released" if released else "unknown")
 
 
-# how often a waiter probes its runs' owner locks (v0.4 rule 3's wake-up)
+# how often a waiter probes its runs' owner locks (v0.3.1 rule 3's wake-up)
 OWNER_PROBE_S = 1.0
 _FAILURE_TERMINAL_STATES = TERMINAL_KINDS - frozenset({"succeeded"})
 

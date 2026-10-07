@@ -1,4 +1,4 @@
-"""v0.4 Problem A, step 1b: one slot pool per home, shared fairly (rules 4 to 9).
+"""v0.3.1 Problem A, step 1b: one slot pool per home, shared fairly (rules 4 to 9).
 
 Two-server tests run `pool_server.py` subprocesses (a served kernel each: server lock, reaper, the
 250 ms pass) on one `TRESTLE_HOME`, so a server can be SIGSTOPped or SIGKILLed; the rest drive

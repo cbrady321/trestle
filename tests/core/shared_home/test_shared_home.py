@@ -1,4 +1,4 @@
-"""v0.4 Problem A, step 1a: N server processes are safe on one home.
+"""v0.3.1 Problem A, step 1a: N server processes are safe on one home.
 
 Two-process tests run `trestle serve` subprocesses (`tests.proof.mcp_host.McpHost`) on one
 `TRESTLE_HOME`; the rest drive the same locks in process. Each server's stop bounds are shortened
@@ -375,7 +375,7 @@ def test_v030_home_is_refused_until_init_upgrade(tmp_path: Path) -> None:
     assert home_format(home) == 2
     assert live_run_ids(home) == [old_run.name]
     assert (read_marker(home, old_run.name) or {}).get("owner") is None
-    # a v0.4 start reaps the old run: it has no owner, and nothing of it runs
+    # a v0.3.1 start reaps the old run: it has no owner, and nothing of it runs
     create_kernel(home=home, plugin_dirs=[FIXTURE_PLUGINS])
     assert RunLedger.open(ledger_path(old_run)).projected_state() == "interrupted"
     assert live_run_ids(home) == []

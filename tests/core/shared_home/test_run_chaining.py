@@ -1,4 +1,4 @@
-"""v0.4 step 6, Feature 3: `run(after={...})`, a run that waits for another.
+"""v0.3.1 step 6, Feature 3: `run(after={...})`, a run that waits for another.
 
 A run sent with `after` is admitted at once into the held state (a `held` row after `created`),
 where it takes no slot, no environment lease and none of its deadline. Its owner's 250 ms pass reads

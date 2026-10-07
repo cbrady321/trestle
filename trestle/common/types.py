@@ -34,13 +34,13 @@ class AdmitRequest:
     # The MCP session the call arrived on (None outside an MCP session); written on the `created`
     # row so the restricted profile can scope `cancel` to the session that started a run.
     caller_session: str | None = None
-    # v0.4 Feature 0: the call's own deadline in seconds (None: the plugin's declared deadline, else
-    # 300 s, applies)
+    # v0.3.1 Feature 0: the call's own deadline in seconds (None: the plugin's declared deadline,
+    # else 300 s, applies)
     deadline_s: float | None = None
-    # v0.4 Feature 2: how long the key stays joinable after the run ends, in seconds (None: the
+    # v0.3.1 Feature 2: how long the key stays joinable after the run ends, in seconds (None: the
     # server's `idempotency_ttl_s`); bounded by `[keys] max_ttl_s`
     idempotency_ttl_s: float | None = None
-    # v0.4 Feature 3: hold the run until another ends: {run | key, when, match} (None: no hold)
+    # v0.3.1 Feature 3: hold the run until another ends: {run | key, when, match} (None: no hold)
     after: dict[str, Any] | None = None
 
 
@@ -180,7 +180,7 @@ class DeclaredMetadata:
     packages: tuple[str, ...] = ()
     env_arg: str | None = None
     secrets: frozenset[str] = frozenset()
-    # v0.4 Feature 2: a run of this plugin that ends interrupted frees its idempotency key, so an
+    # v0.3.1 Feature 2: a run of this plugin that ends interrupted frees its idempotency key, so an
     # identical re-send starts a fresh run (`retry_of`). Only the author knows a repeat is safe.
     repeatable: bool = False
     # Recorded at publication, not declared in source: each declared package's digest as the
@@ -269,17 +269,17 @@ class RunView:
     root_run_id: str | None = None
     path: str | None = None
     disposition: str | None = None
-    # v0.4 Feature 2: the interrupted run this one replaced, when it was started by re-sending a
+    # v0.3.1 Feature 2: the interrupted run this one replaced, when it was started by re-sending a
     # repeatable plugin's key; absent otherwise
     retry_of: str | None = None
-    # v0.4 Feature 0: the run's effective deadline and where it came from (call, declared or
-    # default); absent on a run admitted before v0.4
+    # v0.3.1 Feature 0: the run's effective deadline and where it came from (call, declared or
+    # default); absent on a run admitted before v0.3.1
     deadline_s: float | None = None
     deadline_source: str | None = None
-    # v0.4 Feature 1: the key a view was reached through (await_runs by key); absent otherwise, so
+    # v0.3.1 Feature 1: the key a view was reached through (await_runs by key); absent otherwise, so
     # a view reached by run id is byte-identical to before
     idempotency_key: str | None = None
-    # v0.4 Feature 3: the run this one was sent to wait for (`after`); absent on any other run
+    # v0.3.1 Feature 3: the run this one was sent to wait for (`after`); absent on any other run
     after_run_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:

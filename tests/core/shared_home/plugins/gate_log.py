@@ -1,4 +1,4 @@
-"""A gate that writes its log to outputs/ first, then holds (v0.4 rule 3's promotion tests).
+"""A gate that writes its log to outputs/ first, then holds (v0.3.1 rule 3's promotion tests).
 `token` is a declared secret: a call that gives it a value is a run with secret values."""
 
 from __future__ import annotations

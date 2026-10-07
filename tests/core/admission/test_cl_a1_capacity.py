@@ -31,7 +31,7 @@ NO_WAIT_MS = 0
 
 
 def _capacity_env(monkeypatch: pytest.MonkeyPatch, home: Path) -> None:
-    """The pool size comes from the home's config.toml only (v0.4 rule 11); the per-server
+    """The pool size comes from the home's config.toml only (v0.3.1 rule 11); the per-server
     queue depth still from its environment override."""
     home.mkdir(parents=True, exist_ok=True)
     (home / "config.toml").write_text(f"max_running_runs = {SLOTS}\n", encoding="utf-8")
@@ -216,7 +216,7 @@ def test_capacity_defaults_are_final_and_overridable(
     (tmp_path / "config.toml").write_text("max_running_runs = 3\nqueue_depth = 5\n")
     from_file = server_config.load_config(tmp_path)
     assert (from_file.max_running_runs, from_file.queue_depth) == (3, 5)
-    # v0.4: the pool size is the config file's alone; TRESTLE_MAX_RUNNING_RUNS is ignored
+    # v0.3.1: the pool size is the config file's alone; TRESTLE_MAX_RUNNING_RUNS is ignored
     monkeypatch.setenv("TRESTLE_MAX_RUNNING_RUNS", str(SLOTS))
     assert server_config.load_config(tmp_path).max_running_runs == 3
     _capacity_env(monkeypatch, tmp_path)

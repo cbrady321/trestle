@@ -1,4 +1,4 @@
-"""v0.4 step 5: `run_by_key`, `await_runs(keys=[...])` and `run(idempotency_ttl_s=...)`.
+"""v0.3.1 step 5: `run_by_key`, `await_runs(keys=[...])` and `run(idempotency_ttl_s=...)`.
 
 `query(view="run_by_key")` answers from the key's file in one read (its own path, never the
 recency window, no admission lock), one row per run that used the key, newest first.

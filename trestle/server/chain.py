@@ -1,4 +1,4 @@
-"""Run chaining (v0.4 Feature 3): `run(after={...})`.
+"""Run chaining (v0.3.1 Feature 3): `run(after={...})`.
 
 A run sent with `after` is admitted at once into the held state, where it takes no slot and spends
 none of its deadline. Its owner's 250 ms pass reads the earlier run's `state.json` (and its

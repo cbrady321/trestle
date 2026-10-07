@@ -1,4 +1,4 @@
-"""A plugin that raises (v0.4 step 5: a failed run's row in `run_by_key`)."""
+"""A plugin that raises (v0.3.1 step 5: a failed run's row in `run_by_key`)."""
 
 from __future__ import annotations
 

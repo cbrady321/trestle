@@ -41,7 +41,7 @@ to whole seconds.
 `summary_fields`, `env_arg` and `secrets` are declared and recorded in the snapshot's
 `manifest.json` (`declared`) and count toward its identity; nothing acts on them yet.
 
-`repeatable` (`True` or `False`, default `False`; v0.4) says a run of this plugin is safe to repeat:
+`repeatable` (`True` or `False`, default `False`; v0.3.1) says a run of this plugin is safe to repeat:
 when one ends `interrupted` (its server died), re-sending the same idempotency key with the same
 arguments starts a fresh run (`retry_of` names the interrupted one) instead of returning the
 interrupted answer. Declare it only when a half-done run can be run again. `describe_plugin`

@@ -55,7 +55,7 @@ sweep_parallelism: int = int(os.environ.get("TRESTLE_SWEEP_PARALLELISM", "4"))
 # It is the interval the conductor has always polled at.
 poll_interval: float = 0.05
 
-# How often a waiter (await_runs, run(completion="terminal")) re-reads its runs (v0.4 Problem C):
+# How often a waiter (await_runs, run(completion="terminal")) re-reads its runs (v0.3.1 Problem C):
 # each poll reads one small state.json per run. The supervision poll above is unchanged.
 await_poll_interval: float = 0.25
 

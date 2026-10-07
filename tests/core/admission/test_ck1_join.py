@@ -1,6 +1,6 @@
 """CK-1 (K-1; MC-12, MC-16, MC-17, MC-30, MC-CORE-12; OQ-1 recorded default): the same idempotency
 key joins the run it named after the plugin was republished, and the key's window covers the run's
-whole life. v0.4 removed the `admission.JOIN_ACROSS_REPUBLISH` switch: K-1 is permanent, and the
+whole life. v0.3.1 removed the `admission.JOIN_ACROSS_REPUBLISH` switch: K-1 is permanent, and the
 key's window is sized from the run's own deadline ("Fix first").
 
 Every timing bound comes from `tests.proof.tolerances` (SA-05); no timing literal appears here.

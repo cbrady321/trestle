@@ -216,7 +216,7 @@ class Conductor:
         )
         # B2-C16: the leader's identity row goes down after spawn and before the first liveness
         # poll; the wrapper does not wait on it. Every identity row goes to the sidecar, the
-        # leader's to the ledger too (v0.4 Problem C).
+        # leader's to the ledger too (v0.3.1 Problem C).
         sidecar = Sidecar(sidecar_path(evidence_dir(run_dir)), order.run_id)
         attribution = Attribution(
             group=proc.pid,
@@ -296,7 +296,7 @@ class Conductor:
                 pass
 
         assert stop is not None
-        # v0.4 Problem C: the identities stay in the sidecar; the ledger gets their count
+        # v0.3.1 Problem C: the identities stay in the sidecar; the ledger gets their count
         ledger.append("process_summary", run_id=order.run_id, seen=seen, alive=alive)
         # MC-32: one group_stop per spawned run, after the kill and before evidence_finalized
         ledger.append(
@@ -461,7 +461,7 @@ def promote_outputs(
     and byte caps hold across everything the run has as artifacts, those the child attached
     included: a file that would pass either is not promoted and a marker names the limit.
 
-    It reads no conductor state: the reaper promotes a dead owner's run through it too (v0.4
+    It reads no conductor state: the reaper promotes a dead owner's run through it too (v0.3.1
     rule 3), with `skip_available`, skipping every name that already has an `artifact_available`
     row, since the owner may have died mid-promotion."""
     work = work_dir(run_dir)

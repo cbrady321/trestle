@@ -15,13 +15,13 @@ ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED = "admission.plan_multi_vertex_unsupport
 # L.SL-8.2 (MC-06 seed, retryable): the environment's lease holder leaves too little time before
 # this request's would-be deadline; refused before any run id.
 ADMISSION_ENVIRONMENT_BUSY = "admission.environment_busy"
-# v0.4 (Problem A, rule 7; retryable): the home's admission lock stayed held past its 2 s bound
+# v0.3.1 (Problem A, rule 7; retryable): the home's admission lock stayed held past its 2 s bound
 # (another server holds it, or one stopped while holding it); refused before any run id.
 ADMISSION_HOME_BUSY = "admission.home_busy"
-# v0.4 (Feature 2): `idempotency_ttl_s` negative, not an integer or above `[keys] max_ttl_s`;
+# v0.3.1 (Feature 2): `idempotency_ttl_s` negative, not an integer or above `[keys] max_ttl_s`;
 # refused before any run id.
 ADMISSION_TTL_OUT_OF_RANGE = "admission.ttl_out_of_range"
-# v0.4 (Feature 3): `after` names a run (or a key whose runs) that does not exist; refused before
+# v0.3.1 (Feature 3): `after` names a run (or a key whose runs) that does not exist; refused before
 # any run id.
 ADMISSION_AFTER_UNKNOWN = "admission.after_unknown"
 NOT_IMPLEMENTED = "projection.not_implemented"
@@ -41,7 +41,7 @@ PROJECTION_INVALID_ARGS = "projection.invalid_args"
 MISSING = "projection.missing"
 EXPIRED = "projection.expired"
 TERMINAL_WAIT_EXCEEDED = "projection.terminal_wait_exceeded"
-# v0.4 (Feature 1): `await_runs(keys=[...])` named a key no run used (or whose runs are all gone).
+# v0.3.1 (Feature 1): `await_runs(keys=[...])` named a key no run used (or whose runs are all gone).
 PROJECTION_UNKNOWN_KEY = "projection.unknown_key"
 PUBLICATION_INVALID_SOURCE = "publication.invalid_source"
 PUBLICATION_NO_ENTRYPOINT = "publication.no_entrypoint"
@@ -50,7 +50,7 @@ PUBLICATION_SOURCE_TOO_LARGE = "publication.source_too_large"
 PUBLICATION_VALIDATION_FAILED = "publication.validation_failed"
 PUBLICATION_DECLARATION_INVALID = "publication.declaration_invalid"
 PUBLICATION_ENV_ARG_MISSING = "publication.env_arg_missing"
-# v0.4 (Problem A): another server published the same plugin name at once and its source won.
+# v0.3.1 (Problem A): another server published the same plugin name at once and its source won.
 PUBLICATION_REGISTRY_CONFLICT = "publication.registry_conflict"
 
 # MC-CORE-04: the execution-code vocabulary, additive only (DM-16). A run that started and ended
@@ -64,7 +64,7 @@ EXECUTION_CANCELLED = "execution.cancelled"
 EXECUTION_DEADLINE_EXCEEDED = "execution.deadline_exceeded"
 EXECUTION_WORKER_EXIT = "execution.worker_exit"
 EXECUTION_INTERRUPTED = "execution.interrupted"
-# v0.4 (Feature 3): a held run whose `after` condition was not met ends cancelled with this code
+# v0.3.1 (Feature 3): a held run whose `after` condition was not met ends cancelled with this code
 # in its `error_record`; its message names the earlier run and the reason. Not in
 # EXECUTION_CODES: no process of the run ever existed to raise it.
 EXECUTION_AFTER_UNMET = "execution.after_unmet"

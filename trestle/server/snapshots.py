@@ -100,7 +100,7 @@ def deadline_of(snap: PluginSnapshot) -> tuple[float, str]:
 
 
 def effective_deadline(snap: PluginSnapshot, call_deadline_s: float | None) -> tuple[float, str]:
-    """The deadline a call is admitted with (v0.4 Feature 0), and where it comes from: the call's
+    """The deadline a call is admitted with (v0.3.1 Feature 0), and where it comes from: the call's
     own `deadline_s`, else the plugin's declared deadline, else the snapshot default (300 s)."""
     if call_deadline_s is not None:
         return float(call_deadline_s), DEADLINE_CALL

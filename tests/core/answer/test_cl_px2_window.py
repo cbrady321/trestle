@@ -90,7 +90,7 @@ def test_recency_cap_filled_exactly_is_not_marked(tmp_path: Path) -> None:
 @pytest.mark.proves("WR-EVID-7", "WR-EVID-7:window-hidden-run-marked", "core", "core", "PROC", "CI")
 def test_run_hidden_by_scan_budget_marked(tmp_path: Path) -> None:
     ids = _seed_runs(tmp_path, 6)
-    # the scan counts each run's state.json (v0.4 Problem C), its ledger only for an old run
+    # the scan counts each run's state.json (v0.3.1 Problem C), its ledger only for an old run
     one_run = state_path(tmp_path / "runs" / MONTH / ids[0]).stat().st_size
     budget = CaptureLimits(max_scan_bytes=one_run * 3 + 1)
     backend = FilesystemQueryBackend(tmp_path, limits=budget)

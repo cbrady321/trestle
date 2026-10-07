@@ -1,7 +1,7 @@
 """Process identity and attribution (MC-CORE-05; B2-C16, V-2.3, DM-66).
 
 One `ProcessIdentity` row per process the run supervisor attributes to a run, appended before the
-supervisor relies on the attribution (signals the process or counts it gone). Since v0.4 (Problem
+supervisor relies on the attribution (signals the process or counts it gone). Since v0.3.1 (Problem
 C) the rows go to the run's sidecar, `evidence/processes.ndjson` (`append_ndjson`: durable before
 any signal); the ledger keeps only the leader's row, and one `process_summary` row at the stop. A
 process is *attributable to a run* when a snapshot of the process table, taken after spawn, at
@@ -280,7 +280,7 @@ def merged_identities(*row_lists: list[dict[str, Any]]) -> list[Identity]:
     return found
 
 
-# --- the sidecar (v0.4 Problem C) ----------------------------------------------------------------
+# --- the sidecar (v0.3.1 Problem C) ---------------------------------------------------------------
 
 SIDECAR_FILE = "processes.ndjson"
 # Past this many rows the owner rewrites the sidecar to the leader and the identities alive at that
@@ -613,7 +613,7 @@ def recovery_decision(
 ) -> RecoveryDecision:
     """Read the run's `process_identity` rows (the ledger's, and the sidecar's `sidecar` rows) and
     take one branch, comparing `(boot, start)` as integers and never as text. The leader is read
-    from the ledger alone, which always keeps its row (v0.4 Problem C):
+    from the ledger alone, which always keeps its row (v0.3.1 Problem C):
 
     (i) no leader row (a run started by a version that records no identity, K-19, or interrupted
         between spawn and the append): no signal, `confirmed_gone` false, cleanup unknown;

@@ -36,7 +36,7 @@ class RunLedger:
         }
         append_ndjson(self.path, record)
         self.records.append(record)
-        # v0.4 Problem C: the ledger row first (the authority), then evidence/state.json by atomic
+        # v0.3.1 Problem C: the ledger row first (the authority), then evidence/state.json by atomic
         # rename. Only the run's lock holder appends, so only it writes state.json.
         if kind in STATE_KINDS and self.path.name == LEDGER_FILE:
             write_state(self.path.parent, self.records)
@@ -92,7 +92,7 @@ TERMINAL_KINDS = frozenset(
 _TERMINAL_KINDS = TERMINAL_KINDS
 NON_TERMINAL_STATES = frozenset({"queued", "running", "held"})
 
-# The rows that change what evidence/state.json says (v0.4 Problem C); state.json is rewritten
+# The rows that change what evidence/state.json says (v0.3.1 Problem C); state.json is rewritten
 # after each of them, and after no other row.
 STATE_KINDS = frozenset(
     {
@@ -178,7 +178,7 @@ def run_dir_for(home: Path, run_id: Handle, *, month: str | None = None) -> Path
 
 def is_hidden(path: Path) -> bool:
     """A name starting with a dot under runs/ is never a run: an admission in flight builds its
-    run as `.adm-<run_id>` (v0.4 rule 1), and every walker of runs/ skips such names."""
+    run as `.adm-<run_id>` (v0.3.1 rule 1), and every walker of runs/ skips such names."""
     return path.name.startswith(".")
 
 
@@ -216,7 +216,7 @@ def state_path(run_dir: Path) -> Path:
 
 
 def read_state(run_dir: Path) -> dict[str, Any] | None:
-    """The run's evidence/state.json, or None when it is missing (a run admitted before v0.4) or
+    """The run's evidence/state.json, or None when it is missing (a run admitted before v0.3.1) or
     unreadable. Lock-free: it is replaced by atomic rename."""
     try:
         loaded = json.loads(state_path(run_dir).read_text(encoding="utf-8"))

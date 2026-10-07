@@ -50,7 +50,7 @@ from trestle.server.snapshots import (
 )
 
 MAX_PUBLISH_SOURCE_BYTES = 512 * 1024
-# v0.4: the home's one registry version counter, bumped under `locks/registry.lock`
+# v0.3.1: the home's one registry version counter, bumped under `locks/registry.lock`
 REGISTRY_VERSION_FILE = "registry_version"
 
 
@@ -62,7 +62,7 @@ def read_registry_version(home: Path) -> int:
 
 
 def bump_registry_version(home: Path) -> int:
-    """One counter for the home (v0.4), still an int: read, add one and write it back under
+    """One counter for the home (v0.3.1), still an int: read, add one and write it back under
     `locks/registry.lock`, so two servers never hand out the same version."""
     from trestle.server.home import REGISTRY_LOCK, file_lock, locks_dir
 
@@ -130,7 +130,7 @@ class Registry:
     # back another refresh's result. Re-entrant: `maybe_refresh` and `publish_source` refresh.
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
     # told the new snapshot set whenever it changes (a server rewrites its lock file's snapshot
-    # ids, which GC keeps, v0.4)
+    # ids, which GC keeps, v0.3.1)
     on_change: Callable[[dict[str, PluginSnapshot]], None] | None = field(
         default=None, repr=False, compare=False
     )
@@ -328,11 +328,11 @@ class Registry:
             # deadline plus the same finalization margin the terminal wait uses (never a config
             # field, MC-B2-04). Discoverable here so a host sizes its own timeout before calling.
             "max_call_duration_s": deadline_s + clock.finalization_margin,
-            # v0.4 Feature 0: a call may ask for its own `deadline_s` up to the ceiling; a client
+            # v0.3.1 Feature 0: a call may ask for its own `deadline_s` up to the ceiling; a client
             # sizes its timeout for any call as deadline_s + finalization_margin_s (this server's)
             "finalization_margin_s": clock.finalization_margin,
             "deadline_ceiling_s": load_config(self.home).operator_limits.deadline_ceiling,
-            # v0.4 Feature 2: an interrupted run of this plugin frees its idempotency key
+            # v0.3.1 Feature 2: an interrupted run of this plugin frees its idempotency key
             "repeatable": load_declared(snap).repeatable,
             "input_schema": load_snapshot_schema(snap),
             "return_schema": load_snapshot_return_schema(snap),
@@ -424,7 +424,7 @@ class Registry:
         if snap is None or snap.source_sha256 != source_sha256:
             winner = _concurrent_winner(path, source_sha256, snap)
             if winner is not None:
-                # v0.4: another server wrote this plugin's source after this one did; its source
+                # v0.3.1: another server wrote this plugin's source after this one did; its source
                 # is the one published, not a validation failure of ours
                 return RequestOutcome(
                     code=codes.PUBLICATION_REGISTRY_CONFLICT,

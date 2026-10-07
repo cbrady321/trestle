@@ -36,7 +36,7 @@ class DoctorReport:
     config: TrestleConfig
     storage_bytes: int
     gc: GCReport | None = None
-    # v0.4: the live servers (their lock files), the live runs by owner (None: a v0.3.0 run),
+    # v0.3.1: the live servers (their lock files), the live runs by owner (None: a v0.3.0 run),
     # the admission lock's holder when it is held, and warnings (an ignored environment override)
     servers: tuple[dict[str, Any], ...] = ()
     live_runs: dict[str | None, int] = field(default_factory=dict)
@@ -197,7 +197,7 @@ def run_doctor(
 
 
 def run_recover(*, home: str | None = None) -> int:
-    """`trestle recover`: reap now, then GC (v0.4). Only runs whose owner lock is free (their
+    """`trestle recover`: reap now, then GC (v0.3.1). Only runs whose owner lock is free (their
     server died) are finalized; a live server's runs are never touched."""
     trestle_home = Path(home) if home else default_home()
     check_home(trestle_home)

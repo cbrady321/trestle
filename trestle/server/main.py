@@ -45,7 +45,7 @@ class Kernel:
     control: ControlSurface
     registry: Registry
     profile: ProfileConfig = ProfileConfig()
-    # v0.4 Problem A: this process's server identity (`created.owner`), its owner locks, its
+    # v0.3.1 Problem A: this process's server identity (`created.owner`), its owner locks, its
     # reaper and, once it serves, its server lock file
     ownership: Ownership | None = None
     reaper: Reaper | None = None
@@ -101,7 +101,7 @@ def create_kernel(
     registry = Registry(home=trestle_home, plugin_dirs=dirs)
     registry.refresh()
     config = load_config(trestle_home)
-    # v0.4 rules 4 and 5: this server's FIFO, bounded per server (read at start), and the home's
+    # v0.3.1 rules 4 and 5: this server's FIFO, bounded per server (read at start), and the home's
     # one slot pool (home/sched.json), whose size is read from config.toml at each grant
     pool = Pool(home=trestle_home, server_id=ownership.server_id)
     scheduler = Scheduler(
@@ -121,7 +121,7 @@ def create_kernel(
 
     def complete(run_id: str) -> None:
         # the owner removes a finished run's marker, frees its slot (its home/sched.json entry)
-        # and closes its owner lock, in one locked step (v0.4 rules 2 and 7)
+        # and closes its owner lock, in one locked step (v0.3.1 rules 2 and 7)
         ownership.release(run_id, locked=pool.settle)
 
     scheduler.on_complete = complete

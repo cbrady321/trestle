@@ -1,4 +1,4 @@
-"""The home's one slot pool (v0.4 Problem A, rules 5, 6 and 8): `home/sched.json`.
+"""The home's one slot pool (v0.3.1 Problem A, rules 5, 6 and 8): `home/sched.json`.
 
 The home has one pool of `max_running_runs` slots, shared by every server on it. A run holds a
 slot from its grant until its owner's `Scheduler.complete`. `home/sched.json` is one small file,

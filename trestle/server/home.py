@@ -1,4 +1,4 @@
-"""The shared home (v0.4 Problem A): N server processes on one `TRESTLE_HOME`.
+"""The shared home (v0.3.1 Problem A): N server processes on one `TRESTLE_HOME`.
 
 What lives here: the home's format and local-mount checks every entry point runs first; the
 admission lock (`locks/admission.lock`, taken non-blocking for at most 2 s, its holder named in

@@ -318,7 +318,7 @@ After a server crash, recovery reads the run's recorded process identities befor
 signals a pid that now belongs to another process. A run started before identities were recorded
 gets no signal at all; its answer reports the stop as unconfirmed.
 
-Several servers may share one `TRESTLE_HOME` (v0.4). Each run is owned by the server that admitted
+Several servers may share one `TRESTLE_HOME` (v0.3.1). Each run is owned by the server that admitted
 it, through a lock the kernel drops when that server exits, even on SIGKILL; only runs whose owner
 is gone are recovered, by the reaper every running server runs (at start, then every 10 s, and at
 once when an `await_runs` or `completion="terminal"` waiter sees its run's owner gone). Starting a
@@ -629,10 +629,10 @@ Re-issuing a key with the same plugin and the same arguments returns the run tha
 
 The key also stays valid for as long as the run can: it expires the `TRESTLE_IDEMPOTENCY_TTL_S` window (default one hour) after the run's own deadline (the plugin's declared `deadline`, else 300 s) plus the finalization margin, not after admission, so a retry that arrives while a long run is still going joins it.
 
-This is a knowing change (K-1): before it, any code change made the same key a conflict, and the key could lapse while its run was still going. It is permanent: v0.4 removed the `JOIN_ACROSS_REPUBLISH` switch, and the identity a join names stays `outcome.identity.snapshot_id`.
+This is a knowing change (K-1): before it, any code change made the same key a conflict, and the key could lapse while its run was still going. It is permanent: v0.3.1 removed the `JOIN_ACROSS_REPUBLISH` switch, and the identity a join names stays `outcome.identity.snapshot_id`.
 <!-- /K-1 -->
 
-Since v0.4 a key's expiry is fixed once, at admission, and recorded with the run (`key_expires_at` in its `created` row); a server restart never revives an expired key. A key whose run no longer exists (removed by retention) is free: re-sending it starts a new run instead of answering a conflict. A plugin that declares `@trestle(repeatable=True)` frees its key when its run ends `interrupted` (its server died): the identical re-send starts a fresh run, whose view carries `retry_of` naming the interrupted one. Every other ending, and every plugin that does not declare it, still returns the recorded answer.
+Since v0.3.1 a key's expiry is fixed once, at admission, and recorded with the run (`key_expires_at` in its `created` row); a server restart never revives an expired key. A key whose run no longer exists (removed by retention) is free: re-sending it starts a new run instead of answering a conflict. A plugin that declares `@trestle(repeatable=True)` frees its key when its run ends `interrupted` (its server died): the identical re-send starts a fresh run, whose view carries `retry_of` naming the interrupted one. Every other ending, and every plugin that does not declare it, still returns the recorded answer.
 
 ---
 

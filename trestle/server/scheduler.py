@@ -1,7 +1,7 @@
 """Kernel-private scheduler — WorkOrder minting after durable created, and the run-capacity
 dispatcher (MC-30): `max_running_runs` slots plus a bounded FIFO of `queue_depth` waiting runs.
 
-v0.4 (Problem A, rules 4 and 5): each server keeps its own FIFO in memory, bounded per server
+v0.3.1 (Problem A, rules 4 and 5): each server keeps its own FIFO in memory, bounded per server
 (`queue_depth`, and `max_held_runs` for Feature 3's held runs), while the slots are one pool per
 home (`trestle.server.pool`, `home/sched.json`). A kernel's scheduler is given its `pool`; one
 without (a unit test's) counts its own `max_running` slots in memory, as before."""
@@ -80,14 +80,14 @@ class Scheduler:
     # WR-OWN-8: the environment key each running run of this server holds (capacity 1 per key
     # home-wide, L.SL-8.2; across servers through the pool)
     running_keys: dict[Handle, str] = field(default_factory=dict)
-    # v0.4: the home's slot pool (rules 5 and 6); None counts this scheduler's own slots
+    # v0.3.1: the home's slot pool (rules 5 and 6); None counts this scheduler's own slots
     pool: pools.Pool | None = None
-    # v0.4: told once a run is done here (after its terminal row, or its drive raised): the
+    # v0.3.1: told once a run is done here (after its terminal row, or its drive raised): the
     # owner removes the run's live marker, frees its slot and closes its owner lock
     # (`Ownership.release`). Called outside `_lock`: the home's admission lock is never taken while
     # holding it (rule 10).
     on_complete: Callable[[Handle], None] | None = None
-    # v0.4: a cancel flag found on a waiting run by the 250 ms pass (any server's `cancel` writes
+    # v0.3.1: a cancel flag found on a waiting run by the 250 ms pass (any server's `cancel` writes
     # it); the conductor finalizes the run as cancelled while queued
     on_cancel: Callable[[Handle], None] | None = None
     # Feature 3, on the 250 ms pass: `on_held_check` decides a held run (None keeps it held);
@@ -300,7 +300,7 @@ class Scheduler:
             if self.on_dispatch is not None:
                 self.on_dispatch(order)
 
-    # -- the home's pool (v0.4 rules 5 to 7) ----------------------------------------------------
+    # -- the home's pool (v0.3.1 rules 5 to 7) ----------------------------------------------------
 
     def seen(self) -> None:
         """The reaper's pass (every 10 s): this server's `seen_at` (rule 5's reserve) in a locked

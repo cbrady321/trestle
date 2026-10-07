@@ -196,7 +196,7 @@ def measure(cap: int | None = None) -> dict[str, Any]:
     os.environ[DEPTH_ENV] = str(top * len(names))
     samples: list[dict[str, Any]] = []
     with mcp_host.McpHost(timeout_s=HOST_TIMEOUT_S) as host:
-        # v0.4: the pool size comes from config.toml only, read at each admission
+        # v0.3.1: the pool size comes from config.toml only, read at each admission
         (host.home / "config.toml").write_text(f"max_running_runs = {top}\n", encoding="utf-8")
         install_workload(host, names)
         for wave in range(len(names)):  # warm-up: each entry once, not measured (first-use cost)

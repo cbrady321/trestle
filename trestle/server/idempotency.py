@@ -1,4 +1,4 @@
-"""Idempotency keys (R-WAIT-10–13; v0.4 Problem B): one file per key, `home/keys/<sha256>.json`.
+"""Idempotency keys (R-WAIT-10–13; v0.3.1 Problem B): one file per key, `home/keys/<sha256>.json`.
 
 A key file holds the key and every run that used it, newest first. Each entry records what a join
 compares (`plugin`, `args_hash`, `call_deadline_s`, the call's own deadline argument or null, and

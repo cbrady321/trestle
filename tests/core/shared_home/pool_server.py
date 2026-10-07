@@ -1,4 +1,4 @@
-"""One served kernel on a home, for the slot-pool tests (v0.4 step 1b), driven on stdin.
+"""One served kernel on a home, for the slot-pool tests (v0.3.1 step 1b), driven on stdin.
 
     python pool_server.py <home> <plugin dir> <overrides JSON>
 

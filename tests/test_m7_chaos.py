@@ -157,7 +157,7 @@ def test_recover_cli_integrates_gc_and_epoch(
     assert code == 0
     out = capsys.readouterr().out
     assert "recovery complete" in out
-    # v0.4: recover reaps (only runs whose owner is gone), then runs GC, which collects the
+    # v0.3.1: recover reaps (only runs whose owner is gone), then runs GC, which collects the
     # reaped run at once here (retention 0)
     assert "reaped: 1" in out
     assert "gc runs_removed: 1" in out

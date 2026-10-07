@@ -1,4 +1,4 @@
-"""v0.4 Feature 0: per-task deadlines above one hour.
+"""v0.3.1 Feature 0: per-task deadlines above one hour.
 
 `run(deadline_s=...)` is the run's effective deadline (else the plugin's declared one, else 300 s),
 bounded by `[operator] deadline_ceiling_s` (config.toml only, read at each admission, 3,600 by
