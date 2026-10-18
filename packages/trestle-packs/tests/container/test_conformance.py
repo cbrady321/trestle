@@ -240,7 +240,12 @@ def shim_inventory(state: Path) -> Callable[[], dict[str, frozenset[str]]]:
 
 
 def docker_inventory(cli: str, endpoint: str | None) -> Callable[[], dict[str, frozenset[str]]]:
-    def read() -> dict[str, frozenset[str]]:
+    """The engine's objects by name, less the containers it already ran when the suite began: the
+    operator's own (another project's compose stack) are not the suite's to count, so a case that
+    counts instances ("still one instance") holds on a busy engine. A container that appears during
+    the suite is counted, whoever made it."""
+
+    def names() -> dict[str, frozenset[str]]:
         snap = inventory.snapshot(cli, endpoint)
         assert snap["engine"]["reachable"], snap["engine"]
         return {
@@ -253,6 +258,12 @@ def docker_inventory(cli: str, endpoint: str | None) -> Callable[[], dict[str, f
             )
             for kind in inventory.KINDS
         }
+
+    foreign = names()["containers"]
+
+    def read() -> dict[str, frozenset[str]]:
+        now = names()
+        return {**now, "containers": now["containers"] - foreign}
 
     return read
 
