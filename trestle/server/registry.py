@@ -15,6 +15,7 @@ from trestle.common import clock, codes
 from trestle.common.fsutil import atomic_write, sha256_bytes, sha256_file
 from trestle.common.types import (
     CatalogView,
+    FailedPluginRow,
     PluginCatalogRow,
     PluginSnapshot,
     PublishView,
@@ -52,6 +53,8 @@ from trestle.server.snapshots import (
 MAX_PUBLISH_SOURCE_BYTES = 512 * 1024
 # v0.3.1: the home's one registry version counter, bumped under `locks/registry.lock`
 REGISTRY_VERSION_FILE = "registry_version"
+# how much of a validation failure's message `list_plugins` carries per failed plugin
+FAILED_REASON_MAX = 300
 
 
 def read_registry_version(home: Path) -> int:
@@ -124,6 +127,9 @@ class Registry:
     _scan_signature: tuple[tuple[str, int, int], ...] | None = field(default=None, init=False)
     # why the last refresh refused each plugin that has its own publication code
     _refusals: dict[str, PublicationRefused] = field(default_factory=dict, init=False)
+    # every plugin the last refresh could not publish: name -> (source path, reason), which
+    # `list_plugins` reports so a caller need not read `service.log` to learn why one is missing
+    _failures: dict[str, tuple[str, str]] = field(default_factory=dict, init=False)
     # One refresh at a time. Refreshes come from the admission thread, the `tools/list` hook and
     # the plugin tools, which fastmcp runs on worker threads: unserialized, a refresh that read the
     # plugin directory earlier could overwrite a later one's `snapshots`, and a publish could read
@@ -174,6 +180,7 @@ class Registry:
         signature = self._scan_signature_now()
         paths: list[tuple[Path, str]] = []
         claimed: set[str] = set()
+        failures: dict[str, tuple[str, str]] = {}
         for plugin_dir in self.plugin_dirs:
             if not plugin_dir.is_dir():
                 continue
@@ -189,6 +196,7 @@ class Registry:
                         self.home,
                         f"plugin {path.name!r} failed validation: {exc}",
                     )
+                    failures[path.stem] = (str(path), f"syntax error: {exc}")
                     continue
                 if plugin_id is None:
                     plugin_id = path.stem
@@ -209,6 +217,7 @@ class Registry:
             if changed:
                 self._changed(seen)
             self._refusals = refusals
+            self._failures = failures
             self._scan_signature = signature
             return
 
@@ -230,6 +239,7 @@ class Registry:
                         self.home,
                         f"plugin {plugin_id!r} failed validation: {exc}",
                     )
+                    failures[plugin_id] = (str(path), str(exc))
                     return plugin_id, None
                 return plugin_id, snap
             finally:
@@ -250,6 +260,7 @@ class Registry:
         if changed:
             self._changed(seen)
         self._refusals = refusals
+        self._failures = failures
         self._scan_signature = signature
 
     def get(self, plugin_id: str) -> PluginSnapshot | None:
@@ -275,6 +286,15 @@ class Registry:
             )
         search_paths = [str(path) for path in self.plugin_dirs]
         hint: str | None = None
+        failed = [
+            FailedPluginRow(
+                name=name,
+                source_path=source_path,
+                reason=reason[:FAILED_REASON_MAX],
+                previous_serving=name in self.snapshots,
+            )
+            for name, (source_path, reason) in sorted(self._failures.items())
+        ]
         if not items:
             hint = CATALOG_HINT_EMPTY
         elif packs_missing:
@@ -285,6 +305,7 @@ class Registry:
             plugin_search_paths=search_paths,
             truncated=False,
             catalog_hint=hint,
+            failed=failed,
         )
 
     def plugin_counts_by_dir(self) -> dict[Path, int]:

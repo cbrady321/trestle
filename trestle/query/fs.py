@@ -15,6 +15,7 @@ from trestle.common.ids import run_id_recency
 from trestle.common.limits import CaptureLimits, capture_limits
 from trestle.common.types import Handle, RequestOutcome, RunView
 from trestle.query import views as view_defs
+from trestle.query.catalog import VIEW_CATALOG_URI
 from trestle.query.conformance import validate_envelope
 from trestle.server import idempotency
 from trestle.server.ledger import (
@@ -77,7 +78,11 @@ class FilesystemQueryBackend:
         if view not in view_defs.VIEW_NAMES:
             return RequestOutcome(
                 code=codes.INVALID_VIEW,
-                message=f"unknown view: {view}",
+                # the valid names in the refusal itself: a thin client may never read the catalog
+                message=(
+                    f"unknown view: {view}; valid views: {', '.join(view_defs.VIEW_NAME_VALUES)}"
+                    f" (when to use each: {VIEW_CATALOG_URI})"
+                ),
                 retryable=False,
                 origin="projection",
             )

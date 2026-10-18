@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import signal
 import subprocess
 import time
 from collections.abc import Callable
@@ -345,7 +346,10 @@ class Conductor:
             classification = "succeeded"
 
         # MC-15: the run's one explanation, in the ledger, before the row that ends execution
-        error = _error_fields(self.home, run_dir, classification, exit_code, folded)
+        signal_name = _outside_signal(proc.returncode, exit_code)
+        error = _error_fields(
+            self.home, run_dir, classification, exit_code, folded, signal_name=signal_name
+        )
         if error is not None:
             # the child scrubbed its message; a file a plugin process wrote is scrubbed again
             error = {key: redact.scrub(value, secrets) for key, value in error.items()}
@@ -384,6 +388,8 @@ class Conductor:
         }
         if error is not None:  # derived from the ledger row, never a second source
             meta["error"] = error
+        if signal_name is not None and classification not in ("cancelled", "timed_out"):
+            meta["signal"] = signal_name
         atomic_write_json(evidence_dir(run_dir) / "meta.json", meta)
 
         ledger.append(
@@ -592,6 +598,8 @@ def _error_fields(
     classification: str,
     exit_code: int,
     folded: fold.FoldedRecord | None = None,
+    *,
+    signal_name: str | None = None,
 ) -> dict[str, str] | None:
     """The `error_record` fields {code, phase, message} for a run that did not succeed (MC-15).
 
@@ -600,6 +608,8 @@ def _error_fields(
     itself hands over `evidence/child_error.json`, folded here; failing that, the lane's own
     record of the failure (the root's failing step, else the code its NodeEnd carries: DM-02);
     a child that failed without either (or with one that does not parse) is a `worker_exit`.
+    A signal Trestle did not send (`signal_name`, past a cancel and a deadline) comes before both:
+    whatever a step recorded while it was being killed is not why the run ended.
     """
     if classification == "succeeded":
         return None
@@ -610,6 +620,13 @@ def _error_fields(
             codes.EXECUTION_DEADLINE_EXCEEDED,
             "stop",
             "the run reached its deadline and was stopped",
+        )
+    if signal_name is not None:
+        return _composed(
+            codes.EXECUTION_WORKER_EXIT,
+            "exit",
+            f"the run was killed by {signal_name}, which Trestle did not send: something outside "
+            "Trestle stopped it (for example, its server's parent session or process group ended)",
         )
     child = _read_child_error(home, run_dir)
     if child is not None:
@@ -622,6 +639,26 @@ def _error_fields(
         "exit",
         f"the child exited with status {exit_code} and wrote no error record",
     )
+
+
+def _outside_signal(wrapper_returncode: int | None, exit_code: int) -> str | None:
+    """The signal that ended the run, by name, when one did: the child's or the wrapper's status
+    is a negative one (killed by a signal), or the wrapper exited as a stopped process (it exits
+    128+SIGTERM only when SIGTERM reached it). `_error_fields` reads it only once a cancel and a
+    deadline (the supervisor's own signals) are ruled out."""
+    for status in (exit_code, wrapper_returncode):
+        if isinstance(status, int) and status < 0:
+            return _signal_name(-status)
+    if wrapper_returncode == 128 + signal.SIGTERM:
+        return "SIGTERM"
+    return None
+
+
+def _signal_name(signum: int) -> str:
+    try:
+        return signal.Signals(signum).name
+    except ValueError:
+        return f"signal {signum}"
 
 
 def _composed(code: str, phase: str, message: str) -> dict[str, str]:

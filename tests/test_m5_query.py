@@ -9,7 +9,7 @@ import pytest
 from trestle.common import codes
 from trestle.common.types import AdmitRequest, RequestOutcome, RunView, WorkOrder
 from trestle.query.conformance import semantic_items, validate_envelope
-from trestle.query.views import VIEW_NAMES, VIEW_ROW_FIELDS
+from trestle.query.views import VIEW_NAME_VALUES, VIEW_NAMES, VIEW_ROW_FIELDS
 
 
 @pytest.fixture
@@ -156,6 +156,9 @@ def test_invalid_view_rejected(kernel) -> None:
     out = kernel.control.query("plugin_stats", {})
     assert isinstance(out, RequestOutcome)
     assert out.code == codes.INVALID_VIEW
+    # the refusal names every valid view, for a client that never reads trestle://views
+    assert all(name in out.message for name in VIEW_NAME_VALUES)
+    assert "trestle://views" in out.message
 
 
 def test_run_provenance_fields(kernel) -> None:

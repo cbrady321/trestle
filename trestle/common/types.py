@@ -350,6 +350,25 @@ class PluginCatalogRow:
 
 
 @dataclass
+class FailedPluginRow:
+    """A plugin file the last registry refresh could not publish, and why. `previous_serving` is
+    true when an earlier snapshot of the same plugin is still the one runs use."""
+
+    name: str
+    source_path: str
+    reason: str
+    previous_serving: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "source_path": self.source_path,
+            "reason": self.reason,
+            "previous_serving": self.previous_serving,
+        }
+
+
+@dataclass
 class PublishView:
     name: str
     snapshot_id: str
@@ -375,6 +394,8 @@ class CatalogView:
     next_cursor: Handle | None = None
     truncated: bool = False
     catalog_hint: str | None = None
+    # plugins that failed validation; on the wire only when there is one
+    failed: list[FailedPluginRow] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -387,4 +408,6 @@ class CatalogView:
             out["catalog_hint"] = self.catalog_hint
         if self.next_cursor is not None:
             out["next_cursor"] = self.next_cursor
+        if self.failed:
+            out["failed"] = [row.to_dict() for row in self.failed]
         return out

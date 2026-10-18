@@ -39,7 +39,16 @@ to whole seconds.
 <!-- /K-9 -->
 
 `summary_fields`, `env_arg` and `secrets` are declared and recorded in the snapshot's
-`manifest.json` (`declared`) and count toward its identity; nothing acts on them yet.
+`manifest.json` (`declared`) and count toward its identity.
+
+`env_arg` names the argument whose value is the run's environment: at most one run per value
+runs at a time across the whole home, whichever plugin or server started it. A second run with
+the same value waits in arrival order until the first ends, or is refused
+`admission.environment_busy` when the wait would leave it too little of its deadline. Use it for
+plugins that share a resource that cannot take two runs at once (one local database, one set of
+services): give each such plugin the same `env_arg`, and pass the same value in `args`
+(`args={"env": "billing-local"}`). A request that gives no value holds nothing, because a
+parameter's default is not read at admission.
 
 `repeatable` (`True` or `False`, default `False`; v0.3.1) says a run of this plugin is safe to repeat:
 when one ends `interrupted` (its server died), re-sending the same idempotency key with the same

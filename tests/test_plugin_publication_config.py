@@ -197,3 +197,61 @@ def test_doctor_stays_ok_when_one_plugin_dir_exists(tmp_path: Path, plugin_dir: 
     report = build_doctor_report(home=home, plugin_dirs=[plugin_dir, gone])
     assert report.health == "ok"
     assert f"  - {gone} (missing)" in report.lines()
+
+
+GOOD_PLUGIN = """from trestle.plugin.surface import Context, trestle
+
+
+@trestle
+def {name}(ctx: Context) -> dict[str, str]:
+    return {{"ok": "yes"}}
+"""
+
+BAD_TYPE_PLUGIN = """from trestle.plugin.surface import Context, trestle
+
+
+class OpName:
+    pass
+
+
+@trestle
+def {name}(ctx: Context, op: OpName) -> dict[str, str]:
+    return {{"ok": "yes"}}
+"""
+
+
+def test_list_plugins_reports_plugins_that_failed_validation(tmp_path: Path) -> None:
+    home = tmp_path / "trestle"
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    (plugin_dir / "good.py").write_text(GOOD_PLUGIN.format(name="good"), encoding="utf-8")
+    (plugin_dir / "typed.py").write_text(BAD_TYPE_PLUGIN.format(name="typed"), encoding="utf-8")
+    (plugin_dir / "broken.py").write_text("def (:\n", encoding="utf-8")
+    kernel = create_kernel(home=home, plugin_dirs=[plugin_dir], skip_recovery=True)
+    catalog = kernel.registry.catalog().to_dict()
+    assert [item["name"] for item in catalog["items"]] == ["good"]
+    failed = {row["name"]: row for row in catalog["failed"]}
+    assert set(failed) == {"typed", "broken"}
+    assert "OpName" in failed["typed"]["reason"]
+    assert failed["typed"]["source_path"] == str(plugin_dir / "typed.py")
+    assert failed["broken"]["reason"].startswith("syntax error:")
+    assert not failed["typed"]["previous_serving"]
+
+
+def test_list_plugins_failed_row_says_when_the_previous_snapshot_still_serves(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "trestle"
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    source = plugin_dir / "flip.py"
+    source.write_text(GOOD_PLUGIN.format(name="flip"), encoding="utf-8")
+    kernel = create_kernel(home=home, plugin_dirs=[plugin_dir], skip_recovery=True)
+    assert "failed" not in kernel.registry.catalog().to_dict()
+    source.write_text(BAD_TYPE_PLUGIN.format(name="flip") + "\n# edited\n", encoding="utf-8")
+    catalog = kernel.registry.catalog().to_dict()
+    assert [item["name"] for item in catalog["items"]] == ["flip"]
+    (row,) = catalog["failed"]
+    assert row["name"] == "flip" and row["previous_serving"] is True
+    source.write_text(GOOD_PLUGIN.format(name="flip") + "\n# fixed\n", encoding="utf-8")
+    assert "failed" not in kernel.registry.catalog().to_dict()

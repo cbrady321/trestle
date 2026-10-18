@@ -394,3 +394,24 @@ def test_k10_documented() -> None:
         assert "K-10" in doc, name
     agents = (REPO_ROOT / "docs" / "agents.md").read_text(encoding="utf-8")
     assert "explains itself (K-10)" in agents and "`RunView.error`" in agents
+
+
+@pytest.mark.parametrize(("signum", "name"), [(15, "SIGTERM"), (9, "SIGKILL")])
+def test_error_record_names_a_signal_trestle_did_not_send(
+    short_stop: None, signum: int, name: str
+) -> None:
+    kernel = support.spine_kernel()
+    run_dir = _drive(kernel, "self_killer", {"signum": signum})
+    row = _row(run_dir)
+    assert row["code"] == codes.EXECUTION_WORKER_EXIT and row["phase"] == "exit"
+    assert f"killed by {name}, which Trestle did not send" in row["message"]
+    meta = json.loads((run_dir / "evidence" / "meta.json").read_text(encoding="utf-8"))
+    assert meta["signal"] == name and meta["error"] == _fields(row)
+
+
+def test_a_cancel_is_not_named_as_an_outside_signal(short_stop: None) -> None:
+    kernel = support.spine_kernel()
+    run_dir = _drive(kernel, "tree", {"seconds": tolerances.JOIN_WAIT_S * 6}, how="cancel")
+    assert _row(run_dir)["code"] == codes.EXECUTION_CANCELLED
+    meta = json.loads((run_dir / "evidence" / "meta.json").read_text(encoding="utf-8"))
+    assert "signal" not in meta
