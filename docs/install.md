@@ -128,8 +128,9 @@ User config `~/.cursor/mcp.json` (all workspaces), or the project override this 
 }
 ```
 
-**Skill (optional):** copy [`.cursor/skills/trestle/`](../.cursor/skills/trestle/) to
-`~/.cursor/skills/trestle/` so other workspaces get the same agent rules.
+**Skill (optional):** copy [`skills/trestle/`](../skills/trestle/) to
+`~/.cursor/skills/trestle/` (or `~/.claude/skills/trestle/` for Claude Code) so agents in every
+workspace use Trestle well: one call per objective, chained runs, bounded retrieval.
 
 ### Claude Desktop
 

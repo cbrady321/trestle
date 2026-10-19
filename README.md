@@ -2,6 +2,13 @@
 
 A durable local execution ledger with an MCP control surface. Coding agents run one-file Python plugins via ten frozen tools; evidence stays on disk and is pulled in bounded slices.
 
+An agent runs a whole local job (a test suite, a Docker stack, a migration, a pipeline) as **one
+tool call**, chains dependent jobs without polling, and reads a short answer instead of the log.
+Plugins get safe building blocks for unattended work: `ctx.exec` (commands with a time limit,
+process-tree kill and bounded output), `Blocked` (end a run with the one action a person must
+take), a clean-stop window (`stop_grace`), live progress, and `trestle.plugin.testing` to test a
+plugin without a server. Agent skill: [`skills/trestle/SKILL.md`](skills/trestle/SKILL.md).
+
 ## Install
 
 Trestle runs as one service per user per machine (a macOS LaunchAgent or a `systemd --user`
@@ -48,7 +55,10 @@ Other hosts take the same `url` and `headers` in their MCP config:
 | Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | Claude Code | `claude mcp add` above, or `.mcp.json` (expands `${VAR}`) |
 
-This repo's [`.cursor/mcp.json`](.cursor/mcp.json) is a project override. Copy [`.cursor/skills/trestle/`](.cursor/skills/trestle/) to `~/.cursor/skills/trestle/` for the same agent rules in other workspaces.
+This repo's [`.cursor/mcp.json`](.cursor/mcp.json) is a project override. **Agent skill:** copy
+[`skills/trestle/`](skills/trestle/) to your host's skills folder (`~/.claude/skills/trestle/` for
+Claude Code, `~/.cursor/skills/trestle/` for Cursor) so agents use Trestle well in every workspace:
+one call per objective, chained runs, bounded retrieval, unattended plugins.
 
 Enable the server in the host UI. Confirm **ten** tools appear.
 
@@ -72,6 +82,7 @@ and stops.
 | [`docs/agent-console-mcp.md`](docs/agent-console-mcp.md) | Full playbook — retrieval, refusals, smoke |
 | [`docs/plugins.md`](docs/plugins.md) | Write and publish plugins |
 | [`docs/packs.md`](docs/packs.md) | Docker / pytest / migration packs |
+| [`skills/trestle/SKILL.md`](skills/trestle/SKILL.md) | Agent skill: one call per objective, chaining, `blocked` runs, plugins that run unattended |
 | [`.cursor/skills/trestle/SKILL.md`](.cursor/skills/trestle/SKILL.md) | Compact Cursor skill |
 
 ## Operators (CLI + HTTP)
@@ -94,9 +105,11 @@ Playbook: [`docs/operator-sessions-telemetry.md`](docs/operator-sessions-telemet
 | [`docs/install.md`](docs/install.md) | The per-user service and host wiring |
 | [`docs/security.md`](docs/security.md) | Local-only lockdown |
 | [`docs/agents.md`](docs/agents.md) | Agent guide, including [large tasks as one tree run](docs/agents.md#large-tasks-the-tree) |
-| [`docs/plugins.md`](docs/plugins.md) | Write and publish plugins, including composite (tree) workflows |
+| [`docs/plugins.md`](docs/plugins.md) | Write and publish plugins: `ctx.exec`, `Blocked`, `stop_grace`, testing without a server, composite (tree) workflows |
+| [`docs/packs.md`](docs/packs.md) | Install a pack: its library, its wrapper folder in `[plugins] paths`, `[plugins.env]` |
 | [`docs/environment.md`](docs/environment.md) | The reference environment tree workflow |
-| [`docs/decisions/service-and-credentials.md`](docs/decisions/service-and-credentials.md) | Decision record: one per-user service, credentials by name, MCP only (service, token and MCP-only implemented) |
+| [`docs/decisions/service-and-credentials.md`](docs/decisions/service-and-credentials.md) | Decision record: one per-user service, credentials by name, MCP only (service, token, MCP-only and `ctx.exec` implemented) |
+| [`docs/decisions/plain-plugin-stop-grace.md`](docs/decisions/plain-plugin-stop-grace.md) | Decision record: a clean-stop window for plain plugins |
 
 ## Verify
 

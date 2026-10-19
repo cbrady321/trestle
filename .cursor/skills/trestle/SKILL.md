@@ -11,7 +11,7 @@ description: >-
 
 ## SSOT
 
-Read [`docs/agents.md`](../../../docs/agents.md) first. Full playbook: [`docs/agent-console-mcp.md`](../../../docs/agent-console-mcp.md). Install: [`docs/install.md`](../../../docs/install.md). Plugins: [`docs/plugins.md`](../../../docs/plugins.md).
+Read [`docs/agents.md`](../../../docs/agents.md) first. The full agent skill (one call per objective, chaining with `after=` and idempotency keys, `blocked` runs, unattended plugins) is [`skills/trestle/SKILL.md`](../../../skills/trestle/SKILL.md). Full playbook: [`docs/agent-console-mcp.md`](../../../docs/agent-console-mcp.md). Install: [`docs/install.md`](../../../docs/install.md). Plugins: [`docs/plugins.md`](../../../docs/plugins.md).
 
 ## Quick rules
 
