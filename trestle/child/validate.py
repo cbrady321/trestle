@@ -85,7 +85,7 @@ def forbidden_import_error(source: str) -> str | None:
             if _is_forbidden(name):
                 return (
                     f"plugin imports {name!r}; only PluginSurface "
-                    f"(trestle.plugin) is permitted (R-PLUG-6)"
+                    f"(trestle.plugin) is permitted (R-PLUG-6); see trestle://guide/plugins/imports"
                 )
     return None
 

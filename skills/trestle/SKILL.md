@@ -5,7 +5,8 @@ description: >-
   migrations, pipelines) in one MCP call, chain dependent steps without polling, read bounded
   answers instead of raw logs, and write plugins that run unattended. Use before running pytest
   or any multi-step local job when the trestle tools (run, query, fetch, await_runs) are present;
-  triggers: run tests, test step, repo_tests, pipeline, trestle, plugin.
+  triggers: run tests, test step, repo_tests, pipeline, trestle, plugin. Guidance: the
+  trestle://guide MCP resource.
 ---
 
 # Trestle
@@ -49,9 +50,11 @@ failure and fix it; `blocked` means a person must act, so report the action and 
 means the request was wrong and nothing ran. Never fall back to doing the plugin's work in your
 own shell: if Trestle cannot do it, say so.
 
-Reference: [`docs/agents.md`](../../docs/agents.md) (agent guide),
-[`docs/plugins.md`](../../docs/plugins.md) (writing plugins), [`docs/packs.md`](../../docs/packs.md)
-(Docker / pytest / migration packs).
+**Guide: `trestle://guide`.** An MCP resource on the Trestle server (read it with your host's
+resource reader, server `trestle`). It lists every guide resource, one line each: which query
+view to use, writing plugins and packs, the public API and complete examples. Read only the one
+you need. For people: [`docs/agents.md`](../../docs/agents.md) and
+[`docs/packs.md`](../../docs/packs.md).
 
 ## Ground rules
 
@@ -133,32 +136,22 @@ the MCP resource `trestle://views`.
 
 ## Writing plugins that run unattended
 
-```python
-from trestle.plugin import Blocked, Context, trestle
+Learn the surface from the server, one small read at a time, never from Trestle's source or
+`~/.trestle`; all of it is under `trestle://guide`. Start at `trestle://guide/plugins`, a short
+index, and read only the topic you need (`trestle://guide/plugins/{topic}`).
+`trestle://guide/api` lists the public names, and `trestle://guide/api/{module}.{name}` gives
+one name's signature. `trestle://guide/examples/{name}` is a complete plugin that publishes
+as-is. Extend Trestle by writing a plugin or a pack, never by
+changing Trestle.
 
-
-@trestle(deadline=1800, packages=["my_pack"], stop_grace=5, summary_fields=["prs[id,state]"])
-def watch_prs(ctx: Context, repo: str) -> dict[str, list[int]]:
-    while not ctx.cancelled and ctx.remaining() > 30:
-        who = ctx.exec(["gh", "pr", "list", "--repo", repo, "--json", "number,state"], timeout=60)
-        if not who.ok and "auth login" in who.stderr:
-            raise Blocked("gh_login", "Run `gh auth login`, then resend the same request.")
-        ...  # one status artifact, rewritten each round: ctx.attach(path, name="status.md")
-    return {"prs": [...]}
-```
-
-- **`ctx.exec(argv, ...)`** instead of `subprocess`: a timeout defaulting to the time left, the
-  command's whole process group killed on timeout or stop, bounded output, one reused artifact.
-- **`raise Blocked(code, human_action)`** instead of failing when a person must act.
-- **`stop_grace=`** gives a few seconds after a cancel or the deadline to write a final status;
-  loop on `ctx.cancelled`.
-- **Re-attach under one name** (`status.md`) to report progress; it holds one artifact slot.
-- **Declare `packages=`** for every non-stdlib import (publication warns otherwise), and return a
-  parameterized type (`dict[str, str]`, not `dict`).
-- The context is thread-safe; `ctx.progress(message, fraction=...)` reaches the caller live.
-- **Test without a server:** `trestle.plugin.testing.FakeContext` and `call_plugin`.
-- Settings a plugin reads come from the operator's `[plugins.env]` in `config.toml`, never from
-  your shell.
+- **`ctx.exec(argv, ...)`**, never `subprocess`; **`raise Blocked(code, human_action)`** when a
+  person must act, never a failure.
+- Loop on `ctx.cancelled` and `ctx.remaining()`; declare **`stop_grace=`** to write a last status.
+- Report progress by **re-attaching one artifact** (`status.md`), not many.
+- **Declare `packages=`** for every non-stdlib import; give every parameter and the return a
+  parameterized hint (`dict[str, str]`, not `dict`).
+- **Test without a server** (`trestle.plugin.testing`) before `publish_plugin`.
+- Settings come from the operator's `[plugins.env]`, never your shell.
 
 ## When stuck
 

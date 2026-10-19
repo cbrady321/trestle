@@ -15,6 +15,7 @@ from trestle.common.bind import LOOPBACK_HOST
 from trestle.common.ids import generate_server_id
 from trestle.common.types import PublishView, RequestOutcome, RunView
 from trestle.query.catalog import VIEW_CATALOG_URI, view_catalog
+from trestle.server import authoring
 from trestle.server.admission import Admission
 from trestle.server.conductor import Conductor
 from trestle.server.config import ProfileConfig, load_config
@@ -308,6 +309,67 @@ def _http_server(mcp: Any, token: str, sock: socket.socket, kernel: Kernel) -> A
     return Server(config)
 
 
+def register_authoring_resources(mcp: Any, *, restricted: bool, version: str) -> None:
+    """The guide resources under `trestle://guide`, served under every profile (the restricted
+    one says runtime publishing is unavailable). Each is small and read on demand: the root, the
+    plugin guide's index, one topic, the API's index, one name, one example."""
+
+    @mcp.resource(
+        authoring.GUIDE_URI,
+        name="guide",
+        description="Start here: every Trestle guide resource, one line each.",
+        mime_type="text/markdown",
+    )
+    def guide_resource() -> str:
+        return authoring.guide_root()
+
+    @mcp.resource(
+        authoring.PLUGIN_GUIDE_URI,
+        name="plugin_guide",
+        description="Start here to write a plugin or pack: the rules and the topics to read.",
+        mime_type="text/markdown",
+    )
+    def plugin_guide_resource() -> str:
+        return authoring.plugin_guide(restricted=restricted)
+
+    @mcp.resource(
+        authoring.PLUGIN_GUIDE_TOPIC_TEMPLATE,
+        name="plugin_guide_topic",
+        description="One authoring topic; the topics are listed at trestle://guide/plugins.",
+        mime_type="text/markdown",
+    )
+    def plugin_guide_topic_resource(topic: str) -> str:
+        return authoring.guide_topic(topic, restricted=restricted)
+
+    @mcp.resource(
+        authoring.PLUGIN_API_URI,
+        name="plugin_api",
+        description="Every public plugin and workflow name, one line each.",
+        mime_type="application/json",
+    )
+    def plugin_api_resource() -> dict[str, Any]:
+        return authoring.plugin_api(version=version, restricted=restricted)
+
+    @mcp.resource(
+        authoring.PLUGIN_API_NAME_TEMPLATE,
+        name="plugin_api_name",
+        description="One public name (module.name): its signature and docstring.",
+        mime_type="application/json",
+    )
+    def plugin_api_name_resource(name: str) -> dict[str, Any]:
+        return authoring.plugin_api_name(name)
+
+    @mcp.resource(
+        authoring.PLUGIN_EXAMPLES_TEMPLATE,
+        name="plugin_example",
+        description="A complete plugin that publishes as-is: "
+        + ", ".join(authoring.example_names()),
+        mime_type="text/x-python",
+    )
+    def plugin_example_resource(name: str) -> str:
+        return authoring.plugin_example(name)
+
+
 def run_server(
     *,
     port: int = DEFAULT_PORT,
@@ -326,8 +388,11 @@ def run_server(
     token, _ = ensure_token(kernel.home)
     sock = _bind_loopback(port)
     bound = sock.getsockname()[1]
-    kernel.start_service(port=bound, version=build_version())
-    mcp = FastMCP("trestle")
+    version = build_version()
+    kernel.start_service(port=bound, version=version)
+    # The tool descriptions are pinned by golden S0 (a changed value is never excused), so the
+    # pointer to the authoring resources travels in the server's instructions instead.
+    mcp = FastMCP("trestle", instructions=authoring.server_instructions(kernel.profile.restricted))
     attach_registry_version_mirror(mcp, kernel)
 
     @mcp.tool
@@ -449,6 +514,17 @@ def run_server(
     )
     def view_catalog_resource() -> dict[str, Any]:
         return view_catalog()
+
+    @mcp.resource(
+        authoring.VIEWS_GUIDE_URI,
+        name="guide_views",
+        description="When to pick each named query view versus fetch (not plugin schemas).",
+        mime_type="application/json",
+    )
+    def guide_views_resource() -> dict[str, Any]:
+        return view_catalog()
+
+    register_authoring_resources(mcp, restricted=kernel.profile.restricted, version=version)
 
     server = _http_server(mcp, token, sock, kernel)
     print(f"{LISTENING_PREFIX}{LOOPBACK_HOST}:{bound}", file=sys.stderr, flush=True)

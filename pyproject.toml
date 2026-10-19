@@ -64,6 +64,10 @@ markers = [
 python_version = "3.12"
 strict = true
 packages = ["trestle"]
+# A served example is data, proven by publishing and running it (tests/tree/test_tree_docs.py).
+# The composite one passes its plugin `Context` to `run_tree`, whose hint is the loop's own
+# `RunContext`, as docs/plugins.md's tree example does.
+exclude = ["trestle/plugin/_guide/examples/composite_workflow\\.py$"]
 
 [[tool.mypy.overrides]]
 module = ["fastmcp", "fastmcp.*"]

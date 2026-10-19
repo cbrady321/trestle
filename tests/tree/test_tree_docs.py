@@ -2,18 +2,23 @@
 
 `docs/agents.md` names every tree code and states the two open questions the band ships neutral
 answers to (OQ-27, OQ-31); `docs/plugins.md` carries a composite example that publishes through the
-validator and runs to a terminal answer as it stands."""
+validator and runs to a terminal answer as it stands, and so does every served example
+(`trestle://guide/examples/{name}`)."""
 
 from __future__ import annotations
 
 import ast
 import re
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 from tests.tree import hostpath
 from trestle.common import codes
 from trestle.common.plan import vocabulary
 from trestle.common.types import PublishView, RunView
+from trestle.server import authoring
 from trestle.server.main import Kernel
 from trestle.workflow import codes as workflow_codes
 
@@ -154,3 +159,45 @@ def test_plugins_example_publishes_through_the_validator_and_runs(tree_kernel: K
     view = hostpath.run_tree_via_host(tree_kernel, published.name, {"env": "dev"})
     assert isinstance(view, RunView), view
     assert view.state == "succeeded", view
+
+
+# Each served example (`trestle://guide/examples/{name}`), the request that exercises it and the
+# answer it must reach: every example the build ships is listed, so a new one cannot go untested.
+EXAMPLE_RUNS: dict[str, list[tuple[dict[str, Any], str]]] = {
+    "echo": [({"message": "hi"}, "succeeded")],
+    "exec_with_blocked": [
+        ({"tool": "git"}, "succeeded"),
+        ({"tool": "trestle-no-such-tool"}, "blocked"),
+    ],
+    "artifact_status": [({"rounds": 3}, "succeeded")],
+    "composite_workflow": [({"env": "dev"}, "succeeded")],
+    "pack_wrapper": [
+        ({"services": ["api", "db"], "depends_on": {"api": ["db"]}}, "succeeded"),
+        ({"services": ["a", "b"], "depends_on": {"a": ["b"], "b": ["a"]}}, "blocked"),
+    ],
+}
+
+
+def test_every_served_example_has_a_run() -> None:
+    assert set(EXAMPLE_RUNS) == set(authoring.example_names())
+
+
+@pytest.mark.parametrize("name", sorted(EXAMPLE_RUNS))
+def test_served_example_publishes_through_the_validator_and_runs(
+    tree_kernel: Kernel, name: str
+) -> None:
+    """Each served example publishes as it stands, with no warning, and each of its requests
+    reaches a terminal answer: `succeeded`, or a `blocked` outcome with a human action."""
+    published = hostpath.publish_tree_via_host(tree_kernel, authoring.plugin_example(name))
+    assert isinstance(published, PublishView), published
+    assert published.name == name
+    described = tree_kernel.control.describe_plugin(name)
+    assert isinstance(described, dict) and not described.get("warnings"), described
+    for args, expected in EXAMPLE_RUNS[name]:
+        view = hostpath.run_tree_via_host(tree_kernel, name, args)
+        assert isinstance(view, RunView), view
+        assert view.state == "succeeded", view
+        answer = view.answer or {}
+        assert (answer.get("outcome") == "blocked") is (expected == "blocked"), answer
+        if expected == "blocked":
+            assert answer["primary"]["human_action"], answer

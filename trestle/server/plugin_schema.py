@@ -18,7 +18,10 @@ from trestle.common.canonical import canonical_json
 from trestle.common.fsutil import sha256_bytes
 from trestle.common.types import DeclaredMetadata
 
-SUBSET_POINTER = "docs/plugins.md"
+# Refusals point at the one guide topic that fixes them (served by `trestle.server.authoring`),
+# never a repository path an agent would have to read.
+SUBSET_POINTER = "trestle://guide/plugins/types"
+SHAPE_POINTER = "trestle://guide/plugins/shape-and-keywords"
 MAX_OBJECT_DEPTH = 5
 
 _SCALAR_NAMES = {
@@ -329,13 +332,13 @@ def find_trestle_function(tree: ast.AST) -> _FnDef | None:
         names = ", ".join(fn.name for fn in fns)
         raise EntryError(
             f"ambiguous entry point: {len(fns)} @trestle functions ({names}); "
-            f"define exactly one; see {SUBSET_POINTER}"
+            f"define exactly one; see {SHAPE_POINTER}"
         )
     fn = fns[0]
     if isinstance(fn, ast.AsyncFunctionDef):
         raise EntryError(
             f"async entry point {fn.name!r} is not supported; define a plain def; "
-            f"see {SUBSET_POINTER}"
+            f"see {SHAPE_POINTER}"
         )
     return fn
 
@@ -383,7 +386,7 @@ def declared_from_function(fn: _FnDef) -> DeclaredMetadata:
     if call.args:
         raise DeclarationError(
             f"@trestle takes keyword arguments only ({', '.join(DECLARED_KEYWORDS)}); "
-            f"see {SUBSET_POINTER}"
+            f"see {SHAPE_POINTER}"
         )
     values: dict[str, ast.expr] = {}
     for kw in call.keywords:

@@ -1,6 +1,6 @@
-"""L.CL-C2.3 (BFD-16; K-12, K-5): docs/plugins.md carries the supported-types
-section that schema errors point to, every accepted type kind is listed in it,
-and the K-5 date refusal note is present."""
+"""L.CL-C2.3 (BFD-16; K-12, K-5): docs/plugins.md and the served guide topic that schema errors
+point to (`trestle://guide/plugins/types`) carry the supported-types section, every accepted type
+kind is listed in both, and the K-5 date refusal note is present."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from trestle.server import plugin_schema
+from trestle.server import authoring, plugin_schema
 
 REPO = Path(__file__).resolve().parents[3]
 SECTION_HEADING = "Supported types"
@@ -50,10 +50,16 @@ def _section(text: str, heading: str) -> str:
     return rest[: nxt.start()] if nxt else rest
 
 
-def _pointed_section() -> str:
-    """The section SUBSET_POINTER names: the pointer is a file, the section is fixed."""
-    path = REPO / plugin_schema.SUBSET_POINTER
+def _docs_section() -> str:
+    """The section of docs/plugins.md, the full authoring reference."""
+    path = REPO / "docs" / "plugins.md"
     return _section(path.read_text(encoding="utf-8"), SECTION_HEADING)
+
+
+def _pointed_section() -> str:
+    """The guide topic SUBSET_POINTER names: the whole topic is the section."""
+    assert plugin_schema.SUBSET_POINTER == authoring.topic_uri("types")
+    return authoring.guide_topic("types")
 
 
 def _accepted_names() -> set[str]:
@@ -82,8 +88,8 @@ def _scalar_kinds() -> set[str]:
     return set(typing.get_args(kind_hint))
 
 
-def test_subset_pointer_unchanged() -> None:
-    assert plugin_schema.SUBSET_POINTER == "docs/plugins.md"
+def test_subset_pointer_names_the_types_topic() -> None:
+    assert plugin_schema.SUBSET_POINTER == "trestle://guide/plugins/types"
 
 
 def test_every_type_kind_has_a_documentation_rule() -> None:
@@ -93,7 +99,14 @@ def test_every_type_kind_has_a_documentation_rule() -> None:
 
 @pytest.mark.proves("WR-PROOF-10", "WR-PROOF-10:K-12", "core", "core", "INSPECT", "CI")
 def test_every_accepted_type_documented() -> None:
-    section = _pointed_section()
+    _check_section(_docs_section())
+
+
+def test_every_accepted_type_in_the_guide() -> None:
+    _check_section(_pointed_section())
+
+
+def _check_section(section: str) -> None:
     words = set(re.findall(r"[A-Za-z_][A-Za-z_0-9]*", section))
     missing = sorted(_accepted_names() - words)
     assert not missing, f"accepted names absent from the '{SECTION_HEADING}' section: {missing}"

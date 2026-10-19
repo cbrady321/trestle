@@ -152,6 +152,33 @@ workspace use Trestle well: one call per objective, chained runs, bounded retrie
 Restart Claude Desktop. (Unverified here: whether your Desktop version accepts a `url` entry in
 this file. If it does not, it cannot reach Trestle until it does: there is no `command` form.)
 
+### Keep agents out of the checkout and the home
+
+Agents reach Trestle only over MCP. They learn to write plugins from the server's resources
+(all under `trestle://guide`, read one small resource at a time), not from
+Trestle's source or the home's files, and they extend it by writing plugins and packs, never by
+editing Trestle. Hold them to that in the host's settings by denying its file tools read and
+write access to the Trestle checkout and to `~/.trestle`. The host itself still reads the token
+for its MCP config. For Claude Code, in `~/.claude/settings.json` (absolute paths start with `//`):
+
+```json
+{
+  "permissions": {
+    "deny": [
+      "Read(~/.trestle/**)",
+      "Edit(~/.trestle/**)",
+      "Read(//ABS/PATH/TO/trestle/**)",
+      "Edit(//ABS/PATH/TO/trestle/**)"
+    ]
+  }
+}
+```
+
+In Cursor, list the same two folders in its ignore settings: the global ignore list, or a
+`.cursorignore` in each workspace. These rules cover the host's own file tools, not
+a shell the agent runs. To close that path as well, run the agent with the host's sandbox or
+deny its shell. Leave the rules out where you work on Trestle itself.
+
 ### Check
 
 - The host lists **ten** tools: `run`, `await_runs`, `cancel`, `query`, `fetch`, `pin`, `unpin`,

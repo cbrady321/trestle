@@ -2,6 +2,11 @@
 
 Plugins are ordinary Python callables wrapped by `@trestle`. Authors use **PluginSurface only** — no Kernel, FastMCP, or ledger imports.
 
+Agents read the running server's trimmed version under `trestle://guide` instead of this file,
+one small resource at a time: the index `trestle://guide/plugins` and its topics (`trestle://guide/plugins/{topic}`), the
+public names (`trestle://guide/api`, and `trestle://guide/api/{module}.{name}` for one), and
+complete plugins that publish as they stand (`trestle://guide/examples/{name}`).
+
 ## Shape
 
 ```python
