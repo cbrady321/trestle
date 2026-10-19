@@ -175,9 +175,9 @@ for its MCP config. For Claude Code, in `~/.claude/settings.json` (absolute path
 ```
 
 In Cursor, list the same two folders in its ignore settings: the global ignore list, or a
-`.cursorignore` in each workspace. These rules cover the host's own file tools, not
-a shell the agent runs. To close that path as well, run the agent with the host's sandbox or
-deny its shell. Leave the rules out where you work on Trestle itself.
+`.cursorignore` in each workspace. These rules cover the host's own file tools, not a shell the agent runs; deny the agent's
+shell access to those folders too, or deny its shell. Leave the rules out where you work on
+Trestle itself.
 
 ### Check
 

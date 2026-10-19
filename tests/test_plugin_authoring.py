@@ -31,6 +31,7 @@ from fastmcp import Client
 
 import trestle.workflow as workflow_package
 from tests.proof import mcp_host
+from trestle.child import plugin_api as plugin_api_child
 from trestle.child import validate
 from trestle.common import codes
 from trestle.query.catalog import VIEW_CATALOG_URI
@@ -116,7 +117,7 @@ def _served(uri: str) -> bool:
     return (
         uri in {authoring.topic_uri(t) for t in authoring.topic_names()}
         or uri in authoring.example_uris()
-        or uri in {f"{authoring.PLUGIN_API_URI}/{n}" for n in authoring.api_names()}
+        or uri in {f"{authoring.PLUGIN_API_URI}/{n}" for n in plugin_api_child.api_names()}
     )
 
 
@@ -135,8 +136,9 @@ def test_every_resource_fits_its_budget() -> None:
             assert len(body.encode()) <= TOPIC_BYTES, topic
         api = json.dumps(authoring.plugin_api(version="test", restricted=restricted))
         assert len(api.encode()) <= API_INDEX_BYTES
-    for name in authoring.api_names():
-        assert len(json.dumps(authoring.plugin_api_name(name)).encode()) <= API_NAME_BYTES, name
+    for name in plugin_api_child.api_names():
+        described = plugin_api_child.plugin_api_name(name)
+        assert len(json.dumps(described).encode()) <= API_NAME_BYTES, name
     for name in authoring.example_names():
         assert len(authoring.plugin_example(name).encode()) <= EXAMPLE_BYTES, name
 
@@ -182,8 +184,8 @@ def test_examples_are_the_named_set() -> None:
 
 
 def test_api_modules_are_what_publication_admits() -> None:
-    assert set(authoring.API_MODULES) == PUBLIC_MODULES - {"trestle.plugin.surface"}
-    assert set(authoring.API_MODULES) >= {
+    assert set(plugin_api_child.API_MODULES) == PUBLIC_MODULES - {"trestle.plugin.surface"}
+    assert set(plugin_api_child.API_MODULES) >= {
         f"trestle.workflow.{name}" for name in workflow_package.PUBLIC_MODULES
     }
 
@@ -194,14 +196,14 @@ def test_plugin_api_covers_exactly_the_public_exports() -> None:
 
     api = authoring.plugin_api(version="test")
     assert api["server_version"] == "test" and api["runtime_publishing"] is True
-    assert [m["module"] for m in api["modules"]] == list(authoring.API_MODULES)
+    assert [m["module"] for m in api["modules"]] == list(plugin_api_child.API_MODULES)
     listed: dict[str, list[str]] = {}
     for module in api["modules"]:
         names = list(module["names"])
         for home, reexported in module.get("reexports", {}).items():
-            assert home in authoring.API_MODULES
+            assert home in plugin_api_child.API_MODULES
             names += reexported
-        expected = authoring.public_names(importlib.import_module(module["module"]))
+        expected = plugin_api_child.public_names(importlib.import_module(module["module"]))
         assert sorted(names) == sorted(expected), module["module"]
         listed[module["module"]] = names
     assert sorted(listed["trestle.plugin"]) == sorted(trestle.plugin.__all__)
@@ -212,22 +214,33 @@ def test_plugin_api_covers_exactly_the_public_exports() -> None:
         for home, reexported in module.get("reexports", {}).items():
             home_names = next(m["names"] for m in api["modules"] if m["module"] == home)
             assert set(reexported) <= set(home_names), (module["module"], home)
-    assert set(authoring.api_names()) == {
+    assert set(plugin_api_child.api_names()) == {
         f"{module}.{name}" for module, names in listed.items() for name in names
     }
 
 
+def test_the_server_reads_the_api_in_a_child() -> None:
+    """The host never imports the workflow package: the server's answers are the child's."""
+    api = authoring.plugin_api(version="test")
+    assert api["modules"] == plugin_api_child.api_index()
+    assert authoring.plugin_api_name("trestle.workflow.Acted") == (
+        plugin_api_child.plugin_api_name("trestle.workflow.Acted")
+    )
+    with pytest.raises(KeyError):
+        authoring.plugin_api_name("trestle.server.main.Kernel")
+
+
 def test_plugin_api_name_describes_one_name() -> None:
-    context = authoring.plugin_api_name("trestle.plugin.Context")
+    context = plugin_api_child.plugin_api_name("trestle.plugin.Context")
     assert context["name"] == "trestle.plugin.Context" and context["kind"] == "class"
     assert "exec" in {member["name"] for member in context["members"]}
-    acted = authoring.plugin_api_name("trestle.workflow.Acted")
+    acted = plugin_api_child.plugin_api_name("trestle.workflow.Acted")
     assert acted["name"] == "trestle.workflow.units.Acted" and acted["kind"] == "class"
-    exec_doc = authoring.plugin_api_name("trestle.plugin.testing.call_plugin")
+    exec_doc = plugin_api_child.plugin_api_name("trestle.plugin.testing.call_plugin")
     assert exec_doc["kind"] == "function" and exec_doc["signature"]
     for bad in ("trestle.server.main.Kernel", "trestle.plugin._codec", "trestle.plugin.nope"):
         with pytest.raises(KeyError):
-            authoring.plugin_api_name(bad)
+            plugin_api_child.plugin_api_name(bad)
 
 
 def test_no_resource_names_an_internal_module_or_repo_path() -> None:
