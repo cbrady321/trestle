@@ -36,7 +36,7 @@ class DockerSpec:
     depends_on: dict[str, list[str]] = field(default_factory=dict)
 
 
-@trestle
+@trestle(packages=["trestle_packs"])
 def docker_stack(
     ctx: Context,
     spec: DockerSpec | None = None,

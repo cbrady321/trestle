@@ -380,15 +380,20 @@ class PublishView:
     registry_version: int
     source_sha256: str
     created: bool
+    # R6a: publication warnings (an undeclared import); shown, never refused. Absent when empty.
+    warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "name": self.name,
             "snapshot_id": self.snapshot_id,
             "registry_version": self.registry_version,
             "source_sha256": self.source_sha256,
             "created": self.created,
         }
+        if self.warnings:
+            out["warnings"] = list(self.warnings)
+        return out
 
 
 @dataclass

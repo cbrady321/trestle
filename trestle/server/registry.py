@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from trestle.child.validate import undeclared_import_warning
 from trestle.common import clock, codes
 from trestle.common.fsutil import atomic_write, sha256_bytes, sha256_file
 from trestle.common.types import (
@@ -254,6 +255,11 @@ class Registry:
                         seen[plugin_id] = previous
                     continue
                 seen[plugin_id] = snap
+                previous = self.snapshots.get(plugin_id)
+                if previous is None or previous.snapshot_id != snap.snapshot_id:
+                    warning = import_warning(snap)
+                    if warning is not None:  # R6a: once per newly published snapshot
+                        log_plugin_warning(self.home, f"plugin {plugin_id!r} {warning}")
 
         changed = seen != self.snapshots
         self.snapshots = seen
@@ -358,6 +364,9 @@ class Registry:
             "input_schema": load_snapshot_schema(snap),
             "return_schema": load_snapshot_return_schema(snap),
         }
+        warning = import_warning(snap)
+        if warning is not None:  # R6a: shown, never refused
+            view["warnings"] = [warning]
         tree = load_declared_tree(snap)
         if tree is not None:
             # A workflow entry (MC-34) also discloses the outcome codes its declaration can
@@ -478,7 +487,17 @@ class Registry:
             registry_version=self.registry_version,
             source_sha256=snap.source_sha256,
             created=created,
+            warnings=[w for w in (import_warning(snap),) if w is not None],
         )
+
+
+def import_warning(snap: PluginSnapshot) -> str | None:
+    """R6a: the publication warning for the snapshot's undeclared non-stdlib imports, or None."""
+    try:
+        source = Path(snap.source_path).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return undeclared_import_warning(source, load_declared(snap).packages)
 
 
 def _concurrent_winner(path: Path, ours: str, snap: PluginSnapshot | None) -> str | None:

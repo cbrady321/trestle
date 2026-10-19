@@ -74,7 +74,10 @@ compares each declared package with the recorded digest, before it loads the plu
 mismatch (the package was edited, moved off the import path or removed after publication) stops the run with
 `execution.provenance_mismatch` instead of running different code under the same snapshot id.
 Republish to accept the edit. A module the plugin imports but does not declare is not covered:
-it is neither recorded nor checked. Neither is anything a declared package itself imports, the
+it is neither recorded nor checked, and publication warns about it (it never refuses): a plugin
+that imports a module from outside the standard library and Trestle without listing its package
+in `packages=` is published with a `warnings` entry naming it, on the `publish_plugin` answer and
+on `describe_plugin`, and a line in `service.log`. `packages=["a"]` covers `a` and every `a.*`. Neither is anything a declared package itself imports, the
 interpreter, or the installed distributions: only the Trestle version is recorded, and none of
 these is checked at run start. `query(run_provenance)` lists the recorded `packages` and
 their digests for each run.
