@@ -10,9 +10,44 @@ description: >-
 
 # Trestle
 
-Trestle runs a whole local job (a Python plugin) as **one MCP tool call** and answers with a short,
-bounded summary; the full output stays on disk behind handles. Every tool call re-sends your whole
-context, so one call per *objective*, not per command, is where the savings are.
+## Why Trestle exists
+
+An agent that does local work through a shell pays three costs that grow with the job:
+
+- **Context.** Every tool call re-sends the whole conversation. A test run driven by hand (start
+  it, poll it, read the log, grep the failure, re-run) is five or ten calls, each carrying
+  everything before it, and the log itself floods the context with output nobody needed.
+- **Supervision.** A command started from a shell has no deadline, no clean stop and no record.
+  If it hangs, the agent waits; if the agent's session ends, the command is orphaned or lost;
+  if two agents start the same database, they collide.
+- **Judgment.** Raw output has to be read and interpreted every time, by the most expensive
+  reader there is, and the interpretation is lost when the conversation ends.
+
+Trestle moves that work out of the conversation. A **plugin** is a Python function that carries a
+whole objective (bring up the stack, migrate, run the tests, judge the result). The per-user
+**service** runs it with a deadline it enforces, kills everything the run started when it ends,
+serializes runs that share an environment, keeps the full evidence on disk, and answers with a
+short verdict. The agent makes one call and reads one answer.
+
+## How to think about using it
+
+Before any local work, ask four questions in order:
+
+1. **What is the objective, not the command?** "The tests touching these files pass" is an
+   objective; `pytest tests/a.py` is a step toward it. Find (`list_plugins`) or propose a plugin
+   that owns the whole objective, so the steps, retries and judgment happen inside one run.
+2. **Can it be one call?** Prefer `completion="terminal"` (the call returns the finished run).
+   Steps that depend on each other become one tree plugin, or runs chained with `after=`, sent
+   together, not calls you sequence while you wait.
+3. **What is the smallest thing I need back?** Usually the verdict (`answer.outcome`) and the
+   summary. Fetch a log slice only to fix a specific failure, never to confirm a pass.
+4. **Has it already been done?** Name the work with an `idempotency_key`; the same key and
+   arguments return the earlier answer instead of running again.
+
+Then let the answer decide the next move: `passed` means move on; `failed` means read the named
+failure and fix it; `blocked` means a person must act, so report the action and stop; a refusal
+means the request was wrong and nothing ran. Never fall back to doing the plugin's work in your
+own shell: if Trestle cannot do it, say so.
 
 Reference: [`docs/agents.md`](../../docs/agents.md) (agent guide),
 [`docs/plugins.md`](../../docs/plugins.md) (writing plugins), [`docs/packs.md`](../../docs/packs.md)
