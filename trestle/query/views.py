@@ -26,7 +26,9 @@ FetchWindowKind = Literal["range", "head", "tail", "grep", "jsonpath"]
 FETCH_WINDOW_KINDS: tuple[str, ...] = get_args(FetchWindowKind)
 
 VIEW_ROW_FIELDS: dict[str, frozenset[str]] = {
-    "run": frozenset({"run_id", "plugin", "version", "state", "started_at", "ended_at"}),
+    "run": frozenset(
+        {"run_id", "plugin", "version", "state", "started_at", "ended_at", "progress"}
+    ),
     "last_error": frozenset({"run_id", "event_seq", "kind", "message", "at"}),
     "run_tail": frozenset({"run_id", "line_no", "text"}),
     "run_events": frozenset({"run_id", "event_seq", "kind", "payload"}),
@@ -70,16 +72,21 @@ RUN_SCOPED_VIEWS: frozenset[str] = frozenset(
     }
 )
 
+# answered only once the run's evidence is finalized (`projection.not_finalized` before): the
+# views that need the run's final state, and `run_tail`, whose console the wrapper writes only when
+# the child exits
 FINALIZED_VIEWS: frozenset[str] = frozenset(
     {
         "last_error",
         "run_tail",
-        "run_events",
         "run_provenance",
-        "run_artifacts",
         "recent_failures",
     }
 )
+
+# answered while the run is in flight too (T1, T3); a page of a run not yet finalized carries
+# `live: true`, since later pages may hold rows this one does not
+LIVE_VIEWS: frozenset[str] = frozenset({"run_events", "run_artifacts"})
 
 RECENCY_CACHE_SIZE = 500
 DEFAULT_PAGE_ITEMS = 50
@@ -173,11 +180,15 @@ def bounded_envelope(
     next_cursor: str | None,
     truncated: bool,
     as_of: str,
+    live: bool = False,
 ) -> dict[str, Any]:
-    return {
+    envelope: dict[str, Any] = {
         "items": items,
         "next_cursor": next_cursor,
         "truncated": truncated,
         "backend": BACKEND_NAME,
         "as_of": as_of,
     }
+    if live:
+        envelope["live"] = True
+    return envelope

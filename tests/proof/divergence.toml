@@ -1738,3 +1738,16 @@ docs = []
 due_checkpoint = "v0.3.1 step 6"
 direction = "additive"
 authorized_by = "v0.3.1 design (shared home), Feature 3 and Wire and compatibility (new codes in codes.py)"
+
+# Live-run visibility (T1, 2026-10-19 beta proposal): the run view's progress, the latest
+# ctx.progress of a run still in flight; absent on a frame of a run that has ended. Additive.
+
+[[entry]]
+id = "ADD-runview-progress"
+facet = "runview_shape"
+row_or_k = "MC-06"
+docs = []
+due_checkpoint = "live-run visibility T1"
+direction = "additive"
+items = [{ path = "$.fields", value = ["progress", "dict[str, Any] | None"] }]
+authorized_by = "2026-10-19 beta proposal T1 (latest progress on the run view of a running run)"

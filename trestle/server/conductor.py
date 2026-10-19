@@ -23,6 +23,7 @@ from trestle.common.types import WorkOrder
 from trestle.server import answer, chain, fold, sweep
 from trestle.server.config import load_config
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, work_dir
+from trestle.server.live import superseded_ids
 from trestle.server.procident import (
     Attribution,
     GroupStop,
@@ -489,7 +490,9 @@ def promote_outputs(
 
     limits = capture_limits()
     held = [p for p in (evidence_dir(run_dir) / "artifacts").glob("*") if p.is_file()]
-    count = len(held)
+    # an attach the plugin replaced under the same name (T3) is stored but holds no count slot
+    replaced = superseded_ids(evidence_dir(run_dir))
+    count = sum(1 for p in held if p.name not in replaced)
     total_bytes = sum(p.stat().st_size for p in held)
     artifact_ids: list[str] = []
     available: set[str] = set()

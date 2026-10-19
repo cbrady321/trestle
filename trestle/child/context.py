@@ -95,6 +95,9 @@ class RuntimeContext:
         self._window_count = 0
         self._artifact_count = 0
         self._artifact_bytes = 0
+        # T3: the current artifact id of each attached name; an attach under a name already here
+        # replaces it, holds no new count slot, and records the id it supersedes
+        self._attached: dict[str, str] = {}
         # one marker line per (stream, limit) (WR-EVID-4): later drops of the same kind are
         # tallied here and folded into that line, so marker volume never grows with the drops
         self._tallies: dict[tuple[str, str], _Tally] = {}
@@ -159,7 +162,11 @@ class RuntimeContext:
         handle. The run's count and byte caps hold here (WR-EVID-6): an attachment that would
         pass either is not written, one marker is recorded for the limit, and the return is
         the empty string, so no handle is ever returned that does not fetch. A staged file
-        (`ctx.artifact`) that is attached is moved, not left to be promoted a second time."""
+        (`ctx.artifact`) that is attached is moved, not left to be promoted a second time.
+
+        Attaching again under a name already attached replaces that artifact (T3): the new one is
+        the name's current artifact, the old id stays stored and fetchable, and the replacement
+        takes no slot of the count cap (its bytes still count)."""
         from trestle.common.ids import generate_artifact_id
 
         if not path.is_relative_to(self._work):
@@ -170,7 +177,9 @@ class RuntimeContext:
         if refused:  # MC-CORE-13: a binary holding a declared secret is never written
             self._record_limit("artifacts", redact.BINARY_LIMIT, 0, size)
             raise ValueError("attachment holds a declared secret and is binary: refused")
-        if self._artifact_count >= self._limits.max_artifact_count:
+        recorded_name = self._scrubber.text(name)
+        supersedes = self._attached.get(recorded_name)
+        if supersedes is None and self._artifact_count >= self._limits.max_artifact_count:
             self._record_limit("artifacts", "max_artifact_count", 0, size)
             return ""
         if self._artifact_bytes + len(data) > self._limits.max_artifact_bytes:
@@ -180,17 +189,19 @@ class RuntimeContext:
         dest = self._evidence / "artifacts" / art_id
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(data)
-        self._artifact_count += 1
+        if supersedes is None:
+            self._artifact_count += 1
         self._artifact_bytes += len(data)
-        append_ndjson(
-            self._events_path,
-            {
-                "kind": "artifact_available",
-                "artifact_id": art_id,
-                "name": self._scrubber.text(name),
-                "at": _now(),
-            },
-        )
+        self._attached[recorded_name] = art_id
+        row: dict[str, object] = {
+            "kind": "artifact_available",
+            "artifact_id": art_id,
+            "name": recorded_name,
+            "at": _now(),
+        }
+        if supersedes is not None:
+            row["supersedes"] = supersedes
+        append_ndjson(self._events_path, row)
         if path.is_relative_to(self._work / "artifact-staging"):
             path.unlink(missing_ok=True)
         return art_id

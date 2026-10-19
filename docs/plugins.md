@@ -41,6 +41,15 @@ to whole seconds.
 `summary_fields`, `env_arg` and `secrets` are declared and recorded in the snapshot's
 `manifest.json` (`declared`) and count toward its identity.
 
+`summary_fields` names the result fields the run summary keeps first when the whole result does not
+fit the summary budget. An entry may name a list-of-objects field with columns,
+`"targets[id,pr_url,checks,verdict]"`: the summary then shows that field as a table,
+`{"columns": [...], "rows": [[...], ...], "row_count": n}`, one row of those columns per object (a
+missing key is `null`), as many rows as the budget leaves room for. Rows left out are named by a
+`summary_budget` marker with reason `rows_truncated`, and the whole field is still at the summary's
+`next` handle. A field whose value is not a list of objects is kept as a plain field. A bracket that
+is not `name[column,...]`, a repeated column, or a field named twice is refused at publication.
+
 `env_arg` names the argument whose value is the run's environment: at most one run per value
 runs at a time across the whole home, whichever plugin or server started it. A second run with
 the same value waits in arrival order until the first ends, or is refused
@@ -87,7 +96,8 @@ A run produces artifacts three ways, and the same limits hold on all three (K-17
 - **`outputs/`.** Every file under `ctx.outputs` is promoted to an artifact when the run ends, whatever
   the run's class.
 - **`ctx.attach(path, name=...)`** copies a file under the work directory into the run's evidence
-  now and returns its handle.
+  now and returns its handle. The artifact is listed by `run_artifacts`, and its handle fetches,
+  while the run is still going.
 - **`ctx.artifact(name)`** returns a staging path (`<name>.partial`). A staged file that is never
   attached is promoted when the run ends, under `name`; if it is attached, the attach takes it
   and it is not promoted again.
@@ -100,6 +110,16 @@ wrote it, and a refused `attach` returns the empty string, so a handle a plugin 
 fetches. Every promoted artifact is scrubbed of declared secret values first; a binary artifact that
 holds one is refused with a `secret_in_binary` marker. Limit markers are one per (stream, limit) for
 the whole run, however many things were dropped: the marker's byte total counts them all.
+
+**Re-attaching under the same name replaces.** Attaching again under a name already attached makes
+the new file that name's current artifact: `run_artifacts` shows one row per name, the newest, and
+`fetch` of that row's handle returns the newest file, during the run and after it. Earlier versions
+stay stored and their handles (the ids `attach` returned) still fetch, but they are not listed; the
+events record each one (`artifact_available` with `supersedes`, the id it replaced). A replacement
+takes no slot of the 1 000-artifact count, so a plugin can rewrite `status.md` every round of an
+hour-long run, but its bytes still count toward the byte limit. A file promoted at the end under
+a name the plugin attached (an `outputs/` file of the same name) becomes that name's current
+artifact too.
 
 ## Deadlines, cancel and subprocesses
 

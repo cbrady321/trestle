@@ -111,7 +111,7 @@ def test_running_run_tail_not_finalized(waiting_kernel, monkeypatch: pytest.Monk
     assert isinstance(status, RunView)
     assert status.state in {"queued", "running"}
 
-    for blocked_view in ("run_tail", "run_events"):
+    for blocked_view in ("run_tail", "last_error"):
         out = waiting_kernel.control.query(blocked_view, {"run_id": run_id})
         assert isinstance(out, RequestOutcome), blocked_view
         assert out.code == codes.NOT_FINALIZED
@@ -120,6 +120,9 @@ def test_running_run_tail_not_finalized(waiting_kernel, monkeypatch: pytest.Monk
     allowed = waiting_kernel.control.query("run", {"run_id": run_id})
     assert isinstance(allowed, dict)
     assert allowed["items"][0]["run_id"] == run_id
+    # T1: the event pager answers a running run, its page marked live
+    events = waiting_kernel.control.query("run_events", {"run_id": run_id})
+    assert isinstance(events, dict) and events["live"] is True
 
 
 def test_query_echo_run_history_integration(kernel) -> None:
