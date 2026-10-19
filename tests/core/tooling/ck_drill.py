@@ -849,6 +849,11 @@ REG_SERIAL_NODES = (
     "test_run_by_key_finds_a_run_far_beyond_the_recency_window_and_takes_no_lock",
     "tests/single/control/mcp/test_sever_rejoin.py::test_sever_run_continues_bounded_and_cleaned",
     "tests/single/control/mcp/test_sever_rejoin.py::test_resend_joins_single_execution_terminal",
+    # failed in ck-drill on CI runs 39324075792 and 39328890426 (v0.4.1), each passing alone
+    "tests/single/control/test_lease.py::test_second_run_same_env_waits_fifo_within_deadline",
+    "tests/single/control/test_lease.py::test_lease_ends_at_terminal_row_even_unconfirmed",
+    "packages/trestle-env/tests/unit/test_scale_catalog.py::"
+    "test_resolution_cost_doubling_within_ratio",
 )
 # Nodes that read the session's own proof results (`ledger.render()` over tests/proof/results):
 # in the serial step each sees exactly the records of the nodes before it. Each runs alone after
