@@ -70,6 +70,7 @@ class McpHost:
         self._next_id = 1
         self._request_count = 0
         self._responses: dict[int, queue.Queue[bytes]] = {}
+        self._delivered: set[int] = set()
         self._responses_lock = threading.Lock()
         self._closed = False
 
@@ -91,6 +92,7 @@ class McpHost:
         self.session_id: str | None = None
         with self._responses_lock:
             self._responses.clear()
+            self._delivered.clear()
 
     # -- wire -----------------------------------------------------------
 
@@ -135,6 +137,10 @@ class McpHost:
                 raw = response.read()
                 if raw.strip():
                     self._dispatch(raw)
+            if req_id is not None:
+                # the exchange ended; a request it never answered is answered with an error now
+                # (a no-op when the answer landed: the queue holds one message)
+                self._fail(req_id, "the response ended without an answer")
         except (OSError, http.client.HTTPException) as exc:
             if req_id is not None:
                 self._fail(req_id, f"connection lost: {exc!r}")
@@ -163,12 +169,14 @@ class McpHost:
         self._deliver(req_id, json.dumps(payload).encode("utf-8"))
 
     def _deliver(self, msg_id: int, raw: bytes) -> None:
+        """The first message for a request id is its answer; a later one (the error a broken or
+        finished exchange sends) is dropped."""
         with self._responses_lock:
+            if msg_id in self._delivered:
+                return
+            self._delivered.add(msg_id)
             q = self._responses.setdefault(msg_id, queue.Queue(maxsize=1))
-        try:
-            q.put_nowait(raw)
-        except queue.Full:
-            pass  # the answer landed first; a later broken-stream error is not an answer
+        q.put_nowait(raw)
 
     def _dispatch(self, raw: bytes) -> None:
         """One message from the server. A response goes to its request's queue; a message the

@@ -213,11 +213,34 @@ def _bind_loopback(port: int) -> socket.socket:
     return sock
 
 
+class _InFlight:
+    """ASGI middleware counting the MCP POSTs being answered. A draining server exits only at a
+    moment with none, so the answer to a call that was waiting on its last runs (`await_runs`,
+    `run(completion="terminal")`) is sent before the process goes. A client's standalone GET
+    stream (server notifications) is not counted: it never ends on its own."""
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    count = 0
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] != "http" or scope.get("method") != "POST":
+            await self.app(scope, receive, send)
+            return
+        _InFlight.count += 1
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            _InFlight.count -= 1
+
+
 def _http_server(mcp: Any, token: str, sock: socket.socket, kernel: Kernel) -> Any:
     """The uvicorn server for the MCP app, behind the bearer token. SIGTERM drains (D4): the
     server refuses new runs, keeps starting and finishing what it admitted, and exits 0 once it
-    owns no live run, so a service manager's stop (or `trestle service stop`) waits out the runs
-    instead of interrupting them. SIGINT is uvicorn's own graceful stop."""
+    owns no live run and is answering no call, so a service manager's stop (or `trestle service
+    stop`) waits out the runs instead of interrupting them. SIGINT is uvicorn's own graceful
+    stop."""
     import fastmcp
     import uvicorn
     from starlette.middleware import Middleware
@@ -226,7 +249,7 @@ def _http_server(mcp: Any, token: str, sock: socket.socket, kernel: Kernel) -> A
 
     app = mcp.http_app(
         transport="streamable-http",
-        middleware=[Middleware(BearerTokenMiddleware, token=token)],
+        middleware=[Middleware(BearerTokenMiddleware, token=token), Middleware(_InFlight)],
         allowed_hosts=[*(fastmcp.settings.http_allowed_hosts or []), LOOPBACK_HOST],
     )
 
@@ -247,7 +270,7 @@ def _http_server(mcp: Any, token: str, sock: socket.socket, kernel: Kernel) -> A
         def _start_drain_watch(self) -> None:
             async def watch() -> None:
                 assert kernel.ownership is not None
-                while kernel.ownership.owned():
+                while kernel.ownership.owned() or _InFlight.count:
                     await asyncio.sleep(DRAIN_POLL_S)
                 self.should_exit = True
 
