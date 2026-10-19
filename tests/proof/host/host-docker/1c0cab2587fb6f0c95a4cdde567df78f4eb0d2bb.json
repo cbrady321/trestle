@@ -1,0 +1,1127 @@
+{
+  "schema": 1,
+  "gate": "host-docker",
+  "sha": "1c0cab2587fb6f0c95a4cdde567df78f4eb0d2bb",
+  "mode": "run",
+  "python": "3.12.8",
+  "platform": "darwin",
+  "results": [
+    {
+      "nodeid": "packages/trestle-packs/tests/container/test_conformance.py::test_container_port_suite[real]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-7:b-identity-not-port-occupancy-adapter@host",
+        "WR-ENV-2:route-refused-adapter@host",
+        "WR-OWN-4:b-port-stop-never-removes-volume@host",
+        "WR-PROOF-4:b-descriptor-before-effect@host",
+        "WR-PROOF-4:b-docker-real-equals-fake",
+        "WR-VERIFY-8:b-docker-real-read-facets"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/container/test_conformance.py::test_compose_resolver_suite[real]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-1:closure-from-compose-adapter@host",
+        "WR-PROOF-4:b-docker-real-equals-fake",
+        "WR-VERIFY-8:b-docker-real-read-facets"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/container/test_conformance.py::test_d8_container_pair[real]",
+      "outcome": "PASSED",
+      "labels": []
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/container/test_conformance.py::test_d8_compose_pair[real]",
+      "outcome": "PASSED",
+      "labels": []
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/container/test_engine_codes.py::test_cli_missing_vs_engine_unreachable_distinct_codes[real-unreachable-endpoint]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-VERIFY-3:adapter-codes@host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/grant/test_conformance.py::test_grant_delivery_suite[real]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-13:channel-not-env-var@host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/provision/test_conformance.py::test_provision_suite[real]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-PROOF-4:b-provision-suite@host",
+        "WR-ENV-4:authoritative-probe-read-only@host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-packs/tests/test_docker_integration.py::test_stack_runner_live_compose",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-PROOF-2:pack-docker-live"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_b_spine.py::test_one_call_passed_healthy_machine",
+      "outcome": "PASSED",
+      "labels": [
+        "B8.2",
+        "B1.1",
+        "WR-ENV-10:one-request-dispositions-match-snapshot"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_b_spine.py::test_wrong_postgres_password_never_ready",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-10:readiness-authenticated-postgres"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_cancel_readiness.py::test_cancel_during_readiness_owned_and_created_gone_found_untouched",
+      "outcome": "PASSED",
+      "labels": [
+        "B6.1",
+        "WR-OWN-2:b-cancel-path",
+        "WR-CANCEL-4:b-created-gone-found-untouched"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_cancel_readiness.py::test_reference_tree_cancel_during_readiness",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-2:b-cancel-path",
+        "WR-CANCEL-4:b-created-gone-found-untouched"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_cleanup_beside_primary_docker.py::test_cleanup_failure_beside_primary_matches_docker_inventory",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-6:docker-inventory"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_closure_host.py::test_started_set_equals_closure",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-1:started-set-equals-closure"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_closure_host.py::test_compose_file_only_stack_works",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-1:compose-file-only-works"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_credential_currency.py::test_readiness_requires_in_container_authenticated_call",
+      "outcome": "PASSED",
+      "labels": [
+        "B4.4"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_credential_currency.py::test_invalid_demo_credential_not_ready",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-VERIFY-6:invalid-credential-not-ready"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_credential_currency.py::test_rotation_refreshed_in_place_no_recreate[container]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-13:refresh-in-place-container"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_credential_currency.py::test_rotation_refreshed_in_place_no_recreate[local_app]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-13:refresh-in-place-local-app"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_engine_diagnosis.py::test_unreachable_endpoint_diagnosed_distinct_from_cli_missing",
+      "outcome": "PASSED",
+      "labels": [
+        "B4.2",
+        "WR-ENV-6:host-engine-unchanged"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_foreign.py::test_foreign_occupant_blocked_never_signalled[container]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-7:b-foreign-blocked-not-killed"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_foreign.py::test_unhealthy_found_blocked_not_repaired",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-10:b-unhealthy-found-blocked"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_healthy_machine_full.py::test_one_call_reused_started_repaired_found_untouched_no_volume_removed",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-10:dispositions-complete"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_k6_docs.py::test_documented_removal_sets_equal_observed",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-4:docs-equal-observed-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_k6_entry_points.py::test_no_volume_deleted_by_any_registered_teardown[docker_stack-down]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-4:registered-entry-points-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_k6_entry_points.py::test_no_volume_deleted_by_any_registered_teardown[docker_stack-stop]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-4:registered-entry-points-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_k6_entry_points.py::test_no_volume_deleted_by_any_registered_teardown[docker_stack-none]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-4:registered-entry-points-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_k6_entry_points.py::test_no_volume_deleted_by_any_registered_teardown[integration_pipeline-down]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-4:registered-entry-points-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_k6_entry_points.py::test_no_volume_deleted_by_any_registered_teardown[integration_pipeline-stop]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-4:registered-entry-points-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_k6_entry_points.py::test_no_volume_deleted_by_any_registered_teardown[integration_pipeline-none]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-4:registered-entry-points-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_k6_entry_points.py::test_no_volume_deleted_by_any_registered_teardown[reference_env-release]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-4:registered-entry-points-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_local_override.py::test_override_docker_container_never_exists",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-2:override-container-never-exists"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_local_override.py::test_missing_repo_blocked_no_docker_start",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-2:missing-repo-no-docker-fallback"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_local_override.py::test_reference_tree_local_override",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-2:override-container-never-exists"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_local_override.py::test_reference_tree_override_unbound_blocks",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-2:missing-repo-no-docker-fallback"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_own3_container_half.py::test_passed_run_leaves_no_created_container",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-3:created-container-stopped-on-success"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_pipeline_k15.py::test_pipeline_stops_stack_once[success]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-11:entry-points-callable-host",
+        "WR-ENV-11:pipeline-one-teardown-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_pipeline_k15.py::test_pipeline_stops_stack_once[pytest_failure]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-11:entry-points-callable-host",
+        "WR-ENV-11:pipeline-one-teardown-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_pipeline_k15.py::test_pipeline_stops_stack_once[up_failure]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-11:entry-points-callable-host",
+        "WR-ENV-11:pipeline-one-teardown-host"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_provisioning.py::test_probe_first_submit_once_verified_by_db",
+      "outcome": "PASSED",
+      "labels": [
+        "B3.1",
+        "WR-ENV-5:after-provisioning"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_provisioning.py::test_second_equivalent_run_reuses_no_submit",
+      "outcome": "PASSED",
+      "labels": [
+        "B3.2",
+        "WR-ENV-5:after-provisioning"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_provisioning.py::test_system_test_after_provisioning_postcondition",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-5:after-provisioning"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_readiness.py::test_dependent_starts_after_http_readiness_pass",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-10:readiness-authoritative-http",
+        "WR-VERIFY-2:b-host-ordering"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_restart_docker.py::test_server_killed_restart_recovery_releases_created_container",
+      "outcome": "PASSED",
+      "labels": [
+        "B8.5",
+        "WR-OWN-1:created-container-released",
+        "WR-UNIT-5:b-server-restart"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_restart_docker.py::test_recovery_remove_failure_reports_unknown",
+      "outcome": "PASSED",
+      "labels": []
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_reuse.py::test_prestarted_postgres_reused_untouched[passed]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-10:b-cleanup-never-found",
+        "WR-OWN-2:b-found-untouched-all-paths",
+        "WR-OWN-1:b-dispositions-reused-started",
+        "B8.1"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_reuse.py::test_prestarted_postgres_reused_untouched[failed]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-10:b-cleanup-never-found",
+        "WR-OWN-2:b-found-untouched-all-paths",
+        "WR-OWN-1:b-dispositions-reused-started",
+        "B8.1"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_reuse.py::test_prestarted_postgres_reused_untouched[cancelled]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-10:b-cleanup-never-found",
+        "WR-OWN-2:b-found-untouched-all-paths",
+        "WR-OWN-1:b-dispositions-reused-started",
+        "B8.1"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_services_selection.py::test_a_closed_selection_starts_only_its_services",
+      "outcome": "PASSED",
+      "labels": []
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_stage_budget.py::test_readiness_ends_at_stage_budget_names_stage_and_service",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-ENV-9:stage-k-named-found-untouched",
+        "B5.1"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_stale_generation.py::test_owned_container_older_generation_recreated",
+      "outcome": "PASSED",
+      "labels": [
+        "B8.3"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_stale_generation.py::test_found_container_unproven_generation_blocked_untouched",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-9:not-owned-blocked-untouched"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_stale_generation.py::test_owned_process_older_generation_restarted",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-OWN-9:owned-process-restarted"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_system_test.py::test_test_starts_after_every_readiness_pass",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-VERIFY-2:b-test-after-readiness"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_unit5_docker.py::test_child_container_released_by_root[passed]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-5:b-passed-released",
+        "B8.5"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_unit5_docker.py::test_child_container_released_by_root[sibling_failure]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-5:b-sibling-failure"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_unit5_docker.py::test_child_container_released_by_root[child_exception]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-5:b-child-exception"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_unit6_docker.py::test_after_root_stop_no_child_container_remains[cancel]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-5:b-root-cancel",
+        "WR-UNIT-6:b-no-action-after-stop",
+        "B6.3"
+      ]
+    },
+    {
+      "nodeid": "packages/trestle-env/tests/host/test_unit6_docker.py::test_after_root_stop_no_child_container_remains[deadline]",
+      "outcome": "PASSED",
+      "labels": [
+        "WR-UNIT-5:b-root-deadline",
+        "WR-UNIT-6:b-no-action-after-stop",
+        "B6.3"
+      ]
+    }
+  ],
+  "status": "PASSED",
+  "engine": {
+    "cli_path": "/usr/local/bin/docker",
+    "endpoint": "unix:///Users/colinbrady/.docker/run/docker.sock",
+    "server_version": "29.8.0",
+    "reachable_before": true,
+    "reachable_after": true
+  },
+  "images": {
+    "alpine": "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+    "postgres": "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+    "http_support": "nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10"
+  },
+  "inventory_before": {
+    "engine": {
+      "reachable": true,
+      "server_version": "29.8.0",
+      "id": "919ccb47-c78e-4210-ab6b-fb5bc3890988"
+    },
+    "containers": [
+      {
+        "id": "bebf5daa7288df5747b893763f79e9af7d9407c95d91fcf45ad925c20101110e",
+        "names": [
+          "trwr-r_aaaadikvl52xitcohui-backend.helper"
+        ],
+        "image": "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2"
+        }
+      },
+      {
+        "id": "daf56be76c4b663cec715173838399501ff8e18ebf0dcb2d62ff5ac09081f0a2",
+        "names": [
+          "trwr-r_aaaadikvl52xitcohui-backend.postgres"
+        ],
+        "image": "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2",
+          "desktop.docker.io/ports/5432/tcp": "127.0.0.1:"
+        }
+      },
+      {
+        "id": "3e46d2150565f38ac3135faa49c852ed0dc0d4badde99fd8d59fbdc409c42373",
+        "names": [
+          "trwr-r_aaaadikvlqvgkipvj4q-backend.helper"
+        ],
+        "image": "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+        "state": "running",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2"
+        }
+      },
+      {
+        "id": "2b0d42b2ba7712309a9d9e0b8fed6a3564f4c03bfc0bbcf082a8c89d5cc78bd0",
+        "names": [
+          "trwr-r_aaaadikvlqvgkipvj4q-backend.postgres"
+        ],
+        "image": "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "state": "running",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2",
+          "desktop.docker.io/ports/5432/tcp": "127.0.0.1:"
+        }
+      },
+      {
+        "id": "2893e53d0cdfcedca554fe9625a146855bae249b6fcc59df9a8fb2544d9ec4b0",
+        "names": [
+          "trwr-r_aaaadikvlkvo6s27lq7-backend.helper"
+        ],
+        "image": "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2"
+        }
+      },
+      {
+        "id": "be179d6dba352cedc6dfcb1890d6c6b8d32baf3e77cc25a339f60fafbe60940d",
+        "names": [
+          "trwr-r_aaaadikvlkvo6s27lq7-backend.postgres"
+        ],
+        "image": "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2",
+          "desktop.docker.io/ports/5432/tcp": "127.0.0.1:"
+        }
+      },
+      {
+        "id": "a00bd1210cf1b6632be9206a3f9a0d31b85dcdad0322a2b8bcafd3b5a6907445",
+        "names": [
+          "trwr-r_aaaadikvlakdsvg3fih-backend.helper"
+        ],
+        "image": "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2"
+        }
+      },
+      {
+        "id": "d3ce47ecd81c105b569aea7f30b1c74ed8ce8d2f567dfcfc3401fd0a7fc63095",
+        "names": [
+          "trwr-r_aaaadikvlakdsvg3fih-backend.postgres"
+        ],
+        "image": "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2",
+          "desktop.docker.io/ports/5432/tcp": "127.0.0.1:"
+        }
+      },
+      {
+        "id": "e3868a741962142d4bc293d1b13e0fa9e557f0ef71c78c0c7561077c404e18cf",
+        "names": [
+          "gotchi-server"
+        ],
+        "image": "gotchi-app",
+        "state": "running",
+        "labels": {
+          "com.docker.compose.config-hash": "4799cba92c60f889feeee8452a7235667f9a10d373b3b0907d1b8e2a7b7f9fc5",
+          "com.docker.compose.container-number": "1",
+          "com.docker.compose.depends_on": "db:service_healthy:false",
+          "com.docker.compose.image": "sha256:2893847bfbcc1b6951516c42bf3b25543ba0b96aa72ec648d87f60f5eb81756a",
+          "com.docker.compose.oneoff": "False",
+          "com.docker.compose.project.config_files": "/Users/colinbrady/projects/gotchi/docker-compose.yml",
+          "com.docker.compose.project.working_dir": "/Users/colinbrady/projects/gotchi",
+          "com.docker.compose.project": "gotchi",
+          "com.docker.compose.replace": "gotchi-server",
+          "com.docker.compose.service": "app",
+          "com.docker.compose.version": "5.5.1",
+          "desktop.docker.io/ports.scheme": "v2",
+          "desktop.docker.io/ports/8080/tcp": ":8080"
+        }
+      },
+      {
+        "id": "be03dd056e2090a35aa3728991abaf2d11c323f620a3fbd6d8c846f36941f8b6",
+        "names": [
+          "gotchi-postgres"
+        ],
+        "image": "postgres:18-alpine",
+        "state": "running",
+        "labels": {
+          "com.docker.compose.config-hash": "07ce0c3c08efe7d9c7e6c284031449ff088bdf5123a6ccc8360d7fa3b388a78a",
+          "com.docker.compose.container-number": "1",
+          "com.docker.compose.depends_on": "",
+          "com.docker.compose.image": "sha256:d7a8005067f55a2f8ea369e767545fd467b1943a4f0f1a48b7dc44f06c366109",
+          "com.docker.compose.oneoff": "False",
+          "com.docker.compose.project.config_files": "/Users/colinbrady/projects/gotchi/docker-compose.yml",
+          "com.docker.compose.project.working_dir": "/Users/colinbrady/projects/gotchi",
+          "com.docker.compose.project": "gotchi",
+          "com.docker.compose.service": "db",
+          "com.docker.compose.version": "5.5.1",
+          "desktop.docker.io/ports.scheme": "v2",
+          "desktop.docker.io/ports/5432/tcp": ":5432"
+        }
+      }
+    ],
+    "images": [
+      {
+        "id": "sha256:898dee37935eae05adc10b30bdb4624ec1596108a7a841102d5fc260bc21d3e0",
+        "repository": "gotchi-integrate-app",
+        "tag": "latest"
+      },
+      {
+        "id": "sha256:2893847bfbcc1b6951516c42bf3b25543ba0b96aa72ec648d87f60f5eb81756a",
+        "repository": "gotchi-app",
+        "tag": "latest"
+      },
+      {
+        "id": "sha256:66b1b444a6a2028f05c6bf74a4adeba2cc4b907b437970017a72322ec8480d12",
+        "repository": "gotchi-lanea-app",
+        "tag": "latest"
+      },
+      {
+        "id": "sha256:d316e35f44cc08e62337efe06d42d18c51747d4efdc58e523e5ed09dbbf101ef",
+        "repository": "gotchi-lanec-app",
+        "tag": "latest"
+      },
+      {
+        "id": "sha256:e3e9e3c6dc6ba9122e940e9604161a6f62844e42e5e148c78de80d158c943874",
+        "repository": "gotchi-laned-app",
+        "tag": "latest"
+      },
+      {
+        "id": "sha256:89fe20c9b274de115c5b97bb5f1b7245ee7c6764e8ea72bf392e4d49281a4ddb",
+        "repository": "gotchi-laneb-app",
+        "tag": "latest"
+      },
+      {
+        "id": "sha256:3a18f1e7a404d6d6a7348b995e5dcdb6c1c3a50dc5632c29b43181dbc1f238d0",
+        "repository": "server-app",
+        "tag": "latest"
+      },
+      {
+        "id": "sha256:b937e94e9d34b951780aeada17bebd8f979de53ea3cadba193e7dec85dc3be8f",
+        "repository": "node",
+        "tag": "22"
+      },
+      {
+        "id": "sha256:95d16dfcd4ab8b61154e2280ab9fe4afa2ef03e5eefa8a689e86571e8a1b32cf",
+        "repository": "ubuntu",
+        "tag": "24.04"
+      },
+      {
+        "id": "sha256:ef738a34a8651d11b2bace81c55c7e2187f786b484add6c83070884340074368",
+        "repository": "postgres",
+        "tag": "16-alpine"
+      },
+      {
+        "id": "sha256:d7a8005067f55a2f8ea369e767545fd467b1943a4f0f1a48b7dc44f06c366109",
+        "repository": "postgres",
+        "tag": "18-alpine"
+      },
+      {
+        "id": "sha256:ab3fe4defd29ba6231229a4d41440ac8bde8218e85870e53876277faa24b35c4",
+        "repository": "alpine",
+        "tag": "3.20"
+      },
+      {
+        "id": "sha256:96868d9fa38f469a86d2f25787e43ee9ad330339d30be260aa9f5a338bb03751",
+        "repository": "nginx",
+        "tag": "1.27-alpine"
+      }
+    ],
+    "volumes": [
+      {
+        "name": "gotchi-lanea_postgres_data",
+        "labels": {
+          "com.docker.compose.config-hash": "b4b616d466fc4298a66ab318f3417ad8d191bb2d485162761a143c2a30e83c75",
+          "com.docker.compose.project": "gotchi-lanea",
+          "com.docker.compose.version": "5.5.1",
+          "com.docker.compose.volume": "postgres_data"
+        }
+      },
+      {
+        "name": "gotchi-laneb_postgres_data",
+        "labels": {
+          "com.docker.compose.config-hash": "0cff97adc9b7329217f94bbdbf0f16e36f2b7711ad41eb218452e22dcf58097a",
+          "com.docker.compose.project": "gotchi-laneb",
+          "com.docker.compose.version": "5.5.1",
+          "com.docker.compose.volume": "postgres_data"
+        }
+      },
+      {
+        "name": "gotchi-lanec_postgres_data",
+        "labels": {
+          "com.docker.compose.config-hash": "c3f96503fb9696b579489845b9f661eb7bc7903ab991821d0b9fe18912f14d08",
+          "com.docker.compose.project": "gotchi-lanec",
+          "com.docker.compose.version": "5.5.1",
+          "com.docker.compose.volume": "postgres_data"
+        }
+      },
+      {
+        "name": "gotchi-laned_postgres_data",
+        "labels": {
+          "com.docker.compose.config-hash": "e2216bd33e8dc8b74b4bebdf887ff4472ffaecbd4bab116265acade03b4e3ff0",
+          "com.docker.compose.project": "gotchi-laned",
+          "com.docker.compose.version": "5.5.1",
+          "com.docker.compose.volume": "postgres_data"
+        }
+      },
+      {
+        "name": "gotchi_postgres_data",
+        "labels": {
+          "com.docker.compose.config-hash": "83ec795e5bb0b191dfa7240792677345d713ac256a815a897592f7ebc8d234b3",
+          "com.docker.compose.project": "gotchi",
+          "com.docker.compose.version": "5.5.1",
+          "com.docker.compose.volume": "postgres_data"
+        }
+      },
+      {
+        "name": "node22",
+        "labels": {}
+      }
+    ],
+    "networks": [
+      {
+        "id": "e3b8f85aec702f64160ca6b88874e855c50da8b1f7978417eacc7fd6439ed1cf",
+        "name": "bridge",
+        "labels": {}
+      },
+      {
+        "id": "628e97bd06cbac2bd079760e243b077032ac672d0a3212084bc6778a521b11a7",
+        "name": "gotchi_default",
+        "labels": {
+          "com.docker.compose.config-hash": "3b8390949d16d0fb6d524599dd2c746495a1c44d5e14d5eefde36f2ab4ce81be",
+          "com.docker.compose.network": "default",
+          "com.docker.compose.project": "gotchi",
+          "com.docker.compose.version": "5.5.1"
+        }
+      },
+      {
+        "id": "c8c30ec5ce1c0546380890ea0f39618309f8ecf65215d8ab6dca30fed75ded2d",
+        "name": "host",
+        "labels": {}
+      },
+      {
+        "id": "e14261cbd9aa919f92ab23f2a7eaf65f9ce2b38163c1df7433a737d120b956b2",
+        "name": "none",
+        "labels": {}
+      }
+    ]
+  },
+  "inventory_after": {
+    "engine": {
+      "reachable": true,
+      "server_version": "29.8.0",
+      "id": "919ccb47-c78e-4210-ab6b-fb5bc3890988"
+    },
+    "containers": [
+      {
+        "id": "17f11358e68596ab39a803c66b58c536045702a21ac957f873e9e72219a888af",
+        "names": [
+          "trwr-r_aaaadikwcu654aufx2c-backend.helper"
+        ],
+        "image": "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2"
+        }
+      },
+      {
+        "id": "bb4ec7068d6654fa68b2c0722f1566713de30f0a3b586a8972c4b042ae44c7bb",
+        "names": [
+          "trwr-r_aaaadikwcu654aufx2c-backend.postgres"
+        ],
+        "image": "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2",
+          "desktop.docker.io/ports/5432/tcp": "127.0.0.1:"
+        }
+      },
+      {
+        "id": "144c27fd2c729a3737f327afb7818cdf5aba462e78d6f546cc6e82d873a7d0fa",
+        "names": [
+          "trwr-r_aaaadikwckyqsxvzjvs-backend.helper"
+        ],
+        "image": "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2"
+        }
+      },
+      {
+        "id": "d6d26150550797136787e519cd2195f10695cfd3d8d4b879bef586341e06699a",
+        "names": [
+          "trwr-r_aaaadikwckyqsxvzjvs-backend.postgres"
+        ],
+        "image": "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2",
+          "desktop.docker.io/ports/5432/tcp": "127.0.0.1:"
+        }
+      },
+      {
+        "id": "bebf5daa7288df5747b893763f79e9af7d9407c95d91fcf45ad925c20101110e",
+        "names": [
+          "trwr-r_aaaadikvl52xitcohui-backend.helper"
+        ],
+        "image": "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2"
+        }
+      },
+      {
+        "id": "daf56be76c4b663cec715173838399501ff8e18ebf0dcb2d62ff5ac09081f0a2",
+        "names": [
+          "trwr-r_aaaadikvl52xitcohui-backend.postgres"
+        ],
+        "image": "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2",
+          "desktop.docker.io/ports/5432/tcp": "127.0.0.1:"
+        }
+      },
+      {
+        "id": "3e46d2150565f38ac3135faa49c852ed0dc0d4badde99fd8d59fbdc409c42373",
+        "names": [
+          "trwr-r_aaaadikvlqvgkipvj4q-backend.helper"
+        ],
+        "image": "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+        "state": "running",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2"
+        }
+      },
+      {
+        "id": "2b0d42b2ba7712309a9d9e0b8fed6a3564f4c03bfc0bbcf082a8c89d5cc78bd0",
+        "names": [
+          "trwr-r_aaaadikvlqvgkipvj4q-backend.postgres"
+        ],
+        "image": "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "state": "running",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2",
+          "desktop.docker.io/ports/5432/tcp": "127.0.0.1:"
+        }
+      },
+      {
+        "id": "2893e53d0cdfcedca554fe9625a146855bae249b6fcc59df9a8fb2544d9ec4b0",
+        "names": [
+          "trwr-r_aaaadikvlkvo6s27lq7-backend.helper"
+        ],
+        "image": "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2"
+        }
+      },
+      {
+        "id": "be179d6dba352cedc6dfcb1890d6c6b8d32baf3e77cc25a339f60fafbe60940d",
+        "names": [
+          "trwr-r_aaaadikvlkvo6s27lq7-backend.postgres"
+        ],
+        "image": "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2",
+          "desktop.docker.io/ports/5432/tcp": "127.0.0.1:"
+        }
+      },
+      {
+        "id": "a00bd1210cf1b6632be9206a3f9a0d31b85dcdad0322a2b8bcafd3b5a6907445",
+        "names": [
+          "trwr-r_aaaadikvlakdsvg3fih-backend.helper"
+        ],
+        "image": "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2"
+        }
+      },
+      {
+        "id": "d3ce47ecd81c105b569aea7f30b1c74ed8ce8d2f567dfcfc3401fd0a7fc63095",
+        "names": [
+          "trwr-r_aaaadikvlakdsvg3fih-backend.postgres"
+        ],
+        "image": "postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "state": "exited",
+        "labels": {
+          "desktop.docker.io/ports.scheme": "v2",
+          "desktop.docker.io/ports/5432/tcp": "127.0.0.1:"
+        }
+      },
+      {
+        "id": "e3868a741962142d4bc293d1b13e0fa9e557f0ef71c78c0c7561077c404e18cf",
+        "names": [
+          "gotchi-server"
+        ],
+        "image": "gotchi-app",
+        "state": "running",
+        "labels": {
+          "com.docker.compose.config-hash": "4799cba92c60f889feeee8452a7235667f9a10d373b3b0907d1b8e2a7b7f9fc5",
+          "com.docker.compose.container-number": "1",
+          "com.docker.compose.depends_on": "db:service_healthy:false",
+          "com.docker.compose.image": "sha256:2893847bfbcc1b6951516c42bf3b25543ba0b96aa72ec648d87f60f5eb81756a",
+          "com.docker.compose.oneoff": "False",
+          "com.docker.compose.project.config_files": "/Users/colinbrady/projects/gotchi/docker-compose.yml",
+          "com.docker.compose.project.working_dir": "/Users/colinbrady/projects/gotchi",
+          "com.docker.compose.project": "gotchi",
+          "com.docker.compose.replace": "gotchi-server",
+          "com.docker.compose.service": "app",
+          "com.docker.compose.version": "5.5.1",
+          "desktop.docker.io/ports.scheme": "v2",
+          "desktop.docker.io/ports/8080/tcp": ":8080"
+        }
+      },
+      {
+        "id": "be03dd056e2090a35aa3728991abaf2d11c323f620a3fbd6d8c846f36941f8b6",
+        "names": [
+          "gotchi-postgres"
+        ],
+        "image": "postgres:18-alpine",
+        "state": "running",
+        "labels": {
+          "com.docker.compose.config-hash": "07ce0c3c08efe7d9c7e6c284031449ff088bdf5123a6ccc8360d7fa3b388a78a",
+          "com.docker.compose.container-number": "1",
+          "com.docker.compose.depends_on": "",
+          "com.docker.compose.image": "sha256:d7a8005067f55a2f8ea369e767545fd467b1943a4f0f1a48b7dc44f06c366109",
+          "com.docker.compose.oneoff": "False",
+          "com.docker.compose.project.config_files": "/Users/colinbrady/projects/gotchi/docker-compose.yml",
+          "com.docker.compose.project.working_dir": "/Users/colinbrady/projects/gotchi",
+          "com.docker.compose.project": "gotchi",
+          "com.docker.compose.service": "db",
+          "com.docker.compose.version": "5.5.1",
+          "desktop.docker.io/ports.scheme": "v2",
+          "desktop.docker.io/ports/5432/tcp": ":5432"
+        }
+      }
+    ],
+    "images": [
+      {
+        "id": "sha256:898dee37935eae05adc10b30bdb4624ec1596108a7a841102d5fc260bc21d3e0",
+        "repository": "gotchi-integrate-app",
+        "tag": "latest"
+      },
+      {
+        "id": "sha256:2893847bfbcc1b6951516c42bf3b25543ba0b96aa72ec648d87f60f5eb81756a",
+        "repository": "gotchi-app",
+        "tag": "latest"
+      },
+      {
+        "id": "sha256:66b1b444a6a2028f05c6bf74a4adeba2cc4b907b437970017a72322ec8480d12",
+        "repository": "gotchi-lanea-app",
+        "tag": "latest"
+      },
+      {
+        "id": "sha256:d316e35f44cc08e62337efe06d42d18c51747d4efdc58e523e5ed09dbbf101ef",
+        "repository": "gotchi-lanec-app",
+        "tag": "latest"
+      },
+      {
+        "id": "sha256:89fe20c9b274de115c5b97bb5f1b7245ee7c6764e8ea72bf392e4d49281a4ddb",
+        "repository": "gotchi-laneb-app",
+        "tag": "latest"
+      },
+      {
+        "id": "sha256:e3e9e3c6dc6ba9122e940e9604161a6f62844e42e5e148c78de80d158c943874",
+        "repository": "gotchi-laned-app",
+        "tag": "latest"
+      },
+      {
+        "id": "sha256:3a18f1e7a404d6d6a7348b995e5dcdb6c1c3a50dc5632c29b43181dbc1f238d0",
+        "repository": "server-app",
+        "tag": "latest"
+      },
+      {
+        "id": "sha256:b937e94e9d34b951780aeada17bebd8f979de53ea3cadba193e7dec85dc3be8f",
+        "repository": "node",
+        "tag": "22"
+      },
+      {
+        "id": "sha256:95d16dfcd4ab8b61154e2280ab9fe4afa2ef03e5eefa8a689e86571e8a1b32cf",
+        "repository": "ubuntu",
+        "tag": "24.04"
+      },
+      {
+        "id": "sha256:ef738a34a8651d11b2bace81c55c7e2187f786b484add6c83070884340074368",
+        "repository": "postgres",
+        "tag": "16-alpine"
+      },
+      {
+        "id": "sha256:d7a8005067f55a2f8ea369e767545fd467b1943a4f0f1a48b7dc44f06c366109",
+        "repository": "postgres",
+        "tag": "18-alpine"
+      },
+      {
+        "id": "sha256:ab3fe4defd29ba6231229a4d41440ac8bde8218e85870e53876277faa24b35c4",
+        "repository": "alpine",
+        "tag": "3.20"
+      },
+      {
+        "id": "sha256:96868d9fa38f469a86d2f25787e43ee9ad330339d30be260aa9f5a338bb03751",
+        "repository": "nginx",
+        "tag": "1.27-alpine"
+      }
+    ],
+    "volumes": [
+      {
+        "name": "gotchi-lanea_postgres_data",
+        "labels": {
+          "com.docker.compose.config-hash": "b4b616d466fc4298a66ab318f3417ad8d191bb2d485162761a143c2a30e83c75",
+          "com.docker.compose.project": "gotchi-lanea",
+          "com.docker.compose.version": "5.5.1",
+          "com.docker.compose.volume": "postgres_data"
+        }
+      },
+      {
+        "name": "gotchi-laneb_postgres_data",
+        "labels": {
+          "com.docker.compose.config-hash": "0cff97adc9b7329217f94bbdbf0f16e36f2b7711ad41eb218452e22dcf58097a",
+          "com.docker.compose.project": "gotchi-laneb",
+          "com.docker.compose.version": "5.5.1",
+          "com.docker.compose.volume": "postgres_data"
+        }
+      },
+      {
+        "name": "gotchi-lanec_postgres_data",
+        "labels": {
+          "com.docker.compose.config-hash": "c3f96503fb9696b579489845b9f661eb7bc7903ab991821d0b9fe18912f14d08",
+          "com.docker.compose.project": "gotchi-lanec",
+          "com.docker.compose.version": "5.5.1",
+          "com.docker.compose.volume": "postgres_data"
+        }
+      },
+      {
+        "name": "gotchi-laned_postgres_data",
+        "labels": {
+          "com.docker.compose.config-hash": "e2216bd33e8dc8b74b4bebdf887ff4472ffaecbd4bab116265acade03b4e3ff0",
+          "com.docker.compose.project": "gotchi-laned",
+          "com.docker.compose.version": "5.5.1",
+          "com.docker.compose.volume": "postgres_data"
+        }
+      },
+      {
+        "name": "gotchi_postgres_data",
+        "labels": {
+          "com.docker.compose.config-hash": "83ec795e5bb0b191dfa7240792677345d713ac256a815a897592f7ebc8d234b3",
+          "com.docker.compose.project": "gotchi",
+          "com.docker.compose.version": "5.5.1",
+          "com.docker.compose.volume": "postgres_data"
+        }
+      },
+      {
+        "name": "node22",
+        "labels": {}
+      }
+    ],
+    "networks": [
+      {
+        "id": "e3b8f85aec702f64160ca6b88874e855c50da8b1f7978417eacc7fd6439ed1cf",
+        "name": "bridge",
+        "labels": {}
+      },
+      {
+        "id": "628e97bd06cbac2bd079760e243b077032ac672d0a3212084bc6778a521b11a7",
+        "name": "gotchi_default",
+        "labels": {
+          "com.docker.compose.config-hash": "3b8390949d16d0fb6d524599dd2c746495a1c44d5e14d5eefde36f2ab4ce81be",
+          "com.docker.compose.network": "default",
+          "com.docker.compose.project": "gotchi",
+          "com.docker.compose.version": "5.5.1"
+        }
+      },
+      {
+        "id": "c8c30ec5ce1c0546380890ea0f39618309f8ecf65215d8ab6dca30fed75ded2d",
+        "name": "host",
+        "labels": {}
+      },
+      {
+        "id": "e14261cbd9aa919f92ab23f2a7eaf65f9ce2b38163c1df7433a737d120b956b2",
+        "name": "none",
+        "labels": {}
+      }
+    ]
+  },
+  "diff": {
+    "unattributed": [],
+    "engine_state_changed": false
+  },
+  "residue": [
+    {
+      "kind": "containers",
+      "change": "added",
+      "id": "17f11358e68596ab39a803c66b58c536045702a21ac957f873e9e72219a888af",
+      "name": "trwr-r_aaaadikwcu654aufx2c-backend.helper",
+      "removed": true
+    },
+    {
+      "kind": "containers",
+      "change": "added",
+      "id": "bb4ec7068d6654fa68b2c0722f1566713de30f0a3b586a8972c4b042ae44c7bb",
+      "name": "trwr-r_aaaadikwcu654aufx2c-backend.postgres",
+      "removed": true
+    },
+    {
+      "kind": "containers",
+      "change": "added",
+      "id": "144c27fd2c729a3737f327afb7818cdf5aba462e78d6f546cc6e82d873a7d0fa",
+      "name": "trwr-r_aaaadikwckyqsxvzjvs-backend.helper",
+      "removed": true
+    },
+    {
+      "kind": "containers",
+      "change": "added",
+      "id": "d6d26150550797136787e519cd2195f10695cfd3d8d4b879bef586341e06699a",
+      "name": "trwr-r_aaaadikwckyqsxvzjvs-backend.postgres",
+      "removed": true
+    }
+  ]
+}
