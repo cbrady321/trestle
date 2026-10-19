@@ -37,8 +37,9 @@ never written. A pack's hour-long poll loop that checks `ctx.cancelled` never ge
 - **The window comes out of the plugin's own deadline**, as a workflow root's does: the release
   point is the deadline minus the slice. The run's deadline, finalization margin and admission
   arithmetic (`lease.would_overrun` already adds the slice) are unchanged.
-- **The plugin sees the stop through `ctx.cancelled`**, which is now true once the cancel flag
-  **or** the release-point flag exists. A plugin that loops on `ctx.cancelled` and on
+- **The plugin sees the stop through `ctx.cancelled`**, which for a plugin that declares
+  `stop_grace` is true once the cancel flag **or** the release-point flag exists (for any other
+  plugin it reads the cancel flag alone, as before, so its stop is unchanged). A plugin that loops on `ctx.cancelled` and on
   `ctx.remaining()` writes its final artifact and returns. The run still ends with the stop's
   cause (`cancelled` or `timed_out`); what the plugin attached in the window is kept.
 - **A workflow may not declare it**: publication refuses `stop_grace` on a workflow entry, whose

@@ -81,8 +81,12 @@ class RuntimeContext:
         events_path: Path,
         limits: CaptureLimits | None = None,
         scrubber: redact.Scrubber = redact.NO_SCRUB,
+        watch_release_point: bool = False,
     ) -> None:
         self._scrubber = scrubber
+        # G3: only a plugin that declared `stop_grace` sees its release point as a stop; any other
+        # keeps today's behaviour (cancelled reads the cancel flag alone, the kill ends it)
+        self._watch_release_point = watch_release_point
         self._work = work
         self._evidence = evidence
         self.deadline = deadline
@@ -115,9 +119,11 @@ class RuntimeContext:
 
     @property
     def cancelled(self) -> bool:
-        """The run has been stopped: cancelled, or at its release point (its deadline less its
-        release slice, G3). A plugin that declares `stop_grace` has that long to finish."""
-        return (self._work / "cancel.flag").exists() or (self._work / "release_point.flag").exists()
+        """The run has been stopped: cancelled, or, for a plugin that declared `stop_grace`, at
+        its release point (its deadline less that grace, G3), with the grace left to finish."""
+        if (self._work / "cancel.flag").exists():
+            return True
+        return self._watch_release_point and (self._work / "release_point.flag").exists()
 
     @property
     def run_services(self) -> RunServices:

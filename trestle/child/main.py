@@ -90,6 +90,7 @@ def main(argv: list[str] | None = None) -> int:
         events_path=evidence / "events.ndjson",
         limits=limits,
         scrubber=redact.Scrubber(secrets=secrets, roots=roots),
+        watch_release_point=_declares_stop_grace(plugin_path),
     )
     if plan is not None:
         # B2-C14: a workflow run's callable reaches the run's services through its Context;
@@ -232,6 +233,18 @@ def _load_plugin_callable(plugin_path: Path) -> Callable[..., object]:
         return select_entry(module, _manifest_entry(plugin_path))
     except ValidationFailed as exc:
         raise RuntimeError(f"{exc} in {plugin_path}") from exc
+
+
+def _declares_stop_grace(plugin_path: Path) -> bool:
+    """G3: the snapshot's manifest records a declared `stop_grace`."""
+    manifest_path = plugin_path.with_name("manifest.json")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if not isinstance(manifest, dict):
+        return False
+    return DeclaredMetadata.from_manifest(manifest).stop_grace_s is not None
 
 
 def _manifest_entry(plugin_path: Path) -> str | None:
