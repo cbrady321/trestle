@@ -10,13 +10,12 @@ from trestle.common.types import PublishView, RequestOutcome, RunView
 from trestle.server.plugin_schema import DeclarationError, parse_summary_field
 
 PR_BATCH = """\
-from dataclasses import dataclass
+from typing import TypedDict
 
 from trestle.plugin.surface import Context, trestle
 
 
-@dataclass
-class Target:
+class Target(TypedDict):
     id: str
     pr_url: str
     head_ref: str
@@ -25,8 +24,7 @@ class Target:
     log: str
 
 
-@dataclass
-class Batch:
+class Batch(TypedDict):
     aaa: str
     survey: str
     targets: list[Target]
@@ -34,18 +32,21 @@ class Batch:
 
 @trestle(summary_fields=["survey", "targets[id,pr_url,checks,verdict]"])
 def pr_batch(ctx: Context, count: int = 6) -> Batch:
-    targets = [
-        Target(
-            id=f"t{n}",
-            pr_url=f"https://example.test/pr/{n}",
-            head_ref="feature/" + "x" * 300,
-            checks="passing" if n % 2 else "failing",
-            verdict="ok" if n % 2 else "blocked",
-            log="l" * 2000,
-        )
+    # TypedDicts, plain mappings at run time, not typed records (dataclasses): the table reads a
+    # list of objects either way, and the test stays independent of K-3/4, whose decline drill
+    # turns typed records off
+    targets: list[Target] = [
+        {
+            "id": f"t{n}",
+            "pr_url": f"https://example.test/pr/{n}",
+            "head_ref": "feature/" + "x" * 300,
+            "checks": "passing" if n % 2 else "failing",
+            "verdict": "ok" if n % 2 else "blocked",
+            "log": "l" * 2000,
+        }
         for n in range(count)
     ]
-    return Batch(aaa="a" * 6000, survey="partial", targets=targets)
+    return {"aaa": "a" * 6000, "survey": "partial", "targets": targets}
 """
 
 

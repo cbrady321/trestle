@@ -138,7 +138,7 @@ from trestle.plugin import Blocked, Context, trestle
 
 
 @trestle(deadline=1800, packages=["my_pack"], stop_grace=5, summary_fields=["prs[id,state]"])
-def watch_prs(ctx: Context, repo: str) -> dict[str, object]:
+def watch_prs(ctx: Context, repo: str) -> dict[str, list[int]]:
     while not ctx.cancelled and ctx.remaining() > 30:
         who = ctx.exec(["gh", "pr", "list", "--repo", repo, "--json", "number,state"], timeout=60)
         if not who.ok and "auth login" in who.stderr:

@@ -5,9 +5,9 @@ of what a published plugin may import."""
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
+from typing import TypedDict
 
 import pytest
 
@@ -17,8 +17,7 @@ from trestle.plugin.testing import FakeContext, call_plugin, exec_result
 from trestle.plugin.testing import trestle_ctx as trestle_ctx  # the fixture, as a conftest gets it
 
 
-@dataclass
-class Report:
+class Report(TypedDict):  # a mapping, not a typed record: independent of K-3/4's switch
     state: str
     checked: int
 
@@ -35,7 +34,7 @@ def check_pr(ctx: Context, pr: int, rounds: int = 2) -> Report:
         status.write_text(f"round {i}: {state}\n", encoding="utf-8")
         ctx.attach(status, name="status.md")
         ctx.event("round", i=i, state=state)
-    return Report(state=state, checked=rounds)
+    return {"state": state, "checked": rounds}
 
 
 def test_a_plugin_runs_against_a_scripted_exec(tmp_path: Path) -> None:
