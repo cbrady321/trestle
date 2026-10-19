@@ -11,9 +11,9 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from trestle.child.validate import undeclared_import_warning
 from trestle.common import clock, codes
 from trestle.common.fsutil import atomic_write, sha256_bytes, sha256_file
+from trestle.common.importscan import undeclared_import_warning
 from trestle.common.types import (
     CatalogView,
     FailedPluginRow,

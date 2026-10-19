@@ -33,9 +33,9 @@ Then catch the risky patterns at publication: undeclared imports, raw subprocess
 |---|---|---|---|
 | `github_pr` | Open, monitor, ci_report and comments over N PRs (gh + git) | `run_github_pr_suite` (`batch.py:78`), CLI `github-pr-suite` (`cli.py:58`) | `ctx.log`, `ctx.progress(fraction)` once per poll round (`batch.py:393`), `keep()`, which re-attaches `suite.json`, `suite.md` (`suite.py:64-68`) and `monitor-status.md` (`batch.py:396`). Reads `ctx.deadline` and `ctx.cancelled` with `getattr` (`batch.py:320`, `chain/__init__.py:55-61`) |
 | `chain` | Cases as data, per-group setup, gates leading to BLOCKED, suite report | `Chain.run_suite` (`chain/__init__.py:201`) | progress per step (`:175`), log on failure (`:187`), trail, `suite.md` and `suite.json` artifacts (`:196-238`) |
-| `local_system_up` | Manifest-driven hybrid stack: BDC containers plus host-run locals | `up_stack`, `restart_local`, `stop_local` (`orchestrator.py:93,190,172`), CLI `local-system-up` | **No ctx at all.** Uses `logging` (`orchestrator.py:290`), JSON to stdout (`cli.py:152-176`) |
-| `bdc_compose_up` | AWS STS preflight, BDC bootstrap scripts, compose waves | `prepare_compose` and `up_compose_wave` (orchestrator), `run_bdc_bootstrap` (`bootstrap.py:44`) | none. Runs `bash` scripts (`bootstrap.py:178`) and `aws sso login` (`aws_preflight.py:102-123`) |
-| `hibob_project_up` | Heal, reclaim, start and probe for local Python and Gradle apps | `ensure_and_start`, `stop_project` (`launcher.py:33,279`) | none. Detached `Popen(start_new_session=True)` (`launcher.py:243-250`) |
+| `system_up` | Manifest-driven hybrid stack: vendor containers plus host-run locals | `up_stack`, `restart_local`, `stop_local` (`orchestrator.py:93,190,172`), CLI `local-system-up` | **No ctx at all.** Uses `logging` (`orchestrator.py:290`), JSON to stdout (`cli.py:152-176`) |
+| `compose_up` | AWS STS preflight, vendor bootstrap scripts, compose waves | `prepare_compose` and `up_compose_wave` (orchestrator), `run_vendor_bootstrap` (`bootstrap.py:44`) | none. Runs `bash` scripts (`bootstrap.py:178`) and `aws sso login` (`aws_preflight.py:102-123`) |
+| `app_up` | Heal, reclaim, start and probe for local Python and Gradle apps | `ensure_and_start`, `stop_project` (`launcher.py:33,279`) | none. Detached `Popen(start_new_session=True)` (`launcher.py:243-250`) |
 | `kafka`, `logs`, `http_stub` | System-test building blocks | `KafkaCli`, `wait_for_patterns`, `HttpStub` | `logs` takes a `live` callback (`logs/__init__.py:50`) |
 | `core/artifacts` | Its own `PackContext` protocol plus `keep()` | none | redeclares the Context protocol **without** `cancelled` and `deadline` (`core/artifacts.py:10-14`) |
 
@@ -44,7 +44,7 @@ The zip uses none of these: `summary_fields`, `deadline`, `packages`, `secrets`,
 ### Diff against `packages/trestle-packs` on master (v0.3.1)
 
 - **Only in the repo:** `container`, `fakes`, `grant`, `process` (pid+start-time identity, `process/identity.py`), `provision`, `testrun`, `toolchain`, the conformance kit (`tests/conformance/*`), and `py.typed`.
-- **Only in the zip:** `bdc_compose_up`, `hibob_project_up`, `local_system_up`, `chain`, `kafka`, `logs`, `http_stub`, `github_pr`, and `keep()`.
+- **Only in the zip:** `compose_up`, `app_up`, `system_up`, `chain`, `kafka`, `logs`, `http_stub`, `github_pr`, and `keep()`.
 - **Shared but different:**
   - The zip **lacks** fixes the repo has: the duplicate-service check in `core/dag.py`; the `CancelToken` and `PollCancelled` in `core/readiness.py` (BFD-45); `reset_volumes` (K-6) in `docker/runner.py`; error counting in `pytest/runner.py`.
   - The zip **adds** what the repo lacks: multiple `compose_files`, `compose_profiles`, `no_deps`, and `stop(services=)` in `docker/spec.py`, `docker/compose_whale.py` and `docker/backend.py`.
@@ -77,12 +77,12 @@ Core's enforced deadline kills these eventually. But a step that hangs takes the
 
 Core's own `LocalProcessPort` forbids identity by port occupancy (WR-OWN-7) and kills only a recorded (pid, start) (`master:packages/trestle-packs/trestle_packs/process/local.py:12-16`). That helper is pack-private, not a public API.
 
-**F7. Lifetime mismatch.** `hibob_project_up` detaches services with `start_new_session=True` and expects them to outlive the call (`restart_local` between cases; `orchestrator.py:190-204`). Core stops every attributable descendant "in whatever session it has moved to" when a run ends (`docs/plugins.md:131-137`). Started from one plugin run, those services die when the run ends, except the Gradle daemon's double-forked JVM, which escapes attribution (`launcher.py:286-291`). There is no plain-plugin way to declare "this outlives the run" (the tree has `Lifetime.DURABLE`, `workflow/declarations.py:61-63`).
+**F7. Lifetime mismatch.** `app_up` detaches services with `start_new_session=True` and expects them to outlive the call (`restart_local` between cases; `orchestrator.py:190-204`). Core stops every attributable descendant "in whatever session it has moved to" when a run ends (`docs/plugins.md:131-137`). Started from one plugin run, those services die when the run ends, except the Gradle daemon's double-forked JVM, which escapes attribution (`launcher.py:286-291`). There is no plain-plugin way to declare "this outlives the run" (the tree has `Lifetime.DURABLE`, `workflow/declarations.py:61-63`).
 
 **F8. Undeclared write effects and races.**
 
 - `github_pr` stages, commits (with a fixed message) and pushes (`open.py:85-99`), then creates or **edits** PRs (`open.py:132-138`), from a thread pool (`batch.py:254-258`).
-- `bdc_compose_up` runs `up --remove-orphans` on a shared project (`bootstrap.py:259`) and `local_system_up` stops containers (`orchestrator.py:225`).
+- `compose_up` runs `up --remove-orphans` on a shared project (`bootstrap.py:259`) and `system_up` stops containers (`orchestrator.py:225`).
 
 None of this is declared. Two runs on the same git root or compose project race. `env_arg` gives exactly one key (`docs/plugins.md:44-51`), and the zip uses none.
 
@@ -94,7 +94,7 @@ None of this is declared. Two runs on the same git root or compose project race.
 
 - `SuiteDigest.to_dict` has no top-level verdict or counts, only `survey` and `targets` (`github_pr/models.py:125-146`).
 - `SuiteResult.rows` are markdown strings (`chain/__init__.py:235-239`), which the T6 table form cannot render.
-- `local_system_up` returns an `OrchestrationResult` whose `aws_preflight` may be an arbitrary object (`orchestrator.py:64-68`).
+- `system_up` returns an `OrchestrationResult` whose `aws_preflight` may be an arbitrary object (`orchestrator.py:64-68`).
 
 **F12. A pack cannot tell the agent what it needs.**
 
@@ -183,7 +183,7 @@ Warnings only; nothing runs. *Acceptance:* publishing the `docker_stack` example
 - *Change:* expose a public `trestle.workflow.process` (pid+start identity, `LocalProcessPort` with `Lifetime.DURABLE`, host-kept and recorded in the home). Add a matching `query(view="services")` and a release plugin. Until then, document that detached services die with the run.
 - *Lands in:* `trestle/workflow/ports.py`, the home store, `process/local.py` promoted from the packs.
 - *Risk:* a new ownership domain outside a run. Needs a decision record.
-- *Acceptance:* `hibob_project_up` can start ai-mcp in run A and stop it in run B by selector, with no port-occupancy kill.
+- *Acceptance:* `app_up` can start an app in run A and stop it in run B by selector, with no port-occupancy kill.
 
 **R7b. Thread-safe Context (enforce, S).**
 
@@ -219,7 +219,7 @@ Warnings only; nothing runs. *Acceptance:* publishing the `docker_stack` example
 **R11. A smaller tree on-ramp (support, M).**
 
 - *Problem:* F14.
-- *Change:* `trestle.workflow.simple`. `step(unit, fn, needs=, budget=)` builds a `LeafDeclaration` with `NoAction` or `Acted` from a function, so the waves in `chain`, `local_system_up` and `github_pr` map onto `AllDeclaration` with per-part verdicts.
+- *Change:* `trestle.workflow.simple`. `step(unit, fn, needs=, budget=)` builds a `LeafDeclaration` with `NoAction` or `Acted` from a function, so the waves in `chain`, `system_up` and `github_pr` map onto `AllDeclaration` with per-part verdicts.
 - *Acceptance:* the docs example shrinks under 40 lines, and `open_waves` becomes `needs`.
 
 ### Conflicts with recorded decisions
@@ -227,7 +227,7 @@ Warnings only; nothing runs. *Acceptance:* publishing the `docker_stack` example
 - **T4 / shell CLIs:** stay rejected. R3's `run_local` is test-only and offers no run id or ledger. The pack's `[project.scripts]` should go (see §5).
 - The **`exec` plugin** (gap table) and **R1 `ctx.exec`** complement each other. R1 is in-plugin only; it must not become an agent-facing tool, and the surface stays at ten tools.
 - **R4 `env=`** values come from `config.toml`, never from args or the inherited shell, which is consistent with Decision 1's environment.
-- **R7** touches D-9 only through process lifetime, not credentials. Note the memory rule "AWS demo mode only": `bdc_compose_up` drives real `aws sso login`. Core must not grow real AWS wiring for it; R4's `Blocked` is the safe shape.
+- **R7** touches D-9 only through process lifetime, not credentials. Note the memory rule "AWS demo mode only": `compose_up` drives real `aws sso login`. Core must not grow real AWS wiring for it; R4's `Blocked` is the safe shape.
 
 ## 4. T5 and T7 verdicts
 
@@ -256,6 +256,6 @@ Warnings only; nothing runs. *Acceptance:* publishing the `docker_stack` example
 
 - `zip:.git/config` has `[include] path = /Library/Application Support/Bold Agent/Resources/bold_git_tools/config`. This is an external, unreviewed git config include that would apply to any git command run in that directory, so I ran none. I did not read the included file; it is outside the zip.
 - I did not read or verify: about 120 `.pyc` files (cpython-313 and 314; they cannot be confirmed to match the sources), `.git/objects` and `.git/index`, and `.pytest_cache` and `.ruff_cache`. `.git/hooks` holds only `*.sample` files.
-- I found no network endpoints beyond GitHub URL parsing and localhost health probes. The packs do run host-mutating tools when invoked: `git push`, `gh pr create`/`edit`, `aws sso login`, BDC `bash` scripts (`dockerHosts.sh` probably edits hosts), `pip`/`poetry install`, and SIGKILL by port.
-- The data has personal and organizational details: author `<author email>`, internal repo names, and absolute paths under `<user-home>/` (`examples/local-system-up-ai-mcp-hibob.yaml`).
+- I found no network endpoints beyond GitHub URL parsing and localhost health probes. The packs do run host-mutating tools when invoked: `git push`, `gh pr create`/`edit`, `aws sso login`, vendor `bash` scripts (`dockerHosts.sh` probably edits hosts), `pip`/`poetry install`, and SIGKILL by port.
+- The data has personal and organizational details: author `<author email>`, internal repo names, and absolute paths under `<user-home>/` (an example manifest).
 - I found no embedded instructions aimed at an agent.

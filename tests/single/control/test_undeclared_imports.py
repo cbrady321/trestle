@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from trestle.child.validate import undeclared_import_warning, undeclared_imports
+from trestle.common.importscan import undeclared_import_warning, undeclared_imports
 from trestle.common.types import PublishView
 from trestle.server.main import create_kernel
 

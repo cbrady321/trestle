@@ -38,7 +38,10 @@ def test_a_live_run_is_observable_from_an_mcp_client() -> None:
         notes.append(message or "")
 
     async def exercise() -> None:
-        transport = StreamableHttpTransport(url=f"http://127.0.0.1:{port}/mcp")
+        transport = StreamableHttpTransport(
+            url=f"http://127.0.0.1:{port}/mcp",
+            headers={"Authorization": f"Bearer {mcp_host.agent_token(home)}"},
+        )
         async with Client(transport=transport, timeout=tolerances.JOIN_WAIT_S * 4) as client:
             started = (
                 await client.call_tool(

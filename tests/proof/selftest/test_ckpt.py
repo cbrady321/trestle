@@ -443,8 +443,9 @@ def test_root_live_world_schedules_every_command_once_timing_ones_alone(monkeypa
 def test_release_graft_follows_every_full_history_checkout():
     """Release option (c): every job whose checkout fetches full history (`fetch-depth: 0`, tags)
     runs `release-graft` directly after that checkout, which keeps its whole `with:`; no shallow job
-    runs it. The step is a no-op unless a root of HEAD carries `Release-Of:`, and grafts only onto
-    an archived commit with the same tree."""
+    runs it. The step is a no-op unless a commit of HEAD carries `Release-Of:` (a parentless
+    release, or one release commit on the previous one), and grafts only onto an archived commit
+    with the same tree."""
     yaml = pytest.importorskip("yaml")
     ci_path = Path(__file__).resolve().parents[3] / ".github" / "workflows" / "ci.yml"
     jobs = yaml.safe_load(ci_path.read_text())["jobs"]
