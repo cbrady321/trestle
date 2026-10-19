@@ -34,7 +34,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-repo="$(cd "$(dirname "$0")/.." && pwd)"
+# TRESTLE_REPO: the checkout to install from (scripts/update.sh sets it); default: this script's
+repo="${TRESTLE_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
 git=(git -C "$repo")
 say() { printf 'install.sh: %s\n' "$*"; }
 die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }

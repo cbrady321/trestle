@@ -191,8 +191,11 @@ in one line.
 
 ## 5. Upgrade
 
-`scripts/install.sh` (above) moves an installed service to the newest release in one command. By
-hand:
+`scripts/update.sh` fetches the newest release from GitHub and runs that release's own
+`scripts/install.sh`, so a release can change how it is installed. It takes `--release vX.Y.Z`,
+`--dir DIR` (the checkout; cloned there when missing, default `~/trestle` outside a checkout) and
+passes `--drain`, `--no-packs` and `--venv` through. `scripts/install.sh` alone does the same from
+the checkout as it is. By hand:
 
 ```bash
 git -C /ABS/PATH/TO/trestle pull      # an editable install: the checkout's new commit

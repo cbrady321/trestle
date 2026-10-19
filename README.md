@@ -19,6 +19,9 @@ newest release with one command (`--drain` waits for live runs; `v0.4.0` names a
 scripts/install.sh
 ```
 
+To update later, `scripts/update.sh` fetches the newest release from GitHub (cloning into
+`~/trestle` when run outside a checkout) and runs that release's own install script.
+
 Or by hand:
 
 ```bash
