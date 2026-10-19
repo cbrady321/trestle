@@ -8,7 +8,7 @@ from trestle_packs.migrate.yoyo_runner import YoyoResult, run_yoyo_apply
 from trestle.plugin.surface import Context, trestle
 
 
-@trestle
+@trestle(packages=["trestle_packs"])
 def migrate_apply(
     ctx: Context,
     backend: str = "alembic",

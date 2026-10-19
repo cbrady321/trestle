@@ -7,13 +7,52 @@
 
 ## Install
 
-```bash
-pip install -e ".[dev]"
-pip install -e ".[packs]"          # or: pip install -e "packages/trestle-packs[all]"
-trestle serve --plugin-dir examples/packs
-```
+A pack is two things: a **library** (here the `trestle_packs` package) and a **folder of thin
+`@trestle` wrappers** that call it (here `examples/packs/`). Trestle never loads plugins from a
+package's entry points: the service publishes the wrapper files it finds in the folders listed
+under `[plugins] paths`, the same way as any other plugin. From a running service
+([`install.md`](install.md)):
 
-If `trestle_packs` is missing, `list_plugins` returns `valid: false` on pack plugins, a `catalog_hint` with install instructions, and `run` returns `admission.import_failed` (no `run_id`).
+1. **Install the library into the service's environment**, the one whose `trestle` binary the
+   service unit runs (the `pip` beside that binary), not another virtualenv:
+
+   ```bash
+   pip install -e "packages/trestle-packs[all]"    # or: pip install -e ".[packs]"
+   ```
+
+2. **List the wrapper folder** in `$TRESTLE_HOME/config.toml`, by absolute path, keeping the
+   folders already there (the default is `$TRESTLE_HOME/plugins`):
+
+   ```toml
+   [plugins]
+   paths = ["~/.trestle/plugins", "/ABS/PATH/TO/trestle/examples/packs"]
+   ```
+
+3. **Give plugins the operator settings they read** (the env pack's `TRESTLE_DOCKER_PATH`,
+   `TRESTLE_IMAGE_*`, `TRESTLE_ENV_COMPOSE_FILE`; see [`environment.md`](environment.md)) in the
+   same file. The service passes nothing from your shell:
+
+   ```toml
+   [plugins.env]
+   TRESTLE_ENV_COMPOSE_FILE = "/ABS/PATH/TO/compose.yaml"
+   TRESTLE_DOCKER_PATH = "/usr/local/bin/docker"   # only if docker is not on the service's PATH
+   ```
+
+4. **Restart:** `trestle service restart` (`[plugins] paths` is read at start).
+5. **Check:** `list_plugins` lists `docker_stack`, `pytest_run`, `migrate_apply` and
+   `integration_pipeline` as valid.
+
+If `trestle_packs` is missing from the service's environment, `list_plugins` returns `valid: false`
+on pack plugins, a `catalog_hint` with install instructions, and `run` returns
+`admission.import_failed` (no `run_id`).
+
+**Writing your own pack:** ship the library as a normal Python distribution and a folder of
+wrapper files, each a few lines that import the library and declare it with
+`@trestle(packages=["your_pack"])`, so its code is recorded at publication and checked at each
+run start (an undeclared import is published with a warning). Unit-test the wrappers with
+`trestle.plugin.testing` ([`plugins.md`](plugins.md#testing-a-plugin-without-a-server)). After
+upgrading the library, the next run of a wrapper stops with `execution.provenance_mismatch` until
+the wrapper is published again (`trestle service restart` republishes every watched file).
 
 ---
 

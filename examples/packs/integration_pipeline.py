@@ -45,7 +45,7 @@ class PipelineStack:
     depends_on: dict[str, list[str]] = field(default_factory=dict)
 
 
-@trestle
+@trestle(packages=["trestle_packs"])
 def integration_pipeline(
     ctx: Context,
     stack_spec: PipelineStack,

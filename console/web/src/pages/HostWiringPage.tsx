@@ -30,7 +30,7 @@ export function HostWiringPage() {
   return (
     <div>
       <h1>Host wiring</h1>
-      <p>Static MCP stdio snippet for agent hosts — operator HTTP does not replace stdio MCP.</p>
+      <p>Static MCP snippet for agent hosts: the service URL, with the agent token named by environment variable. Operator HTTP does not replace it.</p>
       {loading && <Alert>Loading snippet…</Alert>}
       {error && <Alert variant="error">{error}</Alert>}
       {!loading && !error && (

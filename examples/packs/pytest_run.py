@@ -9,7 +9,7 @@ from trestle_packs.pytest.runner import PytestResult, PytestSpec, run_pytest
 from trestle.plugin.surface import Context, trestle
 
 
-@trestle
+@trestle(packages=["trestle_packs"])
 def pytest_run(
     ctx: Context,
     path: str = ".",

@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import subprocess
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -184,22 +183,24 @@ def _http_server(home: Path) -> Iterator[str]:
     proc, port = mcp_host.serve_http(home)  # `--port 0`: the port it bound, never a guess
     url = f"http://127.0.0.1:{port}/mcp"
     try:
-        asyncio.run(_wait_ready(url))
+        asyncio.run(_wait_ready(url, home))
         yield url
     finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=tolerances.PROC_WAIT_S)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=tolerances.PROC_WAIT_S)
+        mcp_host.stop_http(proc)
 
 
-async def _wait_ready(url: str) -> None:
+def _transport(url: str, home: Path) -> StreamableHttpTransport:
+    """An MCP client transport carrying the home's agent token."""
+    return StreamableHttpTransport(
+        url=url, headers={"Authorization": f"Bearer {mcp_host.agent_token(home)}"}
+    )
+
+
+async def _wait_ready(url: str, home: Path) -> None:
     deadline = time.monotonic() + tolerances.JOIN_WAIT_S
     while True:
         try:
-            async with Client(transport=StreamableHttpTransport(url=url)) as client:
+            async with Client(transport=_transport(url, home)) as client:
                 await client.list_tools()
                 return
         except Exception:
@@ -223,8 +224,8 @@ async def _call(client: Client[Any], tool: str, args: dict[str, Any]) -> dict[st
 async def _cross_session_cancel(url: str, home: Path) -> tuple[dict[str, Any], ...]:
     """Session A starts a long run; session B cancels it; then A does. Returns B's answer, the
     run's view after B's attempt, A's answer, and the run's final view."""
-    transport_a = StreamableHttpTransport(url=url)
-    transport_b = StreamableHttpTransport(url=url)
+    transport_a = _transport(url, home)
+    transport_b = _transport(url, home)
     async with Client(transport=transport_a) as a, Client(transport=transport_b) as b:
         started = await _call(
             a, "run", {"plugin": FORBIDDEN, "args": {"seconds": LONG_S}, "wait_ms": NO_WAIT_MS}

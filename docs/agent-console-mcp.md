@@ -191,8 +191,9 @@ Filesystem drop-in (copy to `plugins/`) still works and uses the same hot-reload
 `ControlSurface.run` admits, starts `Conductor.drive` on a **background thread**, then waits up to `wait_ms` via `Project.await_one`.
 
 - `wait_ms=0` → immediate status frame (may be `queued` or `running`).
-- `wait_ms>0` on a slow plugin → returns a **`running` frame** when the deadline elapses; join with `await_runs`.
+- `wait_ms>0` on a slow plugin → returns a **`running` frame** when the deadline elapses; join with `await_runs`. The frame carries the run's latest `progress` when it has reported any.
 - Terminal within `wait_ms` → terminal `RunView` in one call (same as before).
+- While it waits, the call sends MCP progress notifications when the request carried a progress token (see [Evidence finalization and live runs](#evidence-finalization-r-qb-28-and-live-runs)).
 
 Long jobs: call `run(..., wait_ms=<above zero>, completion="terminal")`; one call returns the finished run, bounded by the run's deadline plus a margin (see `completion` below). Polling is for bounded mode only: with the default `completion="bounded"`, a `running` frame is joined with `await_runs`.
 
@@ -223,9 +224,16 @@ is listed in [`agents.md`](agents.md) (Run states).
 - A finished run's `RunView` carries `outcome` (`class`, `code`, `identity`, `recovered`): one class from `passed | cancelled | timed_out | execution_error`, classified from how the plugin process ended. It never reads `failed` or `blocked` in this release; those appear only in `answer.outcome`. For a workflow plugin (one that calls `run_tree`) the verdict is `answer.outcome`: `state` and `outcome.class` read `succeeded` / `passed` whenever the plugin returned normally, even when `answer.outcome` is `failed` or `blocked`. See [`agents.md` § Large tasks: the tree](agents.md#large-tasks-the-tree).
 - A finished run's `RunView` (and so the `run` and `await_runs` terminal responses) also carries `answer`, the one terminal answer, beside `state` and `outcome`; a run that has not ended has none. Its decisive keys are always present (`null`, never omitted): `outcome`, `root_stop`, `recovered`, `primary` (the node that decided, with its `code`, `human_action` and `resend`), `incomplete`, `error`, `cleanup` (`clean`, counts per disposition, `group_confirmed_gone`, `helpers_disclosed`, `lease_ended_unconfirmed`), `test_counts` and `detail`, then `listed_count` and `unconfirmed_count` (the full lengths) and the `listed` and `unconfirmed` entries that fit the run's summary budget. What does not fit is behind `detail`, a handle (`<run_id>/answer`) that `fetch` resolves to the full answer. The answer is recomputed from the run's durable record, never stored as a second authority.
 
-### Evidence finalization (R-QB-28)
+### Evidence finalization (R-QB-28) and live runs
 
-While a run is still executing, evidence-stream views (`run_tail`, `run_events`, `last_error`, etc.) return:
+While a run is in flight it can be watched (T1–T3):
+
+- **Latest progress.** `RunView.progress` is `{message, fraction, at}`, the run's newest `ctx.progress` (`fraction` is `null` when the plugin gave none). It is on every frame of a run that has not ended and has reported progress, so `run(wait_ms>0)` and `await_runs` return it when they time out; it is absent from a finished run's frame. `query(view="run")` has the same value in its `progress` column (`null` once the run has ended).
+- **Events.** `run_events` pages a running run's events. A page of a run whose evidence is not yet finalized carries `"live": true`: later pages may hold rows this one does not, so follow `next_cursor`, or query again later.
+- **Artifacts.** `run_artifacts` lists a running run's artifacts, also marked `"live": true`: one row per name, its current artifact (a plugin that attaches `status.md` every round has one `status.md` row, its newest). `fetch` of that `art_…` handle returns the newest file before the run ends. See `docs/plugins.md` (Artifacts and their limits) for re-attaching under a name.
+- **Progress notifications.** While `run(wait_ms>0)`, `run(completion="terminal")` or `await_runs` waits, a request that carried an MCP progress token gets `notifications/progress` for each new progress line (the newest at each poll, as `"<run_id>: <message> (<fraction>)"`) and a heartbeat (`"waiting: <run_id> <state>, …"`) after 15 s with nothing sent, so a long wait over streamable HTTP keeps its stream alive. `progress` in the notification is a counter, since MCP requires it to increase; read the `message`. A request without a token gets none, and nothing else about the wait changes.
+
+The views that need the run's final state still wait for it. `last_error`, `run_provenance`, `recent_failures` and `run_tail` on a running run return:
 
 ```json
 {
@@ -236,9 +244,11 @@ While a run is still executing, evidence-stream views (`run_tail`, `run_events`,
 }
 ```
 
-**Safe next:** `await_runs` with the `run_id`, or wait until `run` returns terminal, then query again. **No live tail** of a running run.
+`run_tail` stays among them because the wrapper writes a run's console only when the plugin process exits: there is no live tail of stdout. Use `RunView.progress` and `run_events` for a running run.
 
-After MCP `run` returns, evidence is finalized for that run — `not_finalized` is uncommon in single-session flows.
+**Safe next:** `await_runs` with the `run_id`, or wait until `run` returns terminal, then query again.
+
+After MCP `run` returns terminal, evidence is finalized for that run — `not_finalized` is uncommon in single-session flows.
 
 ### Admission refusals
 
@@ -263,8 +273,9 @@ Ask one question; pick one path. Prefer the **smallest** answer.
 | What did the plugin return? | `fetch` | `{run_id}/result` + `jsonpath` or `range` |
 | Why did it fail? | `query` | `last_error` + `{run_id}` (or `RunView.error`; K-10) |
 | What printed to wrapper stdout? | `query` | `run_tail` + `{run_id}` (post-finalize only) |
+| How far is a running run? | `RunView.progress` | from `run` / `await_runs`, or `query(run)` |
 | Structured run metadata? | `query` | `run` + `{run_id}` |
-| Event timeline? | `query` | `run_events` + `{run_id}` |
+| Event timeline? | `query` | `run_events` + `{run_id}` (live while running) |
 | Large array in summary? | `fetch` | `RunView.summary.handle` + `jsonpath` / `range` |
 | Artifact file bytes? | `query` → `fetch` | `run_artifacts` → `art_…` + `head` / `tail` / `grep` |
 | Pattern in artifact or result text? | `fetch` | `art_…` or `{run_id}/result` + `grep` |
@@ -292,14 +303,14 @@ When to pick each view vs `fetch`: MCP resource **`trestle://views`**. That cata
 
 | View | Params | Rows |
 |------|--------|------|
-| `run` | `run_id` | Status, plugin, state, timing |
+| `run` | `run_id` | Status, plugin, state, timing, latest `progress` while running |
 | `last_error` | `run_id` | The run's recorded explanation (`execution.*` code, phase, message), else the last error event; empty for a run that succeeded (K-10) |
 | `run_tail` | `run_id` | Wrapper stdout lines, oldest first |
-| `run_events` | `run_id` | Structured events |
+| `run_events` | `run_id` | Structured events; answers while running (`live: true`) |
 | `recent_runs` | — | Recent runs (paginated) |
 | `recent_failures` | — | Recent failed runs |
 | `run_provenance` | `run_id` | Snapshot, hashes |
-| `run_artifacts` | `run_id` | Artifact ids for the run |
+| `run_artifacts` | `run_id` | The run's current artifact per name (attached and promoted); answers while running (`live: true`) |
 | `artifact_refs` | `artifact_id` | Producer / referrers |
 | `run_by_key` | `idempotency_key` | Runs that used one key, newest first, with outcome and summary |
 

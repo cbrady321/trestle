@@ -41,6 +41,15 @@ to whole seconds.
 `summary_fields`, `env_arg` and `secrets` are declared and recorded in the snapshot's
 `manifest.json` (`declared`) and count toward its identity.
 
+`summary_fields` names the result fields the run summary keeps first when the whole result does not
+fit the summary budget. An entry may name a list-of-objects field with columns,
+`"targets[id,pr_url,checks,verdict]"`: the summary then shows that field as a table,
+`{"columns": [...], "rows": [[...], ...], "row_count": n}`, one row of those columns per object (a
+missing key is `null`), as many rows as the budget leaves room for. Rows left out are named by a
+`summary_budget` marker with reason `rows_truncated`, and the whole field is still at the summary's
+`next` handle. A field whose value is not a list of objects is kept as a plain field. A bracket that
+is not `name[column,...]`, a repeated column, or a field named twice is refused at publication.
+
 `env_arg` names the argument whose value is the run's environment: at most one run per value
 runs at a time across the whole home, whichever plugin or server started it. A second run with
 the same value waits in arrival order until the first ends, or is refused
@@ -56,6 +65,16 @@ arguments starts a fresh run (`retry_of` names the interrupted one) instead of r
 interrupted answer. Declare it only when a half-done run can be run again. `describe_plugin`
 shows it (`repeatable`).
 
+`stop_grace` (seconds; plain plugins only) asks for a window between a stop and the kill, so the
+plugin can finish cleanly: write its last status, return. From the moment a run is cancelled, or
+reaches its release point (its deadline less the grace), `ctx.cancelled` is true; the plugin has
+the grace to notice and return before the supervisor's kill. The grace is capped at the
+operator's release slice (`TRESTLE_RELEASE_SLICE_S`, 10 s by default) and comes out of the
+plugin's own deadline, never added to it. A run stopped this way still ends `cancelled` or
+`timed_out`; what it attached in the window is kept. It enters the snapshot identity only when
+declared; a workflow declaring it is refused at publication (a root's release slice is the
+operator's). See [the decision](decisions/plain-plugin-stop-grace.md).
+
 `packages` names the modules or packages the plugin imports from outside its own file, and is
 **recorded, not snapshotted** (R-J). Publication resolves each name on the import path the child
 process will use, without importing it, and records a digest of its `.py` files (a package's other files are not covered) in the manifest; the
@@ -65,7 +84,10 @@ compares each declared package with the recorded digest, before it loads the plu
 mismatch (the package was edited, moved off the import path or removed after publication) stops the run with
 `execution.provenance_mismatch` instead of running different code under the same snapshot id.
 Republish to accept the edit. A module the plugin imports but does not declare is not covered:
-it is neither recorded nor checked. Neither is anything a declared package itself imports, the
+it is neither recorded nor checked, and publication warns about it (it never refuses): a plugin
+that imports a module from outside the standard library and Trestle without listing its package
+in `packages=` is published with a `warnings` entry naming it, on the `publish_plugin` answer and
+on `describe_plugin`, and a line in `service.log`. `packages=["a"]` covers `a` and every `a.*`. Neither is anything a declared package itself imports, the
 interpreter, or the installed distributions: only the Trestle version is recorded, and none of
 these is checked at run start. `query(run_provenance)` lists the recorded `packages` and
 their digests for each run.
@@ -87,7 +109,8 @@ A run produces artifacts three ways, and the same limits hold on all three (K-17
 - **`outputs/`.** Every file under `ctx.outputs` is promoted to an artifact when the run ends, whatever
   the run's class.
 - **`ctx.attach(path, name=...)`** copies a file under the work directory into the run's evidence
-  now and returns its handle.
+  now and returns its handle. The artifact is listed by `run_artifacts`, and its handle fetches,
+  while the run is still going.
 - **`ctx.artifact(name)`** returns a staging path (`<name>.partial`). A staged file that is never
   attached is promoted when the run ends, under `name`; if it is attached, the attach takes it
   and it is not promoted again.
@@ -100,6 +123,16 @@ wrote it, and a refused `attach` returns the empty string, so a handle a plugin 
 fetches. Every promoted artifact is scrubbed of declared secret values first; a binary artifact that
 holds one is refused with a `secret_in_binary` marker. Limit markers are one per (stream, limit) for
 the whole run, however many things were dropped: the marker's byte total counts them all.
+
+**Re-attaching under the same name replaces.** Attaching again under a name already attached makes
+the new file that name's current artifact: `run_artifacts` shows one row per name, the newest, and
+`fetch` of that row's handle returns the newest file, during the run and after it. Earlier versions
+stay stored and their handles (the ids `attach` returned) still fetch, but they are not listed; the
+events record each one (`artifact_available` with `supersedes`, the id it replaced). A replacement
+takes no slot of the 1 000-artifact count, so a plugin can rewrite `status.md` every round of an
+hour-long run, but its bytes still count toward the byte limit. A file promoted at the end under
+a name the plugin attached (an `outputs/` file of the same name) becomes that name's current
+artifact too.
 
 ## Deadlines, cancel and subprocesses
 
@@ -118,7 +151,8 @@ attributable to the run (the run's process group and every descendant by parent 
 session it has moved to), waits at most `grace` (default 10 s), sends SIGKILL, and waits at most
 `kill` (default 5 s) for confirmation: `stop_bound` in all (`release_slice` + `grace` + `kill`,
 25 s by default), plus at most one supervisor `poll_interval` (0.05 s) to notice a cancel. A plain
-plugin's slice is 0, so its own stop takes `grace` + `kill`. The values are published in
+plugin's slice is 0 unless it declares `stop_grace` (then that, capped at `release_slice`), so its
+own stop takes its slice + `grace` + `kill`. The values are published in
 `trestle.common.clock` (`release_slice`, `grace`, `kill`, `stop_bound`, `poll_interval`); the
 operator sets `TRESTLE_RELEASE_SLICE_S`, `TRESTLE_CANCEL_GRACE_S` and `TRESTLE_CANCEL_KILL_S`. The
 finalization margin (`finalization_margin`, 35 s by default: the stop bound plus the
@@ -135,6 +169,103 @@ terminal path. A daemon that daemonizes by the classic double fork leaves attrib
 outlive the run, and the answer does not report it (`cleanup.processes` can still read `released`).
 Do not rely on Trestle to stop such a process; see
 [What stopping a run does not cover](security.md#what-stopping-a-run-does-not-cover).
+
+### Running a command: `ctx.exec`
+
+Prefer `ctx.exec` to calling `subprocess` yourself. It gives every command a time limit, kills
+what the command started, and keeps its output bounded:
+
+```python
+result = ctx.exec(["gh", "pr", "view", "123", "--json", "state"], timeout=60)
+if result.timed_out:
+    ...
+elif not result.ok:
+    ctx.log(f"gh failed: {result.stderr[-500:]}")
+state = json.loads(result.stdout)["state"]
+```
+
+- **argv only**, a non-empty list of strings: a single string is refused with `TypeError`, and no
+  shell ever runs. A program that is not found raises `FileNotFoundError` as `subprocess` does.
+- **Time limit.** `timeout` (seconds) defaults to the time left before the run's deadline,
+  `ctx.remaining()`, and is never longer than it. Past it, the command's whole process group gets
+  SIGTERM and, 2 s later, SIGKILL, and the result has `timed_out=True` and `returncode=None`. If
+  the run is stopped (`ctx.cancelled`) while the command runs, the group is killed the same way
+  and the result has `cancelled=True`. A command whose run has no time left is not started.
+- **Environment.** The command inherits the plugin's own environment (under the service: the
+  service's `PATH`, `HOME` and `TRESTLE_HOME` plus the operator's `[plugins.env]` table) with
+  `env` applied on top; a `None` value removes a variable. `cwd` and `input` (text or bytes for
+  its stdin; `/dev/null` otherwise) work as in `subprocess`.
+- **Output.** `result.stdout` and `result.stderr` hold at most `max_output_bytes` (1 MiB by
+  default) of each stream, decoded as UTF-8; `truncated` says a stream passed that cap, and
+  `output_bytes` counts everything the command wrote. The kept output, with the command line and
+  its status, is attached as an artifact under `output` (default `exec.log`) and its handle is
+  `result.artifact`. Every call under one name replaces the last (see re-attaching above), so a
+  poll that runs `gh` every 15 s for an hour holds one artifact slot; earlier calls' handles still
+  fetch. Pass another `output` name to keep a command's output apart, or `output=None` to keep
+  none.
+- Each call logs one line (`exec gh: exit 0 in 0.4s`).
+- `credentials=` is reserved for credential grants
+  ([decision record](decisions/service-and-credentials.md), change 5) and is refused with
+  `NotImplementedError` until they exist.
+- `ctx.exec` and the rest of the context are safe to call from several threads at once.
+
+`ExecResult` is importable from `trestle.plugin` for type hints. `result.ok` is true only for a
+command that ran to its end and exited 0.
+
+### When a person must act: `Blocked`
+
+A plugin that cannot go on until a person does something (an expired `aws sso login`, a missing
+tool, a prompt nobody will answer: a plugin's stdin is `/dev/null`) raises `Blocked` instead of
+failing:
+
+```python
+from trestle.plugin import Blocked
+
+who = ctx.exec(["aws", "sts", "get-caller-identity", "--profile", profile])
+if not who.ok and "expired" in who.stderr:
+    raise Blocked("aws_login", f"Run `aws sso login --profile {profile}`, then resend.")
+```
+
+The run ends normally (`state: succeeded`) and its answer reads `outcome: "blocked"`; the
+answer's `primary` carries `code` as `plugin.<code>` (here `plugin.aws_login`: a plugin's code
+never reads as one of Trestle's own `admission.*` or `execution.*` codes), the `human_action`,
+and `resend`: `"succeeds_after_action"` (the default: send the same request again once the action
+is done), `"will_not_succeed"` or `"unknown"`. The code is lower-case words joined by `_` or `.`;
+the human action is scrubbed of declared secrets like an error message. An agent reads the
+verdict from `answer.outcome`, reports the human action, and stops.
+
+## Testing a plugin without a server
+
+`trestle.plugin.testing` unit-tests a plugin in-process, with no server, run id or home:
+
+```python
+from trestle.plugin.testing import FakeContext, call_plugin, exec_result
+
+
+def test_check_pr(tmp_path):
+    def gh(argv, **kwargs):
+        return exec_result(argv, stdout="MERGED\n")
+
+    ctx = FakeContext(tmp_path, exec_handler=gh)
+    assert call_plugin(check_pr, {"pr": 7}, ctx=ctx) == {"state": "MERGED"}
+    assert ctx.exec_calls[0].argv == ("gh", "pr", "view", "7")
+```
+
+- **`FakeContext(root, deadline=300, exec_handler=None)`** implements the whole plugin context and
+  records what the plugin did: `logs`, `progress_updates`, `events`, `attachments` (each with the
+  id it replaced), `artifacts` (each name's current bytes) and `exec_calls`. It refuses what the
+  runtime refuses (a reserved event kind, an attach from outside `work/`, a shell string, a
+  `credentials=`). `exec` runs the command for real, bounded as at run time, unless an
+  `exec_handler(argv, **kwargs)` returns a scripted result (`exec_result(...)`). Set
+  `ctx.cancelled = True` to stop the run; `deadline` takes seconds, a `timedelta` or a datetime.
+- **`call_plugin(fn, args, ctx=...)`** calls a `@trestle` function as the child process does:
+  `args` in their JSON form, hydrated by the parameter annotations, and the result returned as
+  the JSON value the run would record.
+- **The `trestle_ctx` fixture** gives a `FakeContext` under the test's `tmp_path`: add
+  `pytest_plugins = ["trestle.plugin.testing"]` to your top-level `conftest.py`.
+
+The module is for tests only: a published plugin may not import it (publication admits only
+`trestle.plugin`'s exports).
 
 ## Supported types
 
@@ -453,7 +584,12 @@ and how an agent runs a tree and reads its answer is in
 
 ## Workflow packs
 
-Pre-built Docker / pytest / migration plugins live under `examples/packs/`. Install `pip install -e ".[packs]"` and point `--plugin-dir` at that folder. Guide: [`packs.md`](packs.md).
+A pack is a library plus a folder of thin `@trestle` wrapper files that call it, each declaring
+the library in `packages=`. Install the library into the service's own environment, add the
+wrapper folder to `[plugins] paths` in `config.toml`, and restart the service; Trestle publishes
+the wrappers like any other plugin file and never loads plugins from a package's entry points.
+The pre-built Docker / pytest / migration wrappers live under `examples/packs/`. Step by step:
+[`packs.md`](packs.md#install).
 
 ## Related
 

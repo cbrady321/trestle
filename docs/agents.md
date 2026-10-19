@@ -2,7 +2,7 @@
 
 **Audience:** coding agents (Cursor, Claude Desktop, other MCP hosts)  
 **Install:** [`docs/install.md`](install.md) · **Overview:** [`docs/overview.md`](overview.md) · **Security:** [`docs/security.md`](security.md)  
-**Cursor skill:** [`.cursor/skills/trestle/SKILL.md`](../.cursor/skills/trestle/SKILL.md)  
+**Agent skill:** [`skills/trestle/SKILL.md`](../skills/trestle/SKILL.md) (one call per objective, chaining, `blocked` runs) · **Cursor skill:** [`.cursor/skills/trestle/SKILL.md`](../.cursor/skills/trestle/SKILL.md)  
 **Full reference:** [`docs/agent-console-mcp.md`](agent-console-mcp.md)  
 **Plugins:** [`docs/plugins.md`](plugins.md) · **Packs:** [`docs/packs.md`](packs.md)
 
@@ -18,59 +18,46 @@ You do **not** call plugin names as MCP tools. You do **not** use filesystem pat
 
 ## Before your first `run`
 
-### 1. Install and bootstrap
+### 1. The service
 
-See [`install.md`](install.md). Short path:
+Trestle runs as the operator's per-user service ([`install.md`](install.md)); you reach it over
+MCP and nothing else. **Nothing you do as an agent runs `trestle` itself**: not `serve`, not
+`service`, not `init`, not `doctor`. Starting, stopping, upgrading and configuring Trestle is the
+operator's job.
 
-```bash
-pip install -e ".[dev,packs]"   # packs optional but recommended for workflow plugins
-trestle init                    # creates ~/.trestle, seeds echo.py
-trestle doctor                  # health + plugin counts — need plugins ≥ 1
-```
+**If the Trestle tools are missing, or the service does not answer** (connection refused, HTTP 401,
+every call failing the same way): say so plainly, name what you saw, and stop. Do not fall back to
+running the command in your own shell, and do not try to start the service. The operator fixes it
+with `trestle service status` / `start` ([`install.md`](install.md#troubleshooting)).
 
-An empty catalog means every `run` returns `admission.plugin_not_found`. Check `catalog_hint` on `list_plugins` if the catalog is empty.
-
-**Workflow packs** (Docker / pytest / migrations) require `pip install -e ".[packs]"` and a watched plugin directory — see [`packs.md`](packs.md).
+An empty catalog means every `run` returns `admission.plugin_not_found`; `list_plugins` then
+carries a `catalog_hint`. Report it to the operator rather than working around it.
 
 ### 2. Attach MCP
 
-Prefer user-level config so every workspace can use Trestle ([`install.md`](install.md)). Repo ships [`.cursor/mcp.json`](../.cursor/mcp.json) as a project override:
+The operator wires each host once ([`install.md`](install.md#2-wire-every-agent-host)): the URL
+`http://127.0.0.1:18732/mcp` with the agent token as `Authorization: Bearer <token>`. This repo's
+[`.cursor/mcp.json`](../.cursor/mcp.json) is a project override:
 
 ```json
 {
   "mcpServers": {
     "trestle": {
-      "command": "trestle",
-      "args": [
-        "serve",
-        "--plugin-dir",
-        "${workspaceFolder}/examples/packs"
-      ],
-      "env": { "TRESTLE_HOME": "~/.trestle" }
+      "url": "http://127.0.0.1:18732/mcp",
+      "headers": { "Authorization": "Bearer ${env:TRESTLE_AGENT_TOKEN}" }
     }
   }
 }
 ```
 
-Use the absolute path to your venv's `trestle` binary if it is not on `PATH`.
-
-**Project plugins** — point the server at repo tool folders:
-
-```bash
-trestle serve --plugin-dir ./tools --plugin-dir examples/packs
-```
-
-Or persist paths in `$TRESTLE_HOME/config.toml` under `[plugins].paths`.
-
-**Streamable HTTP** — for a host that cannot hold stdio, `trestle serve --transport streamable-http
---port 0` picks a free loopback port and prints `trestle: listening 127.0.0.1:<port>` on stderr;
-connect to `http://127.0.0.1:<port>/mcp` ([`install.md`](install.md#4-optional-streamable-http)).
+**Plugin folders** the service watches are the operator's `[plugins].paths` in
+`$TRESTLE_HOME/config.toml` (packs: [`packs.md`](packs.md)). An agent with the full profile can
+also add a plugin at runtime with `publish_plugin`.
 
 ### 3. Verify
 
 - Host shows **ten** tools (see table below).
-- `trestle doctor` → `health: ok`, plugins ≥ 1.
-- Optional: `python scripts/smoke_agent_mcp.py` → `SMOKE OK`.
+- `list_plugins` returns at least `echo`.
 
 ---
 
@@ -139,7 +126,7 @@ The full profile (default) is unchanged: ten tools, any published plugin, any ru
 
 1. **Refusals are not runs.** `admission.*` and `publication.*` outcomes have no `run_id`. Do not treat them as failed runs.
 2. **Handles, not paths.** `fetch("/tmp/foo")` → `projection.invalid_handle`. Use handles from `RunView` or `query`.
-3. **Evidence is post-finalize.** `query(run_tail|last_error|run_events, …)` on a running run → `projection.not_finalized` (`retryable: true`). Wait for terminal state or use `await_runs`.
+3. **Final-state evidence is post-finalize; progress is live.** `query(run_tail|last_error|run_provenance, …)` on a running run → `projection.not_finalized` (`retryable: true`): wait for terminal state or use `await_runs`. A running run's frame carries `progress` (its latest `ctx.progress`), and `run_events` and `run_artifacts` answer while it runs, marked `live: true`; `fetch` of a listed `art_…` returns the newest file. There is no live stdout tail.
 4. **A run that did not succeed explains itself (K-10).** `RunView.error` is `{code, phase, message}`: `code` is one of the stable `execution.*` codes (`import_failed`, `bind_failed`, `plugin_raised`, `result_unencodable`, `provenance_mismatch`, `cancelled`, `deadline_exceeded`, `worker_exit`, `interrupted`), `phase` says where it happened, and `message` is bounded (512 bytes) with host paths replaced by `<home>`, `<run>`, `<cwd>` and `<user-home>`. `query(last_error)` returns the same message; before this it said only `failed`, and `RunView.error` was never set. Both read one ledger record, `error_record`, so they agree, and they keep agreeing after a restart. Older runs, recorded before the record existed, keep the old `last_error` text and no `error`.
 5. **Check `limits_exceeded`.** When output exceeds caps, `RunView` marks suppressed streams — evidence is honestly incomplete. There is one marker per (stream, limit), however many events or artifacts it dropped; its `bytes_suppressed` is the total. Artifact caps (`stream: "artifacts"`, `max_artifact_count`, `max_artifact_bytes`) mark artifacts that were not stored.
 6. **Fetch truncation is success.** `truncated: true` with `scan_bytes` means narrow the window and continue — not an error. On `query`, `truncated: true` with `next_cursor` set means follow the cursor. With `next_cursor` null the recency window (500 runs) or the scan budget left runs out: reaching past it is not offered, and a run-scoped view of such a run by id answers `projection.outside_window` (an id with no run stays `projection.invalid_handle`).
@@ -158,7 +145,8 @@ Live catalog: MCP resource **`trestle://views`** (when to pick each named view v
 | Why did it fail? | `RunView.error`, or `query` | `last_error` + `{run_id}` |
 | Wrapper stdout lines? | `query` | `run_tail` + `{run_id}` (post-finalize) |
 | Run metadata? | `query` | `run` + `{run_id}` |
-| Event timeline? | `query` | `run_events` + `{run_id}` |
+| How far is a running run? | `RunView.progress` | from `run` / `await_runs` |
+| Event timeline? | `query` | `run_events` + `{run_id}` (live while running) |
 | Large array in summary? | `fetch` | `RunView.summary.handle` + `jsonpath` / `range` |
 | Artifact bytes? | `query` → `fetch` | `run_artifacts` → `art_…` + `head` / `tail` / `grep` |
 | Recent failures? | `query` | `recent_failures` |
@@ -227,14 +215,15 @@ abnormally is `worker_exit`; a run whose server died is `interrupted`.
 `run` admits work, starts execution on a background thread, then waits up to `wait_ms`:
 
 - `wait_ms=0` → immediate status frame (may be `queued` or `running`).
-- `wait_ms>0` on a slow plugin → returns a **`running` frame** when the deadline elapses; join with `await_runs`.
+- `wait_ms>0` on a slow plugin → returns a **`running` frame** when the deadline elapses; join with `await_runs`. The frame carries the run's latest `progress`.
 - Terminal within `wait_ms` → terminal `RunView` in one call.
+- While any of these waits, a request that carried an MCP progress token receives each new progress line as a progress notification, and a heartbeat after 15 s of silence, so a long wait over HTTP stays open (see `docs/agent-console-mcp.md`, Evidence finalization and live runs).
 
 **Long jobs:** call `run(plugin="…", args={…}, wait_ms=<above zero>, completion="terminal")`. One call returns the finished run, bounded by the run's own deadline plus a published margin, and no follow-up call is needed. Polling is for bounded mode only: with the default `completion="bounded"`, a run that outlives `wait_ms` returns a `running` frame and `await_runs` joins it.
 
 **`completion` (optional, default `"bounded"`, which is everything above unchanged).** Pass `completion="terminal"` to make one `run` call return only a finished run: the response follows the run's finalized terminal row (evidence finalized, then `succeeded`, `failed`, `cancelled`, `timed_out` or `interrupted`), never a `running` frame. The call is bounded by the run's own deadline plus a published finalization margin, not by `wait_ms`: a `wait_ms` above zero is accepted and ignored, and `wait_ms=0` (or below) is refused `admission.invalid_args` because a terminal call has to wait; so is any `completion` value other than `bounded` or `terminal`. If the run is somehow not terminal by that bound, the call answers `projection.terminal_wait_exceeded` (a refusal, not a run state; the run itself is unaffected and `await_runs` still joins it). While a `terminal` call is held, other calls (`cancel`, `query`, `await_runs`) are still answered.
 
-**One class per finished run.** A finished run carries one `answer` (the terminal answer: outcome, the deciding node as `primary`, `cleanup`, and the rest of the nodes in `listed`, bounded by the run's summary budget with the remainder behind `answer.detail`); see `docs/agent-console-mcp.md`. `answer.outcome` is the run's class, one of `passed`, `failed`, `blocked`, `cancelled`, `timed_out`, `execution_error`. A finished `RunView` also carries `outcome: {class, code, identity, recovered}`. Its `class` is classified from how the plugin process ended, so it is one of `passed`, `cancelled`, `timed_out`, `execution_error` and never reads `failed` or `blocked` in this release. `code` is the `execution.*` code for an `execution_error` and `null` for the others; `state` keeps its meaning underneath. For a plain plugin `outcome.class` and `answer.outcome` agree. For a workflow plugin (one that calls `run_tree`) they can disagree: read `answer.outcome` (see [Large tasks: the tree](#large-tasks-the-tree)).
+**One class per finished run.** A finished run carries one `answer` (the terminal answer: outcome, the deciding node as `primary`, `cleanup`, and the rest of the nodes in `listed`, bounded by the run's summary budget with the remainder behind `answer.detail`); see `docs/agent-console-mcp.md`. `answer.outcome` is the run's class, one of `passed`, `failed`, `blocked`, `cancelled`, `timed_out`, `execution_error`. A finished `RunView` also carries `outcome: {class, code, identity, recovered}`. Its `class` is classified from how the plugin process ended, so it is one of `passed`, `cancelled`, `timed_out`, `execution_error` and never reads `failed` or `blocked` in this release. `code` is the `execution.*` code for an `execution_error` and `null` for the others; `state` keeps its meaning underneath. For a plain plugin they agree, except that a plain plugin which raises `Blocked` reads `answer.outcome: "blocked"` with `answer.primary.human_action` (its code `plugin.<code>`) while `outcome.class` reads `passed`. For a workflow plugin (one that calls `run_tree`) they can disagree too. Always read `answer.outcome` (see [Large tasks: the tree](#large-tasks-the-tree)); for `blocked`, report the human action and stop.
 
 <!-- K-8 -->
 ### A succeeded run leaves no attributable process or run-created container behind (K-8)
@@ -640,7 +629,7 @@ Since v0.3.1 a key's expiry is fixed once, at admission, and recorded with the r
 
 | Role | Surface | Notes |
 |------|---------|-------|
-| **Agent** | MCP ten tools (`trestle serve`) | Retrieval-first; bounded slices |
+| **Agent** | MCP ten tools (the service's endpoint) | Retrieval-first; bounded slices |
 | **Operator (CLI)** | `trestle doctor`, `pin`, `unpin`, `recover` | Retention and diagnostics |
 | **Operator (HTTP)** | `trestle ops serve` + console UI | Read-only sessions/telemetry — [`operator-sessions-telemetry.md`](operator-sessions-telemetry.md) |
 

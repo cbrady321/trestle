@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from trestle.server import lease
+from trestle.server.agent_token import ensure_token, token_path
 from trestle.server.home import (
     HOME_FORMAT,
     HomeRefused,
@@ -38,7 +39,9 @@ def _packs_hint() -> str:
         import trestle_packs  # noqa: F401
     except ImportError:
         return 'workflow packs: pip install -e ".[packs]" (see docs/packs.md)'
-    return "workflow packs: trestle serve --plugin-dir examples/packs (see docs/packs.md)"
+    return (
+        "workflow packs: add examples/packs to [plugins] paths in config.toml (see docs/packs.md)"
+    )
 
 
 @dataclass
@@ -127,7 +130,9 @@ def run_init(*, home: Path, seed_echo: bool = True, upgrade: bool = False) -> in
         echo_path = plugins / "echo.py"
         if not echo_path.exists():
             echo_path.write_text(_SEED_ECHO, encoding="utf-8")
+    _, created = ensure_token(home)
     print(f"trestle home: {home}")
+    print(f"agent token: {token_path(home)}{' (created)' if created else ''}")
     if upgraded is not None:
         print(f"upgraded to format {HOME_FORMAT}: {len(upgraded.live)} live runs listed")
     print(f"plugins: {plugins}")

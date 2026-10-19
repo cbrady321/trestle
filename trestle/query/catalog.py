@@ -18,7 +18,10 @@ _PAGE_KB = DEFAULT_PAGE_BYTES // 1024
 
 _VIEW_WHEN: dict[str, dict[str, str]] = {
     "run": {
-        "use_when": "Status and timing for one run (plugin, state, started_at, ended_at).",
+        "use_when": (
+            "Status and timing for one run (plugin, state, started_at, ended_at), and its latest "
+            "progress while it runs."
+        ),
         "params": "run_id",
     },
     "last_error": {
@@ -38,7 +41,8 @@ _VIEW_WHEN: dict[str, dict[str, str]] = {
     },
     "run_events": {
         "use_when": (
-            f"Structured events from ctx.log. Pager of {DEFAULT_PAGE_ITEMS} rows / "
+            "Structured events from ctx.log, also while the run is in flight (live: true). "
+            f"Pager of {DEFAULT_PAGE_ITEMS} rows / "
             f"{_PAGE_KB} KB with {CELL_TRUNCATION_BYTES}-byte cells — not event grep. "
             "For a pattern in result or artifact text, fetch with kind=grep."
         ),
@@ -61,7 +65,10 @@ _VIEW_WHEN: dict[str, dict[str, str]] = {
         "params": "run_id",
     },
     "run_artifacts": {
-        "use_when": "Artifact ids for one run; then fetch the art_… handle.",
+        "use_when": (
+            "Artifact ids for one run, one per name (the newest), also while it runs; then fetch "
+            "the art_… handle."
+        ),
         "params": "run_id",
     },
     "artifact_refs": {

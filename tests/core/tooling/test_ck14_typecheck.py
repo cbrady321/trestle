@@ -35,9 +35,12 @@ def gate_command(workflow: dict[str, Any]) -> list[str]:
 
 
 def installs_packs_before_mypy(job: dict[str, Any]) -> bool:
-    """The job installs `.[dev,packs]` in a step before its `mypy` step (PC2-8)."""
+    """The job installs `.[dev,packs]` in a step before its type-check step (PC2-8): `mypy`, or the
+    P0 ratchet a K-14 decline puts back (`python -m tests.proof.meta mypy-ratchet`)."""
     runs = [str(step.get("run", "")) for step in job["steps"]]
-    mypy_at = [i for i, r in enumerate(runs) if r.split()[:1] == ["mypy"]]
+    mypy_at = [
+        i for i, r in enumerate(runs) if r.split()[:1] == ["mypy"] or "mypy-ratchet" in r.split()
+    ]
     installs = [
         i for i, r in enumerate(runs) if "pip install" in r and ".[dev,packs]" in r.replace(" ", "")
     ]
@@ -96,7 +99,7 @@ def test_init_packs_hint_both_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     import trestle_packs  # noqa: F401  (present in the tests' environment)
 
     assert init_cmd._packs_hint() == (
-        "workflow packs: trestle serve --plugin-dir examples/packs (see docs/packs.md)"
+        "workflow packs: add examples/packs to [plugins] paths in config.toml (see docs/packs.md)"
     )
     monkeypatch.setitem(sys.modules, "trestle_packs", None)  # `import trestle_packs` -> ImportError
     assert init_cmd._packs_hint() == (

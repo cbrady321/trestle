@@ -15,6 +15,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 NODEIDS_PATH = ROOT / "tests" / "fixtures" / "golden" / "s0" / "nodeids.txt"
+# S0 ids whose test moved, old id to new. The list itself stays frozen; a move is recorded here
+# with the change that made it. The stdio transport was removed (decision record
+# docs/decisions/service-and-credentials.md, Decision 3, change 1a): its smoke tests run over
+# streamable HTTP now, the same assertions under the HTTP smoke.
+MOVED: dict[str, str] = {
+    "tests/test_mcp_stdio_smoke.py::test_stdio_serve_golden_path": (
+        "tests/test_mcp_http_smoke.py::test_streamable_http_serve_golden_path"
+    ),
+    "tests/test_mcp_stdio_smoke.py::test_stdio_run_returns_running_on_short_wait_ms": (
+        "tests/test_mcp_http_smoke.py::test_http_run_returns_running_on_short_wait_ms"
+    ),
+    "tests/test_mcp_stdio_smoke.py::test_stdio_empty_catalog_includes_bootstrap_fields": (
+        "tests/test_mcp_http_smoke.py::test_http_empty_catalog_includes_bootstrap_fields"
+    ),
+}
 
 
 def _run_planted(tmp_path: Path, body: str) -> subprocess.CompletedProcess[str]:
@@ -38,7 +53,7 @@ def _run_planted(tmp_path: Path, body: str) -> subprocess.CompletedProcess[str]:
 
 
 def test_s0_nodeids_still_collected() -> None:
-    ids = {line for line in NODEIDS_PATH.read_text().splitlines() if line.strip()}
+    ids = {MOVED.get(line, line) for line in NODEIDS_PATH.read_text().splitlines() if line.strip()}
     root_proc = subprocess.run(
         [
             sys.executable,

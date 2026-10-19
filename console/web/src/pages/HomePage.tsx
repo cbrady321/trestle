@@ -44,7 +44,7 @@ export function HomePage() {
         <a href="/registry">plugin registry</a>.
       </p>
       <p>
-        Agent hosts: copy the <a href="/host-wiring">MCP stdio snippet</a>.
+        Agent hosts: copy the <a href="/host-wiring">MCP snippet</a> for the trestle service.
       </p>
     </div>
   );

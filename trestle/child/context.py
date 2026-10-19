@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
-from dataclasses import dataclass
-from datetime import datetime
+import uuid
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from trestle.child import execproc
 from trestle.common import redact
 from trestle.common.fsutil import append_ndjson, atomic_write
 from trestle.common.limits import CaptureLimits, capture_limits
+from trestle.plugin.surface import ExecResult
 
 if TYPE_CHECKING:
     from trestle.workflow.services import RunServices
@@ -76,8 +81,12 @@ class RuntimeContext:
         events_path: Path,
         limits: CaptureLimits | None = None,
         scrubber: redact.Scrubber = redact.NO_SCRUB,
+        watch_release_point: bool = False,
     ) -> None:
         self._scrubber = scrubber
+        # G3: only a plugin that declared `stop_grace` sees its release point as a stop; any other
+        # keeps today's behaviour (cancelled reads the cancel flag alone, the kill ends it)
+        self._watch_release_point = watch_release_point
         self._work = work
         self._evidence = evidence
         self.deadline = deadline
@@ -95,14 +104,26 @@ class RuntimeContext:
         self._window_count = 0
         self._artifact_count = 0
         self._artifact_bytes = 0
+        # T3: the current artifact id of each attached name; an attach under a name already here
+        # replaces it, holds no new count slot, and records the id it supersedes
+        self._attached: dict[str, str] = {}
         # one marker line per (stream, limit) (WR-EVID-4): later drops of the same kind are
         # tallied here and folded into that line, so marker volume never grows with the drops
         self._tallies: dict[tuple[str, str], _Tally] = {}
         self._run_services: RunServices | None = None
+        # R7b: every write path (events, attachments, the counters, `_attached` and the limit
+        # markers) holds this one lock, so a plugin may log and attach from several threads: two
+        # appends never interleave their tail repair and write in `events.ndjson`. Reentrant, as
+        # `_emit` and `attach` record limits under it.
+        self._lock = threading.RLock()
 
     @property
     def cancelled(self) -> bool:
-        return (self._work / "cancel.flag").exists()
+        """The run has been stopped: cancelled, or, for a plugin that declared `stop_grace`, at
+        its release point (its deadline less that grace, G3), with the grace left to finish."""
+        if (self._work / "cancel.flag").exists():
+            return True
+        return self._watch_release_point and (self._work / "release_point.flag").exists()
 
     @property
     def run_services(self) -> RunServices:
@@ -147,6 +168,63 @@ class RuntimeContext:
             raise ValueError(f"event kind {kind!r} is reserved")
         self._emit(kind, dict(fields))
 
+    def remaining(self) -> float:
+        """Seconds left until the run's deadline, never negative."""
+        deadline = self.deadline if self.deadline.tzinfo else self.deadline.replace(tzinfo=UTC)
+        return max(0.0, (deadline - datetime.now(UTC)).total_seconds())
+
+    def exec(
+        self,
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,
+        cwd: Path | str | None = None,
+        env: Mapping[str, str | None] | None = None,
+        input: str | bytes | None = None,
+        output: str | None = "exec.log",
+        max_output_bytes: int = execproc.DEFAULT_MAX_OUTPUT_BYTES,
+        credentials: Sequence[str] | None = None,
+    ) -> ExecResult:
+        """Run one command (R1): argv only, never a shell, in its own process group with this
+        process's environment plus `env` (a None value removes a variable). The timeout defaults
+        to the time left (`remaining()`) and never exceeds it; past it, or once the run is
+        stopped, the whole group is killed and the result says which. Each stream keeps at most
+        `max_output_bytes`. The kept output is attached under `output` (default `exec.log`):
+        every call under one name replaces the last (T3), so a long poll holds one artifact slot;
+        None keeps no artifact. `credentials=` is reserved and refused until credential grants
+        exist (decision record change 5)."""
+        if credentials is not None:
+            raise NotImplementedError(
+                "exec(credentials=...) is reserved until credential grants exist"
+            )
+        left = self.remaining()
+        limit = left if timeout is None else min(float(timeout), left)
+        result, kept = execproc.run(
+            argv,
+            timeout=limit,
+            cwd=cwd,
+            env=env,
+            input=input,
+            max_output_bytes=max_output_bytes,
+            stopped=lambda: self.cancelled,
+        )
+        if result.timed_out:
+            status = f"timed out after {limit:.1f}s"
+        elif result.cancelled:
+            status = "stopped with the run"
+        else:
+            status = f"exit {result.returncode}"
+        self.log(f"exec {Path(result.argv[0]).name}: {status} in {result.duration_s}s")
+        if output is None or not kept:
+            return result
+        staged = self.tmp / f"exec-{uuid.uuid4().hex}.out"
+        staged.write_bytes(kept)
+        try:
+            handle = self.attach(staged, name=output)
+        finally:
+            staged.unlink(missing_ok=True)
+        return replace(result, artifact=handle)
+
     def artifact(self, name: str) -> Path:
         if ".." in name or name.startswith("/"):
             raise ValueError("artifact name traversal rejected")
@@ -159,9 +237,11 @@ class RuntimeContext:
         handle. The run's count and byte caps hold here (WR-EVID-6): an attachment that would
         pass either is not written, one marker is recorded for the limit, and the return is
         the empty string, so no handle is ever returned that does not fetch. A staged file
-        (`ctx.artifact`) that is attached is moved, not left to be promoted a second time."""
-        from trestle.common.ids import generate_artifact_id
+        (`ctx.artifact`) that is attached is moved, not left to be promoted a second time.
 
+        Attaching again under a name already attached replaces that artifact (T3): the new one is
+        the name's current artifact, the old id stays stored and fetchable, and the replacement
+        takes no slot of the count cap (its bytes still count)."""
         if not path.is_relative_to(self._work):
             raise ValueError("attach path must be under work/")
         data = path.read_bytes()
@@ -170,7 +250,19 @@ class RuntimeContext:
         if refused:  # MC-CORE-13: a binary holding a declared secret is never written
             self._record_limit("artifacts", redact.BINARY_LIMIT, 0, size)
             raise ValueError("attachment holds a declared secret and is binary: refused")
-        if self._artifact_count >= self._limits.max_artifact_count:
+        recorded_name = self._scrubber.text(name)
+        with self._lock:
+            art_id = self._store_attachment(recorded_name, data, size)
+        if art_id and path.is_relative_to(self._work / "artifact-staging"):
+            path.unlink(missing_ok=True)
+        return art_id
+
+    def _store_attachment(self, recorded_name: str, data: bytes, size: int) -> str:
+        """`attach`'s caps, write and `artifact_available` row, under the context lock."""
+        from trestle.common.ids import generate_artifact_id
+
+        supersedes = self._attached.get(recorded_name)
+        if supersedes is None and self._artifact_count >= self._limits.max_artifact_count:
             self._record_limit("artifacts", "max_artifact_count", 0, size)
             return ""
         if self._artifact_bytes + len(data) > self._limits.max_artifact_bytes:
@@ -180,27 +272,29 @@ class RuntimeContext:
         dest = self._evidence / "artifacts" / art_id
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(data)
-        self._artifact_count += 1
+        if supersedes is None:
+            self._artifact_count += 1
         self._artifact_bytes += len(data)
-        append_ndjson(
-            self._events_path,
-            {
-                "kind": "artifact_available",
-                "artifact_id": art_id,
-                "name": self._scrubber.text(name),
-                "at": _now(),
-            },
-        )
-        if path.is_relative_to(self._work / "artifact-staging"):
-            path.unlink(missing_ok=True)
+        self._attached[recorded_name] = art_id
+        row: dict[str, object] = {
+            "kind": "artifact_available",
+            "artifact_id": art_id,
+            "name": recorded_name,
+            "at": _now(),
+        }
+        if supersedes is not None:
+            row["supersedes"] = supersedes
+        append_ndjson(self._events_path, row)
         return art_id
 
     def limits_markers(self) -> list[dict[str, object]]:
-        self.flush_limits()
-        if not self._limits_path.exists():
-            return []
+        with self._lock:
+            self.flush_limits()
+            if not self._limits_path.exists():
+                return []
+            text = self._limits_path.read_text(encoding="utf-8")
         markers: list[dict[str, object]] = []
-        for line in self._limits_path.read_text(encoding="utf-8").splitlines():
+        for line in text.splitlines():
             if not line.strip():
                 continue
             markers.append(json.loads(line))
@@ -209,6 +303,10 @@ class RuntimeContext:
     def flush_limits(self) -> None:
         """Write the marker tallies into `capture_limits.ndjson`, one line per (stream, limit).
         The child's entry point calls it when the run ends, so the file carries the totals."""
+        with self._lock:
+            self._flush_limits_locked()
+
+    def _flush_limits_locked(self) -> None:
         if not any(t.dirty for t in self._tallies.values()):
             return
         lines = [
@@ -232,6 +330,11 @@ class RuntimeContext:
         encoded = json.dumps({"kind": kind, "payload": payload}, separators=(",", ":")).encode(
             "utf-8"
         )
+        with self._lock:
+            self._append_event(kind, payload, encoded)
+
+    def _append_event(self, kind: str, payload: dict[str, object], encoded: bytes) -> None:
+        """`_emit`'s limits, append and counters, under the context lock."""
         if len(encoded) > self._limits.max_single_event_bytes:
             self._record_limit("events", "max_single_event_bytes", 0, len(encoded))
             return
@@ -269,6 +372,12 @@ class RuntimeContext:
         """Record that `limit` on `stream` dropped something. The first drop of a kind writes its
         marker line at once (a run killed after it still shows the limit); later drops only add to
         the tally, which is written back when the drop count doubles and when the run ends."""
+        with self._lock:
+            self._tally_drop(stream, limit, bytes_recorded, bytes_suppressed)
+
+    def _tally_drop(
+        self, stream: str, limit: str, bytes_recorded: int, bytes_suppressed: int
+    ) -> None:
         tally = self._tallies.setdefault((stream, limit), _Tally())
         tally.bytes_recorded += bytes_recorded
         tally.bytes_suppressed += bytes_suppressed

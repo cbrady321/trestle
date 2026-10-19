@@ -6,10 +6,10 @@ gate exports `TRESTLE_DOCKER_ENDPOINT` and `TRESTLE_IMAGE_<ROLE>`), the twin set
 `TRESTLE_ENV_PORTS` to a `fake_binding` seam. The plugin, the tree, the call and the assertions
 are the same; only the port map differs.
 
-`reference_host` starts the MC-12 MCP host (`trestle serve` over stdio, one request counted per
-call) with the unmodified `reference_env` plugin in its plugin directory and this checkout on the
-plugin processes' `PYTHONPATH`. The lane is read through the proof court's own oracle
-(`tests.proof.records`), never the product's reader.
+`reference_host` starts the MC-12 MCP host (`trestle serve` over streamable HTTP, one request
+counted per call) with the unmodified `reference_env` plugin in its plugin directory and this
+checkout on the plugin processes' `PYTHONPATH`. The lane is read through the proof court's own
+oracle (`tests.proof.records`), never the product's reader.
 """
 
 from __future__ import annotations

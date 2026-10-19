@@ -183,6 +183,9 @@ class DeclaredMetadata:
     # v0.3.1 Feature 2: a run of this plugin that ends interrupted frees its idempotency key, so an
     # identical re-send starts a fresh run (`retry_of`). Only the author knows a repeat is safe.
     repeatable: bool = False
+    # G3: seconds a plain plugin asks for between a stop (cancel or deadline) and the kill, to
+    # finish cleanly; admission caps it at the operator's release slice. None: no window.
+    stop_grace_s: float | None = None
     # Recorded at publication, not declared in source: each declared package's digest as the
     # publication validator resolved it. Empty for a plugin that declares no packages.
     package_digests: dict[str, str] = field(default_factory=dict)
@@ -198,6 +201,7 @@ class DeclaredMetadata:
             "package_digests": {k: self.package_digests[k] for k in sorted(self.package_digests)},
             # only when declared, so the manifest (and identity) of every other plugin is unchanged
             **({"repeatable": True} if self.repeatable else {}),
+            **({"stop_grace_s": self.stop_grace_s} if self.stop_grace_s is not None else {}),
         }
 
     @classmethod
@@ -209,6 +213,7 @@ class DeclaredMetadata:
         declared: dict[str, Any] = raw if isinstance(raw, dict) else {}
         deadline = declared.get("deadline_s")
         env_arg = declared.get("env_arg")
+        grace = declared.get("stop_grace_s")
         return cls(
             entry=str(entry) if isinstance(entry, str) else None,
             deadline_s=deadline
@@ -219,6 +224,9 @@ class DeclaredMetadata:
             env_arg=str(env_arg) if isinstance(env_arg, str) else None,
             secrets=frozenset(str(x) for x in declared.get("secrets", ())),
             repeatable=declared.get("repeatable") is True,
+            stop_grace_s=float(grace)
+            if isinstance(grace, (int, float)) and not isinstance(grace, bool) and grace > 0
+            else None,
             package_digests={
                 str(k): str(v)
                 for k, v in (
@@ -281,6 +289,9 @@ class RunView:
     idempotency_key: str | None = None
     # v0.3.1 Feature 3: the run this one was sent to wait for (`after`); absent on any other run
     after_run_id: str | None = None
+    # T1: the latest `ctx.progress` of a run still in flight, `{message, fraction, at}`; absent once
+    # the run has ended, or while it has reported none
+    progress: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -325,6 +336,8 @@ class RunView:
             out["idempotency_key"] = self.idempotency_key
         if self.after_run_id is not None:
             out["after_run_id"] = self.after_run_id
+        if self.progress is not None:
+            out["progress"] = self.progress
         return out
 
 
@@ -375,15 +388,20 @@ class PublishView:
     registry_version: int
     source_sha256: str
     created: bool
+    # R6a: publication warnings (an undeclared import); shown, never refused. Absent when empty.
+    warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "name": self.name,
             "snapshot_id": self.snapshot_id,
             "registry_version": self.registry_version,
             "source_sha256": self.source_sha256,
             "created": self.created,
         }
+        if self.warnings:
+            out["warnings"] = list(self.warnings)
+        return out
 
 
 @dataclass

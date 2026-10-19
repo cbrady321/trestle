@@ -16,7 +16,6 @@ The spine leaf is unchanged on disk: the plugin source is derived from it here."
 from __future__ import annotations
 
 import json
-import queue
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -58,29 +57,15 @@ class RecordingHost(mcp_host.McpHost):
         self.notifications: list[dict[str, Any]] = []
         super().__init__(home=home, timeout_s=timeout_s)
 
-    def _reader_loop(self) -> None:
-        stdout = self.proc.stdout
-        assert stdout is not None
-        while True:
-            try:
-                line = stdout.readline()
-            except (OSError, ValueError):
-                return
-            if not line:
-                return
-            try:
-                message = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if "method" in message:  # the server speaking first, never a response to a call
-                (self.server_requests if "id" in message else self.notifications).append(message)
-                continue
-            msg_id = message.get("id")
-            if msg_id is None:
-                continue
-            with self._responses_lock:
-                q = self._responses.setdefault(msg_id, queue.Queue(maxsize=1))
-            q.put(line)
+    def _dispatch(self, raw: bytes) -> None:
+        try:
+            message = json.loads(raw)
+        except json.JSONDecodeError:
+            return
+        if "method" in message:  # the server speaking first, never a response to a call
+            (self.server_requests if "id" in message else self.notifications).append(message)
+            return
+        super()._dispatch(raw)
 
 
 def _progress_source() -> str:

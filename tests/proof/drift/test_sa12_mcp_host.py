@@ -1,4 +1,4 @@
-"""SA-12 drift proof: the raw stdio host's view of `tools/list` and of its
+"""SA-12 drift proof: the raw HTTP host's view of `tools/list` and of its
 own request count agrees with the fastmcp client's independent view
 (L.P0-0b.2)."""
 
@@ -6,34 +6,31 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import sys
 from pathlib import Path
 
 import pytest
 from fastmcp import Client
-from fastmcp.client.transports import StdioTransport
 
+from tests.proof import mcp_host
 from tests.proof.mcp_host import McpHost
 
 REPO = Path(__file__).resolve().parents[3]
 
 
 def _fastmcp_tools_view(home: Path) -> list[dict[str, object]]:
-    async def exercise() -> list[dict[str, object]]:
-        env = os.environ.copy()
-        env["TRESTLE_HOME"] = str(home)
-        transport = StdioTransport(
-            command=sys.executable, args=["-m", "trestle.cli", "serve"], env=env
-        )
-        async with Client(transport=transport) as client:
+    async def exercise(port: int) -> list[dict[str, object]]:
+        async with Client(transport=mcp_host.http_transport(home, port)) as client:
             tools = await client.list_tools()
             return [
                 {"name": t.name, "inputSchema": t.inputSchema}
                 for t in sorted(tools, key=lambda t: t.name)
             ]
 
-    return asyncio.run(exercise())
+    proc, port = mcp_host.serve_http(home)
+    try:
+        return asyncio.run(exercise(port))
+    finally:
+        mcp_host.stop_http(proc)
 
 
 @pytest.mark.parametrize("sa", ["SA-12"])

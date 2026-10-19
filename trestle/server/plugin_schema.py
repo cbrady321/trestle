@@ -347,6 +347,7 @@ DECLARED_KEYWORDS = (
     "env_arg",
     "secrets",
     "repeatable",
+    "stop_grace",
 )
 _TIMEDELTA_UNITS = {
     "weeks": 604800.0,
@@ -405,7 +406,19 @@ def declared_from_function(fn: _FnDef) -> DeclaredMetadata:
         repeatable=_declared_bool(values["repeatable"], "repeatable")
         if "repeatable" in values
         else False,
+        stop_grace_s=_declared_stop_grace(values["stop_grace"]) if "stop_grace" in values else None,
     )
+
+
+def _declared_stop_grace(node: ast.expr) -> float | None:
+    """G3: `stop_grace` (seconds, a positive finite number; None declares none). Admission caps it
+    at the operator's release slice; publication only checks that it is a literal."""
+    if isinstance(node, ast.Constant) and node.value is None:
+        return None
+    seconds = _number(node, "stop_grace")
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise DeclarationError("@trestle: stop_grace must be a positive, finite number of seconds")
+    return seconds
 
 
 def _declared_bool(node: ast.expr, keyword: str) -> bool:
@@ -487,7 +500,30 @@ def _declared_names(
         names.append(item.value)
     if len(set(names)) != len(names):
         raise DeclarationError(f"@trestle: {keyword} lists an entry twice")
+    if keyword == "summary_fields":
+        bases = [parse_summary_field(name)[0] for name in names]
+        if len(set(bases)) != len(bases):
+            raise DeclarationError("@trestle: summary_fields names a field twice")
     return tuple(names)
+
+
+def parse_summary_field(entry: str) -> tuple[str, tuple[str, ...] | None]:
+    """A `summary_fields` entry as (field, columns): a bare name has no columns; `name[a,b,c]`
+    (T6) names a list-of-objects field shown as a table of those columns. A bracketed entry with
+    no name, no columns, an empty or repeated column is refused with DeclarationError."""
+    if not entry.endswith("]") or "[" not in entry:
+        if "[" in entry or "]" in entry:
+            raise DeclarationError(f"@trestle: summary_fields entry {entry!r} is malformed")
+        return entry, None
+    name, _, inner = entry[:-1].partition("[")
+    columns = tuple(part.strip() for part in inner.split(","))
+    if not name or "[" in inner or "]" in inner or not all(columns):
+        raise DeclarationError(
+            f"@trestle: summary_fields entry {entry!r} must be name[column,column,...]"
+        )
+    if len(set(columns)) != len(columns):
+        raise DeclarationError(f"@trestle: summary_fields entry {entry!r} repeats a column")
+    return name, columns
 
 
 def _declared_env_arg(node: ast.expr) -> str | None:

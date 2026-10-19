@@ -6,22 +6,38 @@ Trestle is a **single-user, localhost** product. External network clients must n
 
 | Surface | Exposure |
 |---------|----------|
-| `trestle serve` (stdio, default) | Process-local. Only the spawning MCP host talks to Trestle. No listen port. |
-| `trestle serve --transport streamable-http` | Binds **`127.0.0.1` only** (default port **18732**). No `--host` flag. |
+| `trestle serve` (run by the per-user service) | Binds **`127.0.0.1` only** (default port **18732**). No `--host` flag. Every MCP request must carry the agent token. |
 | `trestle ops serve` | Binds **`127.0.0.1` only** (default port **18733**). No `--host` flag. Read-only — does **not** expose `run`. |
-| `$TRESTLE_HOME` (default `~/.trestle`) | Per-user ledger and plugins. Recommend `chmod 700 ~/.trestle`. |
+| `$TRESTLE_HOME` (default `~/.trestle`) | Per-user ledger, plugins and `agent.token` (`0600`). Recommend `chmod 700 ~/.trestle`. |
 
 CLI rejects `--host` (including `0.0.0.0`). Do not port-forward, tunnel, or reverse-proxy these ports to other machines.
 
-## Prefer stdio
+## The agent token
 
-Stdio is the default agent path. Streamable HTTP is optional for hosts that cannot hold a stdio child. On HTTP, **any local process** on the machine can connect to `127.0.0.1:18732` — still unreachable from other hosts, but weaker isolation than stdio.
+The MCP endpoint is the only way an agent reaches Trestle (there is no stdio transport), so every
+agent on the machine connects to `127.0.0.1:18732`. A port on loopback is reachable by **any local
+process**, so the endpoint requires a bearer token: `Authorization: Bearer <token>`, where the
+token is the contents of `$TRESTLE_HOME/agent.token`, created by `trestle init` (or the server's
+first start) with mode `0600`. A request without it, or with another value, is answered 401 before
+it reaches any tool. There is no setting that turns the check off.
+
+The token is possession of a file the OS already limits to your user. It bounds the endpoint to "a
+process that can read your home" instead of "a process on the machine". It is not a login and does
+not make Trestle multi-user. Hosts send it through their MCP config's `headers`, pasted or expanded
+from an environment variable ([`install.md`](install.md#2-wire-every-agent-host)). The read-only
+ops port takes no token: it admits nothing.
+
+## The service's environment
+
+The per-user service ([`install.md`](install.md)) runs with an environment of exactly `PATH`,
+`HOME` and `TRESTLE_HOME`, and that is the environment every plugin starts from. Tokens exported in
+your shell profile do not reach it; keep them out of the shell entirely.
 
 ## What “local-only” does not mean
 
 - Plugins run **as your user**. They can read/write files, spawn processes, and make network calls the OS allows.
 - Trestle **bounds what reaches the agent** (summaries, named views, fetch windows). It is **not** a sandbox that isolates plugins from the host.
-- Operator UI and HTTP MCP are loopback-only; they are not authenticated multi-user services.
+- Operator UI and the MCP endpoint are loopback-only; the agent token is not a multi-user login.
 
 ## What stopping a run does not cover
 
@@ -81,10 +97,12 @@ Every value an agent can select is a closed set or is validated before it acts: 
 
 ## Operator vs agent
 
-- **Agents** use MCP (`trestle serve`) — can admit and `run` work.
+- **Agents** use the service's MCP endpoint — can admit and `run` work. Nothing agent-facing runs `trestle` itself.
+- **Operators** start, stop and upgrade the service with `trestle service`.
 - **Operators** use CLI (`doctor`, `pin`, `unpin`, `recover`) and optional `trestle ops serve` — browse sessions and telemetry; no admit/`run` from the browser.
 
 ## Related
 
 - Install and host wiring: [`install.md`](install.md)
+- One per-user service, credentials by name, MCP only (the service, the token and MCP only are implemented; credentials are not yet): [`decisions/service-and-credentials.md`](decisions/service-and-credentials.md)
 - Product overview: [`overview.md`](overview.md)

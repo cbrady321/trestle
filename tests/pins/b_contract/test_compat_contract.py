@@ -23,8 +23,8 @@ def _golden(name: str) -> object:
 @pytest.mark.proves("WR-COMPAT-5", "WR-COMPAT-5:preserved", "core", "core", "must", "CI")
 def test_context_surface_preserved() -> None:
     current = normalize.normalize(facets.context_surface())
-    # the one growth is a named additive entry of the divergence ledger (Context.event, BFD-10);
-    # anything else new or missing fails
+    # each growth is a named additive entry of the divergence ledger (Context.event, BFD-10;
+    # Context.exec and Context.remaining, R1); anything else new or missing fails
     diff = differ.named_diff(
         _golden("context_surface"),
         current,
@@ -36,7 +36,11 @@ def test_context_surface_preserved() -> None:
     context = current["context"]
     assert set(context["attributes"]) == {"tmp", "outputs", "cancelled", "deadline"}
     assert {"log", "progress", "artifact", "attach"} <= set(context["methods"])
-    assert set(context["methods"]) - {"log", "progress", "artifact", "attach"} == {"event"}
+    assert set(context["methods"]) - {"log", "progress", "artifact", "attach"} == {
+        "event",
+        "exec",
+        "remaining",
+    }
     assert current["decorator"]["bare"] is True
 
 

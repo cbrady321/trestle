@@ -54,11 +54,16 @@ BASE_SHA=$(git -C $WT rev-parse $BASE) || { echo "ci_parity: no $BASE in $WT"; e
 COPY=$OUT/tree
 git clone -q --shared $WT $COPY && git -C $COPY checkout -q --detach $HEAD_SHA || exit 2
 git -C $COPY fetch -q $WT '+refs/tags/*:refs/tags/*' '+refs/archive/*:refs/archive/*' 2>/dev/null
-# CI's release-graft step (ci.yml): a root commit carrying `Release-Of: <sha>` is grafted onto the
-# archived history it was squashed from, when their trees are equal.
-for root in $(git -C $COPY rev-list --max-parents=0 HEAD); do
+# CI's release-graft step (ci.yml): a commit carrying `Release-Of: <sha>` (a parentless release, or
+# one release commit on the previous release) is grafted onto the archived history it was squashed
+# from, when their trees are equal. Rounds, as in CI: a graft can bring older releases into reach.
+for round in 1 2 3 4 5 6 7 8; do
+pending=0
+for root in $(git -C $COPY log --format='%H' --grep='^Release-Of: ' HEAD); do
   of=$(git -C $COPY log -1 --format='%(trailers:key=Release-Of,valueonly)' $root | sed -n 1p | tr -d '[:space:]')
   [ -n "$of" ] || continue
+  [ "$(git -C $COPY log -1 --format='%P' $root)" != "$of" ] || continue
+  pending=1
   git -C $COPY cat-file -e "$of^{commit}" 2>/dev/null \
     || git -C $COPY fetch -q --no-tags "$(git -C $WT remote get-url origin)" '+refs/archive/*:refs/archive/*'
   if [ "$(git -C $COPY rev-parse "$of^{tree}" 2>/dev/null)" = "$(git -C $COPY rev-parse "$root^{tree}")" ]; then
@@ -66,6 +71,8 @@ for root in $(git -C $COPY rev-list --max-parents=0 HEAD); do
   else
     echo "ci_parity: release graft $root -> $of not possible (archive missing or trees differ)"; exit 2
   fi
+done
+[ $pending = 1 ] || break
 done
 cd $COPY
 export PYTHONPATH=$COPY:$COPY/packages/trestle-packs:$COPY/packages/trestle-env PYTHONDONTWRITEBYTECODE=1

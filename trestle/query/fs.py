@@ -27,6 +27,7 @@ from trestle.server.ledger import (
     state_path,
     state_record,
 )
+from trestle.server.live import attached_artifacts, latest_progress
 from trestle.server.pins import PinStore
 from trestle.server.recovery import find_run_dir
 from trestle.server.runstate import trusted_state
@@ -115,6 +116,7 @@ class FilesystemQueryBackend:
                 )
 
         run_id = params.get("run_id")
+        live = False
         if view in view_defs.RUN_SCOPED_VIEWS:
             if not isinstance(run_id, str) or not run_id:
                 return RequestOutcome(
@@ -146,6 +148,7 @@ class FilesystemQueryBackend:
                     origin="projection",
                 )
             rows = self._rows_for_run_view(view, record)
+            live = view in view_defs.LIVE_VIEWS and not record.finalized
         elif view == "recent_runs":
             rows = [_recent_run_row(record) for record in runs]
         elif view == "recent_failures":
@@ -179,6 +182,7 @@ class FilesystemQueryBackend:
             next_cursor=next_cursor,
             truncated=page_truncated or window_incomplete,
             as_of=as_of,
+            live=live,
         )
         errors = validate_envelope(view, envelope)
         if errors:
@@ -523,6 +527,8 @@ def _run_row(record: RunRecord) -> dict[str, object]:
         "state": record.state,
         "started_at": record.started_at,
         "ended_at": record.ended_at,
+        # T1: the run's latest `ctx.progress` while it is in flight; null once it has ended
+        "progress": (None if record.finalized else latest_progress(evidence_dir(record.run_dir))),
     }
 
 
@@ -667,24 +673,35 @@ def _run_tail_rows(record: RunRecord) -> list[dict[str, object]]:
 
 
 def _run_artifact_rows(record: RunRecord, home: Path) -> list[dict[str, object]]:
+    """One row per artifact name, its current artifact (T3): what the plugin attached, as it
+    goes (`events.ndjson`), then what was promoted when the run ended (the ledger). A name
+    recorded again keeps its place and shows its newest artifact; the ids it replaced stay
+    fetchable but are not listed."""
     pins = PinStore.open(home)
+    evidence = evidence_dir(record.run_dir)
+    recorded: list[tuple[str, str]] = [
+        (row["artifact_id"], row["name"] or row["artifact_id"])
+        for row in attached_artifacts(evidence)
+    ]
     ledger = RunLedger.open(ledger_path(record.run_dir))
-    rows: list[dict[str, object]] = []
     for item in ledger.records:
         if item.get("kind") != "artifact_available":
             continue
         artifact_id = str(item.get("artifact_id", ""))
-        name = str(item.get("name", artifact_id))
-        path = evidence_dir(record.run_dir) / "artifacts" / artifact_id
-        state = "available" if path.exists() else "missing"
-        retention_class = "pinned" if pins.is_pinned(artifact_id) else "default"
+        recorded.append((artifact_id, str(item.get("name", artifact_id))))
+    current: dict[str, str] = {}
+    for artifact_id, name in recorded:
+        current[name] = artifact_id  # a name already present keeps its position
+    rows: list[dict[str, object]] = []
+    for name, artifact_id in current.items():
+        path = evidence / "artifacts" / artifact_id
         rows.append(
             {
                 "run_id": record.run_id,
                 "artifact_id": artifact_id,
                 "name": name,
-                "retention_class": retention_class,
-                "state": state,
+                "retention_class": "pinned" if pins.is_pinned(artifact_id) else "default",
+                "state": "available" if path.exists() else "missing",
             }
         )
     return rows

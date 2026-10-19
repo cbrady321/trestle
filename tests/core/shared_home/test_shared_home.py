@@ -18,7 +18,7 @@ from typing import Any
 
 import pytest
 
-from tests.proof import mcp_host
+from tests.proof import mcp_host, tolerances
 from trestle import cli
 from trestle.common import codes
 from trestle.common.types import AdmitRequest, RequestOutcome, RunView
@@ -225,7 +225,8 @@ def test_sigterm_drain_finishes_admitted_runs_and_refuses_new(
             )
         )
         assert [view["state"] for view in views] == ["succeeded", "succeeded"], views
-        assert a.proc.poll() is None  # a drain never exits on its own
+        # a drain exits on its own, cleanly, once it owns no live run (a service stop waits on it)
+        assert a.proc.wait(timeout=tolerances.JOIN_WAIT_S) == 0
         assert live_run_ids(home) == []
 
 

@@ -29,8 +29,11 @@ from trestle.common.plan import formats
 from trestle.common.plan.compiler import AdmittedPlan
 from trestle.common.types import DeclaredMetadata, RunSpec
 from trestle.plugin._codec import hydrate
+from trestle.plugin.surface import Blocked
 
 CHILD_ERROR = "child_error.json"
+BLOCKED_FILE = "blocked.json"
+PLUGIN_CODE_PREFIX = "plugin."
 _EXC_TYPE_MAX = 128
 
 
@@ -87,6 +90,7 @@ def main(argv: list[str] | None = None) -> int:
         events_path=evidence / "events.ndjson",
         limits=limits,
         scrubber=redact.Scrubber(secrets=secrets, roots=roots),
+        watch_release_point=_declares_stop_grace(plugin_path),
     )
     if plan is not None:
         # B2-C14: a workflow run's callable reaches the run's services through its Context;
@@ -144,6 +148,9 @@ def _call_plugin(
         return _fail(evidence, "bind", codes.EXECUTION_BIND_FAILED, exc, roots, secrets)
     try:
         result = fn(ctx, **bound_args)
+    except Blocked as blocked:
+        _write_blocked(evidence, blocked, roots, secrets)
+        return 0
     except SystemExit as exc:
         code = exc.code if isinstance(exc.code, int) else 1
         return code if code is not None else 1
@@ -169,6 +176,21 @@ def _call_plugin(
             )
         atomic_write(evidence / "result.index", idx.to_json())
     return 0
+
+
+def _write_blocked(
+    evidence: Path, blocked: Blocked, roots: dict[str, Path], secrets: frozenset[str]
+) -> None:
+    """R4a: a plain plugin raised `Blocked`. Its one record is `evidence/blocked.json` {code,
+    human_action, resend}, the code namespaced `plugin.<code>` and the action through the same
+    sanitizer and scrub as an error message; the run itself ended normally, and its answer reads
+    `blocked` (`answer.answer_for_run`)."""
+    record = {
+        "code": f"{PLUGIN_CODE_PREFIX}{blocked.code}",
+        "human_action": sanitize(redact.scrub(blocked.human_action, secrets), roots),
+        "resend": blocked.resend,
+    }
+    atomic_write_json(evidence / BLOCKED_FILE, record)
 
 
 def _fail(
@@ -211,6 +233,18 @@ def _load_plugin_callable(plugin_path: Path) -> Callable[..., object]:
         return select_entry(module, _manifest_entry(plugin_path))
     except ValidationFailed as exc:
         raise RuntimeError(f"{exc} in {plugin_path}") from exc
+
+
+def _declares_stop_grace(plugin_path: Path) -> bool:
+    """G3: the snapshot's manifest records a declared `stop_grace`."""
+    manifest_path = plugin_path.with_name("manifest.json")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if not isinstance(manifest, dict):
+        return False
+    return DeclaredMetadata.from_manifest(manifest).stop_grace_s is not None
 
 
 def _manifest_entry(plugin_path: Path) -> str | None:

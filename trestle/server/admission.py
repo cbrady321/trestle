@@ -535,6 +535,11 @@ def plan_for_admission(
             return _plan_refusal(compiled)
         plan = compiled
     release_slice = carving.release_slice_for(plan, clock.release_slice)
+    if declared is None:
+        # G3: a plain plugin's declared stop grace is its release slice, capped by the operator's
+        grace = load_declared(snap).stop_grace_s
+        if grace is not None:
+            release_slice = min(grace, clock.release_slice)
     ceiling = clock.deadline_ceiling if deadline_ceiling_s is None else deadline_ceiling_s
     slices = carving.carve(
         plan,

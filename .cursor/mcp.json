@@ -1,14 +1,9 @@
 {
   "mcpServers": {
     "trestle": {
-      "command": "trestle",
-      "args": [
-        "serve",
-        "--plugin-dir",
-        "${workspaceFolder}/examples/packs"
-      ],
-      "env": {
-        "TRESTLE_HOME": "~/.trestle"
+      "url": "http://127.0.0.1:18732/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:TRESTLE_AGENT_TOKEN}"
       }
     }
   }

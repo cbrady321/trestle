@@ -151,6 +151,9 @@ def materialize_snapshot(
         raise PluginValidationError(f"{source_path.name} changed while it was being published")
     package_digests = outcome.package_digests
     tree = outcome.declaration
+    if tree is not None and declared.stop_grace_s is not None:
+        # G3: the stop window is a plain plugin's; a workflow root's release slice is the operator's
+        raise PluginValidationError("@trestle: stop_grace applies to plain plugins, not workflows")
     declared = dataclasses.replace(declared, package_digests=package_digests)
     schema_bytes = canonical_json(schema)
     return_schema_bytes = canonical_json(return_schema)

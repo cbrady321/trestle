@@ -61,8 +61,8 @@ def test_protocol_event_additive(tmp_path: Path) -> None:
         assert methods[name] == signature
     for name, annotation in golden["attributes"].items():
         assert surface.Context.__annotations__[name] == annotation
-    # and event is the only method added
-    assert set(methods) - set(golden["methods"]) == {"event"}
+    # and the methods added since are event, and exec and remaining (R1)
+    assert set(methods) - set(golden["methods"]) == {"event", "exec", "remaining"}
     assert set(surface.Context.__annotations__) == set(golden["attributes"])
     # the implementation carries the same signature as the Protocol
     assert (

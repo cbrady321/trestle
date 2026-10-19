@@ -25,7 +25,10 @@ The plugin reaches the machine only through the operator's environment, never th
 | `TRESTLE_ENV_RECORD_STORE` | Optional: the container name of the environment's own Postgres that holds the durable fixture record. Unset: the run's `postgres` container, which goes with the run. |
 
 `python -m tests.proof.host.docker_gate run` exports the image pins and the endpoint for the proof
-gate; an operator sets them once for a real deployment.
+gate; an operator sets them once for a real deployment. Under `trestle service` the service's
+environment is only `PATH`, `HOME` and `TRESTLE_HOME`, so set these in `config.toml`'s
+`[plugins.env]` table, which every plugin run receives (see
+[install.md](install.md#1-install-and-start-the-service)).
 
 ### The release-executable allowlist
 
