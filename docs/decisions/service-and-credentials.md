@@ -8,9 +8,11 @@ says so ("already implemented"). The implementation sequence at the end says wha
 credential node and D-9), [`plugins.md`](../plugins.md) (`@trestle(secrets=...)`, snapshot
 identity).
 
-Two decisions, taken together because the second depends on the first: Trestle runs as one
-per-user service per machine, and that service is the only thing that ever holds a credential.
-Agents name identities; they never see values.
+Three decisions, taken together because each depends on the one before: Trestle runs as one
+per-user service per machine; that service is the only thing that ever holds a credential, and
+agents name identities, never values; and the service is the only way an agent reaches Trestle at
+all: the stdio transport is removed, and the agent surface is made sufficient so an agent never
+needs a shell for work Trestle should do.
 
 ---
 
@@ -44,11 +46,11 @@ a script) points its MCP config at the service's loopback URL.
 
 ### What stays
 
-- **Stdio stays as the fallback** for a machine without the service. It behaves as it does
-  today: process-local, dies with its host, and its runs end `interrupted` when it does. A
-  **stdio server never brokers credentials**: a plugin that declares a credential identity
-  (Decision 2) is refused admission on a stdio server, so the only process that ever holds a
-  value is the one with a declared environment and a lifetime of its own.
+- **Stdio does not stay.** An earlier draft of this record kept it as a fallback for a machine
+  without the service, with the rule that a stdio server never brokers credentials. Decision 3
+  removes the transport instead: the service is the only server an agent reaches, so the only
+  process that ever holds a value is the one with a declared environment and a lifetime of its
+  own, and there is no second kind of server to write rules for.
 - **Many servers on one home** (v0.3.1) keeps working. The service is the recommended way to
   run one; it is not a lock against running others.
 - **SIGTERM drain** is already implemented: a server stopped with SIGTERM refuses new runs and
@@ -128,8 +130,8 @@ not write.
 ### Bearer token on the loopback HTTP transport
 
 Today any local process can reach `127.0.0.1:18732`, and [`security.md`](../security.md) says
-so and tells you to prefer stdio. Once the service holds credentials that is no longer
-acceptable: "any local process" includes every program the user ever ran, and the MCP surface
+so and tells you to prefer stdio. With stdio removed (Decision 3) every agent is on that port,
+and once the service holds credentials "any local process" is no longer acceptable: "any local process" includes every program the user ever ran, and the MCP surface
 admits runs that can use a granted identity.
 
 So the streamable HTTP MCP transport gains a **required bearer token**:
@@ -235,8 +237,6 @@ produces a digest no operator has pinned.
   cover this plugin at this digest. Refused before a run id, run directory or process exists.
 - **`admission.credential_unknown`**: the plugin declares an identity no `[credentials.<name>]`
   table defines. Refused the same way.
-- A stdio server refuses any plugin that declares a credential, `admission.credential_not_granted`
-  with a message saying the server is not the service (Decision 1).
 - A provider that needs a human (`aws sso login`, `gh auth login`, an MFA prompt) ends the run
   **`blocked` with the existing `execution.credential_interactive`**, naming the identity and
   the one action that unblocks it. The run never waits on a prompt nobody will answer.
@@ -350,11 +350,75 @@ Plainly, because the rest of this record could be read as more than it is:
   digest-pinned plugins, and why the service's environment is exactly `PATH`, `HOME` and
   `TRESTLE_HOME`.
 - **The operator should keep tokens out of the interactive shell environment entirely.** A
-  token exported in `~/.zshrc` is in every terminal host's environment and in every stdio
-  server those hosts spawn. The keychain, the SSO cache and the `[credentials]` tables are
+  token exported in `~/.zshrc` is in every terminal host's environment, and was in every stdio
+  server those hosts spawned while that transport existed. The keychain, the SSO cache and the `[credentials]` tables are
   where identities live; the shell is not.
 
 ---
+
+## Decision 3: MCP only, and a surface that is sufficient
+
+Agents reach Trestle through the service's MCP endpoint and nothing else. The stdio transport
+(`trestle serve --transport stdio`, the `command` form in an MCP host config) is removed. The
+operator CLI stays for humans (`serve` is what the service unit runs; `service`, `init`,
+`doctor`, `recover`, `pin`, `unpin`), and nothing agent-facing names it.
+
+### Why
+
+- Decision 1 already made the service the one process with a declared environment and a
+  lifetime of its own. A second kind of server, process-local and dying with its host, is a
+  second set of rules to write and test (the earlier draft had one: "a stdio server never
+  brokers credentials"). Removing it leaves one.
+- The one `command` config left on this machine is the repo's own `.cursor/mcp.json`; every host
+  already uses the URL. The transport has no user.
+- The bearer token (Decision 1) is only a boundary when every agent is behind it. With stdio
+  gone, it is.
+
+### What "MCP only" means, and does not
+
+**Execution goes through Trestle. Reading does not.** `fetch` is handle-based by design and
+stays so. An agent keeps its host's own file tools for reading source. MCP only means an agent
+runs no command outside Trestle for work Trestle should do; it does not mean an agent reads
+files through Trestle.
+
+**The host, not Trestle, is the limit.** When the tools are missing or the service does not
+answer, Trestle cannot answer either. That case is made rare by the service unit's `KeepAlive`
+and made honest by the skill: the agent reports it and stops. The agent skill today says
+"fall back to running the command by hand"; that line goes.
+
+### The gap table
+
+What pushes an agent to a shell is a situation with no run id and no MCP answer. These are the
+situations, what the surface gives today, and what closes each one. Nothing here adds an MCP
+tool: the surface stays at ten, and every addition is a query view, a field on an existing
+answer, or a plugin.
+
+| Situation with no run id | Today | Closes it |
+|---|---|---|
+| `admission.environment_busy` | "retry after it ends", naming nothing | `held_by` (the blocking run id) and `free_at` on the refusal, so the agent can `await_runs` it or send `after=`. |
+| `admission.queue_full`, `admission.home_busy`, `admission.service_draining` | `retryable: true`, no timing | `retry_after_s` on every retryable refusal. Under one service, draining means a restart is coming and "wait" is the whole answer. |
+| `admission.not_allowlisted` | the message | `list_plugins` under the restricted profile marks each plugin `allowlisted`, so an agent stops trying the rest. |
+| `admission.budget_does_not_fit`, `admission.ttl_out_of_range` | the message; the ceilings live in docs | the `status` view carries `deadline_ceiling_s` and `max_ttl_s`. |
+| What only `trestle doctor` shows | CLI only | `query(view="status")`, no params: profile mode, plugin dirs and the plugins that failed to load, slots in use and free, the deadline ceiling, live servers, whether this one is draining, home format, version. |
+| An orphaned run from a dead session holds an environment | under the restricted profile no session may cancel it | a run whose session has ended is cancellable by any session of the same user (change 2a). |
+| No plugin exists for a one-off command | the agent uses its shell | an operator-published `exec` plugin: argv list, no shell, cwd under declared roots, a bounded summary (exit code, tail), the full output as an artifact, and never a credential grant. |
+| `admission.plugin_not_found`, `admission.import_failed`, `admission.invalid_args`, `admission.idempotency_key_conflict`, `admission.after_unknown` | covered | `list_plugins` (its `catalog_hint` and failed-plugin reasons), `describe_plugin`, `run_by_key`, `recent_runs`. |
+| Tools missing, or the service not answering | host-side | not closable from inside Trestle; see above. |
+
+**The `exec` plugin is a trade, taken knowingly.** It turns Trestle into a shell with a ledger
+for the one-off case, which the bounded-answer design exists to avoid. Refusing it sends agents
+back to their own shell, where there is no ledger, no scrub and no deadline. Shipping it,
+allowlisted and with no credential grant ever, is the lesser cost. It is a plugin like any other:
+under the restricted profile the operator lists it or not.
+
+### What is proven, and what is not
+
+None of this is implemented. The counts that shape the work are measured: 39 test files drive
+the server through `tests/proof/mcp_host.py`, which spawns `trestle serve` over stdin and stdout,
+so moving that one harness to streamable HTTP on `--port 0` (already supported; the server
+prints the bound port) covers them; `tests/test_mcp_stdio_smoke.py` is the one test that is
+about stdio itself. The refusal messages quoted in the table are the ones in
+`trestle/server/admission.py` today.
 
 ## Implementation sequence
 
@@ -362,10 +426,14 @@ Each is its own change with its own tests and docs; none depends on a later one.
 
 | # | Change | Done when |
 |---|---|---|
-| 1 | **Bearer token on HTTP MCP.** `agent.token` from `init` and `service install`; the HTTP transport refuses requests without it; `install.md` shows the `headers` form. | A request without the header is refused; stdio is unchanged; the ops port is unchanged. |
-| 2 | **`trestle service` commands** (`install`, `uninstall`, `status`, `restart`) generating the LaunchAgent plist / `systemd --user` unit as in Decision 1, and a rewrite of `install.md` making the service the recommended mode with stdio as the fallback. | A fresh machine reaches a running service from `install.md` alone; `status` reports it; `restart` drains. |
-| 2a | **Orphan visibility and operator cancel.** Record the end of a streamable-HTTP session; `trestle doctor` and `recent_runs` mark runs whose session is gone; `trestle cancel <run_id>` on the unscoped `Project.cancel` path; the dropped-`terminal`-wait test. | A run outlives its session untouched and is marked; the operator can end it from the CLI; `on_session_lost="cancel"` is possible to build on it (its own small change, after this one). |
-| 3 | **`[credentials.<name>]` tables, grants by digest, admission refusals, `@trestle(credentials=...)`, and the first Context shapes.** Resolution onto the `WorkOrder` secrets path; `ctx.credential_env` and `ctx.credential_file` (the channel directory, moved up from the pack); `secrets=` marked deprecated. One store backend is enough to prove the path: the encrypted `0600` file, with a stub keychain in tests. | `credential_not_granted` and `credential_unknown` are refused before a run id; a republished plugin loses its grant; a stdio server refuses a declaring plugin; the scrub covers values from both shapes. |
+| 1 | **Bearer token on HTTP MCP.** `agent.token` from `init` and `service install`; the HTTP transport refuses requests without it; `install.md` shows the `headers` form. | A request without the header is refused; the proof harness and every host config send it; the ops port is unchanged. |
+| 1a | **Remove the stdio transport** (Decision 3). `serve` loses `--transport`; `tests/proof/mcp_host.py` drives the server over streamable HTTP on `--port 0` with the token; `test_mcp_stdio_smoke.py` goes; `.cursor/mcp.json` becomes a `url` entry; README, `install.md`, `security.md` and `overview.md` stop naming stdio. | No code path speaks stdio; every test that used the proof host passes over HTTP; no doc tells a host to spawn `trestle serve`. |
+| 2 | **`trestle service` commands** (`install`, `uninstall`, `status`, `restart`) generating the LaunchAgent plist / `systemd --user` unit as in Decision 1, and a rewrite of `install.md` making the service the only mode. | A fresh machine reaches a running service from `install.md` alone; `status` reports it; `restart` drains. |
+| 2a | **Orphan visibility and cancel.** Record the end of a streamable-HTTP session; `trestle doctor` and `recent_runs` mark runs whose session is gone; a run whose session has ended is cancellable by any session of the same user, under either profile; `trestle cancel <run_id>` on the unscoped `Project.cancel` path; the dropped-`terminal`-wait test. | A run outlives its session untouched and is marked; another agent session or the operator can end it; `on_session_lost="cancel"` is possible to build on it (its own small change, after this one). |
+| 2b | **The `status` view and the refusal fields** (Decision 3). `query(view="status")` with no params; `held_by` and `free_at` on `environment_busy`; `retry_after_s` on every retryable refusal; `allowlisted` on `list_plugins` under the restricted profile. | Every row of the gap table above that names a view or a field has it, and a test reads each one through MCP alone. |
+| 2c | **The `exec` plugin** (Decision 3): operator-published, argv list, no shell, cwd under declared roots, bounded summary, full output as an artifact, never a credential grant. | A one-off command runs through `run(plugin="exec")` with a bounded answer; a credential declaration on it is refused at publication. |
+| 2d | **Skill and agent docs rewrite.** "Fall back to running the command by hand" becomes "report it and stop"; `agents.md` and the skills name the `status` view, the refusal fields and `exec`; nothing agent-facing mentions the CLI. | An agent following the skill alone never runs a shell command for work Trestle does. |
+| 3 | **`[credentials.<name>]` tables, grants by digest, admission refusals, `@trestle(credentials=...)`, and the first Context shapes.** Resolution onto the `WorkOrder` secrets path; `ctx.credential_env` and `ctx.credential_file` (the channel directory, moved up from the pack); `secrets=` marked deprecated. One store backend is enough to prove the path: the encrypted `0600` file, with a stub keychain in tests. | `credential_not_granted` and `credential_unknown` are refused before a run id; a republished plugin loses its grant; the scrub covers values from both shapes. |
 | 4 | **Store backends and native providers behind the grant ports, with fakes.** macOS Keychain (`security`), 1Password (`op`), `aws_assume_role` against a fake STS, `github_app` against a fake App endpoint, `cli_passthrough`; `credential_interactive` and lifetime handling through the existing codes. | Each backend is proven in CI against its fake or stub; nothing real is configured. |
 | 5 | **`ctx.exec` and `trestle cred-helper`** (`aws` credential_process, `git` credential helper) with run-scoped tickets answered only for a live run holding the grant; `ctx.exec(argv, credentials=[...])` as the documented first choice; `credential_env` documented as the fallback. | A helper call after the run is terminal gets nothing; a plugin without the grant gets nothing; `ctx.exec` runs a tool with a granted identity while the plugin holds no value; the container channel is unchanged. |
 
@@ -374,4 +442,7 @@ Each is its own change with its own tests and docs; none depends on a later one.
 - Variable names each kind sets through `ctx.credential_env` (change 3).
 - Whether the service should refuse to start when a second server is live on the home
   (today it must not; v0.3.1 sharing stays).
-- A Windows service. Stdio remains the Windows path until someone needs more.
+- A Windows service. With stdio gone there is no Windows path until a service exists there;
+  this record does not design one.
+- Whether the `exec` plugin is allowlisted by default under the restricted profile, or only
+  when the operator lists it.
