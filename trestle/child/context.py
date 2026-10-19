@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -102,6 +103,11 @@ class RuntimeContext:
         # tallied here and folded into that line, so marker volume never grows with the drops
         self._tallies: dict[tuple[str, str], _Tally] = {}
         self._run_services: RunServices | None = None
+        # R7b: every write path (events, attachments, the counters, `_attached` and the limit
+        # markers) holds this one lock, so a plugin may log and attach from several threads: two
+        # appends never interleave their tail repair and write in `events.ndjson`. Reentrant, as
+        # `_emit` and `attach` record limits under it.
+        self._lock = threading.RLock()
 
     @property
     def cancelled(self) -> bool:
@@ -167,8 +173,6 @@ class RuntimeContext:
         Attaching again under a name already attached replaces that artifact (T3): the new one is
         the name's current artifact, the old id stays stored and fetchable, and the replacement
         takes no slot of the count cap (its bytes still count)."""
-        from trestle.common.ids import generate_artifact_id
-
         if not path.is_relative_to(self._work):
             raise ValueError("attach path must be under work/")
         data = path.read_bytes()
@@ -178,6 +182,16 @@ class RuntimeContext:
             self._record_limit("artifacts", redact.BINARY_LIMIT, 0, size)
             raise ValueError("attachment holds a declared secret and is binary: refused")
         recorded_name = self._scrubber.text(name)
+        with self._lock:
+            art_id = self._store_attachment(recorded_name, data, size)
+        if art_id and path.is_relative_to(self._work / "artifact-staging"):
+            path.unlink(missing_ok=True)
+        return art_id
+
+    def _store_attachment(self, recorded_name: str, data: bytes, size: int) -> str:
+        """`attach`'s caps, write and `artifact_available` row, under the context lock."""
+        from trestle.common.ids import generate_artifact_id
+
         supersedes = self._attached.get(recorded_name)
         if supersedes is None and self._artifact_count >= self._limits.max_artifact_count:
             self._record_limit("artifacts", "max_artifact_count", 0, size)
@@ -202,16 +216,16 @@ class RuntimeContext:
         if supersedes is not None:
             row["supersedes"] = supersedes
         append_ndjson(self._events_path, row)
-        if path.is_relative_to(self._work / "artifact-staging"):
-            path.unlink(missing_ok=True)
         return art_id
 
     def limits_markers(self) -> list[dict[str, object]]:
-        self.flush_limits()
-        if not self._limits_path.exists():
-            return []
+        with self._lock:
+            self.flush_limits()
+            if not self._limits_path.exists():
+                return []
+            text = self._limits_path.read_text(encoding="utf-8")
         markers: list[dict[str, object]] = []
-        for line in self._limits_path.read_text(encoding="utf-8").splitlines():
+        for line in text.splitlines():
             if not line.strip():
                 continue
             markers.append(json.loads(line))
@@ -220,6 +234,10 @@ class RuntimeContext:
     def flush_limits(self) -> None:
         """Write the marker tallies into `capture_limits.ndjson`, one line per (stream, limit).
         The child's entry point calls it when the run ends, so the file carries the totals."""
+        with self._lock:
+            self._flush_limits_locked()
+
+    def _flush_limits_locked(self) -> None:
         if not any(t.dirty for t in self._tallies.values()):
             return
         lines = [
@@ -243,6 +261,11 @@ class RuntimeContext:
         encoded = json.dumps({"kind": kind, "payload": payload}, separators=(",", ":")).encode(
             "utf-8"
         )
+        with self._lock:
+            self._append_event(kind, payload, encoded)
+
+    def _append_event(self, kind: str, payload: dict[str, object], encoded: bytes) -> None:
+        """`_emit`'s limits, append and counters, under the context lock."""
         if len(encoded) > self._limits.max_single_event_bytes:
             self._record_limit("events", "max_single_event_bytes", 0, len(encoded))
             return
@@ -280,6 +303,12 @@ class RuntimeContext:
         """Record that `limit` on `stream` dropped something. The first drop of a kind writes its
         marker line at once (a run killed after it still shows the limit); later drops only add to
         the tally, which is written back when the drop count doubles and when the run ends."""
+        with self._lock:
+            self._tally_drop(stream, limit, bytes_recorded, bytes_suppressed)
+
+    def _tally_drop(
+        self, stream: str, limit: str, bytes_recorded: int, bytes_suppressed: int
+    ) -> None:
         tally = self._tallies.setdefault((stream, limit), _Tally())
         tally.bytes_recorded += bytes_recorded
         tally.bytes_suppressed += bytes_suppressed
