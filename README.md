@@ -87,6 +87,7 @@ Playbook: [`docs/operator-sessions-telemetry.md`](docs/operator-sessions-telemet
 | [`docs/agents.md`](docs/agents.md) | Agent guide, including [large tasks as one tree run](docs/agents.md#large-tasks-the-tree) |
 | [`docs/plugins.md`](docs/plugins.md) | Write and publish plugins, including composite (tree) workflows |
 | [`docs/environment.md`](docs/environment.md) | The reference environment tree workflow |
+| [`docs/decisions/service-and-credentials.md`](docs/decisions/service-and-credentials.md) | Decision record: one per-user service, credentials by name (not yet implemented) |
 
 ## Verify
 

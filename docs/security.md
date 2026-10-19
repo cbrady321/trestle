@@ -87,4 +87,5 @@ Every value an agent can select is a closed set or is validated before it acts: 
 ## Related
 
 - Install and host wiring: [`install.md`](install.md)
+- Decided, not yet implemented: one per-user service and credentials by name: [`decisions/service-and-credentials.md`](decisions/service-and-credentials.md)
 - Product overview: [`overview.md`](overview.md)
