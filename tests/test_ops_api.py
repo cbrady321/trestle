@@ -96,7 +96,7 @@ def test_ops_host_wiring(ops_client: TestClient) -> None:
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["issued"] is True
-    assert payload["body"]["transport"] == "stdio"
+    assert payload["body"]["transport"] == "streamable-http"
     assert "trestle" in payload["body"]["snippet"]["mcpServers"]
 
 

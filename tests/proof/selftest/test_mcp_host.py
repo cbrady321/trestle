@@ -2,8 +2,8 @@
 sever, rejoin) over `tests.proof.mcp_host` (L.P0-0b.3; MC-12).
 
 No product code changes here — these tests observe what the kernel already
-does when an MCP session is held, severed, or restarted. A `stdin_close`
-or `sigkill` sever leaves the run's wrapper/child processes orphaned
+does when an MCP session is held, severed, or restarted. A `sigkill`
+sever leaves the run's wrapper/child processes orphaned
 today (the reaper that would attribute and clean them up is L.P0-0b.4);
 `_reap_under_home` below is this test file's own cleanup so no process it
 provoked survives the test, per this merge's hard rule.
@@ -88,16 +88,21 @@ def test_sever_cancel_notification_run_reaches_terminal() -> None:
         assert joined.error is not None and "cancelled" in str(joined.error), joined
 
 
-def test_sever_close_server_exits_run_recovered_interrupted() -> None:
-    """Pins a real finding: closing stdin alone does not make the server
-    exit promptly while a run is in flight — `asyncio.run`'s shutdown
-    gather waits out the `asyncio.to_thread` wrapping
-    `Conductor.drive_async` (trestle/server/conductor.py:143-145) rather
-    than cancelling it, so a graceful close only "completes" once the run
-    does (plan-gap: no interruption is observable through stdin_close
-    alone). A realistic client escalates to a hard kill after a short
-    grace period; that is what actually interrupts the run and exercises
-    recovery's "interrupted" path here."""
+def test_sever_session_close_run_continues_server_stays() -> None:
+    """Ending the MCP session (DELETE) is a client going away: the server stays up and the run,
+    which belongs to the server and not to the session, reaches its own terminal state."""
+    with McpHost() as host:
+        host.hold("run", {"plugin": "slow", "args": {"seconds": 1.0}, "wait_ms": 200})
+        run_dir = _started_run(host.home)
+        host.sever("session_close")
+        ended = records.await_record(run_dir, lambda _, node: node.terminal is not None)
+        assert ended.node.terminal == "succeeded", f"({ended.why})"
+        assert host.proc.poll() is None, "the server exited when a session ended"
+
+
+def test_sever_kill_server_run_recovered_interrupted() -> None:
+    """A server killed mid-run leaves the run to the next server on the home, which recovers it
+    `interrupted`."""
     host = McpHost()
     home = host.home
     try:
@@ -105,12 +110,7 @@ def test_sever_close_server_exits_run_recovered_interrupted() -> None:
         # the run is in flight (admitted and started) before the sever, not after a fixed pause:
         # a slow admission would otherwise be severed before any run directory exists
         _started_run(home)
-        host.sever("stdin_close")
-        grace_deadline = time.monotonic() + 1.0
-        while host.proc.poll() is None and time.monotonic() < grace_deadline:
-            time.sleep(tolerances.POLL_FINE_S)
-        if host.proc.poll() is None:
-            host.sever("sigkill")
+        host.sever("sigkill")
         host.proc.wait(timeout=tolerances.PROC_WAIT_S)
         assert host.proc.poll() is not None, "server did not exit"
     finally:
@@ -118,7 +118,7 @@ def test_sever_close_server_exits_run_recovered_interrupted() -> None:
         _reap_under_home(home)
 
     try:
-        new_host = rejoin(host)  # a new session boots the same home; recovery runs on start
+        new_host = rejoin(host)  # a new server boots the same home; recovery runs on start
         try:
             run_dirs = _run_dirs(home)
             assert len(run_dirs) == 1

@@ -10,7 +10,7 @@ from trestle.ops.serve import run_ops_server
 from trestle.server.doctor import run_doctor, run_recover
 from trestle.server.home import HomeRefused
 from trestle.server.init_cmd import run_init
-from trestle.server.main import create_kernel, default_home, run_server
+from trestle.server.main import DEFAULT_PORT, create_kernel, default_home, run_server
 from trestle.server.plugin_paths import PluginDirMissing
 
 
@@ -41,19 +41,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="trestle", description="Trestle execution ledger")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    serve = sub.add_parser("serve", help="Start the MCP server (stdio or streamable HTTP)")
-    serve.add_argument(
-        "--transport",
-        default="stdio",
-        choices=["stdio", "streamable-http"],
-        help="Agent MCP transport (default stdio)",
+    serve = sub.add_parser(
+        "serve", help="Start the MCP server (streamable HTTP on 127.0.0.1, bearer token)"
     )
     serve.add_argument(
         "--port",
         type=int,
-        default=18732,
+        default=DEFAULT_PORT,
         help=(
-            "HTTP bind port on 127.0.0.1 (streamable-http only, default 18732; 0 picks a free port"
+            f"HTTP bind port on 127.0.0.1 (default {DEFAULT_PORT}; 0 picks a free port"
             " and prints `trestle: listening 127.0.0.1:<port>` on stderr)"
         ),
     )
@@ -128,7 +124,6 @@ def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "serve":
         home = Path(args.home) if getattr(args, "home", None) else None
         return run_server(
-            transport=args.transport,
             port=args.port,
             home=home,
             cli_plugin_dirs=_cli_plugin_dirs(getattr(args, "plugin_dirs", None)),

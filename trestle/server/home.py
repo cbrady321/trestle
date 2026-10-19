@@ -440,21 +440,25 @@ def servers_dir(home: Path) -> Path:
 
 @dataclass
 class ServerLock:
-    """`home/servers/<server_id>.lock`, flocked for the server's life. Its content (pid, port and
-    the snapshot ids it serves) is rewritten in place through the held descriptor: a rename would
-    move the lock off the path. GC keeps the snapshots live servers name; doctor lists them."""
+    """`home/servers/<server_id>.lock`, flocked for the server's life. Its content (pid, port, the
+    build it runs and the snapshot ids it serves) is rewritten in place through the held
+    descriptor: a rename would move the lock off the path. GC keeps the snapshots live servers
+    name; doctor lists them; `trestle service status` reads the running build from it."""
 
     home: Path
     server_id: str
     fd: int
     port: int | None = None
+    version: str | None = None
 
     @classmethod
-    def acquire(cls, home: Path, server_id: str, *, port: int | None = None) -> ServerLock:
+    def acquire(
+        cls, home: Path, server_id: str, *, port: int | None = None, version: str | None = None
+    ) -> ServerLock:
         fd = try_lock(servers_dir(home) / f"{server_id}.lock")
         if fd is None:  # a server id is minted per process, so this cannot be held
             raise HomeRefused(f"server lock {server_id} is held by another process")
-        lock = cls(home=home, server_id=server_id, fd=fd, port=port)
+        lock = cls(home=home, server_id=server_id, fd=fd, port=port, version=version)
         lock.update(())
         return lock
 
@@ -463,6 +467,7 @@ class ServerLock:
             "server_id": self.server_id,
             "pid": os.getpid(),
             "port": self.port,
+            "version": self.version,
             "snapshots": sorted(snapshots),
             "at": datetime.now(tz=UTC).isoformat(timespec="seconds"),
         }

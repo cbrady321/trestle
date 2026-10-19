@@ -9,10 +9,11 @@ cause `cancel` appears in any sever mode.
 The run is `spine_leaf` in `stall` mode (its marker never turns ready and its first observation
 takes `STALL_S`, so the wait, which fits the leaf's budget (L.SL-2.1), starts late and only the
 deadline ends it), with the deadline shortened to `SHORT_DEADLINE_S`. Each sever mode of the host is
-exercised: `cancel_notification` (the JSON-RPC notice; the server stays up), `stdin_close` (EOF on
-the server's read loop) and `sigkill` (the server is gone). Where the server is gone, the run's own
-process tree ends by itself at the release point (the loop releases its marker) and the next server
-on the same home recovers the run to a terminal row. The lane is read through the proof court's
+exercised: `cancel_notification` (the JSON-RPC notice; the server stays up), `session_close` (the
+MCP session ends; the server stays up, as a service does when its client goes) and `sigkill` (the
+server is gone). Where the server is gone, the run's own process tree ends by itself at the release
+point (the loop releases its marker) and the next server on the same home recovers the run to a
+terminal row. The lane is read through the proof court's
 oracle (`tests.proof.records`); every bound comes from `tests.proof.tolerances` or
 `trestle.common.clock`.
 """
@@ -43,7 +44,7 @@ BOUND_S = float(SHORT_DEADLINE_S) + clock.finalization_margin
 HOST_TIMEOUT_S = BOUND_S + tolerances.JOIN_WAIT_S
 # a run's admission, first process and first effect under a loaded host (the full suite runs 8-wide)
 STARTUP_WAIT_S = tolerances.JOIN_WAIT_S * 3
-SEVER_MODES = ("cancel_notification", "stdin_close", "sigkill")
+SEVER_MODES = ("cancel_notification", "session_close", "sigkill")
 
 
 def _request(*, wait_s: float = BOUND_S) -> dict[str, Any]:
@@ -109,7 +110,7 @@ def _sever(host: mcp_host.McpHost, mode: str, req: int) -> None:
         host.sever(mode, req_id=req)
         with pytest.raises(RuntimeError, match="cancelled"):
             host.join(req, timeout=tolerances.JOIN_WAIT_S)
-    elif mode == "stdin_close":
+    elif mode == "session_close":
         host.sever(mode)
     else:
         host.sever(mode)
@@ -117,9 +118,8 @@ def _sever(host: mcp_host.McpHost, mode: str, req: int) -> None:
 
 
 def _wait_server_gone_or_run_over(host: mcp_host.McpHost, run_dir: Path, sent: float) -> None:
-    """Where the server is severed away, wait for the run's own end inside the bound: the server
-    exits on its own (graceful stdin close), or is gone already (sigkill); either way the run's
-    process tree must be over by deadline + margin from the send."""
+    """Where the server is killed (sigkill), wait for the run's own end inside the bound: the
+    run's process tree must be over by deadline + margin from the send."""
     left = max(BOUND_S - (time.monotonic() - sent), 0.0)
     support.wait_until(lambda: host.proc.poll() is not None and _released(run_dir), left)
 
@@ -155,7 +155,7 @@ def test_sever_run_continues_bounded_and_cleaned(tmp_path: Path, mode: str) -> N
             # the sever did not cancel: for a while after it the run is still waiting
             time.sleep(tolerances.SETTLE_LONG_S * 2)
             assert not _released(run_dir), "the run stopped when the call was severed"
-            if mode == "cancel_notification":
+            if mode != "sigkill":  # the server stays up and drives the run to its end
                 assert _terminal(run_dir) is None
                 assert support.wait_until(
                     lambda: _terminal(run_dir) is not None,
@@ -188,8 +188,10 @@ def test_resend_joins_single_execution_terminal(tmp_path: Path, mode: str) -> No
         run_id = run_dir.name
         with support.reaping(run_id):
             _sever(host, mode, req)
-            if mode != "cancel_notification":
-                # a new session on the home: wait for the old server to be gone first
+            if mode == "session_close":
+                host.new_session()  # a new client of the same server
+            elif mode == "sigkill":
+                # a new server on the home: wait for the old one to be gone first
                 support.wait_until(lambda: host.proc.poll() is not None, BOUND_S)
                 assert host.proc.poll() is not None
                 host.restart()

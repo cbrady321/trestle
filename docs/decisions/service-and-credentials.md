@@ -109,9 +109,31 @@ service mode launchd `KeepAlive` (or `Restart=always`) starts it again.
 ```
 trestle service install     # write and load the LaunchAgent plist / systemd --user unit
 trestle service uninstall   # unload and remove it
-trestle service status      # loaded, running, pid, endpoint, home
-trestle service restart     # SIGTERM drain, then start
+trestle service status      # loaded, running, pid, endpoint, home, version
+trestle service start       # load the unit if needed and start it
+trestle service stop        # SIGTERM drain; the unit stays installed, KeepAlive paused
+trestle service restart     # stop, then start
+trestle service upgrade     # install the new trestle, migrate the home, restart
 ```
+
+Install, upgrade, start and stop are the operator's whole lifecycle; each is one command with
+no manual step, because a service that needs hand-editing after every release will be left
+running an old build. Requirements:
+
+- **`install`** is idempotent: run again on an installed service it reports the state and
+  changes nothing; run with a newer `trestle` it behaves as `upgrade`.
+- **`upgrade`** is `pip install -U` (or the editable checkout's new commit) followed by the
+  home migration `init --upgrade` does today, then `restart`, in that order, and it refuses to
+  start the new build while a run is live unless `--drain` is given (wait for the runs to end,
+  then restart). `status` shows the running build's version beside the installed one so a
+  stale service is visible.
+- **`start` and `stop`** are the only ways documented for starting and stopping Trestle. `stop`
+  drains like `restart` does, then unloads so `KeepAlive` does not bring it back; `start`
+  undoes that. Both report in one line.
+- **One page.** `install.md` and the README's Install section are rewritten so a fresh machine
+  reaches a running, upgradable service from four commands; the "Several servers on one home"
+  and stdio material goes. `agents.md` and the skills say an agent that finds the service down
+  reports it and stops; none of them runs `trestle` itself.
 
 `install` generates the unit for the current user with:
 
@@ -428,7 +450,7 @@ Each is its own change with its own tests and docs; none depends on a later one.
 |---|---|---|
 | 1 | **Bearer token on HTTP MCP.** `agent.token` from `init` and `service install`; the HTTP transport refuses requests without it; `install.md` shows the `headers` form. | A request without the header is refused; the proof harness and every host config send it; the ops port is unchanged. |
 | 1a | **Remove the stdio transport** (Decision 3). `serve` loses `--transport`; `tests/proof/mcp_host.py` drives the server over streamable HTTP on `--port 0` with the token; `test_mcp_stdio_smoke.py` goes; `.cursor/mcp.json` becomes a `url` entry; README, `install.md`, `security.md` and `overview.md` stop naming stdio. | No code path speaks stdio; every test that used the proof host passes over HTTP; no doc tells a host to spawn `trestle serve`. |
-| 2 | **`trestle service` commands** (`install`, `uninstall`, `status`, `restart`) generating the LaunchAgent plist / `systemd --user` unit as in Decision 1, and a rewrite of `install.md` making the service the only mode. | A fresh machine reaches a running service from `install.md` alone; `status` reports it; `restart` drains. |
+| 2 | **`trestle service` commands** (`install`, `uninstall`, `status`, `start`, `stop`, `restart`, `upgrade`) generating the LaunchAgent plist / `systemd --user` unit as in Decision 1, and a rewrite of `install.md` and the README making the service the only mode (see "The CLI" in Decision 1). | A fresh machine reaches a running service from `install.md` alone; `status` reports it with both versions; `stop` drains and stays down; `upgrade` on a newer build restarts onto it, and refuses while a run is live unless `--drain`; the project's instructions never tell an agent to run `trestle`. |
 | 2a | **Orphan visibility and cancel.** Record the end of a streamable-HTTP session; `trestle doctor` and `recent_runs` mark runs whose session is gone; a run whose session has ended is cancellable by any session of the same user, under either profile; `trestle cancel <run_id>` on the unscoped `Project.cancel` path; the dropped-`terminal`-wait test. | A run outlives its session untouched and is marked; another agent session or the operator can end it; `on_session_lost="cancel"` is possible to build on it (its own small change, after this one). |
 | 2b | **The `status` view and the refusal fields** (Decision 3). `query(view="status")` with no params; `held_by` and `free_at` on `environment_busy`; `retry_after_s` on every retryable refusal; `allowlisted` on `list_plugins` under the restricted profile. | Every row of the gap table above that names a view or a field has it, and a test reads each one through MCP alone. |
 | 2c | **The `exec` plugin** (Decision 3): operator-published, argv list, no shell, cwd under declared roots, bounded summary, full output as an artifact, never a credential grant. | A one-off command runs through `run(plugin="exec")` with a bounded answer; a credential declaration on it is refused at publication. |

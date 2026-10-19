@@ -56,7 +56,7 @@ class Kernel:
         assert self.ownership is not None
         return self.ownership.server_id
 
-    def start_service(self, *, port: int | None = None) -> None:
+    def start_service(self, *, port: int | None = None, version: str | None = None) -> None:
         """What a serving process adds to its kernel (`trestle serve`, `trestle ops serve`): the
         soft RLIMIT_NOFILE raised to the hard limit, its lock file `home/servers/<id>.lock`
         (naming the snapshots it serves, kept current on every registry change) and the reaper
@@ -64,7 +64,7 @@ class Kernel:
         if self.server_lock is not None:
             return
         raise_nofile_limit()
-        lock = ServerLock.acquire(self.home, self.server_id, port=port)
+        lock = ServerLock.acquire(self.home, self.server_id, port=port, version=version)
         self.server_lock = lock
         lock.update(snap.snapshot_id for snap in self.registry.snapshots.values())
         self.registry.on_change = lambda snaps: lock.update(s.snapshot_id for s in snaps.values())
@@ -198,39 +198,94 @@ def attach_registry_version_mirror(mcp: Any, kernel: Kernel) -> None:
 
 
 LISTENING_PREFIX = "trestle: listening "
+DEFAULT_PORT = 18732
+DRAIN_POLL_S = 0.2
 
 
-def _serve_http_on_a_free_port(mcp: Any) -> None:
-    """`serve --port 0` (RACES-REPORT L-18): bind a loopback socket on a port the OS picks, say
-    which on stderr (`trestle: listening 127.0.0.1:<port>`) once it accepts connections, and
-    serve on that very socket, so a caller never guesses a free port another process may take."""
+def _bind_loopback(port: int) -> socket.socket:
+    """The listening socket on 127.0.0.1, bound before the server starts so the port recorded in
+    its lock file and printed on stderr is the one it serves. `--port 0` lets the OS pick a free
+    one (RACES-REPORT L-18), so a caller never guesses a port another process may take."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind((LOOPBACK_HOST, 0))
+    sock.bind((LOOPBACK_HOST, port))
     sock.listen(128)
-    bound = sock.getsockname()[1]
-    print(f"{LISTENING_PREFIX}{LOOPBACK_HOST}:{bound}", file=sys.stderr, flush=True)
-    asyncio.run(
-        mcp.run_http_async(
-            transport="streamable-http", host=LOOPBACK_HOST, port=bound, sockets=[sock]
-        )
+    return sock
+
+
+def _http_server(mcp: Any, token: str, sock: socket.socket, kernel: Kernel) -> Any:
+    """The uvicorn server for the MCP app, behind the bearer token. SIGTERM drains (D4): the
+    server refuses new runs, keeps starting and finishing what it admitted, and exits 0 once it
+    owns no live run, so a service manager's stop (or `trestle service stop`) waits out the runs
+    instead of interrupting them. SIGINT is uvicorn's own graceful stop."""
+    import fastmcp
+    import uvicorn
+    from starlette.middleware import Middleware
+
+    from trestle.server.agent_token import BearerTokenMiddleware
+
+    app = mcp.http_app(
+        transport="streamable-http",
+        middleware=[Middleware(BearerTokenMiddleware, token=token)],
+        allowed_hosts=[*(fastmcp.settings.http_allowed_hosts or []), LOOPBACK_HOST],
     )
+
+    class Server(uvicorn.Server):
+        def handle_exit(self, sig: int, frame: Any) -> None:
+            if sig == signal.SIGTERM:
+                if not kernel.control.scheduler.draining:
+                    kernel.control.scheduler.draining = True
+                    asyncio.get_event_loop().call_soon_threadsafe(self._start_drain_watch)
+                return
+            # uvicorn's own handling, without re-raising the signal after the loop ends (the
+            # process exits 0 on a graceful stop)
+            if self.should_exit and sig == signal.SIGINT:
+                self.force_exit = True
+            else:
+                self.should_exit = True
+
+        def _start_drain_watch(self) -> None:
+            async def watch() -> None:
+                assert kernel.ownership is not None
+                while kernel.ownership.owned():
+                    await asyncio.sleep(DRAIN_POLL_S)
+                self.should_exit = True
+
+            self._drain_task = asyncio.ensure_future(watch())
+
+    config = uvicorn.Config(
+        app,
+        host=LOOPBACK_HOST,
+        port=sock.getsockname()[1],
+        timeout_graceful_shutdown=2,
+        lifespan="on",
+        ws="websockets-sansio",
+        log_level=fastmcp.settings.log_level.lower(),
+    )
+    return Server(config)
 
 
 def run_server(
     *,
-    transport: str = "stdio",
-    port: int = 18732,
+    port: int = DEFAULT_PORT,
     home: Path | None = None,
     cli_plugin_dirs: list[Path] | None = None,
 ) -> int:
+    """`trestle serve`: the MCP server over streamable HTTP on 127.0.0.1:`port` (0 picks a free
+    port and prints `trestle: listening 127.0.0.1:<port>` on stderr once it accepts connections).
+    Every request must carry the home's agent token (`agent.token`, created when missing)."""
     from fastmcp import FastMCP
 
+    from trestle.common.build import build_version
+    from trestle.server.agent_token import ensure_token
+
     kernel = create_kernel(home=home, cli_plugin_dirs=cli_plugin_dirs)
-    kernel.start_service(port=port if transport == "streamable-http" else None)
+    token, _ = ensure_token(kernel.home)
+    sock = _bind_loopback(port)
+    bound = sock.getsockname()[1]
+    kernel.start_service(port=bound, version=build_version())
     mcp = FastMCP("trestle")
     attach_registry_version_mirror(mcp, kernel)
-
     @mcp.tool
     async def run(
         plugin: str,
@@ -345,20 +400,7 @@ def run_server(
     def view_catalog_resource() -> dict[str, Any]:
         return view_catalog()
 
-    def _handle_sigterm(_signum: int, _frame: object | None) -> None:
-        # D4: a draining server refuses new runs and keeps starting and finishing what it
-        # admitted; it never exits on SIGTERM (the operator stops it once its live runs are 0)
-        kernel.control.scheduler.draining = True
-
-    signal.signal(signal.SIGTERM, _handle_sigterm)
-
-    if transport == "stdio":
-        mcp.run(transport="stdio")
-    elif transport == "streamable-http":
-        if port == 0:
-            _serve_http_on_a_free_port(mcp)
-        else:
-            mcp.run(transport="streamable-http", host=LOOPBACK_HOST, port=port)
-    else:
-        raise SystemExit(f"unsupported MCP transport: {transport}")
+    server = _http_server(mcp, token, sock, kernel)
+    print(f"{LISTENING_PREFIX}{LOOPBACK_HOST}:{bound}", file=sys.stderr, flush=True)
+    asyncio.run(server.serve(sockets=[sock]))
     return 0

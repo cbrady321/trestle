@@ -3,9 +3,9 @@
 **Audience:** humans inspecting run history and bounded telemetry — not coding agents.  
 **SSOT for:** `trestle ops serve`, `/ops/v1` routes, `console/web/` UI.  
 **Install / lockdown:** [`install.md`](install.md) · [`security.md`](security.md).  
-**Agent path (separate):** [`docs/agents.md`](agents.md) (quick start) · [`docs/agent-console-mcp.md`](agent-console-mcp.md) (full playbook) — stdio MCP only.
+**Agent path (separate):** [`docs/agents.md`](agents.md) (quick start) · [`docs/agent-console-mcp.md`](agent-console-mcp.md) (full playbook) — the service's MCP endpoint only.
 
-Operators use **`trestle ops serve`** for read-only sessions and telemetry. Agents continue to use **`trestle serve`** (ten MCP tools). The operator surface does **not** admit or `run` work from the browser. Binds **`127.0.0.1` only** (default port 18733); there is no `--host` flag.
+Operators use **`trestle ops serve`** for read-only sessions and telemetry. Agents use the **trestle service**'s MCP endpoint (ten MCP tools; see [`install.md`](install.md)). The operator surface does **not** admit or `run` work from the browser. Binds **`127.0.0.1` only** (default port 18733); there is no `--host` flag.
 
 ---
 
@@ -88,7 +88,7 @@ All responses use the operator envelope: `{ "issued": bool, "body": { ... } }`.
 | Route | Job | Operator call |
 |-------|-----|---------------|
 | `/` | Connection health | `read_health` |
-| `/host-wiring` | MCP stdio snippet | `read_host_wiring` |
+| `/host-wiring` | MCP snippet (service URL, token by variable) | `read_host_wiring` |
 | `/sessions` | Recent runs / failures tabs | `read_session_rows` |
 | `/sessions/{handle}/ask` | Bounded ask + actions | `read_session_rows`, chunk, cancel/pin |
 | `/registry` | Plugin catalog | `iter_registry` |
@@ -169,4 +169,4 @@ Registry browser, `recent_failures` tab, host wiring snippet, pin/cancel/join fr
 - Admit / `run` from browser
 - Live tail / websocket streams
 - Binding off `127.0.0.1`
-- Replacing agent stdio MCP with HTTP
+- Replacing the agent MCP endpoint

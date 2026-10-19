@@ -77,7 +77,7 @@ def main() -> int:
     assert host.status_code == 200, host.text
     host_body = host.json()
     assert host_body["issued"] is True
-    assert host_body["body"]["transport"] == "stdio"
+    assert host_body["body"]["transport"] == "streamable-http"
 
     pin = client.put(f"/ops/v1/retention/{run_id}")
     assert pin.status_code == 200, pin.text

@@ -837,7 +837,7 @@ REG_CHUNKS_PER_WORKER = 6  # whole-file chunks per worker: enough to balance, fe
 REG_SERIAL_FILES: tuple[str, ...] = ()
 # Timing-sensitive nodes: each passes alone and has failed on a loaded host.
 REG_SERIAL_NODES = (
-    "tests/test_mcp_stdio_smoke.py::test_stdio_run_returns_running_on_short_wait_ms",
+    "tests/test_mcp_http_smoke.py::test_http_run_returns_running_on_short_wait_ms",
     "tests/test_user_stories.py::test_us08_hostile_plugin_control_plane_responsive",
     "tests/core/spine/test_cs1_framing.py::test_e6_rerun_quartile_ratio",
     "tests/pins/c_surface/test_goldens.py::test_runview_shape_matches_golden",

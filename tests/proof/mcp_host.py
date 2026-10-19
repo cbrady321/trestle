@@ -1,31 +1,32 @@
-"""Minimal MCP stdio test host (L.P0-0b.2, L.P0-0b.3; MC-12).
+"""Minimal MCP streamable-HTTP test host (L.P0-0b.2, L.P0-0b.3; MC-12).
 
-Speaks the wire protocol directly — newline-delimited JSON-RPC 2.0 over one
-`trestle serve` subprocess's stdin/stdout, with its own `TRESTLE_HOME` —
-deliberately independent of the `mcp`/`fastmcp` client libraries so this
-host's view of `tools/list` (raw bytes) can be checked against the
-fastmcp client's parsed view (SA-12) rather than assumed identical.
+Speaks the wire protocol directly: JSON-RPC 2.0 messages POSTed to one `trestle serve --port 0`
+subprocess's `/mcp` endpoint (its own `TRESTLE_HOME`, the home's agent token as the bearer), each
+answer read from the response's SSE stream, deliberately independent of the `mcp`/`fastmcp`
+client libraries so this host's view of `tools/list` (raw bytes: the answer's `data:` payload) can
+be checked against the fastmcp client's parsed view (SA-12) rather than assumed identical.
 
-Counts every JSON-RPC request this host sends (`request_count`), including
-the `initialize` handshake but not the `notifications/initialized` notice
-(a notification carries no "id" and gets no response).
+Counts every JSON-RPC request this host sends (`request_count`), including the `initialize`
+handshake but not the `notifications/initialized` notice (a notification carries no "id" and gets
+no response).
 
-A background reader thread demultiplexes responses by "id" so requests can
-be pipelined: `hold()` sends one and returns its id without waiting, other
-calls can flow on the same connection meanwhile, and `join()` collects the
-held response whenever it lands (Assumption 2 — count, hold, sever,
-rejoin). `sever()` breaks the session three ways (a JSON-RPC cancellation
-notice, closing stdin, or SIGKILL); `rejoin()` opens a fresh session on the
-same `TRESTLE_HOME`; `kill_server()`/`restart()` take the whole server down
-and bring a new one up on that same home (recovery runs on start, same as
-any `trestle serve` boot).
+Each request is its own HTTP exchange on a thread of its own, and answers land in a queue by "id",
+so requests can be pipelined: `hold()` sends one and returns its id without waiting, other calls
+can flow on the same session meanwhile, and `join()` collects the held response whenever it lands
+(Assumption 2: count, hold, sever, rejoin). `sever()` breaks the session three ways (a JSON-RPC
+cancellation notice, ending the MCP session with DELETE while the server stays up, or SIGKILL);
+`rejoin()` brings up a fresh server on the same `TRESTLE_HOME`; `kill_server()`/`restart()` take the
+whole server down and bring a new one up on that same home (recovery runs on start, same as any
+`trestle serve` boot).
 """
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import queue
+import signal
 import subprocess
 import sys
 import tempfile
@@ -37,6 +38,7 @@ from typing import Any
 from tests.proof import tolerances
 
 REPO = Path(__file__).resolve().parents[2]
+MCP_PATH = "/mcp"
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,13 @@ class Joined:
 
 
 PROTOCOL_VERSION = "2025-06-18"
+
+
+def agent_token(home: Path) -> str:
+    """The home's bearer token (the server creates `agent.token` on its first start)."""
+    from trestle.server.agent_token import read_token
+
+    return read_token(home)
 
 
 class McpHost:
@@ -77,41 +86,11 @@ class McpHost:
     # -- process lifecycle ------------------------------------------------
 
     def _start_process(self) -> None:
-        env = os.environ.copy()
-        env["TRESTLE_HOME"] = str(self.home)
-        self.proc = subprocess.Popen(
-            [sys.executable, "-m", "trestle.cli", "serve"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
-            bufsize=0,
-        )
+        self.proc, self.port = serve_http(self.home)
+        self.token = agent_token(self.home)
+        self.session_id: str | None = None
         with self._responses_lock:
             self._responses.clear()
-        self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
-        self._reader_thread.start()
-
-    def _reader_loop(self) -> None:
-        stdout = self.proc.stdout
-        assert stdout is not None
-        while True:
-            try:
-                line = stdout.readline()
-            except (OSError, ValueError):
-                return
-            if not line:
-                return
-            try:
-                message = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            msg_id = message.get("id")
-            if msg_id is None:
-                continue  # a notification from the server; none expected today
-            with self._responses_lock:
-                q = self._responses.setdefault(msg_id, queue.Queue(maxsize=1))
-            q.put(line)
 
     # -- wire -----------------------------------------------------------
 
@@ -120,14 +99,101 @@ class McpHost:
         self._next_id += 1
         return value
 
+    def _headers(self) -> dict[str, str]:
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            "MCP-Protocol-Version": PROTOCOL_VERSION,
+        }
+        if self.session_id is not None:
+            headers["Mcp-Session-Id"] = self.session_id
+        return headers
+
+    def _exchange(self, method: str, body: bytes | None) -> None:
+        """One HTTP exchange; every JSON-RPC message in its answer goes to `_dispatch`. A broken
+        exchange (the server killed, the session ended) answers the request it carried with a
+        JSON-RPC error, so a joiner never waits out its timeout on a dead connection."""
+        request = json.loads(body) if body else {}
+        req_id = request.get("id")
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=None)
+        try:
+            conn.request(method, MCP_PATH, body=body, headers=self._headers())
+            response = conn.getresponse()
+            session = response.getheader("mcp-session-id")
+            if session and self.session_id is None:
+                self.session_id = session
+            if response.status >= 400:
+                raw = response.read()
+                if req_id is not None:
+                    self._fail(req_id, f"HTTP {response.status}: {raw.decode(errors='replace')}")
+                return
+            ctype = response.getheader("content-type", "")
+            if "text/event-stream" in ctype:
+                self._read_events(response)
+            else:
+                raw = response.read()
+                if raw.strip():
+                    self._dispatch(raw)
+        except (OSError, http.client.HTTPException) as exc:
+            if req_id is not None:
+                self._fail(req_id, f"connection lost: {exc!r}")
+        finally:
+            conn.close()
+
+    def _read_events(self, response: http.client.HTTPResponse) -> None:
+        """Dispatch each SSE event as it arrives (a held call's stream stays open until its
+        answer, and notifications on it must be seen while it is open)."""
+        data: list[bytes] = []
+        while True:
+            line = response.readline()
+            if not line:
+                break
+            stripped = line.rstrip(b"\r\n")
+            if stripped.startswith(b"data:"):
+                data.append(stripped[5:].lstrip())
+            elif not stripped and data:
+                self._dispatch(b"\n".join(data))
+                data = []
+        if data:
+            self._dispatch(b"\n".join(data))
+
+    def _fail(self, req_id: int, message: str) -> None:
+        payload = {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": message}}
+        self._deliver(req_id, json.dumps(payload).encode("utf-8"))
+
+    def _deliver(self, msg_id: int, raw: bytes) -> None:
+        with self._responses_lock:
+            q = self._responses.setdefault(msg_id, queue.Queue(maxsize=1))
+        try:
+            q.put_nowait(raw)
+        except queue.Full:
+            pass  # the answer landed first; a later broken-stream error is not an answer
+
+    def _dispatch(self, raw: bytes) -> None:
+        """One message from the server. A response goes to its request's queue; a message the
+        server originates (it carries a `method`) is dropped here (subclasses keep them)."""
+        try:
+            message = json.loads(raw)
+        except json.JSONDecodeError:
+            return
+        if "method" in message:
+            return
+        msg_id = message.get("id")
+        if msg_id is None:
+            return
+        self._deliver(msg_id, raw)
+
     def _send(self, payload: dict[str, Any]) -> bytes:
-        assert self.proc.stdin is not None
-        line = (json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8")
-        self.proc.stdin.write(line)
-        self.proc.stdin.flush()
+        body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         if "id" in payload:  # a notification (no "id") is not a request
             self._request_count += 1
-        return line
+            with self._responses_lock:
+                self._responses.setdefault(payload["id"], queue.Queue(maxsize=1))
+            threading.Thread(target=self._exchange, args=("POST", body), daemon=True).start()
+        else:
+            self._exchange("POST", body)
+        return body
 
     def _await_response(self, req_id: int, *, timeout: float | None = None) -> bytes:
         with self._responses_lock:
@@ -141,7 +207,7 @@ class McpHost:
 
     def _initialize(self) -> None:
         req_id = self._call_id()
-        self._send(
+        body = json.dumps(
             {
                 "jsonrpc": "2.0",
                 "id": req_id,
@@ -151,8 +217,12 @@ class McpHost:
                     "capabilities": {},
                     "clientInfo": {"name": "tests.proof.mcp_host", "version": "0"},
                 },
-            }
-        )
+            },
+            separators=(",", ":"),
+        ).encode("utf-8")
+        # the handshake is synchronous: every later request carries the session id it returns
+        self._request_count += 1
+        self._exchange("POST", body)
         self._await_response(req_id)
         self._send({"jsonrpc": "2.0", "method": "notifications/initialized"})
 
@@ -226,7 +296,8 @@ class McpHost:
           for `req_id` (the server may or may not stop the underlying
           work; the run is expected to reach a terminal state on its own
           either way).
-        - "stdin_close": close stdin; the server sees EOF on its read loop.
+        - "session_close": end the MCP session (HTTP DELETE with its id);
+          the server stays up, as a service does when its client goes.
         - "sigkill": kill the subprocess outright.
         """
         if mode == "cancel_notification":
@@ -239,13 +310,18 @@ class McpHost:
                     "params": {"requestId": req_id},
                 }
             )
-        elif mode == "stdin_close":
-            if self.proc.stdin is not None:
-                self.proc.stdin.close()
+        elif mode == "session_close":
+            self._exchange("DELETE", None)
         elif mode == "sigkill":
             self.proc.kill()
         else:
             raise ValueError(f"unknown sever mode: {mode!r}")
+
+    def new_session(self) -> None:
+        """A fresh MCP session on the same server (a new client of the service): a new
+        `initialize`, and a new session id on every later request."""
+        self.session_id = None
+        self._initialize()
 
     def kill_server(self) -> None:
         """Kill the subprocess outright (no graceful shutdown)."""
@@ -257,10 +333,9 @@ class McpHost:
         """Spawn a new `trestle serve` subprocess on the same
         `TRESTLE_HOME` (recovery runs on start, same as any `trestle
         serve` boot) and redo the handshake."""
-        if self.proc.stdout:
-            self.proc.stdout.close()
-        if self.proc.stderr:
-            self.proc.stderr.close()
+        if self.proc.poll() is None:
+            self.proc.kill()
+            self.proc.wait(timeout=tolerances.PROC_WAIT_S)
         self._next_id = 1
         self._request_count = 0
         self._closed = False
@@ -276,16 +351,12 @@ class McpHost:
         self._closed = True
         if self.proc.poll() is None:
             try:
-                if self.proc.stdin:
-                    self.proc.stdin.close()
+                # SIGINT is the server's graceful stop (SIGTERM would drain instead)
+                self.proc.send_signal(signal.SIGINT)
                 self.proc.wait(timeout=tolerances.PROC_WAIT_S)
             except Exception:
                 self.proc.kill()
                 self.proc.wait(timeout=tolerances.PROC_WAIT_S)
-        if self.proc.stdout:
-            self.proc.stdout.close()
-        if self.proc.stderr:
-            self.proc.stderr.close()
 
     def __enter__(self) -> McpHost:
         return self
@@ -295,16 +366,16 @@ class McpHost:
 
 
 def rejoin(old: McpHost) -> McpHost:
-    """A new session on `old`'s `TRESTLE_HOME`. `old` is left exactly as it
-    is — sever it first if the point is testing a session against a
-    server that is already gone."""
+    """A new server and session on `old`'s `TRESTLE_HOME`. `old` is left
+    exactly as it is — sever it first if the point is testing a session
+    against a server that is already gone."""
     return McpHost(home=old.home)
 
 
 def serve_http(
     home: Path, *, env: dict[str, str] | None = None
 ) -> tuple[subprocess.Popen[bytes], int]:
-    """`trestle serve --transport streamable-http --port 0` on `home`: the server process and the
+    """`trestle serve --port 0` on `home`: the server process and the
     port it reports on stderr (`trestle: listening 127.0.0.1:<port>`, RACES-REPORT L-18), read
     within `tolerances.JOIN_WAIT_S`. The rest of stderr is drained in the background so the
     server never blocks on a full pipe. Raises if the server exits or never reports."""
@@ -313,8 +384,7 @@ def serve_http(
     environ = dict(env if env is not None else os.environ)
     environ["TRESTLE_HOME"] = str(home)
     proc = subprocess.Popen(
-        [sys.executable, "-m", "trestle.cli", "serve", "--transport", "streamable-http"]
-        + ["--port", "0"],
+        [sys.executable, "-m", "trestle.cli", "serve", "--port", "0"],
         env=environ,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
@@ -341,3 +411,24 @@ def serve_http(
         proc.kill()
         proc.wait()
         raise
+
+
+def http_transport(home: Path, port: int) -> Any:
+    """A fastmcp streamable-HTTP client transport to a server on `port`, carrying `home`'s token."""
+    from fastmcp.client.transports import StreamableHttpTransport
+
+    return StreamableHttpTransport(
+        url=f"http://127.0.0.1:{port}{MCP_PATH}",
+        headers={"Authorization": f"Bearer {agent_token(home)}"},
+    )
+
+
+def stop_http(proc: subprocess.Popen[bytes]) -> None:
+    """Stop a `serve_http` server gracefully (SIGINT), killing it if it does not exit in time."""
+    if proc.poll() is None:
+        proc.send_signal(signal.SIGINT)
+        try:
+            proc.wait(timeout=tolerances.PROC_WAIT_S)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
