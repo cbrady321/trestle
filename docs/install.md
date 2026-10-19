@@ -158,7 +158,9 @@ The service runs with no `--plugin-dir`. Its watched folders come from `$TRESTLE
 paths = ["~/.trestle/plugins", "/ABS/PATH/TO/trestle/examples/packs", "/ABS/PATH/TO/project/tools"]
 ```
 
-`config.toml` is read once at start: `trestle service restart` after changing it.
+`config.toml` is read once at start: `trestle service restart` after changing it (the
+`[plugins.env]` table alone is read again at each run's start). A pack's wrappers are installed
+this way too: see [`packs.md`](packs.md#install).
 
 ## 4. Start, stop, restart
 

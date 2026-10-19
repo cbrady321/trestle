@@ -573,7 +573,12 @@ and how an agent runs a tree and reads its answer is in
 
 ## Workflow packs
 
-Pre-built Docker / pytest / migration plugins live under `examples/packs/`. Install `pip install -e ".[packs]"` and point `--plugin-dir` at that folder. Guide: [`packs.md`](packs.md).
+A pack is a library plus a folder of thin `@trestle` wrapper files that call it, each declaring
+the library in `packages=`. Install the library into the service's own environment, add the
+wrapper folder to `[plugins] paths` in `config.toml`, and restart the service; Trestle publishes
+the wrappers like any other plugin file and never loads plugins from a package's entry points.
+The pre-built Docker / pytest / migration wrappers live under `examples/packs/`. Step by step:
+[`packs.md`](packs.md#install).
 
 ## Related
 
