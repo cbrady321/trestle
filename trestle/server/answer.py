@@ -371,8 +371,20 @@ def _test_counts(run: _Run, primary: NodeAnswer) -> TestCounts | None:
     return None
 
 
+@dataclass(frozen=True, slots=True)
+class PluginBlocked:
+    """R4a: what a plain plugin's raised `Blocked` recorded (`evidence/blocked.json`)."""
+
+    code: str
+    human_action: str
+    resend: str
+
+
 def _planless(
-    run: _Run, error: ExecutionErrorAnswer | None, terminal_kind: str | None
+    run: _Run,
+    error: ExecutionErrorAnswer | None,
+    terminal_kind: str | None,
+    blocked: PluginBlocked | None = None,
 ) -> tuple[OutcomeClass, NodeAnswer, ExecutionErrorAnswer | None]:
     """B4-T4 (rule (5)): the terminal kind follows from `error.code`; stops and a restart are
     decided by rules (1) and (2) before this, so what reaches here ended by itself: a normal
@@ -383,6 +395,18 @@ def _planless(
         return OutcomeClass.CANCELLED, _stopped_root(), None
     if error is None and terminal_kind == "timed_out":
         return OutcomeClass.TIMED_OUT, _stopped_root(), None
+    if error is None and blocked is not None:  # R4a: the plugin raised `Blocked`
+        primary = NodeAnswer(
+            ROOT,
+            Listing.CANDIDATE,
+            NodeClass.BLOCKED,
+            None,
+            blocked.code,
+            blocked.human_action,
+            blocked.resend,
+            None,
+        )
+        return OutcomeClass.BLOCKED, primary, None
     if error is None:
         primary = NodeAnswer(
             ROOT, Listing.CANDIDATE, NodeClass.PASSED, None, None, None, None, None
@@ -416,6 +440,7 @@ def project(
     summary_budget: int = bounds.SUMMARY_BUDGET_DEFAULT,
     terminal_kind: str | None = None,
     leased: bool | None = None,
+    blocked: PluginBlocked | None = None,
 ) -> TerminalAnswer:
     """B4-C1. `plan` is None only for a plan-less root (B2-C1). `summary_budget` is the run's own
     (the snapshot's `summary_budget`, CL-B1); it decides only whether `detail` is set for an
@@ -459,7 +484,7 @@ def project(
         )
         primary = own_account()
     elif plan is None:  # rule (5): B4-T4
-        outcome, primary, result_error = _planless(run, error, terminal_kind)
+        outcome, primary, result_error = _planless(run, error, terminal_kind, blocked)
         if outcome is OutcomeClass.CANCELLED:
             root_stop = RootStop.CANCEL
         elif outcome is OutcomeClass.TIMED_OUT:
@@ -807,7 +832,26 @@ def answer_for_run(
         if isinstance(budget, int) and not isinstance(budget, bool)
         else bounds.SUMMARY_BUDGET_DEFAULT,
         leased=admitted is not None and bool(admitted.lease_set),
+        blocked=read_plugin_blocked(run_dir) if answer_plan is None else None,
     )
+
+
+BLOCKED_FILE = "blocked.json"
+
+
+def read_plugin_blocked(run_dir: FsPath) -> PluginBlocked | None:
+    """The `Blocked` a plain plugin raised (R4a), or None: no record, or one that is not whole."""
+    try:
+        raw = json.loads((run_dir / "evidence" / BLOCKED_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    fields = (raw.get("code"), raw.get("human_action"), raw.get("resend"))
+    if not all(isinstance(f, str) and f for f in fields):
+        return None
+    code, human_action, resend = fields
+    return PluginBlocked(str(code), str(human_action), str(resend))
 
 
 def summary_budget_of(spec: Mapping[str, Any]) -> int:
@@ -834,6 +878,7 @@ __all__ = [
     "CleanupAnswer",
     "ExecutionErrorAnswer",
     "NodeAnswer",
+    "PluginBlocked",
     "TerminalAnswer",
     "UnconfirmedEffect",
     "account_of",
@@ -845,6 +890,7 @@ __all__ = [
     "execution_error",
     "node_wire",
     "project",
+    "read_plugin_blocked",
     "read_child_views",
     "root_run_id_of",
     "to_wire",

@@ -29,8 +29,11 @@ from trestle.common.plan import formats
 from trestle.common.plan.compiler import AdmittedPlan
 from trestle.common.types import DeclaredMetadata, RunSpec
 from trestle.plugin._codec import hydrate
+from trestle.plugin.surface import Blocked
 
 CHILD_ERROR = "child_error.json"
+BLOCKED_FILE = "blocked.json"
+PLUGIN_CODE_PREFIX = "plugin."
 _EXC_TYPE_MAX = 128
 
 
@@ -144,6 +147,9 @@ def _call_plugin(
         return _fail(evidence, "bind", codes.EXECUTION_BIND_FAILED, exc, roots, secrets)
     try:
         result = fn(ctx, **bound_args)
+    except Blocked as blocked:
+        _write_blocked(evidence, blocked, roots, secrets)
+        return 0
     except SystemExit as exc:
         code = exc.code if isinstance(exc.code, int) else 1
         return code if code is not None else 1
@@ -169,6 +175,21 @@ def _call_plugin(
             )
         atomic_write(evidence / "result.index", idx.to_json())
     return 0
+
+
+def _write_blocked(
+    evidence: Path, blocked: Blocked, roots: dict[str, Path], secrets: frozenset[str]
+) -> None:
+    """R4a: a plain plugin raised `Blocked`. Its one record is `evidence/blocked.json` {code,
+    human_action, resend}, the code namespaced `plugin.<code>` and the action through the same
+    sanitizer and scrub as an error message; the run itself ended normally, and its answer reads
+    `blocked` (`answer.answer_for_run`)."""
+    record = {
+        "code": f"{PLUGIN_CODE_PREFIX}{blocked.code}",
+        "human_action": sanitize(redact.scrub(blocked.human_action, secrets), roots),
+        "resend": blocked.resend,
+    }
+    atomic_write_json(evidence / BLOCKED_FILE, record)
 
 
 def _fail(

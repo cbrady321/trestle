@@ -218,7 +218,7 @@ def _load_plugin_env(raw: object) -> tuple[tuple[str, str], ...]:
         return ()
     table = raw["env"]
     if not isinstance(table, dict):
-        raise ValueError("config.toml [plugins.env] must be a table of NAME = \"value\"")
+        raise ValueError('config.toml [plugins.env] must be a table of NAME = "value"')
     pairs: list[tuple[str, str]] = []
     for name, value in table.items():
         if not _ENV_NAME.fullmatch(name):

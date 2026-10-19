@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -9,6 +10,34 @@ from pathlib import Path
 from typing import Any, Protocol, TypeVar, overload
 
 F = TypeVar("F", bound=Callable[..., Any])
+
+
+# What `Blocked.resend` may say about sending the same request again (the tree's `Resend` values).
+RESEND_VALUES: tuple[str, ...] = ("succeeds_after_action", "will_not_succeed", "unknown")
+_BLOCKED_CODE = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*")
+
+
+class Blocked(Exception):  # noqa: N818 - the outcome's name, as the workflow `Blocked` step is
+    """Raise from a plain plugin when a person must act before it can go on (R4a): an expired
+    login, a missing tool, a prompt nobody will answer. The run ends with outcome `blocked`, and
+    its answer carries `code` (recorded as `plugin.<code>`, so it never reads as one of
+    Trestle's own codes), the one `human_action` that unblocks it, and whether re-sending the
+    same request will then succeed (`resend`: "succeeds_after_action", "will_not_succeed" or
+    "unknown")."""
+
+    def __init__(self, code: str, human_action: str, resend: str = "succeeds_after_action") -> None:
+        if not isinstance(code, str) or not _BLOCKED_CODE.fullmatch(code):
+            raise ValueError(
+                f"Blocked code {code!r}: lower-case words joined by '_' or '.', like 'aws_login'"
+            )
+        if not isinstance(human_action, str) or not human_action.strip():
+            raise ValueError("Blocked needs the human action that unblocks the run")
+        if resend not in RESEND_VALUES:
+            raise ValueError(f"Blocked resend must be one of {RESEND_VALUES}, got {resend!r}")
+        super().__init__(f"{code}: {human_action}")
+        self.code = code
+        self.human_action = human_action
+        self.resend = resend
 
 
 @dataclass(frozen=True)

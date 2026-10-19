@@ -198,6 +198,28 @@ state = json.loads(result.stdout)["state"]
 `ExecResult` is importable from `trestle.plugin` for type hints. `result.ok` is true only for a
 command that ran to its end and exited 0.
 
+### When a person must act: `Blocked`
+
+A plugin that cannot go on until a person does something (an expired `aws sso login`, a missing
+tool, a prompt nobody will answer: a plugin's stdin is `/dev/null`) raises `Blocked` instead of
+failing:
+
+```python
+from trestle.plugin import Blocked
+
+who = ctx.exec(["aws", "sts", "get-caller-identity", "--profile", profile])
+if not who.ok and "expired" in who.stderr:
+    raise Blocked("aws_login", f"Run `aws sso login --profile {profile}`, then resend.")
+```
+
+The run ends normally (`state: succeeded`) and its answer reads `outcome: "blocked"`; the
+answer's `primary` carries `code` as `plugin.<code>` (here `plugin.aws_login`: a plugin's code
+never reads as one of Trestle's own `admission.*` or `execution.*` codes), the `human_action`,
+and `resend`: `"succeeds_after_action"` (the default: send the same request again once the action
+is done), `"will_not_succeed"` or `"unknown"`. The code is lower-case words joined by `_` or `.`;
+the human action is scrubbed of declared secrets like an error message. An agent reads the
+verdict from `answer.outcome`, reports the human action, and stops.
+
 ## Testing a plugin without a server
 
 `trestle.plugin.testing` unit-tests a plugin in-process, with no server, run id or home:
