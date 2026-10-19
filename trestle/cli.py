@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -39,7 +40,8 @@ def _cli_plugin_dirs(raw: list[str] | None) -> list[Path] | None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="trestle", description="Trestle execution ledger")
-    sub = parser.add_subparsers(dest="command", required=True)
+    parser.add_argument("--version", action="store_true", help="Print the build and exit")
+    sub = parser.add_subparsers(dest="command")
 
     serve = sub.add_parser(
         "serve", help="Start the MCP server (streamable HTTP on 127.0.0.1, bearer token)"
@@ -108,7 +110,47 @@ def main(argv: list[str] | None = None) -> int:
     unpin.add_argument("target", help="Run id or artifact id to unpin")
     _add_home_arg(unpin)
 
+    service = sub.add_parser("service", help="Run Trestle as this user's service")
+    service_sub = service.add_subparsers(dest="service_command", required=True)
+    for name, text in (
+        ("install", "Write and load the LaunchAgent / systemd --user unit (idempotent)"),
+        ("uninstall", "Stop (draining), unload and remove the unit"),
+        ("status", "Loaded, running, pid, endpoint, home, installed and running build"),
+        ("start", "Load the unit if needed and start the service"),
+        ("stop", "SIGTERM drain, then unload; stays down until start"),
+        ("restart", "Stop (draining), then start"),
+        ("upgrade", "Install the new build, migrate the home, restart"),
+    ):
+        cmd = service_sub.add_parser(name, help=text)
+        if name == "install":
+            _add_home_arg(cmd)
+            cmd.add_argument(
+                "--port",
+                type=int,
+                default=DEFAULT_PORT,
+                help=f"Loopback port the service serves (default {DEFAULT_PORT})",
+            )
+        if name in {"install", "upgrade"}:
+            cmd.add_argument(
+                "--drain",
+                action="store_true",
+                help="Wait for live runs to end instead of refusing while one is live",
+            )
+        if name == "upgrade":
+            cmd.add_argument(
+                "--source",
+                metavar="SPEC",
+                help="What pip installs (default: where this trestle was installed from)",
+            )
+
     args = parser.parse_args(argv)
+    if args.version:
+        from trestle.common.build import build_version
+
+        print(f"trestle {build_version()}")
+        return 0
+    if args.command is None:
+        parser.error("a command is required")
     try:
         return _dispatch(args)
     except HomeRefused as exc:
@@ -135,6 +177,8 @@ def _dispatch(args: argparse.Namespace) -> int:
             home=home,
             cli_plugin_dirs=_cli_plugin_dirs(getattr(args, "plugin_dirs", None)),
         )
+    if args.command == "service":
+        return _service_cli(args)
     if args.command == "init":
         trestle_home = Path(args.home) if args.home else default_home()
         return run_init(home=trestle_home, seed_echo=not args.no_seed, upgrade=args.upgrade)
@@ -152,6 +196,46 @@ def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "unpin":
         return _unpin_cli(target=args.target, home=args.home)
     return 1
+
+
+def _service_cli(args: argparse.Namespace) -> int:
+    from trestle.server.service import (
+        Service,
+        ServiceError,
+        default_install_command,
+        default_platform,
+        trestle_binary,
+    )
+
+    try:
+        home = Path(args.home).expanduser() if getattr(args, "home", None) else default_home()
+        service = Service(
+            platform=default_platform(),
+            user_home=Path.home(),
+            trestle_home=Path(os.path.abspath(home)),
+            port=getattr(args, "port", DEFAULT_PORT),
+        )
+        command = args.service_command
+        if command == "status":
+            status = service.status()
+            for line in status.lines():
+                print(line)
+            return 0 if status.running else 3
+        if command == "install":
+            return service.install(drain=args.drain)
+        if command == "upgrade":
+            if args.source:
+                service.install_command = default_install_command(trestle_binary(), args.source)
+            return service.upgrade(drain=args.drain)
+        return {
+            "uninstall": service.uninstall,
+            "start": service.start,
+            "stop": service.stop,
+            "restart": service.restart,
+        }[command]()
+    except ServiceError as exc:
+        print(f"trestle service: {exc}", file=sys.stderr)
+        return exc.code
 
 
 def _pin_cli(*, target: str, home: str | None) -> int:

@@ -147,7 +147,9 @@ def test_two_servers_on_port_zero_get_two_ports(smoke_home: Path, tmp_path: Path
 
         async def both() -> list[int]:
             homes = (smoke_home, second_home)
-            return list(await asyncio.gather(*(tools(h, p) for h, p in zip(homes, ports))))
+            return list(
+                await asyncio.gather(*(tools(h, p) for h, p in zip(homes, ports, strict=True)))
+            )
 
         assert asyncio.run(both()) == [10, 10]
     finally:

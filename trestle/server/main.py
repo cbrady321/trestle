@@ -286,6 +286,7 @@ def run_server(
     kernel.start_service(port=bound, version=build_version())
     mcp = FastMCP("trestle")
     attach_registry_version_mirror(mcp, kernel)
+
     @mcp.tool
     async def run(
         plugin: str,
