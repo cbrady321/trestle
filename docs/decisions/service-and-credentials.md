@@ -54,6 +54,54 @@ a script) points its MCP config at the service's loopback URL.
 - **SIGTERM drain** is already implemented: a server stopped with SIGTERM refuses new runs and
   finishes the runs it admitted (see [`install.md`](../install.md)). The service unit uses it.
 
+### When the agent's session ends while a run is live
+
+**A run belongs to the server, never to the MCP session that sent it.** The session id on the
+run's `created` row (`caller_session`) exists for one purpose: under the restricted profile it
+scopes `cancel` to the session that received the run (`Project.cancel` in
+`trestle/server/project.py`). It is not ownership. **On session loss the run continues.**
+Nothing is cancelled on disconnect, because a run finishing without a person present is the
+point of the service mode, and a chat window closing is the most ordinary way a person leaves.
+
+What already bounds a run whose session is gone, none of it new:
+
+- **The deadline**, fixed at admission and enforced by the server; a run held on `after=` is
+  bounded by `hold_expired` as well.
+- **Release on every terminal path**, passed runs included (K-8): the processes Trestle can
+  attribute and the containers the run created are ended whether the run succeeded, failed,
+  was cancelled or timed out.
+- **The recorded answer**, retrievable by a new session through the same idempotency key
+  (`query(view="run_by_key")`, `await_runs(keys=[...])`) instead of a duplicate run.
+- **Retention**: `metadata_days`, `artifact_days`, `abandoned_hours` and `storage_cap_bytes`
+  in `[retention]`, applied by the sweep whether or not anyone asks after the run.
+
+Three gaps to close, each in the implementation sequence:
+
+1. **Orphan visibility.** Nothing records when a streamable-HTTP session ends, so a run whose
+   session is gone looks like any other live run. Record the session's end, and let
+   `trestle doctor` and the `recent_runs` view mark runs whose session is gone. This is
+   information for the operator, not a trigger: marking a run orphaned changes nothing about
+   it.
+2. **An operator cancel.** The unscoped path exists: `Project.cancel` with `caller_session`
+   None is the operator's CLI or console and is not scoped. No CLI command exposes it today
+   (`trestle/cli.py` has `serve`, `ops serve`, `init`, `doctor`, `recover`, `pin` and `unpin`,
+   and `trestle ops serve` is read-only). Add `trestle cancel <run_id>`.
+3. **`on_session_lost`**, an optional per-plugin declaration with the values `"continue"`
+   (the default, and everything above) and `"cancel"`, for a plugin whose run is worthless
+   without its caller: one holding an environment lease for an interactive session, for
+   instance. It is a literal in the decorator like every other keyword, recorded in the
+   manifest, and it needs gap 1 to act on. `describe_plugin` shows it.
+
+**Unverified.** What the server does when a client drops a `run(completion="terminal")` wait
+mid-run. The wait is a projection (`await_terminal_async` polls the ledger and holds nothing
+the run needs), so the run should be untouched; a test must show it before the service mode
+is documented as recommended.
+
+**The reverse case is already covered.** When the service dies and agents are alive: its runs
+end `interrupted` at the next start, a `repeatable=True` key re-sent by the agent starts a
+fresh run (`retry_of` names the interrupted one), a SIGTERM stop drains first, and under the
+service mode launchd `KeepAlive` (or `Restart=always`) starts it again.
+
 ### The CLI
 
 ```
@@ -156,11 +204,13 @@ tool = "gh"
 grants = ["release"]
 ```
 
-**Kinds.** Each is an adapter behind the existing grant ports (see (e)).
+**Kinds.** Each selects a store backend (see "The credential SDK" below); each is an adapter behind the existing grant ports (see (e)).
 
 | `kind` | What it resolves | Where the value lives |
 |---|---|---|
 | `keychain` | a static secret read from the OS keychain (macOS Keychain, Secret Service on Linux) by item name | in the keychain; in memory on the `WorkOrder` for the run |
+| `onepassword` | a static secret read from 1Password through `op` with a service account, by item reference | in 1Password; in memory for the run |
+| `encrypted_file` | a static secret from an encrypted `0600` file under `$TRESTLE_HOME` | in that file; in memory for the run |
 | `aws_assume_role` | STS `AssumeRole` with **session name = the run id** and **duration bounded by the run deadline plus the finalization margin** | in STS; in memory for the run; refreshed in place for a long run |
 | `github_app` | an installation access token minted from the app's private key (keychain), **scoped to the listed repositories and permissions** | in GitHub; in memory for the run |
 | `cli_passthrough` | nothing: the plugin's `gh` or `aws` subprocess uses the tool's own keychain or SSO cache | **never materialized** by Trestle; the grant only says the plugin may invoke the tool as this identity |
@@ -192,6 +242,54 @@ produces a digest no operator has pinned.
   the one action that unblocks it. The run never waits on a prompt nobody will answer.
 - `execution.credential_lifetime_insufficient` and `execution.credential_stale` keep their
   meanings from the grant pack.
+
+### The credential SDK
+
+Three faces, and no new MCP tool: the surface stays at ten.
+
+**Declaration, static at publication.** `@trestle(credentials=...)` maps a store entry name
+to the delivery shape the plugin will use. It is a literal, read from the source at
+publication like every other keyword (K-5), so it is recorded and part of the snapshot
+identity. Admission checks the grants by source digest and refuses
+`admission.credential_not_granted` or `admission.credential_unknown` before a run id exists.
+`describe_plugin` lists names and shapes, never values.
+
+**Use at run time, through the plugin `Context`** (`trestle/plugin/surface.py`, today `log`,
+`progress`, `artifact`, `attach` and `event`). The shapes, strongest first, so that the value
+rarely exists as a string in plugin code at all:
+
+| Shape | What the plugin gets | Where the value is |
+|---|---|---|
+| `ctx.exec(argv, credentials=[...], cwd=...)` | the subprocess result | Trestle spawns the process and injects the credential; the plugin never touches it. **This is the shape to steer authors toward.** |
+| `trestle cred-helper` (git credential helper, AWS `credential_process`) | nothing; the tool asks the helper | answered by the service only for a live run holding the grant (see (d)) |
+| `ctx.credential_file(name)` | a run-scoped `0600` path | a file refreshed in place; the grant pack's channel directory (`packages/trestle-packs/trestle_packs/grant/delivery.py`) is already this |
+| `ctx.credential_env(name)` | a `dict` of variable names to values | in the plugin's memory. The weakest shape, kept for tools with no helper protocol |
+
+Every shape registers its values in the run's scrub set, so whichever one a plugin uses, a
+value that reaches a log, a return, a raise or an artifact is `<redacted>` on disk and in every
+answer.
+
+**The store, behind the service.** A provider interface in the server with backends:
+
+- macOS Keychain, through `security`;
+- 1Password, through `op` with a service account;
+- an encrypted `0600` file under `$TRESTLE_HOME`;
+- native backends that mint short-lived, scoped credentials: STS `AssumeRole` with session
+  name = the run id and duration bounded by the deadline plus the finalization margin, and
+  GitHub App installation tokens scoped to repositories and permissions.
+
+`config.toml` names store entries (the `[credentials.<name>]` tables above; `kind` selects the
+backend). Nothing on the agent surface lists or reads them: `list_plugins` and
+`describe_plugin` show names a plugin declared, and nothing shows the store.
+
+**The honest limit.** The agent's own shell runs as the same user as the service. "Agents
+cannot see the store" holds inside Trestle. Outside it, it holds only when the host sandboxes
+the agent's shell, or when the store needs an unlock the agent cannot perform: a biometric
+prompt, or a Keychain ACL bound to the service binary. The ACL is weaker than it looks: a
+Python interpreter's code signature covers every script it runs, so an ACL granted to the
+interpreter is granted to any Python the agent starts. A separately signed service binary,
+or 1Password's own prompt, is what makes the unlock the agent's problem rather than a
+formality.
 
 ### (c) Resolution reuses the secrets path
 
@@ -266,13 +364,14 @@ Each is its own change with its own tests and docs; none depends on a later one.
 |---|---|---|
 | 1 | **Bearer token on HTTP MCP.** `agent.token` from `init` and `service install`; the HTTP transport refuses requests without it; `install.md` shows the `headers` form. | A request without the header is refused; stdio is unchanged; the ops port is unchanged. |
 | 2 | **`trestle service` commands** (`install`, `uninstall`, `status`, `restart`) generating the LaunchAgent plist / `systemd --user` unit as in Decision 1, and a rewrite of `install.md` making the service the recommended mode with stdio as the fallback. | A fresh machine reaches a running service from `install.md` alone; `status` reports it; `restart` drains. |
-| 3 | **`[credentials.<name>]` tables, grants by digest, admission refusals, `@trestle(credentials=...)`.** Resolution onto the `WorkOrder` secrets path; `secrets=` marked deprecated. No real provider yet: the `keychain` kind against a stub keychain is enough to prove the path. | `credential_not_granted` and `credential_unknown` are refused before a run id; a republished plugin loses its grant; a stdio server refuses a declaring plugin; the scrub covers resolved values. |
-| 4 | **Providers behind the grant ports with fakes.** `aws_assume_role` against a fake STS, `github_app` against a fake App endpoint, `cli_passthrough`; `credential_interactive` and lifetime handling through the existing codes. | Each adapter is proven in CI against its fake; nothing real is configured. |
-| 5 | **`trestle cred-helper`** (`aws` credential_process, `git` credential helper) with run-scoped tickets answered only for a live run holding the grant; env injection becomes the fallback. | A helper call after the run is terminal gets nothing; a plugin without the grant gets nothing; the container channel is unchanged. |
+| 2a | **Orphan visibility and operator cancel.** Record the end of a streamable-HTTP session; `trestle doctor` and `recent_runs` mark runs whose session is gone; `trestle cancel <run_id>` on the unscoped `Project.cancel` path; the dropped-`terminal`-wait test. | A run outlives its session untouched and is marked; the operator can end it from the CLI; `on_session_lost="cancel"` is possible to build on it (its own small change, after this one). |
+| 3 | **`[credentials.<name>]` tables, grants by digest, admission refusals, `@trestle(credentials=...)`, and the first Context shapes.** Resolution onto the `WorkOrder` secrets path; `ctx.credential_env` and `ctx.credential_file` (the channel directory, moved up from the pack); `secrets=` marked deprecated. One store backend is enough to prove the path: the encrypted `0600` file, with a stub keychain in tests. | `credential_not_granted` and `credential_unknown` are refused before a run id; a republished plugin loses its grant; a stdio server refuses a declaring plugin; the scrub covers values from both shapes. |
+| 4 | **Store backends and native providers behind the grant ports, with fakes.** macOS Keychain (`security`), 1Password (`op`), `aws_assume_role` against a fake STS, `github_app` against a fake App endpoint, `cli_passthrough`; `credential_interactive` and lifetime handling through the existing codes. | Each backend is proven in CI against its fake or stub; nothing real is configured. |
+| 5 | **`ctx.exec` and `trestle cred-helper`** (`aws` credential_process, `git` credential helper) with run-scoped tickets answered only for a live run holding the grant; `ctx.exec(argv, credentials=[...])` as the documented first choice; `credential_env` documented as the fallback. | A helper call after the run is terminal gets nothing; a plugin without the grant gets nothing; `ctx.exec` runs a tool with a granted identity while the plugin holds no value; the container channel is unchanged. |
 
 ## What this record does not decide
 
-- Variable names each kind sets in the child (change 3).
+- Variable names each kind sets through `ctx.credential_env` (change 3).
 - Whether the service should refuse to start when a second server is live on the home
   (today it must not; v0.3.1 sharing stays).
 - A Windows service. Stdio remains the Windows path until someone needs more.
