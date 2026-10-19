@@ -107,6 +107,7 @@ def trestle(
     env_arg: str | None = None,
     secrets: Collection[str] = (),
     repeatable: bool = False,
+    stop_grace: float | None = None,
 ) -> Callable[[F], F]: ...
 
 
@@ -120,13 +121,14 @@ def trestle(  # noqa: UP047
     env_arg: str | None = None,
     secrets: Collection[str] = (),
     repeatable: bool = False,
+    stop_grace: float | None = None,
 ) -> F | Callable[[F], F]:
     """Mark a callable as a Trestle plugin entry point.
 
     Bare (`@trestle`) or call form (`@trestle(deadline=..., summary_fields=..., packages=...,
-    env_arg=..., secrets=..., repeatable=...)`). The metadata is read statically from the source at
-    publication (literals only), never from this call; at run time the call form marks the
-    callable exactly as the bare form does.
+    env_arg=..., secrets=..., repeatable=..., stop_grace=...)`). The metadata is read statically
+    from the source at publication (literals only), never from this call; at run time the call
+    form marks the callable exactly as the bare form does.
     """
 
     def mark(target: F) -> F:

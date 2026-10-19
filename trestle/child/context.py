@@ -115,7 +115,9 @@ class RuntimeContext:
 
     @property
     def cancelled(self) -> bool:
-        return (self._work / "cancel.flag").exists()
+        """The run has been stopped: cancelled, or at its release point (its deadline less its
+        release slice, G3). A plugin that declares `stop_grace` has that long to finish."""
+        return (self._work / "cancel.flag").exists() or (self._work / "release_point.flag").exists()
 
     @property
     def run_services(self) -> RunServices:

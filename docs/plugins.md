@@ -65,6 +65,16 @@ arguments starts a fresh run (`retry_of` names the interrupted one) instead of r
 interrupted answer. Declare it only when a half-done run can be run again. `describe_plugin`
 shows it (`repeatable`).
 
+`stop_grace` (seconds; plain plugins only) asks for a window between a stop and the kill, so the
+plugin can finish cleanly: write its last status, return. From the moment a run is cancelled, or
+reaches its release point (its deadline less the grace), `ctx.cancelled` is true; the plugin has
+the grace to notice and return before the supervisor's kill. The grace is capped at the
+operator's release slice (`TRESTLE_RELEASE_SLICE_S`, 10 s by default) and comes out of the
+plugin's own deadline, never added to it. A run stopped this way still ends `cancelled` or
+`timed_out`; what it attached in the window is kept. It enters the snapshot identity only when
+declared; a workflow declaring it is refused at publication (a root's release slice is the
+operator's). See [the decision](decisions/plain-plugin-stop-grace.md).
+
 `packages` names the modules or packages the plugin imports from outside its own file, and is
 **recorded, not snapshotted** (R-J). Publication resolves each name on the import path the child
 process will use, without importing it, and records a digest of its `.py` files (a package's other files are not covered) in the manifest; the
@@ -141,7 +151,8 @@ attributable to the run (the run's process group and every descendant by parent 
 session it has moved to), waits at most `grace` (default 10 s), sends SIGKILL, and waits at most
 `kill` (default 5 s) for confirmation: `stop_bound` in all (`release_slice` + `grace` + `kill`,
 25 s by default), plus at most one supervisor `poll_interval` (0.05 s) to notice a cancel. A plain
-plugin's slice is 0, so its own stop takes `grace` + `kill`. The values are published in
+plugin's slice is 0 unless it declares `stop_grace` (then that, capped at `release_slice`), so its
+own stop takes its slice + `grace` + `kill`. The values are published in
 `trestle.common.clock` (`release_slice`, `grace`, `kill`, `stop_bound`, `poll_interval`); the
 operator sets `TRESTLE_RELEASE_SLICE_S`, `TRESTLE_CANCEL_GRACE_S` and `TRESTLE_CANCEL_KILL_S`. The
 finalization margin (`finalization_margin`, 35 s by default: the stop bound plus the

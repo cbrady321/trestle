@@ -347,6 +347,7 @@ DECLARED_KEYWORDS = (
     "env_arg",
     "secrets",
     "repeatable",
+    "stop_grace",
 )
 _TIMEDELTA_UNITS = {
     "weeks": 604800.0,
@@ -405,7 +406,19 @@ def declared_from_function(fn: _FnDef) -> DeclaredMetadata:
         repeatable=_declared_bool(values["repeatable"], "repeatable")
         if "repeatable" in values
         else False,
+        stop_grace_s=_declared_stop_grace(values["stop_grace"]) if "stop_grace" in values else None,
     )
+
+
+def _declared_stop_grace(node: ast.expr) -> float | None:
+    """G3: `stop_grace` (seconds, a positive finite number; None declares none). Admission caps it
+    at the operator's release slice; publication only checks that it is a literal."""
+    if isinstance(node, ast.Constant) and node.value is None:
+        return None
+    seconds = _number(node, "stop_grace")
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise DeclarationError("@trestle: stop_grace must be a positive, finite number of seconds")
+    return seconds
 
 
 def _declared_bool(node: ast.expr, keyword: str) -> bool:

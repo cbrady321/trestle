@@ -39,14 +39,16 @@ never written. A pack's hour-long poll loop that checks `ctx.cancelled` never ge
   arithmetic (`lease.would_overrun` already adds the slice) are unchanged.
 - **The plugin sees the stop through `ctx.cancelled`**, which is now true once the cancel flag
   **or** the release-point flag exists. A plugin that loops on `ctx.cancelled` and on
-  `ctx.remaining()` writes its final artifact and returns; a plugin that returns within the
-  window ends with its result recorded and the stop cause on the run.
+  `ctx.remaining()` writes its final artifact and returns. The run still ends with the stop's
+  cause (`cancelled` or `timed_out`); what the plugin attached in the window is kept.
+- **A workflow may not declare it**: publication refuses `stop_grace` on a workflow entry, whose
+  root release slice is the operator's.
 - **A plugin that does not declare it** keeps a release slice of 0 and is killed exactly as
   today.
 
 ## What this does not change
 
-- The kill still covers every process attributable to the run (B2-C10); a declared grace never keeps a
-  process past it.
+- The kill still covers every process attributable to the run (B2-C10); a declared grace never
+  keeps a process past it.
 - A durable lifetime for plain plugins (review R7) stays deferred: the grace is a few seconds of
   clean-up, not a host-kept process.
