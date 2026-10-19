@@ -1,164 +1,214 @@
-# Install and wire local agents
+# Install: one Trestle service per user
 
-Install Trestle once on the machine, then attach Cursor, Claude Desktop, and Claude Code to the same stdio MCP server. External network clients cannot reach it — see [`security.md`](security.md).
+Trestle runs as **one service per OS user per machine**: a macOS LaunchAgent or a `systemd --user`
+unit, never a root daemon and never a process per MCP host. Every agent host on the machine
+(Cursor, Claude Desktop, Claude Code, a script) points at the service's loopback URL. Runs belong to
+the service, so they finish when the chat window that sent them closes. Why, and what is still to
+come: [`decisions/service-and-credentials.md`](decisions/service-and-credentials.md).
 
-## 1. Install
+`trestle service` is the only documented way to start and stop Trestle.
+
+## 1. Install and start the service
+
+From the Trestle checkout:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
-pip install -e ".[packs]"          # optional: Docker / pytest / migration plugins
-trestle init                       # creates ~/.trestle, seeds echo.py
-chmod 700 ~/.trestle               # recommended — per-user home
-trestle doctor                     # health: ok, plugins ≥ 1
+python3 -m venv ~/.trestle-venv
+~/.trestle-venv/bin/pip install -e ".[packs]"    # packs optional: Docker / pytest / migration plugins
+~/.trestle-venv/bin/trestle init                 # creates ~/.trestle, seeds echo.py, writes agent.token
+~/.trestle-venv/bin/trestle service install      # writes and loads the unit; the service starts
 ```
+
+Run `trestle service install` from the venv you want the service to run: the unit names that
+`trestle` binary by its absolute path. Then check it:
+
+```bash
+~/.trestle-venv/bin/trestle service status
+```
+
+```
+installed: yes
+loaded: yes
+running: yes
+pid: 41207
+endpoint: http://127.0.0.1:18732/mcp
+home: /Users/you/.trestle
+installed build: 0.3.1+g9b89c9aa1234
+running build: 0.3.1+g9b89c9aa1234
+live runs: 0
+```
+
+`status` exits 0 when the service is running and 3 when it is not.
+
+What `install` writes, for the current user only:
+
+| Platform | Unit |
+|---|---|
+| macOS | `~/Library/LaunchAgents/dev.trestle.service.plist` |
+| Linux | `~/.config/systemd/user/trestle.service` |
+
+- The command is `<absolute path of trestle> serve --port 18732` (`--port` on `install` changes it).
+- The environment is **exactly** `PATH`, `HOME` and `TRESTLE_HOME`. `PATH` is the installing
+  shell's, with the binary's directory first and `/usr/bin:/bin:/usr/sbin:/sbin` last. Nothing
+  else from your shell reaches the service or its plugins: declare what plugins need in
+  `config.toml`, never in `~/.zshrc`.
+- It starts at login (`RunAtLoad`, `WantedBy=default.target`) and is restarted after a crash
+  (`KeepAlive = {SuccessfulExit = false}`, `Restart=on-failure`). A clean exit is not restarted:
+  that is how a drained stop stays stopped.
+- Output goes to `$TRESTLE_HOME/service.log`.
+
+The unit is a file you can read and edit; it carries a line saying `trestle service install` wrote
+it. `install` refuses to overwrite a unit without that line. Run again on an installed service,
+`install` reports the state and changes nothing; run after a newer `trestle` was installed into the
+venv, it restarts the service onto it, as `upgrade` does.
+
+Keep the home private: `chmod 700 ~/.trestle`.
+
+## 2. Wire every agent host
+
+The endpoint is `http://127.0.0.1:18732/mcp`, and every request must carry the **agent token**:
+`Authorization: Bearer <contents of ~/.trestle/agent.token>`. A request without it is answered
+401. The token file is mode `0600`; possessing it is what lets a process use Trestle. See
+[`security.md`](security.md).
+
+Hosts send the token through their config's `headers`, either expanded from an environment variable
+or pasted. To use the variable form, export it where the host is started:
+
+```bash
+export TRESTLE_AGENT_TOKEN="$(cat ~/.trestle/agent.token)"
+```
+
+### Claude Code
+
+```bash
+claude mcp add --scope user --transport http trestle http://127.0.0.1:18732/mcp \
+  --header "Authorization: Bearer $(cat ~/.trestle/agent.token)"
+```
+
+Or in a project `.mcp.json` (Claude Code expands `${VAR}`):
+
+```json
+{
+  "mcpServers": {
+    "trestle": {
+      "type": "http",
+      "url": "http://127.0.0.1:18732/mcp",
+      "headers": { "Authorization": "Bearer ${TRESTLE_AGENT_TOKEN}" }
+    }
+  }
+}
+```
+
+### Cursor
+
+User config `~/.cursor/mcp.json` (all workspaces), or the project override this repo ships,
+[`.cursor/mcp.json`](../.cursor/mcp.json). Cursor expands `${env:VAR}`:
+
+```json
+{
+  "mcpServers": {
+    "trestle": {
+      "url": "http://127.0.0.1:18732/mcp",
+      "headers": { "Authorization": "Bearer ${env:TRESTLE_AGENT_TOKEN}" }
+    }
+  }
+}
+```
+
+**Skill (optional):** copy [`.cursor/skills/trestle/`](../.cursor/skills/trestle/) to
+`~/.cursor/skills/trestle/` so other workspaces get the same agent rules.
+
+### Claude Desktop
+
+`~/Library/Application Support/Claude/claude_desktop_config.json`: merge the same `url` and
+`headers` entry as Claude Code's `.mcp.json`, with the token pasted in place of the variable.
+Restart Claude Desktop. (Unverified here: whether your Desktop version accepts a `url` entry in
+this file. If it does not, it cannot reach Trestle until it does: there is no `command` form.)
+
+### Check
+
+- The host lists **ten** tools: `run`, `await_runs`, `cancel`, `query`, `fetch`, `pin`, `unpin`,
+  `list_plugins`, `describe_plugin`, `publish_plugin`.
+- `list_plugins` returns at least `echo`.
+- `run(plugin="echo", args={"message": "hi"}, wait_ms=5000)` returns a terminal `RunView`, and with
+  `completion="terminal"` it can never return a `running` frame.
+
+The ops port (`trestle ops serve`, `127.0.0.1:18733`) is read-only and takes no token.
+
+## 3. Plugins the service watches
+
+The service runs with no `--plugin-dir`. Its watched folders come from `$TRESTLE_HOME/config.toml`
+(default: `$TRESTLE_HOME/plugins`):
+
+```toml
+[plugins]
+paths = ["~/.trestle/plugins", "/ABS/PATH/TO/trestle/examples/packs", "/ABS/PATH/TO/project/tools"]
+```
+
+`config.toml` is read once at start: `trestle service restart` after changing it.
+
+## 4. Start, stop, restart
+
+```bash
+trestle service stop       # SIGTERM: drain, then unload; stays down (across logins too) until start
+trestle service start      # load the unit if needed and start it
+trestle service restart    # stop (draining), then start
+```
+
+A stopped-by-SIGTERM server **drains**: it refuses new runs (`admission.service_draining`), starts
+and finishes the runs it already admitted, and exits once it owns none. `stop` waits for that, so
+it can take as long as the longest live run (each is bounded by its deadline). Each command reports
+in one line.
+
+## 5. Upgrade
+
+```bash
+git -C /ABS/PATH/TO/trestle pull      # an editable install: the checkout's new commit
+trestle service upgrade               # refuses while a run is live
+trestle service upgrade --drain       # waits for live runs to end instead
+```
+
+`upgrade` stops the service (draining), reinstalls into the service's venv (`pip install -e` of the
+checkout for an editable install, else `pip install -U` of where it was installed from; `--source`
+overrides), migrates the home as `trestle init --upgrade` does, using the new build, then starts it.
+While any run is live on the home it refuses and changes nothing, unless `--drain` is given. After
+it, `status` shows the same build as installed and running; a service still running an older build
+shows `(stale: restart or upgrade)`.
+
+## 6. Remove
+
+```bash
+trestle service uninstall   # stop (draining), unload, delete the unit; the home stays
+```
+
+## The home
+
+The home (`TRESTLE_HOME`, default `~/.trestle`) must be on a local file system: every entry point
+refuses an nfs, smbfs, afpfs, webdav or cifs mount. It records its format in `home/format` (2). A
+home a v0.3.0 server used is refused until `trestle init --upgrade`, which `trestle service
+upgrade` runs for you.
+
+`trestle doctor` reports the home's health, the live servers and the live runs by owner, and, when
+an admission lock is stuck, who holds it. `trestle recover` reaps runs whose server is gone and runs
+the retention sweep. Idempotency keys live in `home/keys/`; `trestle doctor --rebuild-keys` repairs
+them.
 
 <!-- K-14 -->
 **Type checking.** `mypy` runs at zero errors and is gated in CI by its own `typecheck` job. The gate needs the workflow packs installed (`pip install -e ".[dev,packs]"`): `trestle_packs` ships a `py.typed` marker so `import trestle_packs` type-checks, and with `.[dev]` alone the package is absent and `mypy` reports `import-not-found`. Run it locally the same way: `pip install -e ".[dev,packs]" && mypy`.
 <!-- /K-14 -->
 
-Use the **absolute path** to the venv binary in MCP configs so hosts do not depend on `PATH`:
-
-```bash
-which trestle
-# e.g. /Users/you/projects/trestle/.venv/bin/trestle
-```
-
-## 2. MCP snippet (all hosts)
-
-```json
-{
-  "mcpServers": {
-    "trestle": {
-      "command": "/ABS/PATH/TO/.venv/bin/trestle",
-      "args": ["serve"],
-      "env": {
-        "TRESTLE_HOME": "~/.trestle"
-      }
-    }
-  }
-}
-```
-
-With workflow packs for this repo:
-
-```json
-{
-  "mcpServers": {
-    "trestle": {
-      "command": "/ABS/PATH/TO/.venv/bin/trestle",
-      "args": [
-        "serve",
-        "--plugin-dir",
-        "/ABS/PATH/TO/trestle/examples/packs"
-      ],
-      "env": {
-        "TRESTLE_HOME": "~/.trestle"
-      }
-    }
-  }
-}
-```
-
-This repo ships [`.cursor/mcp.json`](../.cursor/mcp.json) as a **project** override (packs wired). For system-wide use, merge the snippet into the **user** config below.
-
-## 3. Host configs
-
-### Cursor
-
-| Scope | File |
-|-------|------|
-| User (all workspaces) | `~/.cursor/mcp.json` |
-| Project (this repo) | [`.cursor/mcp.json`](../.cursor/mcp.json) |
-
-1. Merge the `trestle` entry into `mcpServers`.
-2. Enable the server in Cursor MCP settings.
-3. Confirm the host lists **ten** tools: `run`, `await_runs`, `cancel`, `query`, `fetch`, `pin`, `unpin`, `list_plugins`, `describe_plugin`, `publish_plugin`.
-
-**Skill (optional):** copy [`.cursor/skills/trestle/`](../.cursor/skills/trestle/) to `~/.cursor/skills/trestle/` so other workspaces get the same agent rules.
-
-### Claude Desktop
-
-macOS config:
-
-`~/Library/Application Support/Claude/claude_desktop_config.json`
-
-Merge the same `mcpServers.trestle` object. Restart Claude Desktop. Confirm ten tools appear.
-
-### Claude Code
-
-Use the host’s user `mcpServers` config, or a project `.mcp.json`, with the same snippet. Prefer the absolute venv `trestle` path.
-
-## 4. Optional streamable HTTP
-
-Default is **stdio** (recommended). For hosts that cannot hold stdio:
-
-```bash
-trestle serve --transport streamable-http --port 18732
-# endpoint: http://127.0.0.1:18732/mcp
-```
-
-```json
-{
-  "mcpServers": {
-    "trestle-http": {
-      "url": "http://127.0.0.1:18732/mcp"
-    }
-  }
-}
-```
-
-`--port 0` picks a free port and prints `trestle: listening 127.0.0.1:<port>` on stderr once it accepts connections (useful for scripts and tests that must not collide on a fixed port).
-
-Bind is fixed at `127.0.0.1`. There is no `--host` flag. Any process on the same machine can hit that port — prefer stdio when possible.
-
-## 5. Verify
-
-```bash
-trestle doctor
-python scripts/smoke_agent_mcp.py    # expect SMOKE OK
-```
-
-Host checklist:
-
-- Ten MCP tools visible
-- `list_plugins` returns at least `echo` (after `trestle init`)
-- `run(plugin="echo", args={"message": "hi"}, wait_ms=5000)` returns a terminal `RunView`
-- `run(plugin="echo", args={"message": "hi"}, wait_ms=5000, completion="terminal")` also does, and can never return a `running` frame
-
-## Several servers on one home
-
-Any number of `trestle serve` (and `trestle ops serve`) processes may share one `TRESTLE_HOME`.
-The home must be on a local file system: every entry point (`serve`, `ops serve`, `init`,
-`recover`, `doctor`, `pin`, `unpin`) refuses an nfs, smbfs, afpfs, webdav or cifs mount. A home
-records its format in `home/format` (2); a home a v0.3.0 server used is refused until it is
-upgraded, and v0.3.0 and v0.3.1 servers must never share a home:
-
-```bash
-# stop every v0.3.0 server on the home first
-trestle init --upgrade
-```
-
-`trestle init` never recovers runs. Idempotency keys live in `home/keys/` (one file per key, each
-run's expiry fixed at admission); nothing rebuilds them at start, `init --upgrade` seeds them from
-the runs (a key that had expired stays expired), and `trestle doctor --rebuild-keys` repairs them.
-`trestle recover` reaps now (only runs whose server is gone) and then runs the retention sweep; `trestle doctor` lists the live servers, the live runs by owner
-and, when an admission lock is stuck (a server stopped with Ctrl-Z or a debugger), who holds it.
-A server stopped with SIGTERM drains: it refuses new runs and keeps starting and finishing the
-runs it admitted; stop it once `doctor` shows it has no live runs. All servers on a home share one
-pool of `max_running_runs` slots (31 by default: three servers no longer get 93), fairly, with one
-slot kept free for each other idle server; see [Run capacity](agents.md#run-capacity).
-
 ## Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
-| Host cannot start server / `command not found` | Use absolute path to `.venv/bin/trestle` |
-| Empty catalog / `admission.plugin_not_found` | `trestle init`; check `catalog_hint` on `list_plugins` |
-| Pack plugins `valid: false` | `pip install -e ".[packs]"`; see [`packs.md`](packs.md) |
-| Wrong home / missing plugins | Set `TRESTLE_HOME` (or `--home`) to the directory you initialized |
-| `a v0.3.0 home` | Stop every v0.3.0 server, then `trestle init --upgrade` |
+| Host shows no tools / connection refused | `trestle service status`; `trestle service start`; read `$TRESTLE_HOME/service.log` |
+| Host gets HTTP 401 | The `Authorization` header is missing or stale: it must be `Bearer ` plus the contents of `$TRESTLE_HOME/agent.token` |
+| `running build` differs from `installed build` | `trestle service upgrade` (or `restart` when the new build is already installed) |
+| `install` refuses: not written by trestle | A unit you wrote is at that path; move it away, or keep running yours |
+| Empty catalog / `admission.plugin_not_found` | `trestle init`; check `[plugins] paths` and `catalog_hint` on `list_plugins` |
+| Pack plugins `valid: false` | `pip install -e ".[packs]"` into the service's venv; see [`packs.md`](packs.md) |
+| `admission.service_draining` | The service is stopping or upgrading; it comes back with `start` |
+| `a v0.3.0 home` | `trestle service upgrade`, or `trestle init --upgrade` with the service stopped |
 | `admission.home_busy` | Another process held the home's admission lock over 2 s; retry, and see `trestle doctor` |
 | `admission.after_unknown` | `run(after=...)` names a run or key no run used |
 | `admission.ttl_out_of_range` | `idempotency_ttl_s` is negative, not whole seconds or above `[keys] max_ttl_s` in `config.toml` (default 604800) |

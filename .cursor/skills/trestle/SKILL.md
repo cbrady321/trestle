@@ -1,8 +1,8 @@
 ---
 name: trestle
 description: >-
-  Run local Python plugins and retrieve bounded run evidence via Trestle MCP
-  (trestle serve). Use when calling run, query, fetch, list_plugins,
+  Run local Python plugins and retrieve bounded run evidence via the Trestle
+  service's MCP endpoint. Use when calling run, query, fetch, list_plugins,
   describe_plugin, publish_plugin, awaiting runs, or diagnosing admission
   refusals and projection errors.
 ---
@@ -22,6 +22,7 @@ Read [`docs/agents.md`](../../../docs/agents.md) first. Full playbook: [`docs/ag
 5. **Pull schemas** — `list_plugins` has names only; use `describe_plugin(plugin_id=…)` for `input_schema`.
 6. **View catalog** — read MCP resource `trestle://views` for when to pick each `query` view vs `fetch` (not plugin schemas).
 7. **Smallest retrieval** — return value → `fetch({run_id}/result)`; failure → `query(last_error)`; stdout → `query(run_tail)`.
+8. **MCP only** — never run `trestle` (or the work a plugin does) in your own shell. If the Trestle tools are missing or the service does not answer, say so and stop; the operator starts it with `trestle service start`.
 
 ## Golden workflow
 
@@ -91,7 +92,7 @@ python scripts/demo_pack_workflows.py  # all pack plugins; docker steps skip wit
 
 ## Workflow packs
 
-Pre-built plugins for Docker stacks, pytest, and migrations. Install `pip install -e ".[packs]"`, then `trestle serve --plugin-dir examples/packs`. Guide: [`docs/packs.md`](../../../docs/packs.md).
+Pre-built plugins for Docker stacks, pytest, and migrations. The operator installs them (`pip install -e ".[packs]"`) and lists `examples/packs` in the service's `[plugins] paths`. Guide: [`docs/packs.md`](../../../docs/packs.md).
 
 | Symptom | Next step |
 |---------|-----------|

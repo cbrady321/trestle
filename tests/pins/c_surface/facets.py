@@ -4,7 +4,7 @@ Each function returns one JSON-safe value describing a public observable of
 today's (S0) host, registered in `tests/proof/facets.toml` as
 `tests.pins.c_surface.facets:<function>`:
 
-- `tools_list`     raw `tools/list` over the stdio MCP host (SA-12)
+- `tools_list`     raw `tools/list` over the MCP proof host (SA-12)
 - `runview_shape`  the `RunView` frame: fields, and key/type shape per state
 - `spec_keys`      the run spec: `RunSpec` fields and the keys of a written spec.json
 - `refusal_codes`  every stable refusal code plus the refusal frame shape

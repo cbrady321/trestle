@@ -12,7 +12,7 @@ pip install -e "packages/trestle-packs[all]"
 Point Trestle at example plugins:
 
 ```bash
-trestle serve --plugin-dir examples/packs
+trestle service restart   # after adding examples/packs to [plugins] paths in $TRESTLE_HOME/config.toml
 ```
 
 Agent quick-start: [`docs/packs.md`](../../docs/packs.md). Install and lockdown: [`docs/install.md`](../../docs/install.md).

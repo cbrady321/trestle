@@ -1,7 +1,8 @@
 # Decision record: one service per user, and credentials by name
 
-**Status:** decided, not implemented. Nothing in this record exists in code yet except where it
-says so ("already implemented"). The implementation sequence at the end says what lands first.
+**Status:** decided; changes 1, 1a and 2 of the implementation sequence are implemented (the
+bearer token, the stdio transport removed, `trestle service`); the rest is not. Where the code
+differs from the text below, "As implemented" after the sequence table says how and why.
 **Date:** 2026-10-19
 **Related:** [`security.md`](../security.md) (lockdown, profiles, what the boundary is not),
 [`install.md`](../install.md) (host wiring), [`environment.md`](../environment.md) (the demo
@@ -165,7 +166,7 @@ So the streamable HTTP MCP transport gains a **required bearer token**:
 - Hosts send it through their MCP config's `headers` field, expanded from an environment
   variable (`${TRESTLE_AGENT_TOKEN}` in hosts that expand) or pasted. [`install.md`](../install.md)
   will show both.
-- Stdio is unchanged: the spawning host is the only client and there is nothing to authenticate.
+- There is no stdio transport left to exempt (Decision 3).
 - The **ops port stays read-only** and stays without a token: it exposes nothing that admits a
   run or reaches a credential.
 
@@ -458,6 +459,38 @@ Each is its own change with its own tests and docs; none depends on a later one.
 | 3 | **`[credentials.<name>]` tables, grants by digest, admission refusals, `@trestle(credentials=...)`, and the first Context shapes.** Resolution onto the `WorkOrder` secrets path; `ctx.credential_env` and `ctx.credential_file` (the channel directory, moved up from the pack); `secrets=` marked deprecated. One store backend is enough to prove the path: the encrypted `0600` file, with a stub keychain in tests. | `credential_not_granted` and `credential_unknown` are refused before a run id; a republished plugin loses its grant; the scrub covers values from both shapes. |
 | 4 | **Store backends and native providers behind the grant ports, with fakes.** macOS Keychain (`security`), 1Password (`op`), `aws_assume_role` against a fake STS, `github_app` against a fake App endpoint, `cli_passthrough`; `credential_interactive` and lifetime handling through the existing codes. | Each backend is proven in CI against its fake or stub; nothing real is configured. |
 | 5 | **`ctx.exec` and `trestle cred-helper`** (`aws` credential_process, `git` credential helper) with run-scoped tickets answered only for a live run holding the grant; `ctx.exec(argv, credentials=[...])` as the documented first choice; `credential_env` documented as the fallback. | A helper call after the run is terminal gets nothing; a plugin without the grant gets nothing; `ctx.exec` runs a tool with a granted identity while the plugin holds no value; the container channel is unchanged. |
+
+### As implemented (changes 1, 1a, 2)
+
+Where the code differs from the text above, and why:
+
+- **A drained server exits.** SIGTERM drains as before (new runs refused, admitted runs started
+  and finished), and the server now exits 0 once it owns no live run, where it used to wait to be
+  killed. That is what lets a service manager's stop, and `trestle service stop`, wait out the
+  runs instead of interrupting them.
+- **`KeepAlive = {SuccessfulExit = false}` and `Restart=on-failure`**, not a bare `KeepAlive` and
+  `Restart=always`: a crash restarts the service, a drained exit 0 does not, so `stop` cannot race
+  the manager bringing it back. `KillMode=mixed` and `TimeoutStopSec=infinity` keep a systemd stop
+  from signalling the runs' processes or cutting the drain short.
+- **`stop` also disables the unit** (`launchctl disable`, `systemctl --user disable`), so a stopped
+  service stays down across logins until `start`, which enables it again.
+- **`upgrade` stops first.** The order is stop (draining), pip, the home migration run by the *new*
+  binary (`init --upgrade --no-seed`), start. Installing while the old build runs would replace
+  modules under a live process, and `init --upgrade` wants the home's servers stopped. A failed
+  pip starts the old build again. The refusal while a run is live is checked before anything
+  changes.
+- **`PATH`** in the unit is the installing shell's, with the binary's directory first and
+  `/usr/bin:/bin:/usr/sbin:/sbin` appended: the server calls `sysctl` and `ps` by name, and a
+  minimal `PATH` without `/usr/sbin` broke process attribution in testing.
+- **The token** is also created by the server's first start on a home without one, as a fresh
+  home is given its format there; `init` and `service install` create it too.
+- **Build identity.** `trestle --version` prints the build: the version, plus `+g<commit>` (and
+  `.dirty`) for an editable checkout, so a `git pull` shows as a stale service even when the
+  version string has not moved. Each server records its build in its lock file.
+- **The proof host** (`tests/proof/mcp_host.py`) drives the server over HTTP with the token. Its
+  `stdin_close` sever is now `session_close` (HTTP DELETE of the MCP session): the server stays up
+  and the run continues, which is the session-loss policy above. The three stdio smoke tests moved
+  into `tests/test_mcp_http_smoke.py`; the S0 node-id pin records the move.
 
 ## What this record does not decide
 

@@ -1,4 +1,4 @@
-"""WR-COMPAT-2 pin: plugins are not tools. The raw `tools/list` a stdio MCP
+"""WR-COMPAT-2 pin: plugins are not tools. The raw `tools/list` an MCP
 host sees is the same whether one plugin or twenty are published."""
 
 from __future__ import annotations

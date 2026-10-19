@@ -2,7 +2,7 @@
 
 Every docker subprocess the adapter starts gets closed stdin, reads no transport bytes and dies on
 cancel. The adapter starts docker only through the injected `ExecutionPort`; here the real
-`CommandPort` runs inside a run of the MCP test host (`trestle serve` over its stdio transport, the
+`CommandPort` runs inside a run of the MCP test host (`trestle serve` over its HTTP transport, the
 `docker_adapter_probe` plugin), against the absolute-path `fake_docker.py` shim in its
 `stdin-read` mode (which reads its stdin to EOF and logs the bytes it got) and its `hang` mode
 (which never returns). The family suite's `a_root_cancel_...` case runs the same contract on the

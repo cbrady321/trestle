@@ -18,7 +18,7 @@ Evidence stays on disk, and agents pull small slices only when they need them. T
 - Agents see **ten frozen MCP tools**. Plugin names are not MCP tools; always `run(plugin="…")`.
 - Admission refusals are not runs — they have no `run_id`.
 - `fetch` uses opaque handles (`r_…`, `art_…`, `{run_id}/result`), never filesystem paths.
-- Default agent transport is **stdio** (process-local). Optional HTTP binds **127.0.0.1 only**.
+- Trestle runs as **one per-user service** (LaunchAgent / `systemd --user`); agents reach it over MCP at a **127.0.0.1-only** URL with a bearer token. There is no stdio transport.
 
 ## Out of scope
 

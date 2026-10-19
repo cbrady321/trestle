@@ -10,7 +10,7 @@
 ```bash
 pip install -e ".[dev]"
 pip install -e ".[packs]"          # or: pip install -e "packages/trestle-packs[all]"
-trestle serve --plugin-dir examples/packs
+trestle service restart   # after adding examples/packs to [plugins] paths in $TRESTLE_HOME/config.toml
 ```
 
 If `trestle_packs` is missing, `list_plugins` returns `valid: false` on pack plugins, a `catalog_hint` with install instructions, and `run` returns `admission.import_failed` (no `run_id`).

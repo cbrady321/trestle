@@ -39,7 +39,9 @@ def _packs_hint() -> str:
         import trestle_packs  # noqa: F401
     except ImportError:
         return 'workflow packs: pip install -e ".[packs]" (see docs/packs.md)'
-    return "workflow packs: trestle serve --plugin-dir examples/packs (see docs/packs.md)"
+    return (
+        "workflow packs: add examples/packs to [plugins] paths in config.toml (see docs/packs.md)"
+    )
 
 
 @dataclass

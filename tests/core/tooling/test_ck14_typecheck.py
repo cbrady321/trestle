@@ -96,7 +96,7 @@ def test_init_packs_hint_both_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     import trestle_packs  # noqa: F401  (present in the tests' environment)
 
     assert init_cmd._packs_hint() == (
-        "workflow packs: trestle serve --plugin-dir examples/packs (see docs/packs.md)"
+        "workflow packs: add examples/packs to [plugins] paths in config.toml (see docs/packs.md)"
     )
     monkeypatch.setitem(sys.modules, "trestle_packs", None)  # `import trestle_packs` -> ImportError
     assert init_cmd._packs_hint() == (

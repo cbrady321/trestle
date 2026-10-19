@@ -18,59 +18,46 @@ You do **not** call plugin names as MCP tools. You do **not** use filesystem pat
 
 ## Before your first `run`
 
-### 1. Install and bootstrap
+### 1. The service
 
-See [`install.md`](install.md). Short path:
+Trestle runs as the operator's per-user service ([`install.md`](install.md)); you reach it over
+MCP and nothing else. **Nothing you do as an agent runs `trestle` itself**: not `serve`, not
+`service`, not `init`, not `doctor`. Starting, stopping, upgrading and configuring Trestle is the
+operator's job.
 
-```bash
-pip install -e ".[dev,packs]"   # packs optional but recommended for workflow plugins
-trestle init                    # creates ~/.trestle, seeds echo.py
-trestle doctor                  # health + plugin counts — need plugins ≥ 1
-```
+**If the Trestle tools are missing, or the service does not answer** (connection refused, HTTP 401,
+every call failing the same way): say so plainly, name what you saw, and stop. Do not fall back to
+running the command in your own shell, and do not try to start the service. The operator fixes it
+with `trestle service status` / `start` ([`install.md`](install.md#troubleshooting)).
 
-An empty catalog means every `run` returns `admission.plugin_not_found`. Check `catalog_hint` on `list_plugins` if the catalog is empty.
-
-**Workflow packs** (Docker / pytest / migrations) require `pip install -e ".[packs]"` and a watched plugin directory — see [`packs.md`](packs.md).
+An empty catalog means every `run` returns `admission.plugin_not_found`; `list_plugins` then
+carries a `catalog_hint`. Report it to the operator rather than working around it.
 
 ### 2. Attach MCP
 
-Prefer user-level config so every workspace can use Trestle ([`install.md`](install.md)). Repo ships [`.cursor/mcp.json`](../.cursor/mcp.json) as a project override:
+The operator wires each host once ([`install.md`](install.md#2-wire-every-agent-host)): the URL
+`http://127.0.0.1:18732/mcp` with the agent token as `Authorization: Bearer <token>`. This repo's
+[`.cursor/mcp.json`](../.cursor/mcp.json) is a project override:
 
 ```json
 {
   "mcpServers": {
     "trestle": {
-      "command": "trestle",
-      "args": [
-        "serve",
-        "--plugin-dir",
-        "${workspaceFolder}/examples/packs"
-      ],
-      "env": { "TRESTLE_HOME": "~/.trestle" }
+      "url": "http://127.0.0.1:18732/mcp",
+      "headers": { "Authorization": "Bearer ${env:TRESTLE_AGENT_TOKEN}" }
     }
   }
 }
 ```
 
-Use the absolute path to your venv's `trestle` binary if it is not on `PATH`.
-
-**Project plugins** — point the server at repo tool folders:
-
-```bash
-trestle serve --plugin-dir ./tools --plugin-dir examples/packs
-```
-
-Or persist paths in `$TRESTLE_HOME/config.toml` under `[plugins].paths`.
-
-**Streamable HTTP** — for a host that cannot hold stdio, `trestle serve --transport streamable-http
---port 0` picks a free loopback port and prints `trestle: listening 127.0.0.1:<port>` on stderr;
-connect to `http://127.0.0.1:<port>/mcp` ([`install.md`](install.md#4-optional-streamable-http)).
+**Plugin folders** the service watches are the operator's `[plugins].paths` in
+`$TRESTLE_HOME/config.toml` (packs: [`packs.md`](packs.md)). An agent with the full profile can
+also add a plugin at runtime with `publish_plugin`.
 
 ### 3. Verify
 
 - Host shows **ten** tools (see table below).
-- `trestle doctor` → `health: ok`, plugins ≥ 1.
-- Optional: `python scripts/smoke_agent_mcp.py` → `SMOKE OK`.
+- `list_plugins` returns at least `echo`.
 
 ---
 
@@ -640,7 +627,7 @@ Since v0.3.1 a key's expiry is fixed once, at admission, and recorded with the r
 
 | Role | Surface | Notes |
 |------|---------|-------|
-| **Agent** | MCP ten tools (`trestle serve`) | Retrieval-first; bounded slices |
+| **Agent** | MCP ten tools (the service's endpoint) | Retrieval-first; bounded slices |
 | **Operator (CLI)** | `trestle doctor`, `pin`, `unpin`, `recover` | Retention and diagnostics |
 | **Operator (HTTP)** | `trestle ops serve` + console UI | Read-only sessions/telemetry — [`operator-sessions-telemetry.md`](operator-sessions-telemetry.md) |
 
