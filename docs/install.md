@@ -10,7 +10,19 @@ come: [`decisions/service-and-credentials.md`](decisions/service-and-credentials
 
 ## 1. Install and start the service
 
-From the Trestle checkout:
+**One command, install or upgrade.** From a clone of this repository:
+
+```bash
+scripts/install.sh            # the newest release; scripts/install.sh v0.4.0 for a given one
+```
+
+A first run checks out the release, creates `~/.trestle-venv`, installs Trestle into it, creates
+the home and installs and starts the service. Run again after a new release: it stops the service
+(draining), checks out the release and runs `trestle service upgrade`. It refuses while a run is
+live unless given `--drain`, and refuses a checkout with uncommitted changes. `--no-packs` skips
+the packs; `--venv DIR` picks another venv. The steps it runs are below.
+
+By hand, from the Trestle checkout:
 
 ```bash
 python3 -m venv ~/.trestle-venv
@@ -55,7 +67,8 @@ What `install` writes, for the current user only:
 
   ```toml
   [plugins.env]
-  TRESTLE_DOCKER_PATH = "/usr/local/bin/docker"
+  # only what your plugins read: e.g. the env pack finds `docker` on the service's PATH unless
+  # TRESTLE_DOCKER_PATH names it, which you need when docker lives outside that PATH
   TRESTLE_ENV_COMPOSE_FILE = "/srv/app/compose.yaml"
   ```
 
@@ -177,6 +190,9 @@ it can take as long as the longest live run (each is bounded by its deadline). E
 in one line.
 
 ## 5. Upgrade
+
+`scripts/install.sh` (above) moves an installed service to the newest release in one command. By
+hand:
 
 ```bash
 git -C /ABS/PATH/TO/trestle pull      # an editable install: the checkout's new commit

@@ -34,7 +34,8 @@ under `[plugins] paths`, the same way as any other plugin. From a running servic
 
    ```toml
    [plugins.env]
-   TRESTLE_DOCKER_PATH = "/usr/local/bin/docker"
+   TRESTLE_ENV_COMPOSE_FILE = "/ABS/PATH/TO/compose.yaml"
+   TRESTLE_DOCKER_PATH = "/usr/local/bin/docker"   # only if docker is not on the service's PATH
    ```
 
 4. **Restart:** `trestle service restart` (`[plugins] paths` is read at start).

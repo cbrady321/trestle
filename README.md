@@ -12,7 +12,14 @@ plugin without a server. Agent skill: [`skills/trestle/SKILL.md`](skills/trestle
 ## Install
 
 Trestle runs as one service per user per machine (a macOS LaunchAgent or a `systemd --user`
-unit); every agent host points at its loopback URL. From this checkout:
+unit); every agent host points at its loopback URL. From this checkout, install or upgrade to the
+newest release with one command (`--drain` waits for live runs; `v0.4.0` names a release):
+
+```bash
+scripts/install.sh
+```
+
+Or by hand:
 
 ```bash
 python3 -m venv ~/.trestle-venv
