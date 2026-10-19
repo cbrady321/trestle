@@ -205,6 +205,7 @@ command that ran to its end and exited 0.
 ```python
 from trestle.plugin.testing import FakeContext, call_plugin, exec_result
 
+
 def test_check_pr(tmp_path):
     def gh(argv, **kwargs):
         return exec_result(argv, stdout="MERGED\n")

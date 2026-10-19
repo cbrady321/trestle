@@ -202,6 +202,7 @@ class Conductor:
 
         wrapper_cmd = python_argv("-m", "trestle.wrapper.main", "--run-dir", str(run_dir))
         env = build_child_env(home=self.home)
+        env.update(load_config(self.home).plugin_env)  # G1: the operator's [plugins.env]
         env.pop(redact.SECRETS_ENV, None)  # only this run's own values, never an inherited variable
         if order.secrets:  # MC-CORE-13: the real values go to the wrapper and child by environment
             env[redact.SECRETS_ENV] = redact.encode_env(order.secrets)

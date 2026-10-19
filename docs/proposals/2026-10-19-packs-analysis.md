@@ -77,7 +77,7 @@ Core's enforced deadline kills these eventually. But a step that hangs takes the
 
 Core's own `LocalProcessPort` forbids identity by port occupancy (WR-OWN-7) and kills only a recorded (pid, start) (`master:packages/trestle-packs/trestle_packs/process/local.py:12-16`). That helper is pack-private, not a public API.
 
-**F7. Lifetime mismatch.** `hibob_project_up` detaches services with `start_new_session=True` and expects them to outlive the call (`restart_local` between cases; `orchestrator.py:190-204`). Core stops every descendant "in whatever session it has moved to" when a run ends (`docs/plugins.md:131-137`). Started from one plugin run, those services die when the run ends, except the Gradle daemon's double-forked JVM, which escapes attribution (`launcher.py:286-291`). There is no plain-plugin way to declare "this outlives the run" (the tree has `Lifetime.DURABLE`, `workflow/declarations.py:61-63`).
+**F7. Lifetime mismatch.** `hibob_project_up` detaches services with `start_new_session=True` and expects them to outlive the call (`restart_local` between cases; `orchestrator.py:190-204`). Core stops every attributable descendant "in whatever session it has moved to" when a run ends (`docs/plugins.md:131-137`). Started from one plugin run, those services die when the run ends, except the Gradle daemon's double-forked JVM, which escapes attribution (`launcher.py:286-291`). There is no plain-plugin way to declare "this outlives the run" (the tree has `Lifetime.DURABLE`, `workflow/declarations.py:61-63`).
 
 **F8. Undeclared write effects and races.**
 

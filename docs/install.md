@@ -51,7 +51,20 @@ What `install` writes, for the current user only:
 - The environment is **exactly** `PATH`, `HOME` and `TRESTLE_HOME`. `PATH` is the installing
   shell's, with the binary's directory first and `/usr/bin:/bin:/usr/sbin:/sbin` last. Nothing
   else from your shell reaches the service or its plugins: declare what plugins need in
-  `config.toml`, never in `~/.zshrc`.
+  `config.toml`'s `[plugins.env]` table, never in `~/.zshrc`:
+
+  ```toml
+  [plugins.env]
+  TRESTLE_DOCKER_PATH = "/usr/local/bin/docker"
+  TRESTLE_ENV_COMPOSE_FILE = "/srv/app/compose.yaml"
+  ```
+
+  Every plugin run gets these variables over the service's own environment. Only `config.toml`
+  sets them, never a request; the table is read at each run's start, so an edit applies to the
+  next run without a restart. Values are strings; a malformed table, or one that sets
+  `TRESTLE_HOME` or `TRESTLE_RUN_SECRETS`, stops the server from loading its config. Put no
+  secret here: a value in this table is not scrubbed from a run's output (declare secrets with
+  `@trestle(secrets=...)`).
 - It starts at login (`RunAtLoad`, `WantedBy=default.target`) and is restarted after a crash
   (`KeepAlive = {SuccessfulExit = false}`, `Restart=on-failure`). A clean exit is not restarted:
   that is how a drained stop stays stopped.

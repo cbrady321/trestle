@@ -46,7 +46,7 @@ never written. A pack's hour-long poll loop that checks `ctx.cancelled` never ge
 
 ## What this does not change
 
-- The kill still covers every process the run started (B2-C10); a declared grace never keeps a
+- The kill still covers every process attributable to the run (B2-C10); a declared grace never keeps a
   process past it.
 - A durable lifetime for plain plugins (review R7) stays deferred: the grace is a few seconds of
   clean-up, not a host-kept process.

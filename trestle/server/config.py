@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from trestle.common import clock
+from trestle.common import clock, redact
 
 _GB = 1024**3
 
@@ -96,6 +97,10 @@ class TrestleConfig:
     max_share: int | None = None
     max_held_runs: int = MAX_HELD_RUNS_DEFAULT
     max_ttl_s: int = MAX_TTL_S_DEFAULT
+    # G1: `[plugins.env]`, the operator's environment for plugin runs, as (name, value) pairs. Set
+    # on every run's process over the server's own environment; only config.toml sets it, never
+    # an agent's request.
+    plugin_env: tuple[tuple[str, str], ...] = ()
 
     @classmethod
     def defaults(cls) -> TrestleConfig:
@@ -133,6 +138,7 @@ class TrestleConfig:
             max_share=self.max_share,
             max_held_runs=self.max_held_runs,
             max_ttl_s=self.max_ttl_s,
+            plugin_env=self.plugin_env,
         )
 
 
@@ -170,6 +176,7 @@ def load_config(home: Path) -> TrestleConfig:
                 queue_depth=int(raw.get("queue_depth", cfg.queue_depth)),
             )
         cfg = replace(cfg, profile=_load_profile(raw.get("profile")))
+        cfg = replace(cfg, plugin_env=_load_plugin_env(raw.get("plugins")))
         cfg = _load_pool_operator(cfg, raw.get("operator"))
         cfg = _load_deadline_ceiling(cfg, raw.get("operator"))
         executables = _load_release_executables(raw.get("operator"))
@@ -195,6 +202,33 @@ def _load_profile(raw: object) -> ProfileConfig:
     if not isinstance(allowlist, list) or not all(isinstance(item, str) for item in allowlist):
         raise ValueError("config.toml [profile] allowlist must be a list of plugin names")
     return ProfileConfig(mode=mode, allowlist=tuple(allowlist))
+
+
+# Names `[plugins.env]` may not set: the run's home, and the variable that carries a run's own
+# declared secret values (MC-CORE-13), which only the conductor writes.
+_RESERVED_PLUGIN_ENV = frozenset({"TRESTLE_HOME", redact.SECRETS_ENV})
+_ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _load_plugin_env(raw: object) -> tuple[tuple[str, str], ...]:
+    """`[plugins.env]`: a table of environment variable names to string values, set on every
+    plugin run (G1). A malformed table, a bad name, a non-string value or a reserved name stops
+    the load: a plugin must never run with half the environment the operator wrote."""
+    if not isinstance(raw, dict) or "env" not in raw:
+        return ()
+    table = raw["env"]
+    if not isinstance(table, dict):
+        raise ValueError("config.toml [plugins.env] must be a table of NAME = \"value\"")
+    pairs: list[tuple[str, str]] = []
+    for name, value in table.items():
+        if not _ENV_NAME.fullmatch(name):
+            raise ValueError(f"config.toml [plugins.env] {name!r} is not an environment name")
+        if name in _RESERVED_PLUGIN_ENV:
+            raise ValueError(f"config.toml [plugins.env] may not set {name}")
+        if not isinstance(value, str):
+            raise ValueError(f"config.toml [plugins.env] {name} must be a string")
+        pairs.append((name, value))
+    return tuple(sorted(pairs))
 
 
 def _load_pool_operator(cfg: TrestleConfig, raw: object) -> TrestleConfig:
