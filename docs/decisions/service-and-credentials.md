@@ -240,13 +240,18 @@ grants = ["release"]
 | `github_app` | an installation access token minted from the app's private key (keychain), **scoped to the listed repositories and permissions** | in GitHub; in memory for the run |
 | `cli_passthrough` | nothing: the plugin's `gh` or `aws` subprocess uses the tool's own keychain or SSO cache | **never materialized** by Trestle; the grant only says the plugin may invoke the tool as this identity |
 
-**Grants are bound to the plugin's recorded source digest.** `grants` names plugins, and a
-grant is recorded against the plugin's `source_sha256` (the snapshot identity already recorded
-at publication, see [`plugins.md`](../plugins.md)). A republished plugin of the same name has a
-new digest and **loses the grant** until the operator re-pins it: `trestle credentials grant
-<name> <plugin>` records the current digest, and `config.toml` carries it as
-`grants = [{ plugin = "repo_tests", source_sha256 = "..." }]` (the bare-string form above is
-sugar that `grant` rewrites). **This settles open question F-13(d) for credentials:
+**Grants are bound to the plugin's recorded code digests.** `grants` names plugins, and a
+grant is recorded against the plugin's `source_sha256` **and its `package_digests`** (both
+recorded at publication, see [`plugins.md`](../plugins.md)). The entry file alone is not
+enough (amended 2026-10-19, G2): a pack's plugin is a thin wrapper over a declared package, and
+a republish after a changed package (`provenance_mismatch`) keeps the wrapper's `source_sha256`
+while the code that would hold the credential has changed. A republished plugin of the same name
+whose entry file **or any declared package** differs **loses the grant** until the operator
+re-pins it: `trestle credentials grant <name> <plugin>` records the current digests, and
+`config.toml` carries them as `grants = [{ plugin = "repo_tests", source_sha256 = "...",
+package_digests = { trestle_packs = "..." } }]` (the bare-string form above is sugar that `grant`
+rewrites). The pin is not the `snapshot_id`: that also covers the runtime version, so every
+Trestle upgrade would drop every grant. **This settles open question F-13(d) for credentials:
 agent-published plugins never receive credentials**, because an agent's `publish_plugin`
 produces a digest no operator has pinned.
 
@@ -451,14 +456,15 @@ Each is its own change with its own tests and docs; none depends on a later one.
 |---|---|---|
 | 1 | **Bearer token on HTTP MCP.** `agent.token` from `init` and `service install`; the HTTP transport refuses requests without it; `install.md` shows the `headers` form. | A request without the header is refused; the proof harness and every host config send it; the ops port is unchanged. |
 | 1a | **Remove the stdio transport** (Decision 3). `serve` loses `--transport`; `tests/proof/mcp_host.py` drives the server over streamable HTTP on `--port 0` with the token; `test_mcp_stdio_smoke.py` goes; `.cursor/mcp.json` becomes a `url` entry; README, `install.md`, `security.md` and `overview.md` stop naming stdio. | No code path speaks stdio; every test that used the proof host passes over HTTP; no doc tells a host to spawn `trestle serve`. |
+| 1b | **`ctx.exec(argv, ...)` and `ctx.remaining()`** (added 2026-10-19, pack review R1), without credentials: argv only, a per-call timeout defaulting to the time left, the whole process tree killed on timeout, output captured and bounded with a tail in the result and the full output under one reused artifact name, the child's own environment inherited plus overrides. `credentials=` is reserved and refused until change 5. | A command that outlives its timeout is killed with its children and returns a timed-out result; 10 MB of output stays within the cap; a long poll does not use up the artifact count. |
 | 2 | **`trestle service` commands** (`install`, `uninstall`, `status`, `start`, `stop`, `restart`, `upgrade`) generating the LaunchAgent plist / `systemd --user` unit as in Decision 1, and a rewrite of `install.md` and the README making the service the only mode (see "The CLI" in Decision 1). | A fresh machine reaches a running service from `install.md` alone; `status` reports it with both versions; `stop` drains and stays down; `upgrade` on a newer build restarts onto it, and refuses while a run is live unless `--drain`; the project's instructions never tell an agent to run `trestle`. |
 | 2a | **Orphan visibility and cancel.** Record the end of a streamable-HTTP session; `trestle doctor` and `recent_runs` mark runs whose session is gone; a run whose session has ended is cancellable by any session of the same user, under either profile; `trestle cancel <run_id>` on the unscoped `Project.cancel` path; the dropped-`terminal`-wait test. | A run outlives its session untouched and is marked; another agent session or the operator can end it; `on_session_lost="cancel"` is possible to build on it (its own small change, after this one). |
 | 2b | **The `status` view and the refusal fields** (Decision 3). `query(view="status")` with no params; `held_by` and `free_at` on `environment_busy`; `retry_after_s` on every retryable refusal; `allowlisted` on `list_plugins` under the restricted profile. | Every row of the gap table above that names a view or a field has it, and a test reads each one through MCP alone. |
-| 2c | **The `exec` plugin** (Decision 3): operator-published, argv list, no shell, cwd under declared roots, bounded summary, full output as an artifact, never a credential grant. | A one-off command runs through `run(plugin="exec")` with a bounded answer; a credential declaration on it is refused at publication. |
+| 2c | **The `exec` plugin** (Decision 3): a thin wrapper over `ctx.exec` (change 1b), not a second implementation; operator-published, argv list, no shell, cwd under declared roots, bounded summary, full output as an artifact, never a credential grant. | A one-off command runs through `run(plugin="exec")` with a bounded answer; a credential declaration on it is refused at publication. |
 | 2d | **Skill and agent docs rewrite.** "Fall back to running the command by hand" becomes "report it and stop"; `agents.md` and the skills name the `status` view, the refusal fields and `exec`; nothing agent-facing mentions the CLI. | An agent following the skill alone never runs a shell command for work Trestle does. |
 | 3 | **`[credentials.<name>]` tables, grants by digest, admission refusals, `@trestle(credentials=...)`, and the first Context shapes.** Resolution onto the `WorkOrder` secrets path; `ctx.credential_env` and `ctx.credential_file` (the channel directory, moved up from the pack); `secrets=` marked deprecated. One store backend is enough to prove the path: the encrypted `0600` file, with a stub keychain in tests. | `credential_not_granted` and `credential_unknown` are refused before a run id; a republished plugin loses its grant; the scrub covers values from both shapes. |
 | 4 | **Store backends and native providers behind the grant ports, with fakes.** macOS Keychain (`security`), 1Password (`op`), `aws_assume_role` against a fake STS, `github_app` against a fake App endpoint, `cli_passthrough`; `credential_interactive` and lifetime handling through the existing codes. | Each backend is proven in CI against its fake or stub; nothing real is configured. |
-| 5 | **`ctx.exec` and `trestle cred-helper`** (`aws` credential_process, `git` credential helper) with run-scoped tickets answered only for a live run holding the grant; `ctx.exec(argv, credentials=[...])` as the documented first choice; `credential_env` documented as the fallback. | A helper call after the run is terminal gets nothing; a plugin without the grant gets nothing; `ctx.exec` runs a tool with a granted identity while the plugin holds no value; the container channel is unchanged. |
+| 5 | **`ctx.exec(credentials=...)` and `trestle cred-helper`** (`aws` credential_process, `git` credential helper) with run-scoped tickets answered only for a live run holding the grant; `ctx.exec` itself exists from change 1b, and this change lifts its `credentials=` refusal; `ctx.exec(argv, credentials=[...])` as the documented first choice; `credential_env` documented as the fallback. | A helper call after the run is terminal gets nothing; a plugin without the grant gets nothing; `ctx.exec` runs a tool with a granted identity while the plugin holds no value; the container channel is unchanged. |
 
 ### As implemented (changes 1, 1a, 2)
 
