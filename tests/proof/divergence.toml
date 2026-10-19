@@ -1018,6 +1018,19 @@ direction = "additive"
 keys = ["$.context.methods.event"]
 authorized_by = "plans/a1-single-level.md L.SV-5.1 (BFD-10: Context.event, additive); plan-workflow-runtime.md:979 (MC-06 seed)"
 
+# R1 (pack-driven core updates): Context.exec(argv, ...) and Context.remaining(), additive.
+# context_surface: $.context.methods.exec and $.context.methods.remaining.
+
+[[entry]]
+id = "ADD-context-exec-remaining"
+facet = "context_surface"
+row_or_k = "none"
+docs = ["docs/plugins.md"]
+due_checkpoint = "pack-core-updates (item 2)"
+direction = "additive"
+keys = ["$.context.methods.exec", "$.context.methods.remaining"]
+authorized_by = "docs/decisions/service-and-credentials.md change 1b; docs/proposals/2026-10-19-pack-core-updates-plan.md item 2"
+
 # L.SV-2.3 (MC-34): a workflow plugin whose declared tree cannot be extracted is refused at
 # publication with its own code (B2-C1: never a partial declaration; no snapshot is promoted).
 

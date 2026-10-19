@@ -156,6 +156,80 @@ outlive the run, and the answer does not report it (`cleanup.processes` can stil
 Do not rely on Trestle to stop such a process; see
 [What stopping a run does not cover](security.md#what-stopping-a-run-does-not-cover).
 
+### Running a command: `ctx.exec`
+
+Prefer `ctx.exec` to calling `subprocess` yourself. It gives every command a time limit, kills
+what the command started, and keeps its output bounded:
+
+```python
+result = ctx.exec(["gh", "pr", "view", "123", "--json", "state"], timeout=60)
+if result.timed_out:
+    ...
+elif not result.ok:
+    ctx.log(f"gh failed: {result.stderr[-500:]}")
+state = json.loads(result.stdout)["state"]
+```
+
+- **argv only**, a non-empty list of strings: a single string is refused with `TypeError`, and no
+  shell ever runs. A program that is not found raises `FileNotFoundError` as `subprocess` does.
+- **Time limit.** `timeout` (seconds) defaults to the time left before the run's deadline,
+  `ctx.remaining()`, and is never longer than it. Past it, the command's whole process group gets
+  SIGTERM and, 2 s later, SIGKILL, and the result has `timed_out=True` and `returncode=None`. If
+  the run is stopped (`ctx.cancelled`) while the command runs, the group is killed the same way
+  and the result has `cancelled=True`. A command whose run has no time left is not started.
+- **Environment.** The command inherits the plugin's own environment (under the service: the
+  service's `PATH`, `HOME` and `TRESTLE_HOME` plus the operator's `[plugins.env]` table) with
+  `env` applied on top; a `None` value removes a variable. `cwd` and `input` (text or bytes for
+  its stdin; `/dev/null` otherwise) work as in `subprocess`.
+- **Output.** `result.stdout` and `result.stderr` hold at most `max_output_bytes` (1 MiB by
+  default) of each stream, decoded as UTF-8; `truncated` says a stream passed that cap, and
+  `output_bytes` counts everything the command wrote. The kept output, with the command line and
+  its status, is attached as an artifact under `output` (default `exec.log`) and its handle is
+  `result.artifact`. Every call under one name replaces the last (see re-attaching above), so a
+  poll that runs `gh` every 15 s for an hour holds one artifact slot; earlier calls' handles still
+  fetch. Pass another `output` name to keep a command's output apart, or `output=None` to keep
+  none.
+- Each call logs one line (`exec gh: exit 0 in 0.4s`).
+- `credentials=` is reserved for credential grants
+  ([decision record](decisions/service-and-credentials.md), change 5) and is refused with
+  `NotImplementedError` until they exist.
+- `ctx.exec` and the rest of the context are safe to call from several threads at once.
+
+`ExecResult` is importable from `trestle.plugin` for type hints. `result.ok` is true only for a
+command that ran to its end and exited 0.
+
+## Testing a plugin without a server
+
+`trestle.plugin.testing` unit-tests a plugin in-process, with no server, run id or home:
+
+```python
+from trestle.plugin.testing import FakeContext, call_plugin, exec_result
+
+def test_check_pr(tmp_path):
+    def gh(argv, **kwargs):
+        return exec_result(argv, stdout="MERGED\n")
+
+    ctx = FakeContext(tmp_path, exec_handler=gh)
+    assert call_plugin(check_pr, {"pr": 7}, ctx=ctx) == {"state": "MERGED"}
+    assert ctx.exec_calls[0].argv == ("gh", "pr", "view", "7")
+```
+
+- **`FakeContext(root, deadline=300, exec_handler=None)`** implements the whole plugin context and
+  records what the plugin did: `logs`, `progress_updates`, `events`, `attachments` (each with the
+  id it replaced), `artifacts` (each name's current bytes) and `exec_calls`. It refuses what the
+  runtime refuses (a reserved event kind, an attach from outside `work/`, a shell string, a
+  `credentials=`). `exec` runs the command for real, bounded as at run time, unless an
+  `exec_handler(argv, **kwargs)` returns a scripted result (`exec_result(...)`). Set
+  `ctx.cancelled = True` to stop the run; `deadline` takes seconds, a `timedelta` or a datetime.
+- **`call_plugin(fn, args, ctx=...)`** calls a `@trestle` function as the child process does:
+  `args` in their JSON form, hydrated by the parameter annotations, and the result returned as
+  the JSON value the run would record.
+- **The `trestle_ctx` fixture** gives a `FakeContext` under the test's `tmp_path`: add
+  `pytest_plugins = ["trestle.plugin.testing"]` to your top-level `conftest.py`.
+
+The module is for tests only: a published plugin may not import it (publication admits only
+`trestle.plugin`'s exports).
+
 ## Supported types
 
 A plugin's parameters and return are described to agents by the JSON Schema Trestle derives from its type hints; plugins never author a schema. A hint outside this list is refused at publication with a pointer to this section. Every parameter needs a hint, and the entry point must declare a return hint.

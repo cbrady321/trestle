@@ -5,14 +5,18 @@ from __future__ import annotations
 import json
 import threading
 import time
-from dataclasses import dataclass
-from datetime import datetime
+import uuid
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from trestle.child import execproc
 from trestle.common import redact
 from trestle.common.fsutil import append_ndjson, atomic_write
 from trestle.common.limits import CaptureLimits, capture_limits
+from trestle.plugin.surface import ExecResult
 
 if TYPE_CHECKING:
     from trestle.workflow.services import RunServices
@@ -155,6 +159,63 @@ class RuntimeContext:
         if kind in RESERVED_EVENT_KINDS and kind not in STEP_FACT_KINDS:
             raise ValueError(f"event kind {kind!r} is reserved")
         self._emit(kind, dict(fields))
+
+    def remaining(self) -> float:
+        """Seconds left until the run's deadline, never negative."""
+        deadline = self.deadline if self.deadline.tzinfo else self.deadline.replace(tzinfo=UTC)
+        return max(0.0, (deadline - datetime.now(UTC)).total_seconds())
+
+    def exec(
+        self,
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,
+        cwd: Path | str | None = None,
+        env: Mapping[str, str | None] | None = None,
+        input: str | bytes | None = None,
+        output: str | None = "exec.log",
+        max_output_bytes: int = execproc.DEFAULT_MAX_OUTPUT_BYTES,
+        credentials: Sequence[str] | None = None,
+    ) -> ExecResult:
+        """Run one command (R1): argv only, never a shell, in its own process group with this
+        process's environment plus `env` (a None value removes a variable). The timeout defaults
+        to the time left (`remaining()`) and never exceeds it; past it, or once the run is
+        stopped, the whole group is killed and the result says which. Each stream keeps at most
+        `max_output_bytes`. The kept output is attached under `output` (default `exec.log`):
+        every call under one name replaces the last (T3), so a long poll holds one artifact slot;
+        None keeps no artifact. `credentials=` is reserved and refused until credential grants
+        exist (decision record change 5)."""
+        if credentials is not None:
+            raise NotImplementedError(
+                "exec(credentials=...) is reserved until credential grants exist"
+            )
+        left = self.remaining()
+        limit = left if timeout is None else min(float(timeout), left)
+        result, kept = execproc.run(
+            argv,
+            timeout=limit,
+            cwd=cwd,
+            env=env,
+            input=input,
+            max_output_bytes=max_output_bytes,
+            stopped=lambda: self.cancelled,
+        )
+        if result.timed_out:
+            status = f"timed out after {limit:.1f}s"
+        elif result.cancelled:
+            status = "stopped with the run"
+        else:
+            status = f"exit {result.returncode}"
+        self.log(f"exec {Path(result.argv[0]).name}: {status} in {result.duration_s}s")
+        if output is None or not kept:
+            return result
+        staged = self.tmp / f"exec-{uuid.uuid4().hex}.out"
+        staged.write_bytes(kept)
+        try:
+            handle = self.attach(staged, name=output)
+        finally:
+            staged.unlink(missing_ok=True)
+        return replace(result, artifact=handle)
 
     def artifact(self, name: str) -> Path:
         if ".." in name or name.startswith("/"):

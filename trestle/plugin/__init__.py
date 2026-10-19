@@ -1,5 +1,5 @@
 """PluginSurface public exports."""
 
-from trestle.plugin.surface import Context, trestle
+from trestle.plugin.surface import Context, ExecResult, trestle
 
-__all__ = ["Context", "trestle"]
+__all__ = ["Context", "ExecResult", "trestle"]
