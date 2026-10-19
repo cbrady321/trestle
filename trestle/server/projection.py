@@ -14,6 +14,7 @@ from trestle.common import codes
 from trestle.common.fsutil import atomic_write_json
 from trestle.common.limits import CaptureLimits, capture_limits
 from trestle.common.types import RequestOutcome
+from trestle.server.plugin_schema import DeclarationError, parse_summary_field
 
 
 def _window_int(window: dict[str, object], key: str, default: int) -> int:
@@ -83,6 +84,34 @@ def _unfit_marker(name: str, needed: int | None, budget: int, reason: str) -> di
     return marker
 
 
+def _summary_field(entry: str) -> tuple[str, tuple[str, ...] | None]:
+    """A recorded `summary_fields` entry as (field, columns); one that no longer parses (it was
+    validated at publication) is read as a bare name."""
+    try:
+        return parse_summary_field(entry)
+    except DeclarationError:
+        return entry, None
+
+
+def _table(
+    name: str, rows: list[dict[str, Any]], columns: tuple[str, ...], room: int
+) -> tuple[dict[str, Any] | None, int]:
+    """The table of `rows` in `columns` that fits in `room` bytes, and what it costs: every row
+    that fits, in order. None (with the cost of the table with no rows) when not even that fits."""
+    table: dict[str, Any] = {"columns": list(columns), "rows": [], "row_count": len(rows)}
+    cost = len(json.dumps(name).encode()) + len(json.dumps(table).encode()) + 4
+    if cost > room:
+        return None, cost
+    for row in rows:
+        cells = [row.get(column) for column in columns]
+        piece = len(json.dumps(cells, separators=(",", ":")).encode()) + 2
+        if cost + piece > room:
+            break
+        table["rows"].append(cells)
+        cost += piece
+    return table, cost
+
+
 def build_summary(
     *,
     run_id: str,
@@ -96,7 +125,11 @@ def build_summary(
     `declared_fields` is the plugin's declared `summary_fields` (MC-18), in priority order. For
     an object result they are reserved by index byte range before the greedy fill, so a large
     early-sorted field cannot hide one. A declared field that does not fit even so is omitted
-    and named by a marker. A plugin that declares nothing gets the unchanged greedy fill."""
+    and named by a marker. A plugin that declares nothing gets the unchanged greedy fill.
+
+    A declared `name[col,...]` (T6) whose field is a list of objects is shown as a table,
+    `{"columns", "rows", "row_count"}`, one row of those columns' values per object, as many rows
+    as the budget leaves room for; when rows are left out a `rows_truncated` marker names it."""
     if index.byte_length <= budget and not index.index_truncated:
         blob = pread_range(result_path, 0, index.byte_length)
         value = json.loads(blob.decode("utf-8"))
@@ -158,10 +191,28 @@ def build_summary(
         taken: set[str] = set()
         unfit: set[str] = set()
         markers: list[dict[str, object]] = []
-        for name in dict.fromkeys(declared_fields):
+        tables: dict[str, dict[str, Any]] = {}
+        for entry in dict.fromkeys(declared_fields):
+            name, columns = _summary_field(entry)
             declared = by_name.get(name)
             if declared is None:
                 continue
+            if columns is not None:
+                rows = json.loads(
+                    pread_range(result_path, declared["start"], declared["end"]).decode("utf-8")
+                )
+                if isinstance(rows, list) and all(isinstance(row, dict) for row in rows):
+                    table, cost = _table(name, rows, columns, budget - used)
+                    if table is None:
+                        markers.append(_unfit_marker(name, cost, budget, "does_not_fit"))
+                        unfit.add(name)
+                        continue
+                    if len(table["rows"]) < len(rows):
+                        markers.append(_unfit_marker(name, None, budget, "rows_truncated"))
+                    tables[name] = table
+                    taken.add(name)
+                    used += cost
+                    continue
             piece = _field_bytes(declared)
             if used + piece > budget:
                 markers.append(_unfit_marker(name, piece, budget, "does_not_fit"))
@@ -180,7 +231,9 @@ def build_summary(
         out: dict[str, Any] = {}
         omitted: list[str] = []
         for rec in index.fields:
-            if rec["name"] in taken:
+            if rec["name"] in tables:
+                out[rec["name"]] = tables[rec["name"]]
+            elif rec["name"] in taken:
                 blob = pread_range(result_path, rec["start"], rec["end"])
                 out[rec["name"]] = json.loads(blob.decode("utf-8"))
             else:

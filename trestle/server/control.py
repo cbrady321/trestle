@@ -22,7 +22,7 @@ from trestle.server.admission import Admission
 from trestle.server.conductor import Conductor
 from trestle.server.home import read_marker
 from trestle.server.pool import epoch
-from trestle.server.project import Project, _Handles
+from trestle.server.project import Project, ViewObserver, _Handles
 from trestle.server.scheduler import Scheduler
 
 COMPLETIONS = frozenset({"bounded", "terminal"})
@@ -200,6 +200,7 @@ class ControlSurface:
         deadline_s: float | None = None,
         idempotency_ttl_s: float | None = None,
         after: dict[str, Any] | None = None,
+        observe: ViewObserver | None = None,
     ) -> RequestOutcome | RunView:
         refused = _refuse_completion(completion, wait_ms)
         if refused is not None:
@@ -234,8 +235,8 @@ class ControlSurface:
             if wait_ms == 0:
                 return await asyncio.to_thread(self.project.status, result.run_id)
             if completion == "terminal":
-                return await self.project.await_terminal_async(result.run_id)
-            return await self.project.await_one_async(result.run_id, wait_ms)
+                return await self.project.await_terminal_async(result.run_id, observe=observe)
+            return await self.project.await_one_async(result.run_id, wait_ms, observe=observe)
 
         # Shielded: once admitted, the run is handed to the dispatcher even if the caller goes away
         # while the hand-off is under way.
@@ -246,8 +247,8 @@ class ControlSurface:
         if wait_ms == 0:
             return await asyncio.to_thread(self.project.status, result.run_id)
         if completion == "terminal":
-            return await self.project.await_terminal_async(result.run_id)
-        return await self.project.await_one_async(result.run_id, wait_ms)
+            return await self.project.await_terminal_async(result.run_id, observe=observe)
+        return await self.project.await_one_async(result.run_id, wait_ms, observe=observe)
 
     def _hand_off(self, run_id: str, plugin: str, secrets: dict[str, Any] | None = None) -> None:
         """Hand a just-admitted run to the dispatcher (its work order, then the FIFO)."""
@@ -304,6 +305,7 @@ class ControlSurface:
         timeout_ms: int = 2000,
         caller_session: str | None = None,
         keys: list[str] | None = None,
+        observe: ViewObserver | None = None,
     ) -> list[RunView] | RequestOutcome:
         resolved = await asyncio.to_thread(self._handles, run_ids, keys, mode)
         if isinstance(resolved, RequestOutcome):
@@ -314,6 +316,7 @@ class ControlSurface:
             timeout_ms,
             caller_session=caller_session,
             key_labels=resolved.labels,
+            observe=observe,
         )
 
     def _handles(

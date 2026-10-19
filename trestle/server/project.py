@@ -6,7 +6,7 @@ import asyncio
 import json
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -37,6 +37,7 @@ from trestle.server.ledger import (
     evidence_dir,
     ledger_path,
 )
+from trestle.server.live import latest_progress
 from trestle.server.pins import PinStore
 from trestle.server.projection import (
     build_summary,
@@ -52,6 +53,10 @@ from trestle.server.runstate import trusted_state
 from trestle.server.snapshots import load_declared
 
 DEFAULT_SUMMARY_BUDGET = 4096
+
+# T2: what an async wait hands each poll's run views to while it is still waiting (the server's
+# `ProgressRelay`, which turns new progress into MCP progress notifications)
+ViewObserver = Callable[[list[RunView]], Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -143,7 +148,11 @@ class Project:
             time.sleep(0.05)
 
     async def await_one_async(
-        self, run_id: Handle, wait_ms: int, caller_session: str | None = None
+        self,
+        run_id: Handle,
+        wait_ms: int,
+        caller_session: str | None = None,
+        observe: ViewObserver | None = None,
     ) -> RunView | RequestOutcome:
         deadline = time.monotonic() + (wait_ms / 1000.0)
         while True:
@@ -154,6 +163,8 @@ class Project:
                 return view
             if time.monotonic() >= deadline:
                 return view
+            if observe is not None:
+                await observe([view])
             await asyncio.sleep(0.05)
 
     def await_terminal(
@@ -177,7 +188,10 @@ class Project:
             time.sleep(clock.await_poll_interval)
 
     async def await_terminal_async(
-        self, run_id: Handle, caller_session: str | None = None
+        self,
+        run_id: Handle,
+        caller_session: str | None = None,
+        observe: ViewObserver | None = None,
     ) -> RunView | RequestOutcome:
         limit = time.monotonic() + await asyncio.to_thread(self._terminal_bound_s, run_id)
         probe_at = time.monotonic() + OWNER_PROBE_S
@@ -190,6 +204,8 @@ class Project:
             if time.monotonic() >= probe_at:
                 await asyncio.to_thread(self._wake_if_owner_gone, [run_id])
                 probe_at = time.monotonic() + OWNER_PROBE_S
+            if observe is not None:
+                await observe([view])
             await asyncio.sleep(clock.await_poll_interval)
 
     def _terminal_bound_s(self, run_id: Handle) -> float:
@@ -268,6 +284,7 @@ class Project:
         timeout_ms: int,
         caller_session: str | None = None,
         key_labels: list[str | None] | None = None,
+        observe: ViewObserver | None = None,
     ) -> list[RunView] | RequestOutcome:
         deadline = time.monotonic() + (timeout_ms / 1000.0)
         probe_at = time.monotonic() + OWNER_PROBE_S
@@ -285,6 +302,8 @@ class Project:
             if time.monotonic() >= probe_at:
                 await asyncio.to_thread(self._wake_if_owner_gone, run_ids)
                 probe_at = time.monotonic() + OWNER_PROBE_S
+            if observe is not None:
+                await observe(views)
             await asyncio.sleep(clock.await_poll_interval)
 
     def await_many(
@@ -658,6 +677,11 @@ class Project:
             answer=_answer_view(ledger, state, run_dir),
             retry_of=_retry_of(ledger),
             after_run_id=_after_run_id(ledger.last_kind("created")),
+            progress=(
+                latest_progress(evidence)
+                if state in NON_TERMINAL_STATES and evidence is not None
+                else None
+            ),
             **_deadline_fields(ledger.last_kind("created")),
         )
 
@@ -728,6 +752,7 @@ def _live_view(run_id: Handle, run_dir: Path, state: dict[str, Any]) -> RunView:
         limits_exceeded=limits_exceeded if isinstance(limits_exceeded, list) else None,
         retry_of=state.get("retry_of") if isinstance(state.get("retry_of"), str) else None,
         after_run_id=_after_run_id(state),
+        progress=latest_progress(evidence),
         **_deadline_fields(state),
     )
 

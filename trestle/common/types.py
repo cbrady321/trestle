@@ -281,6 +281,9 @@ class RunView:
     idempotency_key: str | None = None
     # v0.3.1 Feature 3: the run this one was sent to wait for (`after`); absent on any other run
     after_run_id: str | None = None
+    # T1: the latest `ctx.progress` of a run still in flight, `{message, fraction, at}`; absent once
+    # the run has ended, or while it has reported none
+    progress: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -325,6 +328,8 @@ class RunView:
             out["idempotency_key"] = self.idempotency_key
         if self.after_run_id is not None:
             out["after_run_id"] = self.after_run_id
+        if self.progress is not None:
+            out["progress"] = self.progress
         return out
 
 

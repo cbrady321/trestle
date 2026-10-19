@@ -487,7 +487,30 @@ def _declared_names(
         names.append(item.value)
     if len(set(names)) != len(names):
         raise DeclarationError(f"@trestle: {keyword} lists an entry twice")
+    if keyword == "summary_fields":
+        bases = [parse_summary_field(name)[0] for name in names]
+        if len(set(bases)) != len(bases):
+            raise DeclarationError("@trestle: summary_fields names a field twice")
     return tuple(names)
+
+
+def parse_summary_field(entry: str) -> tuple[str, tuple[str, ...] | None]:
+    """A `summary_fields` entry as (field, columns): a bare name has no columns; `name[a,b,c]`
+    (T6) names a list-of-objects field shown as a table of those columns. A bracketed entry with
+    no name, no columns, an empty or repeated column is refused with DeclarationError."""
+    if not entry.endswith("]") or "[" not in entry:
+        if "[" in entry or "]" in entry:
+            raise DeclarationError(f"@trestle: summary_fields entry {entry!r} is malformed")
+        return entry, None
+    name, _, inner = entry[:-1].partition("[")
+    columns = tuple(part.strip() for part in inner.split(","))
+    if not name or "[" in inner or "]" in inner or not all(columns):
+        raise DeclarationError(
+            f"@trestle: summary_fields entry {entry!r} must be name[column,column,...]"
+        )
+    if len(set(columns)) != len(columns):
+        raise DeclarationError(f"@trestle: summary_fields entry {entry!r} repeats a column")
+    return name, columns
 
 
 def _declared_env_arg(node: ast.expr) -> str | None:

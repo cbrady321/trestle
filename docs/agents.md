@@ -126,7 +126,7 @@ The full profile (default) is unchanged: ten tools, any published plugin, any ru
 
 1. **Refusals are not runs.** `admission.*` and `publication.*` outcomes have no `run_id`. Do not treat them as failed runs.
 2. **Handles, not paths.** `fetch("/tmp/foo")` → `projection.invalid_handle`. Use handles from `RunView` or `query`.
-3. **Evidence is post-finalize.** `query(run_tail|last_error|run_events, …)` on a running run → `projection.not_finalized` (`retryable: true`). Wait for terminal state or use `await_runs`.
+3. **Final-state evidence is post-finalize; progress is live.** `query(run_tail|last_error|run_provenance, …)` on a running run → `projection.not_finalized` (`retryable: true`): wait for terminal state or use `await_runs`. A running run's frame carries `progress` (its latest `ctx.progress`), and `run_events` and `run_artifacts` answer while it runs, marked `live: true`; `fetch` of a listed `art_…` returns the newest file. There is no live stdout tail.
 4. **A run that did not succeed explains itself (K-10).** `RunView.error` is `{code, phase, message}`: `code` is one of the stable `execution.*` codes (`import_failed`, `bind_failed`, `plugin_raised`, `result_unencodable`, `provenance_mismatch`, `cancelled`, `deadline_exceeded`, `worker_exit`, `interrupted`), `phase` says where it happened, and `message` is bounded (512 bytes) with host paths replaced by `<home>`, `<run>`, `<cwd>` and `<user-home>`. `query(last_error)` returns the same message; before this it said only `failed`, and `RunView.error` was never set. Both read one ledger record, `error_record`, so they agree, and they keep agreeing after a restart. Older runs, recorded before the record existed, keep the old `last_error` text and no `error`.
 5. **Check `limits_exceeded`.** When output exceeds caps, `RunView` marks suppressed streams — evidence is honestly incomplete. There is one marker per (stream, limit), however many events or artifacts it dropped; its `bytes_suppressed` is the total. Artifact caps (`stream: "artifacts"`, `max_artifact_count`, `max_artifact_bytes`) mark artifacts that were not stored.
 6. **Fetch truncation is success.** `truncated: true` with `scan_bytes` means narrow the window and continue — not an error. On `query`, `truncated: true` with `next_cursor` set means follow the cursor. With `next_cursor` null the recency window (500 runs) or the scan budget left runs out: reaching past it is not offered, and a run-scoped view of such a run by id answers `projection.outside_window` (an id with no run stays `projection.invalid_handle`).
@@ -145,7 +145,8 @@ Live catalog: MCP resource **`trestle://views`** (when to pick each named view v
 | Why did it fail? | `RunView.error`, or `query` | `last_error` + `{run_id}` |
 | Wrapper stdout lines? | `query` | `run_tail` + `{run_id}` (post-finalize) |
 | Run metadata? | `query` | `run` + `{run_id}` |
-| Event timeline? | `query` | `run_events` + `{run_id}` |
+| How far is a running run? | `RunView.progress` | from `run` / `await_runs` |
+| Event timeline? | `query` | `run_events` + `{run_id}` (live while running) |
 | Large array in summary? | `fetch` | `RunView.summary.handle` + `jsonpath` / `range` |
 | Artifact bytes? | `query` → `fetch` | `run_artifacts` → `art_…` + `head` / `tail` / `grep` |
 | Recent failures? | `query` | `recent_failures` |
@@ -214,8 +215,9 @@ abnormally is `worker_exit`; a run whose server died is `interrupted`.
 `run` admits work, starts execution on a background thread, then waits up to `wait_ms`:
 
 - `wait_ms=0` → immediate status frame (may be `queued` or `running`).
-- `wait_ms>0` on a slow plugin → returns a **`running` frame** when the deadline elapses; join with `await_runs`.
+- `wait_ms>0` on a slow plugin → returns a **`running` frame** when the deadline elapses; join with `await_runs`. The frame carries the run's latest `progress`.
 - Terminal within `wait_ms` → terminal `RunView` in one call.
+- While any of these waits, a request that carried an MCP progress token receives each new progress line as a progress notification, and a heartbeat after 15 s of silence, so a long wait over HTTP stays open (see `docs/agent-console-mcp.md`, Evidence finalization and live runs).
 
 **Long jobs:** call `run(plugin="…", args={…}, wait_ms=<above zero>, completion="terminal")`. One call returns the finished run, bounded by the run's own deadline plus a published margin, and no follow-up call is needed. Polling is for bounded mode only: with the default `completion="bounded"`, a run that outlives `wait_ms` returns a `running` frame and `await_runs` joins it.
 

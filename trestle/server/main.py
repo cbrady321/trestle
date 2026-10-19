@@ -28,6 +28,7 @@ from trestle.server.home import (
 from trestle.server.mcp_schema import FetchWindowArg, QueryViewArg
 from trestle.server.plugin_paths import check_plugin_dirs, resolve_plugin_dirs
 from trestle.server.pool import Pool
+from trestle.server.progress_relay import ProgressRelay
 from trestle.server.project import Project
 from trestle.server.reaper import Reaper
 from trestle.server.registry import Registry
@@ -174,6 +175,25 @@ def _caller_session() -> str | None:
         return get_context().session_id
     except RuntimeError:
         return None
+
+
+def _progress_relay() -> ProgressRelay | None:
+    """T2: a relay sending the waiting call's MCP progress notifications, or None when the request
+    carried no progress token (or is not an MCP request): the wait then sends nothing."""
+    from fastmcp.server.dependencies import get_context
+
+    try:
+        ctx = get_context()
+        meta = ctx.request_context.meta if ctx.request_context is not None else None
+    except (RuntimeError, AttributeError, ValueError):
+        return None
+    if meta is None or meta.progressToken is None:
+        return None
+
+    async def send(progress: float, message: str) -> None:
+        await ctx.report_progress(progress, None, message)
+
+    return ProgressRelay(send)
 
 
 def attach_registry_version_mirror(mcp: Any, kernel: Kernel) -> None:
@@ -335,6 +355,7 @@ def run_server(
                 deadline_s=deadline_s,
                 idempotency_ttl_s=idempotency_ttl_s,
                 after=after,
+                observe=_progress_relay(),
             )
         )
 
@@ -347,7 +368,12 @@ def run_server(
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Wait for existing runs to reach a terminal state."""
         result = await kernel.control.await_runs_async(
-            run_ids, mode=mode, timeout_ms=timeout_ms, caller_session=_caller_session(), keys=keys
+            run_ids,
+            mode=mode,
+            timeout_ms=timeout_ms,
+            caller_session=_caller_session(),
+            keys=keys,
+            observe=_progress_relay(),
         )
         if isinstance(result, RequestOutcome):
             return result.to_dict()
