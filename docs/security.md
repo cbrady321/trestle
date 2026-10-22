@@ -186,5 +186,5 @@ refused at publication, and `trestle credentials grant` refuses it.
 ## Related
 
 - Install and host wiring: [`install.md`](install.md)
-- One per-user service, credentials by name, MCP only (the service, the token, MCP only and the first credential store are implemented in 0.5.0; session ends, the status view, the refusal fields and the exec plugin in 0.5.1; the other store kinds and `ctx.exec(credentials=...)` are not yet): [`decisions/service-and-credentials.md`](decisions/service-and-credentials.md)
+- One per-user service, credentials by name, MCP only (the service, the token, MCP only and the first credential store are implemented in 0.5.0; session ends, the status view, the refusal fields and the exec plugin in 0.5.2; the other store kinds and `ctx.exec(credentials=...)` are not yet): [`decisions/service-and-credentials.md`](decisions/service-and-credentials.md)
 - Product overview: [`overview.md`](overview.md)
