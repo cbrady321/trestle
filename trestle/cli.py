@@ -110,6 +110,12 @@ def main(argv: list[str] | None = None) -> int:
     unpin.add_argument("target", help="Run id or artifact id to unpin")
     _add_home_arg(unpin)
 
+    cancel = sub.add_parser(
+        "cancel", help="Cancel a live run, whatever session sent it (the operator's cancel)"
+    )
+    cancel.add_argument("run_id", help="The root run's id")
+    _add_home_arg(cancel)
+
     service = sub.add_parser("service", help="Run Trestle as this user's service")
     service_sub = service.add_subparsers(dest="service_command", required=True)
     for name, text in (
@@ -204,6 +210,8 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _pin_cli(target=args.target, home=args.home)
     if args.command == "unpin":
         return _unpin_cli(target=args.target, home=args.home)
+    if args.command == "cancel":
+        return _cancel_cli(run_id=args.run_id, home=args.home)
     return 1
 
 
@@ -261,6 +269,31 @@ def _unpin_cli(*, target: str, home: str | None) -> int:
     outcome = kernel.control.unpin(target)
     print(outcome.message)
     return 0 if outcome.code.endswith("_accepted") else 1
+
+
+def _cancel_cli(*, run_id: str, home: str | None) -> int:
+    """Change 2a: the operator's unscoped cancel. It writes the run's cancel flag; the owning
+    server's supervisor (or scheduler pass) acts on it, as for a cancel any other server received.
+    Exit 0 accepted, 1 refused (an unknown run, one that has ended, a child handle), 2 a refused
+    home or a usage error."""
+    from trestle.common import codes
+    from trestle.server.home import is_locked, owner_lock_path
+    from trestle.server.recovery import find_run_dir
+
+    trestle_home = Path(home) if home else default_home()
+    kernel = create_kernel(home=trestle_home, skip_recovery=True)
+    outcome = kernel.control.cancel(run_id, None)
+    if outcome.code != codes.CANCEL_ACCEPTED:
+        print(f"trestle cancel: {outcome.message}", file=sys.stderr)
+        return 1
+    print(outcome.message)
+    run_dir = find_run_dir(trestle_home, run_id)
+    if run_dir is not None and not is_locked(owner_lock_path(run_dir)):
+        print(
+            "its server is not running: the run ends interrupted at the next reaper pass "
+            "(trestle recover runs one now)"
+        )
+    return 0
 
 
 if __name__ == "__main__":

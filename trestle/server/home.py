@@ -479,6 +479,8 @@ class ServerLock:
         with contextlib.suppress(OSError):
             os.close(self.fd)
         (servers_dir(self.home) / f"{self.server_id}.lock").unlink(missing_ok=True)
+        # change 2a: the ended-session record beside it is this server's alone
+        (servers_dir(self.home) / f"{self.server_id}.sessions.json").unlink(missing_ok=True)
 
 
 def live_servers(home: Path, *, prune: bool = False) -> list[dict[str, Any]]:
@@ -492,6 +494,7 @@ def live_servers(home: Path, *, prune: bool = False) -> list[dict[str, Any]]:
         if not is_locked(path):
             if prune:
                 path.unlink(missing_ok=True)
+                path.with_suffix(".sessions.json").unlink(missing_ok=True)
             continue
         try:
             loaded = json.loads(path.read_text(encoding="utf-8") or "{}")

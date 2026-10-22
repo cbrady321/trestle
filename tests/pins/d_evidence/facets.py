@@ -25,7 +25,7 @@ from trestle.query.views import VIEW_NAME_VALUES, VIEW_ROW_FIELDS
 ROOT = Path(__file__).resolve().parents[3]
 S0_FOSSILS = ROOT / "tests" / "fixtures" / "fossils" / "s0"
 FOSSIL_STATES = ("succeeded", "failed")
-NO_RUN_VIEWS = {"recent_runs", "recent_failures"}
+NO_RUN_VIEWS = {"recent_runs", "recent_failures", "status"}
 _ABSENT_ARTIFACT = "art_absent"
 
 
@@ -51,7 +51,12 @@ def _fossil_run_id(home: Path) -> str:
 # View row fields added since S0 (MC-18: the provenance view lists `packages`), listed after the
 # S0 fields so the golden stays a prefix of the current list and an additive field shows as an
 # addition rather than shifting every S0 field's position.
-_LATER_FIELDS = {"run_provenance": frozenset({"packages"})}
+_LATER_FIELDS = {
+    "run_provenance": frozenset({"packages"}),
+    # agent surface 2a: whether a live run's MCP session has ended
+    "run": frozenset({"session_ended"}),
+    "recent_runs": frozenset({"session_ended"}),
+}
 
 
 def _declared_fields(name: str) -> list[str]:

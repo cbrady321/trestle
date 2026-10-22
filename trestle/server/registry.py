@@ -270,6 +270,10 @@ class Registry:
         self._failures = failures
         self._scan_signature = signature
 
+    def failure_count(self) -> int:
+        """How many plugin files the last refresh could not publish (no import validation)."""
+        return len(self._failures)
+
     def get(self, plugin_id: str) -> PluginSnapshot | None:
         return self.snapshots.get(plugin_id)
 

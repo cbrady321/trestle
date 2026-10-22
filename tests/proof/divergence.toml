@@ -1826,3 +1826,50 @@ direction = "additive"
 items = [{ path = "$.outcome_fields", value = ["free_at", "str | None"] }]
 authorized_by = "agent surface 2a-2d design, 2b held_by and free_at"
 
+# Agent surface 2a: session_ended on the run and recent_runs rows (true or false for a live run
+# that arrived on an MCP session, null otherwise).
+
+[[entry]]
+id = "ADD-recent-runs-session-ended"
+facet = "query_row_shapes"
+row_or_k = "MC-06"
+docs = []
+due_checkpoint = "agent surface 2a"
+direction = "additive"
+keys = ["$.views.recent_runs.observed.*.row_shape.session_ended"]
+items = [{ path = "$.views.recent_runs.declared_fields", value = "session_ended" }]
+authorized_by = "agent surface 2a-2d design, 2a How it shows (session_ended on recent_runs)"
+
+[[entry]]
+id = "ADD-run-row-session-ended"
+facet = "query_row_shapes"
+row_or_k = "MC-06"
+docs = []
+due_checkpoint = "agent surface 2a"
+direction = "additive"
+keys = ["$.views.run.observed.*.row_shape.session_ended"]
+items = [{ path = "$.views.run.declared_fields", value = "session_ended" }]
+authorized_by = "agent surface 2a-2d design, 2a How it shows (session_ended on run)"
+
+# Agent surface 2b: the status view (one row, no params) and its place in the query enum.
+
+[[entry]]
+id = "ADD-tools-list-query-view-status"
+facet = "tools_list"
+row_or_k = "MC-16"
+docs = []
+due_checkpoint = "agent surface 2b"
+direction = "additive"
+items = [{ path = "$.tools[3].inputSchema.properties.view.enum", value = "status" }]
+authorized_by = "agent surface 2a-2d design, 2b query(view=\"status\") (registration)"
+
+[[entry]]
+id = "ADD-query-view-status"
+facet = "query_row_shapes"
+row_or_k = "MC-06"
+docs = []
+due_checkpoint = "agent surface 2b"
+direction = "additive"
+keys = ["$.views.status"]
+items = [{ path = "$.view_names", value = "status" }]
+authorized_by = "agent surface 2a-2d design, 2b query(view=\"status\") (registration)"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import threading
 import time
@@ -38,6 +39,7 @@ from trestle.server.ledger import (
     ledger_path,
 )
 from trestle.server.live import latest_progress
+from trestle.server.mcp_sessions import owner_running, session_end
 from trestle.server.pins import PinStore
 from trestle.server.projection import (
     build_summary,
@@ -79,6 +81,15 @@ class _Child:
     path: tuple[str, ...]
 
 
+def _not_owner(run_id: Handle) -> RequestOutcome:
+    return RequestOutcome(
+        code=codes.NOT_OWNER,
+        message=f"run not received in this session, and its session has not ended: {run_id}",
+        retryable=False,
+        origin="projection",
+    )
+
+
 @dataclass
 class Project:
     home: Path
@@ -87,6 +98,9 @@ class Project:
     # The restricted profile scopes `cancel`, and the read of a child view (L.TR-2.4), to the MCP
     # session that started the run (WR-AUTH-1).
     session_scoped_cancel: bool = False
+    # change 2b: the restricted profile's allowlist (None: the full profile), shown on each
+    # `list_plugins` item as `allowlisted`
+    allowlist: tuple[str, ...] | None = None
     # Status polls run on worker threads (L.CS-4.2), so two of them can overlap: a projection
     # rewrites the run's summary.json through one fixed temporary name, one writer at a time.
     _status_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
@@ -346,6 +360,27 @@ class Project:
             views.append(view)
         return views, None
 
+    def _in_scope(
+        self, created: dict[str, Any] | None, caller_session: str | None, run_dir: Path | None
+    ) -> bool:
+        """Whether `caller_session` may cancel the run whose `created` row this is, and read its
+        child views (change 2a). The full profile, and a call outside an MCP session (the
+        operator's CLI or console): always. The restricted profile: the session that received the
+        run, or any session once the run's own session has ended (deleted, expired, or its server
+        gone: neither the run's owner lock nor its server's lock is held). A run admitted outside
+        MCP stays out of every MCP session's scope."""
+        if not self.session_scoped_cancel or caller_session is None:
+            return True
+        if created is None:
+            return False
+        session = created.get("caller_session")
+        if session == caller_session:
+            return True
+        if not isinstance(session, str):
+            return False
+        alive = owner_running(run_dir)
+        return session_end(self.home, created.get("owner"), session, owner_alive=alive) is not None
+
     def cancel(self, run_id: Handle, caller_session: str | None = None) -> RequestOutcome:
         ledger = self._ledger_for(run_id)
         if ledger is None:
@@ -359,19 +394,14 @@ class Project:
                 origin="projection",
             )
 
-        # Under the restricted profile an MCP session may cancel only a run it started: the
-        # `created` row names the session that received it. This runs with the other checks, before
+        # Under the restricted profile an MCP session may cancel a run it received, or one whose
+        # session has ended (change 2a): `_in_scope`. This runs with the other checks, before
         # anything routes the cancel, and before the state check so a foreign run's state is not
         # revealed. A call outside an MCP session (the operator's CLI or console) is not scoped.
-        if self.session_scoped_cancel and caller_session is not None:
-            created = ledger.last_kind("created")
-            if created is None or created.get("caller_session") != caller_session:
-                return RequestOutcome(
-                    code=codes.NOT_OWNER,
-                    message=f"run not received in this session: {run_id}",
-                    retryable=False,
-                    origin="projection",
-                )
+        if not self._in_scope(
+            ledger.last_kind("created"), caller_session, self._run_dir_for(run_id)
+        ):
+            return _not_owner(run_id)
 
         state = ledger.projected_state()
         if state not in NON_TERMINAL_STATES:  # a held run is cancellable too (Feature 3)
@@ -470,7 +500,14 @@ class Project:
         )
 
     def list_plugins(self) -> CatalogView:
-        return self.registry.catalog()
+        catalog = self.registry.catalog()
+        if self.allowlist is not None:
+            allowed = set(self.allowlist)
+            catalog.items = [
+                dataclasses.replace(item, allowlisted=item.name in allowed)
+                for item in catalog.items
+            ]
+        return catalog
 
     def describe_plugin(self, plugin_id: str) -> dict[str, object] | RequestOutcome:
         desc = self.registry.describe(plugin_id)
@@ -528,15 +565,8 @@ class Project:
         run_dir = self._run_dir_for(root_id)
         if ledger is None or run_dir is None:
             return None
-        if self.session_scoped_cancel and caller_session is not None:
-            created = ledger.last_kind("created")
-            if created is None or created.get("caller_session") != caller_session:
-                return RequestOutcome(
-                    code=codes.NOT_OWNER,
-                    message=f"run not received in this session: {root_id}",
-                    retryable=False,
-                    origin="projection",
-                )
+        if not self._in_scope(ledger.last_kind("created"), caller_session, run_dir):
+            return _not_owner(root_id)
         spec = _read_spec(evidence_dir(run_dir)) or {}
         try:
             plan = fold.plan_of_spec(spec)

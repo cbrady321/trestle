@@ -19,9 +19,12 @@ from trestle.server.home import (
     home_format,
     live_run_ids,
     live_servers,
+    marked_run_dir,
     read_marker,
 )
+from trestle.server.ledger import TERMINAL_KINDS, read_state
 from trestle.server.main import create_kernel, default_home
+from trestle.server.mcp_sessions import SERVER_GONE, SessionReader, owner_running
 from trestle.server.plugin_paths import resolve_plugin_dirs
 from trestle.server.reaper import reap_home
 from trestle.server.snapshots import load_declared
@@ -51,6 +54,10 @@ class DoctorReport:
     missing_plugin_dirs: tuple[str, ...] = ()
     # change 3: the credential identities (names, env, grant status, the store), never a value
     credentials: tuple[str, ...] = ()
+    # change 2a: the live runs whose MCP session has ended, one line each (at most
+    # SESSION_ENDED_LISTED), and how many there are
+    session_ended_runs: tuple[str, ...] = ()
+    session_ended_count: int = 0
 
     def lines(self) -> list[str]:
         rows = [
@@ -91,6 +98,10 @@ class DoctorReport:
         rows.append(f"live_runs: {sum(self.live_runs.values())}")
         for owner in sorted(self.live_runs, key=lambda o: (o is None, o or "")):
             rows.append(f"  {owner or 'v0.3.0 (no owner)'}: {self.live_runs[owner]}")
+        rows.append(f"session_ended_runs: {self.session_ended_count}")
+        rows.extend(f"  - {line}" for line in self.session_ended_runs)
+        if self.session_ended_count > len(self.session_ended_runs):
+            rows.append(f"  … and {self.session_ended_count - len(self.session_ended_runs)} more")
         if self.admission_holder is not None:
             rows.append(f"admission_lock: held by {self.admission_holder}")
         rows.extend(self.credentials)
@@ -147,6 +158,7 @@ def build_doctor_report(
     if missing_dirs and len(missing_dirs) == len(kernel.registry.plugin_dirs):
         health = "degraded"
 
+    ended_lines, ended_count = session_ended_report(trestle_home)
     credential_rows, credential_warnings, store_ok = credentials_report(
         trestle_home, kernel.registry.snapshots
     )
@@ -174,7 +186,40 @@ def build_doctor_report(
         warnings=_warnings() + credential_warnings,
         missing_plugin_dirs=tuple(str(path) for path in missing_dirs),
         credentials=credential_rows,
+        session_ended_runs=ended_lines,
+        session_ended_count=ended_count,
     )
+
+
+SESSION_ENDED_LISTED = 20
+
+
+def session_ended_report(home: Path) -> tuple[tuple[str, ...], int]:
+    """Change 2a: the live runs (their markers, then each run's state.json) whose MCP session has
+    ended: at most `SESSION_ENDED_LISTED` lines and the count. Health is unchanged: such a run is a
+    live run, and live runs already degrade it."""
+    reader = SessionReader(home)
+    lines: list[str] = []
+    count = 0
+    for run_id in live_run_ids(home):
+        run_dir = marked_run_dir(home, run_id, read_marker(home, run_id))
+        state = read_state(run_dir) if run_dir is not None else None
+        if state is None or state.get("state") in TERMINAL_KINDS:
+            continue
+        alive = owner_running(run_dir)
+        end = reader.end(state.get("owner"), state.get("caller_session"), owner_alive=alive)
+        if end is None:
+            continue
+        count += 1
+        if len(lines) >= SESSION_ENDED_LISTED:
+            continue
+        why = (
+            "server gone"
+            if end.reason == SERVER_GONE
+            else f"session {end.reason} at {end.at or 'an unknown time'}"
+        )
+        lines.append(f"{run_id} {state.get('plugin')} {state.get('state')}: {why}")
+    return tuple(lines), count
 
 
 def credentials_report(

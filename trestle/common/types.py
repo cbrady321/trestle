@@ -373,15 +373,21 @@ class PluginCatalogRow:
     description: str
     valid: bool
     capability_class: str | None = None
+    # change 2b: under the restricted profile, whether the operator's allowlist names the plugin
+    # (`run` admits only those); None, and absent on the wire, under the full profile
+    allowlisted: bool | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "name": self.name,
             "version": self.version,
             "description": self.description,
             "valid": self.valid,
             "capability_class": self.capability_class,
         }
+        if self.allowlisted is not None:
+            out["allowlisted"] = self.allowlisted
+        return out
 
 
 @dataclass

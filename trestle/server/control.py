@@ -75,6 +75,9 @@ class ControlSurface:
     project: Project
     conductor: Conductor
     scheduler: Scheduler
+    # the build a serving process runs (`Kernel.start_service`), for the status view; None in a
+    # CLI kernel, which then reports `trestle.__version__`
+    version: str | None = None
     lane: AdmissionLane = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -344,10 +347,13 @@ class ControlSurface:
         params: dict[str, Any] | None = None,
         cursor: str | None = None,
     ) -> dict[str, Any] | RequestOutcome:
-        out = self.project.query(view, params or {}, cursor)
-        if isinstance(out, RequestOutcome):
-            return out
-        return out
+        if view == "status":
+            # change 2b: the row needs the scheduler, the registry and the build, which the
+            # filesystem backend does not have; params and cursor are ignored
+            from trestle.server.status_view import status_envelope
+
+            return status_envelope(self)
+        return self.project.query(view, params or {}, cursor)
 
     def fetch(self, target: str, window: dict[str, Any]) -> dict[str, Any] | RequestOutcome:
         out = self.project.fetch(target, window)
