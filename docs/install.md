@@ -20,7 +20,10 @@ A first run checks out the release, creates `~/.trestle-venv`, installs Trestle 
 the home and installs and starts the service. Run again after a new release: it stops the service
 (draining), checks out the release and runs `trestle service upgrade`. It refuses while a run is
 live unless given `--drain`, and refuses a checkout with uncommitted changes. `--no-packs` skips
-the packs; `--venv DIR` picks another venv. The steps it runs are below.
+the packs; `--venv DIR` picks another venv. Each run also links `trestle` into `~/.local/bin`
+(`--bin-dir DIR` picks another, `--no-link` skips it) so the current user's shells find it; the
+link points into the venv, so upgrades keep it current, and it never replaces a `trestle` it did
+not link. If that directory is not on `PATH` it prints the line to add. The steps it runs are below.
 
 By hand, from the Trestle checkout:
 
@@ -29,6 +32,7 @@ python3 -m venv ~/.trestle-venv
 ~/.trestle-venv/bin/pip install -e ".[packs]"    # packs optional: Docker / pytest / migration plugins
 ~/.trestle-venv/bin/trestle init                 # creates ~/.trestle, seeds echo.py, writes agent.token
 ~/.trestle-venv/bin/trestle service install      # writes and loads the unit; the service starts
+ln -sfn ~/.trestle-venv/bin/trestle ~/.local/bin/trestle   # `trestle` on PATH (~/.local/bin must be on it)
 ```
 
 Run `trestle service install` from the venv you want the service to run: the unit names that
@@ -236,7 +240,7 @@ in one line.
 `scripts/update.sh` fetches the newest release from GitHub and runs that release's own
 `scripts/install.sh`, so a release can change how it is installed. It takes `--release vX.Y.Z`,
 `--dir DIR` (the checkout; cloned there when missing, default `~/trestle` outside a checkout) and
-passes `--drain`, `--no-packs` and `--venv` through. `scripts/install.sh` alone does the same from
+passes `--drain`, `--no-packs`, `--venv`, `--bin-dir` and `--no-link` through. `scripts/install.sh` alone does the same from
 the checkout as it is. By hand:
 
 ```bash

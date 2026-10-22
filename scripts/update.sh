@@ -6,7 +6,7 @@
 #   scripts/update.sh --release v0.4.0 # a given release
 #   scripts/update.sh --dir ~/trestle  # the checkout to use (cloned there if missing)
 #   scripts/update.sh --drain          # any other option goes to install.sh (--drain, --no-packs,
-#                                      # --venv DIR)
+#                                      # --venv DIR, --bin-dir DIR, --no-link)
 #
 # Without a checkout (e.g. a fresh machine) it clones TRESTLE_REPO_URL (default the GitHub
 # repository) into --dir (default ~/trestle). It always runs the install script of the release
