@@ -100,7 +100,20 @@ def _spec_deadline(run_dir: Path) -> float | None:
         return None
 
 
-def run_init(*, home: Path, seed_echo: bool = True, upgrade: bool = False) -> int:
+def seed_exec_source() -> bytes:
+    """The `exec` plugin `trestle init` seeds: the guide's example, byte for byte (change 2c), so
+    the served example and the seeded file cannot drift."""
+    from importlib import resources
+
+    return (resources.files("trestle.plugin._guide") / "examples" / "exec.py").read_bytes()
+
+
+EXEC_ROOTS_NOTE = (
+    "exec: set TRESTLE_EXEC_ROOTS under [plugins.env] in config.toml; until then it answers blocked"
+)
+
+
+def run_init(*, home: Path, seed: bool = True, upgrade: bool = False) -> int:
     """`trestle init`: create the home (format 2) and seed the plugins directory. It never
     recovers or reaps runs. A v0.3.0 home is refused unless `upgrade`."""
     try:
@@ -126,17 +139,22 @@ def run_init(*, home: Path, seed_echo: bool = True, upgrade: bool = False) -> in
         return 2
     plugins = home / "plugins"
     plugins.mkdir(parents=True, exist_ok=True)
-    if seed_echo:
+    if seed:
+        # only missing files: an operator's edit (or a deleted echo.py) is theirs until init runs
         echo_path = plugins / "echo.py"
         if not echo_path.exists():
             echo_path.write_text(_SEED_ECHO, encoding="utf-8")
+        exec_path = plugins / "exec.py"
+        if not exec_path.exists():
+            exec_path.write_bytes(seed_exec_source())
     _, created = ensure_token(home)
     print(f"trestle home: {home}")
     print(f"agent token: {token_path(home)}{' (created)' if created else ''}")
     if upgraded is not None:
         print(f"upgraded to format {HOME_FORMAT}: {len(upgraded.live)} live runs listed")
     print(f"plugins: {plugins}")
-    if seed_echo:
-        print("seeded: echo.py")
+    if seed:
+        print("seeded: echo.py, exec.py")
+        print(EXEC_ROOTS_NOTE)
     print(_packs_hint())
     return 0

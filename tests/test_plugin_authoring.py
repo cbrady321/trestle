@@ -50,6 +50,7 @@ EXAMPLE_BYTES = 6144
 
 EXAMPLE_NAMES = {
     "echo",
+    "exec",
     "exec_with_blocked",
     "artifact_status",
     "composite_workflow",

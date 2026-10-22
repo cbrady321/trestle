@@ -406,13 +406,18 @@ def declared_from_function(fn: _FnDef) -> DeclaredMetadata:
         if kw.arg in values:
             raise DeclarationError(f"@trestle: keyword {kw.arg!r} given twice")
         values[kw.arg] = kw.value
+    credentials = _declared_credentials(values.get("credentials"))
+    if credentials and fn.name in credential_names.NEVER_GRANTED:
+        raise DeclarationError(
+            f"@trestle: the {fn.name} plugin never carries a credential; remove credentials="
+        )
     return DeclaredMetadata(
         entry=fn.name,
         deadline_s=_declared_deadline(values["deadline"]) if "deadline" in values else None,
         summary_fields=_declared_names(values.get("summary_fields"), "summary_fields"),
         packages=_declared_names(values.get("packages"), "packages"),
         env_arg=_declared_env_arg(values["env_arg"]) if "env_arg" in values else None,
-        credentials=_declared_credentials(values.get("credentials")),
+        credentials=credentials,
         repeatable=_declared_bool(values["repeatable"], "repeatable")
         if "repeatable" in values
         else False,

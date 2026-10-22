@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     init.add_argument(
         "--no-seed",
         action="store_true",
-        help="Create plugins directory without seeding echo.py",
+        help="Create the plugins directory without seeding echo.py and exec.py",
     )
     init.add_argument(
         "--upgrade",
@@ -196,7 +196,7 @@ def _dispatch(args: argparse.Namespace) -> int:
         return credentials_cli.run(args, home=home)
     if args.command == "init":
         trestle_home = Path(args.home) if args.home else default_home()
-        return run_init(home=trestle_home, seed_echo=not args.no_seed, upgrade=args.upgrade)
+        return run_init(home=trestle_home, seed=not args.no_seed, upgrade=args.upgrade)
     if args.command == "doctor":
         return run_doctor(
             home=args.home,

@@ -36,6 +36,13 @@ KIND_ENCRYPTED_FILE = "encrypted_file"
 KINDS_LATER = frozenset(
     {"keychain", "onepassword", "aws_assume_role", "github_app", "cli_passthrough"}
 )
+
+# Change 2c: plugin names that never carry a credential. `exec` runs any argv the agent picks, so
+# a credential on it would hand the value to any agent; a declaration on a plugin of this name is
+# refused at publication, and `trestle credentials grant`/`add --grant` refuse it too. An operator
+# who copies the file under another name has written their own plugin.
+NEVER_GRANTED: frozenset[str] = frozenset({"exec"})
+
 # The run-scoped channel directory, beside `work/` and `evidence/` in the run directory: it holds
 # the `credential_file` files (0700 directory, 0600 files) and is removed when the run ends.
 CHANNEL_DIR = "channel"

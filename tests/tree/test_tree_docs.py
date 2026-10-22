@@ -169,6 +169,8 @@ EXAMPLE_RUNS: dict[str, list[tuple[dict[str, Any], str]]] = {
         ({"tool": "git"}, "succeeded"),
         ({"tool": "trestle-no-such-tool"}, "blocked"),
     ],
+    # no TRESTLE_EXEC_ROOTS here: the run answers blocked (the MCP tests run it with roots)
+    "exec": [({"argv": ["true"], "cwd": "/"}, "blocked")],
     "artifact_status": [({"rounds": 3}, "succeeded")],
     "composite_workflow": [({"env": "dev"}, "succeeded")],
     "pack_wrapper": [

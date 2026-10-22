@@ -173,3 +173,22 @@ def test_doctor_reports_identities_and_stale_grants(home: Path, credentials_cli:
     text = "\n".join(build_doctor_report(home=home, plugin_dirs=[home / "plugins"]).lines())
     assert "grant cred_cli: stale" in text
     assert "warning: credential demo-token grant to cred_cli is stale" in text
+
+
+def test_exec_is_never_granted(home: Path, credentials_cli: Cli) -> None:
+    """Change 2c: `grant x exec` and `add x --grant exec` are refused before anything is written,
+    in the form the command uses for its other refusals."""
+    from trestle.server.init_cmd import seed_exec_source
+
+    (home / "plugins" / "exec.py").write_bytes(seed_exec_source())
+    code, _, err = credentials_cli(
+        home, "add", "demo-token", "--env", "DEMO_TOKEN", "--grant", "exec", stdin=VALUE
+    )
+    assert code == 1 and "never granted a credential" in err, err
+    assert not (home / "credentials.toml").exists()
+    code, _, _ = credentials_cli(home, "add", "demo-token", "--env", "DEMO_TOKEN", stdin=VALUE)
+    assert code == 0
+    before = (home / "credentials.toml").read_bytes()
+    code, _, err = credentials_cli(home, "grant", "demo-token", "exec")
+    assert code == 1 and "never granted a credential" in err, err
+    assert (home / "credentials.toml").read_bytes() == before

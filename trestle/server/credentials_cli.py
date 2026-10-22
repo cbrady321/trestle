@@ -177,6 +177,10 @@ def published_plugins(home: Path) -> dict[str, Published]:
 def _pin(home: Path, plugin: str, published: dict[str, Published] | None = None) -> Grant:
     from trestle.server.snapshots import ORIGIN_AGENT
 
+    if plugin in cred.NEVER_GRANTED:
+        raise CredentialsCliError(
+            f"plugin {plugin!r} runs any command an agent picks and is never granted a credential"
+        )
     found = (published if published is not None else published_plugins(home)).get(plugin)
     if found is None:
         raise CredentialsCliError(
@@ -398,4 +402,11 @@ def run(
             return _restart(home)
     elif command == "add":
         print(ROTATED_NOTE, file=out)
+    if command in ("add", "grant"):
+        # change 2c (owner decision 1): the one moment the operator is certain to be present
+        from trestle.server.doctor import exec_exposure_warning
+
+        warning = exec_exposure_warning(home)
+        if warning is not None:
+            print(f"warning: {warning}", file=out)
     return 0

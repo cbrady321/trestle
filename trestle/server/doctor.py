@@ -9,7 +9,12 @@ from pathlib import Path
 from typing import Any
 
 from trestle.common.types import PluginSnapshot
-from trestle.server.config import IGNORED_MAX_RUNNING_ENV, TrestleConfig, load_config
+from trestle.server.config import (
+    IGNORED_MAX_RUNNING_ENV,
+    ProfileConfig,
+    TrestleConfig,
+    load_config,
+)
 from trestle.server.credential_store import StoreError
 from trestle.server.credentials import GRANT_CURRENT, grant_status, load_credentials
 from trestle.server.gc import GCReport, count_runs, run_gc
@@ -183,7 +188,7 @@ def build_doctor_report(
         servers=tuple(live_servers(trestle_home)),
         live_runs=_live_runs_by_owner(trestle_home),
         admission_holder=admission_holder(trestle_home),
-        warnings=_warnings() + credential_warnings,
+        warnings=_warnings() + credential_warnings + _exec_warning(trestle_home, config),
         missing_plugin_dirs=tuple(str(path) for path in missing_dirs),
         credentials=credential_rows,
         session_ended_runs=ended_lines,
@@ -265,6 +270,33 @@ def credentials_report(
     return tuple(rows), tuple(warnings), True
 
 
+def exec_exposure_warning(home: Path, profile: ProfileConfig | None = None) -> str | None:
+    """Change 2c (owner decision 1): the warning when the restricted profile lists `exec` and the
+    home's credentials.toml defines an identity, else None. Warned, never refused: `exec` runs
+    commands as the user, and so can read every credential value (the store under either key
+    provider, and a live credentialed run's environment). Reads the files as they are now."""
+    if profile is None:
+        try:
+            profile = load_config(home).profile
+        except ValueError:
+            return None
+    if not profile.restricted or "exec" not in profile.allowlist:
+        return None
+    try:
+        count = len(load_credentials(home).identities)
+    except ValueError:
+        return None
+    if not count:
+        return None
+    noun = "identity" if count == 1 else "identities"
+    return (
+        f"exec is allowlisted under the restricted profile and this home holds {count} "
+        f"credential {noun}: any agent on this service can run commands as you, and so read "
+        "every credential value (the store under either key provider, and a live run's "
+        "environment)"
+    )
+
+
 def _live_runs_by_owner(home: Path) -> dict[str | None, int]:
     counts: dict[str | None, int] = {}
     for run_id in live_run_ids(home):
@@ -272,6 +304,11 @@ def _live_runs_by_owner(home: Path) -> dict[str | None, int]:
         key = owner if isinstance(owner, str) else None
         counts[key] = counts.get(key, 0) + 1
     return counts
+
+
+def _exec_warning(home: Path, config: TrestleConfig) -> tuple[str, ...]:
+    warning = exec_exposure_warning(home, config.profile)
+    return () if warning is None else (warning,)
 
 
 def _warnings() -> tuple[str, ...]:
