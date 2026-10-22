@@ -208,6 +208,8 @@ class DeclaredMetadata:
     # G3: seconds a plain plugin asks for between a stop (cancel or deadline) and the kill, to
     # finish cleanly; admission caps it at the operator's release slice. None: no window.
     stop_grace_s: float | None = None
+    # P-10: the plugin this one was adapted from (a pack plugin's name), shown by describe_plugin
+    adapted_from: str | None = None
     # Recorded at publication, not declared in source: each declared package's digest as the
     # publication validator resolved it. Empty for a plugin that declares no packages.
     package_digests: dict[str, str] = field(default_factory=dict)
@@ -224,6 +226,7 @@ class DeclaredMetadata:
             **({"repeatable": True} if self.repeatable else {}),
             **({"credentials": sorted(self.credentials)} if self.credentials else {}),
             **({"stop_grace_s": self.stop_grace_s} if self.stop_grace_s is not None else {}),
+            **({"adapted_from": self.adapted_from} if self.adapted_from is not None else {}),
         }
 
     @classmethod
@@ -236,6 +239,7 @@ class DeclaredMetadata:
         deadline = declared.get("deadline_s")
         env_arg = declared.get("env_arg")
         grace = declared.get("stop_grace_s")
+        adapted = declared.get("adapted_from")
         return cls(
             entry=str(entry) if isinstance(entry, str) else None,
             deadline_s=deadline
@@ -249,6 +253,7 @@ class DeclaredMetadata:
             stop_grace_s=float(grace)
             if isinstance(grace, (int, float)) and not isinstance(grace, bool) and grace > 0
             else None,
+            adapted_from=adapted if isinstance(adapted, str) else None,
             package_digests={
                 str(k): str(v)
                 for k, v in (
@@ -376,6 +381,14 @@ class PluginCatalogRow:
     # change 2b: under the restricted profile, whether the operator's allowlist names the plugin
     # (`run` admits only those); None, and absent on the wire, under the full profile
     allowlisted: bool | None = None
+    # P-5: whose code it is (`trestle`, `company`, `user`, `local`); P-1: the pack, as
+    # `name@version (owner)`, absent for a loose file
+    owner: str | None = None
+    pack: str | None = None
+    # P-11: the pack plugin this one overrides, absent when it overrides none
+    overrides: str | None = None
+    # P-14: under the restricted profile, an allowlisted name served by an override
+    override_flagged: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -387,6 +400,14 @@ class PluginCatalogRow:
         }
         if self.allowlisted is not None:
             out["allowlisted"] = self.allowlisted
+        if self.owner is not None:
+            out["owner"] = self.owner
+        if self.pack is not None:
+            out["pack"] = self.pack
+        if self.overrides is not None:
+            out["overrides"] = self.overrides
+        if self.override_flagged:
+            out["override_flagged"] = True
         return out
 
 
