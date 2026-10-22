@@ -160,8 +160,8 @@ operator's `trestle cancel <run_id>` is never session scoped. No session id reac
 `TRESTLE_EXEC_ROOTS` (`[plugins.env]` in `config.toml`). Under the restricted profile it runs only
 when the allowlist names it. Listing it gives every agent on the service what your user can do.
 That includes reading every credential value: the store's key under either key provider (the key
-file, or the Keychain item through `security`, which needs no prompt), and a live credentialed
-run's environment. It also includes every `[plugins.env]` value (an agent can run `env`), so keep
+file, or the Keychain item through `security`, which needs no prompt), with no grant needed. It
+also includes every `[plugins.env]` value (an agent can run `env`), so keep
 secrets out of `[plugins.env]`: identities belong in `credentials.toml`. Do not list it on a
 service that holds credentials unless your agents already have an unconfined shell; `trestle
 doctor`, `trestle credentials add` and `trestle credentials grant` warn when it is listed on a

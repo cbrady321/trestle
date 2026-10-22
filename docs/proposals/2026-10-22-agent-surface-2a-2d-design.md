@@ -1189,7 +1189,15 @@ Each is the smallest change the code forced, also in the record's "As implemente
 9. **`TRESTLE_EXEC_ROOTS` is split on `os.pathsep`** (`:` on the supported platforms).
 10. **`exec`'s `cwd_outside_roots` detail names the roots first**, so the 300-character cut keeps
     them.
-11. **Host-approval wording:** `security.md` says "a confined shell" where this design says
+11. **The exec warning names the store only.** 0.5.0 hands run secrets to the child over an
+    inherited pipe (problem A, fixed in change 3), so the warning, `security.md` and the record
+    no longer say a live run's environment holds the values: "read every credential value (the
+    store under either key provider)". The record's "does not decide" item keeps only the signed
+    service binary.
+12. **The credential refusal messages are change 3's.** 0.5.0 already puts `the operator runs:
+    <command>` first, so the 200-character cut can only shorten the description, and dropped the
+    store detail; 2d keeps that implementation and adds the message test.
+13. **Host-approval wording:** `security.md` says "a confined shell" where this design says
     "a sandbox", because `tests/core/admission/test_cl_a2_profile.py` refuses any mention of a
     sandbox that does not disclaim one.
 

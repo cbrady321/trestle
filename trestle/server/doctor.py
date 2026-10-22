@@ -274,7 +274,8 @@ def exec_exposure_warning(home: Path, profile: ProfileConfig | None = None) -> s
     """Change 2c (owner decision 1): the warning when the restricted profile lists `exec` and the
     home's credentials.toml defines an identity, else None. Warned, never refused: `exec` runs
     commands as the user, and so can read every credential value (the store under either key
-    provider, and a live credentialed run's environment). Reads the files as they are now."""
+    provider: the key file, or the Keychain item through `security`, which needs no prompt). Reads
+    the files as they are now."""
     if profile is None:
         try:
             profile = load_config(home).profile
@@ -292,8 +293,7 @@ def exec_exposure_warning(home: Path, profile: ProfileConfig | None = None) -> s
     return (
         f"exec is allowlisted under the restricted profile and this home holds {count} "
         f"credential {noun}: any agent on this service can run commands as you, and so read "
-        "every credential value (the store under either key provider, and a live run's "
-        "environment)"
+        "every credential value (the store under either key provider)"
     )
 
 

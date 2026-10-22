@@ -686,6 +686,7 @@ its owner decisions, and its "Record amendments" for the deviations below. Relea
   this record does not design one.
 - The session idle timeout (the SDK's 30 minutes is in force; settle it with `on_session_lost`).
 - A head-and-tail capture for `ctx.exec` (today each stream keeps its first bytes).
-- An unlock agents cannot perform: a separately signed service binary named by the Keychain ACL,
-  and handing run secrets to the child by something other than the environment; until both
-  exist, any process of the user's can reach the values.
+- An unlock agents cannot perform: a separately signed service binary named by the Keychain ACL.
+  Until it exists, any process of the user's (an agent's shell, or `exec`) can read the store's
+  key and so every value. (Run secrets already reach the child over an inherited pipe, not the
+  environment: 0.5.0.)
