@@ -102,6 +102,7 @@ trestle service status # the service: running, pid, endpoint, builds
 trestle doctor
 trestle ops serve      # http://127.0.0.1:18733 — sessions / telemetry UI
 trestle pin <run_id>
+trestle cancel <run_id> # any live run, whatever session sent it
 trestle recover
 ```
 

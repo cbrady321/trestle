@@ -7,13 +7,13 @@ import tomllib
 from pathlib import Path
 
 CATALOG_HINT_EMPTY = (
-    "No plugins published. Write a @trestle-decorated .py file into a "
-    "plugin_search_paths directory, call publish_plugin, then list_plugins again."
+    "No plugins published: the operator adds plugin files to the service's plugin folders; "
+    "under the full profile, publish_plugin adds one."
 )
 
 CATALOG_HINT_PACKS_MISSING = (
-    "Pack plugins require trestle-packs. Install with: "
-    'pip install -e "packages/trestle-packs[all]" or pip install -e ".[packs]"'
+    "Pack plugins need trestle-packs, which is missing from the service's Python; from the "
+    'Trestle checkout, the operator runs: ~/.trestle-venv/bin/pip install -e ".[packs]"'
 )
 
 

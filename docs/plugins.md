@@ -292,6 +292,21 @@ is done), `"will_not_succeed"` or `"unknown"`. The code is lower-case words join
 the human action is scrubbed of credential values like an error message. An agent reads the
 verdict from `answer.outcome`, reports the human action, and stops.
 
+### The exec plugin
+
+`exec` is a guide example (`trestle://guide/examples/exec`) that `trestle init` seeds into the
+home's plugins folder: `run(plugin="exec", args={"argv": [...], "cwd": "<absolute dir>"})` runs
+one command through `ctx.exec`, with no shell added. `cwd` must resolve (symlinks included) under
+one of the directories in `[plugins.env] TRESTLE_EXEC_ROOTS` (absolute paths joined by `:`); with
+none listed the run raises `Blocked("exec_roots_unset", ...)`. The run's deadline is the
+command's timeout (less 5 s to return the answer); each stream keeps its first 16 MiB. The answer
+is `ok`, `exit_code`, `timed_out`, `duration_s`, the last 1,500 bytes of each stream
+(`stdout_tail`, `stderr_tail`), `truncated`, `output` (the kept output's artifact handle) and
+`error` (`<code>: <detail>`, returned, never raised). `argv[0]` named `trestle` answers
+`operator_command`: that steers an agent towards the operator and is not a boundary, since
+`sh -c` gets past it. A credential declaration on a plugin named `exec` is refused at publication
+(`publication.validation_failed`), and the operator's grant refuses it too.
+
 ## Testing a plugin without a server
 
 `trestle.plugin.testing` unit-tests a plugin in-process, with no server, run id or home:

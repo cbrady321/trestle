@@ -123,7 +123,7 @@ allowlist = ["echo"]       # plugin names an agent may run (restricted only)
 |---|---|---|
 | MCP tools | all ten, unchanged | nine: `publish_plugin` is not registered (not listed, not callable) |
 | `run` | any published plugin | only allowlisted plugins; any other is refused `admission.not_allowlisted` before a run id, run directory or process exists |
-| `cancel` | any run | only runs received in the same MCP session; another session's run is refused `projection.not_owner` and keeps running |
+| `cancel` | any run | only runs received in the same MCP session, and runs whose session has ended (deleted by the client, or expired after 30 minutes with no request in flight); any other is refused `projection.not_owner` and keeps running |
 
 An unknown `mode` or a malformed `allowlist` stops the server from starting: a config that means to restrict never runs as `full`. A restricted profile with no allowlist admits nothing. The operator's CLI and console (`trestle ops`) are not agent sessions and are not scoped.
 
@@ -131,15 +131,60 @@ Every value an agent can select is a closed set or is validated before it acts: 
 
 **Neither profile is a sandbox.** The restricted profile narrows what an agent may ask Trestle to do; an allowlisted plugin still runs as your user with everything that implies (see “What local-only does not mean” above).
 
+Under the restricted profile `list_plugins` marks each plugin `allowlisted: true` or `false`. The
+`status` view (`query(view="status")`) is answered under both profiles, to any session: version,
+profile, limits, slots, live runs and the environments in use. It shows nothing about
+credentials, server ids, pids or ports, the admission lock's holder, storage, the allowlist itself
+or session ids.
+
+## Sessions
+
+A run belongs to the service, not to the MCP session that sent it. The serving process records
+when a session it opened has ended: the client deleted it (an HTTP DELETE answered 2xx), or it
+expired (no request in flight for 30 minutes, the MCP library's own idle rule, or a request on
+it answered 404). A dropped connection is not an end. The record is one file per server,
+`servers/<server_id>.sessions.json` in the home, written only by that server, holding only ended
+session ids (dead: the library answers 404 for them), and removed with the server's lock file.
+A run whose server is not running counts as ended too.
+
+The mark is information and cancel scope only: it never stops, changes or reclassifies a run.
+It shows as `session_ended` on the `recent_runs` and `run` rows (null once the run has ended), as
+`runs.session_ended` in `status`, and in `trestle doctor`. Under the restricted profile it widens
+`cancel` (and the read of a tree's child views) from "the session that sent the run" to "any
+session, once the run's own session has ended", so a blocked agent can end an orphan. The
+operator's `trestle cancel <run_id>` is never session scoped. No session id reaches an agent.
+
+## The exec plugin
+
+`trestle init` seeds `exec.py`, which runs any program as your user in a directory under
+`TRESTLE_EXEC_ROOTS` (`[plugins.env]` in `config.toml`). Under the restricted profile it runs only
+when the allowlist names it. Listing it gives every agent on the service what your user can do.
+That includes reading every credential value: the store's key under either key provider (the key
+file, or the Keychain item through `security`, which needs no prompt), and a live credentialed
+run's environment. It also includes every `[plugins.env]` value (an agent can run `env`), so keep
+secrets out of `[plugins.env]`: identities belong in `credentials.toml`. Do not list it on a
+service that holds credentials unless your agents already have an unconfined shell; `trestle
+doctor`, `trestle credentials add` and `trestle credentials grant` warn when it is listed on a
+home that defines an identity. Trestle warns and never refuses: a refusal keyed on the name is
+bypassed by renaming the file.
+
+Under the full profile, `exec` is a shell for every agent that holds the token, and a host's
+per-command approval (a shell permission prompt, a confined shell) does not see it: the host
+approves the `run` call, not its argv. That is already true of `publish_plugin`; `exec` makes it
+one call away. To keep `exec` off, leave `TRESTLE_EXEC_ROOTS` unset: it then answers `blocked`
+and runs nothing. Deleting the file is not an off switch, because `trestle init` puts a missing
+seed file back. `exec` never carries a credential: a declaration on a plugin named `exec` is
+refused at publication, and `trestle credentials grant` refuses it.
+
 ## Operator vs agent
 
 - **Agents** use the service's MCP endpoint — can admit and `run` work. Nothing agent-facing runs `trestle` itself.
 - **Operators** start, stop and upgrade the service with `trestle service`.
 - **Operators** manage credential identities, values and grants with `trestle credentials`.
-- **Operators** use CLI (`doctor`, `pin`, `unpin`, `recover`) and optional `trestle ops serve` — browse sessions and telemetry; no admit/`run` from the browser.
+- **Operators** use CLI (`doctor`, `pin`, `unpin`, `recover`, `cancel`) and optional `trestle ops serve` — browse sessions and telemetry; no admit/`run` from the browser.
 
 ## Related
 
 - Install and host wiring: [`install.md`](install.md)
-- One per-user service, credentials by name, MCP only (the service, the token, MCP only and the first credential store are implemented; the other store kinds and `ctx.exec(credentials=...)` are not yet): [`decisions/service-and-credentials.md`](decisions/service-and-credentials.md)
+- One per-user service, credentials by name, MCP only (the service, the token, MCP only and the first credential store are implemented in 0.5.0; session ends, the status view, the refusal fields and the exec plugin in 0.5.1; the other store kinds and `ctx.exec(credentials=...)` are not yet): [`decisions/service-and-credentials.md`](decisions/service-and-credentials.md)
 - Product overview: [`overview.md`](overview.md)

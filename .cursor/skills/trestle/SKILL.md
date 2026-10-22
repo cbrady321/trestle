@@ -22,7 +22,12 @@ Read [`docs/agents.md`](../../../docs/agents.md) first. The full agent skill (on
 5. **Pull schemas** — `list_plugins` has names only; use `describe_plugin(plugin_id=…)` for `input_schema`.
 6. **View catalog** — read MCP resource `trestle://views` for when to pick each `query` view vs `fetch` (not plugin schemas).
 7. **Smallest retrieval** — return value → `fetch({run_id}/result)`; failure → `query(last_error)`; stdout → `query(run_tail)`.
-8. **MCP only** — never run `trestle` (or the work a plugin does) in your own shell. If the Trestle tools are missing or the service does not answer, say so and stop; the operator starts it with `trestle service start`.
+8. **MCP only**: never run `trestle`, or the work a plugin does, in your own shell. If the
+   tools are missing or the service does not answer, say so and stop; the service is the
+   operator's. A message naming what "the operator runs" is for the operator: report it.
+   Never run it yourself, through `exec` or any other way.
+9. **Ask the service** — `query(view="status")` (no params) gives the limits (deadline ceiling, longest key ttl) and how busy it is (free slots, live runs, environments in use and who holds them).
+10. **One-off commands** — `run(plugin="exec", args={"argv": [...], "cwd": "<abs>"})` when `list_plugins` has `exec` (and, under the restricted profile, `allowlisted: true`); no shell is added.
 
 ## Golden workflow
 
@@ -44,11 +49,7 @@ Long jobs: pass `completion="terminal"` (with `wait_ms` above zero) so one `run`
 
 ## Bootstrap (if catalog empty)
 
-```bash
-trestle init && trestle doctor
-```
-
-Or `publish_plugin` with `@trestle` Python source. Empty catalog → `admission.plugin_not_found`.
+An empty catalog carries a catalog_hint on list_plugins: report it to the operator, or publish_plugin under the full profile. Empty catalog → `admission.plugin_not_found`.
 
 ## Plugin authoring
 
@@ -73,28 +74,24 @@ recorded, not snapshotted: editing one after admission stops the run with
 
 | Symptom | Next step |
 |---------|-----------|
-| `plugin_not_found` | `list_plugins`; check `catalog_hint`; `trestle init` or `publish_plugin` |
+| `plugin_not_found` | `list_plugins`; check `catalog_hint`; report it to the operator, or `publish_plugin` |
 | `invalid_args` | `describe_plugin(plugin_id=…)` then retry `run` with matching args |
-| `import_failed` | Plugin deps missing — check `catalog_hint` (pack plugins need `pip install -e ".[packs]"`) |
+| `import_failed` | Plugin deps missing — check `catalog_hint`; report it: the operator installs the packs |
+| `environment_busy` | send yours with `after={"run": held_by, "when": "ended"}`; cancel `held_by` only if it blocks you and `query(view="run")` shows `session_ended: true` |
+| any `retryable: true` refusal | wait `retry_after_s`, then resend; again and again: report it |
+| `not_allowlisted` | `list_plugins` marks `allowlisted`; use one that is, or report it |
+| `not_owner` | another session's run, and that session is still open: leave it |
 | `invalid_handle` | Use handle from `RunView` / `query`, not a filesystem path |
 | `not_finalized` | `await_runs` or wait for terminal `run` |
 | `invalid_view` | Read `trestle://views`; do not invent names or send SQL |
 | Empty `run_tail` | Plugin used `ctx.log` not print — try `run_events` or `fetch({run_id}/result)` |
 | `limits_exceeded` on `RunView` | Evidence truncated — fetch narrower windows |
 
-## Verify
-
-```bash
-python scripts/smoke_agent_mcp.py   # expect SMOKE OK
-python scripts/smoke_packs.py       # expect PACKS SMOKE OK (requires pip install -e ".[packs]")
-python scripts/demo_pack_workflows.py  # all pack plugins; docker steps skip without daemon
-```
-
 ## Workflow packs
 
-Pre-built plugins for Docker stacks, pytest, and migrations. The operator installs them (`pip install -e ".[packs]"`) and lists `examples/packs` in the service's `[plugins] paths`. Guide: [`docs/packs.md`](../../../docs/packs.md).
+Pre-built plugins for Docker stacks, pytest, and migrations. The operator installs them into the service's Python and lists `examples/packs` in the service's `[plugins] paths`. Guide: [`docs/packs.md`](../../../docs/packs.md).
 
 | Symptom | Next step |
 |---------|-----------|
-| Pack plugins `valid: false` | Check `catalog_hint` on `list_plugins`; install `.[packs]` |
-| `admission.import_failed` | Missing `trestle_packs` — see catalog_hint install line |
+| Pack plugins `valid: false` | Check `catalog_hint` on `list_plugins`; report it: the operator installs the packs |
+| `admission.import_failed` | Missing `trestle_packs`: report the `catalog_hint` to the operator |

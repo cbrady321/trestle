@@ -28,3 +28,6 @@ elif not result.ok:
 
 Subprocesses started some other way still run inside the run's stop scope. A process that
 double-forks out of it is not stopped, so do not start daemons.
+
+For a one-off command without writing a plugin, agents run the exec plugin
+(trestle://guide/examples/exec).

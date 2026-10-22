@@ -62,7 +62,7 @@ def server_instructions(restricted: bool) -> str:
     return (
         f"Guidance is under {GUIDE_URI}: start there and read only what you need. "
         f"{publishing}Extend Trestle by writing plugins and packs; do not read its source or "
-        "home directory, or modify it."
+        "home directory, or modify it. For what this service allows, query view status."
     )
 
 

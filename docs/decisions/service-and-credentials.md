@@ -2,7 +2,9 @@
 
 **Status:** decided; changes 1, 1a, 2 and 3 of the implementation sequence are implemented (the
 bearer token, the stdio transport removed, `trestle service`, and credential identities with the
-`encrypted_file` store, grants by digest and `trestle credentials`); the rest is not. Where the
+`encrypted_file` store, grants by digest and `trestle credentials`), and changes 2a, 2b, 2c and 2d
+(0.5.1: session ends, the status view and refusal fields, the `exec` plugin, the agent docs); the
+rest is not. Where the
 code differs from the text below, the "As implemented" subsections after the sequence table say
 how and why.
 **Date:** 2026-10-19
@@ -86,7 +88,11 @@ Three gaps to close, each in the implementation sequence:
    session is gone looks like any other live run. Record the session's end, and let
    `trestle doctor` and the `recent_runs` view mark runs whose session is gone. This is
    information for the operator, not a trigger: marking a run orphaned changes nothing about
-   it.
+   it. A session has ended when the client deleted it (a DELETE answered 2xx), or when it
+   expired: no request in flight for the MCP library's 30 minutes, or a request on it answered
+   404. A dropped connection is not an end; a killed host is seen about 30 minutes later.
+   `server_gone` (the server that opened it is not running) is computed by readers, never
+   written. Implemented in 0.5.1 (change 2a).
 2. **An operator cancel.** The unscoped path exists: `Project.cancel` with `caller_session`
    None is the operator's CLI or console and is not scoped. No CLI command exposes it today
    (`trestle/cli.py` has `serve`, `ops serve`, `init`, `doctor`, `recover`, `pin` and `unpin`,
@@ -95,12 +101,15 @@ Three gaps to close, each in the implementation sequence:
    (the default, and everything above) and `"cancel"`, for a plugin whose run is worthless
    without its caller: one holding an environment lease for an interactive session, for
    instance. It is a literal in the decorator like every other keyword, recorded in the
-   manifest, and it needs gap 1 to act on. `describe_plugin` shows it.
+   manifest, and it needs gap 1 to act on. `describe_plugin` shows it. Still its own change:
+   it depends on the idle timeout, which for now is the library's 30 minutes.
 
-**Unverified.** What the server does when a client drops a `run(completion="terminal")` wait
-mid-run. The wait is a projection (`await_terminal_async` polls the ledger and holds nothing
-the run needs), so the run should be untouched; a test must show it before the service mode
-is documented as recommended.
+**Verified.** A client that drops a `run(completion="terminal")` wait mid-run leaves the run
+untouched: `tests/single/control/mcp/test_sever_rejoin.py` (cancel notification, DELETE,
+SIGKILL; the run ends by its own deadline and a re-send joins it) and
+`tests/single/control/mcp/test_session_loss.py::test_dropped_terminal_wait` (a raw connection
+drop, a DELETE and a cancel notification; a run that ends on its own reads `succeeded`, `passed`,
+no stop, and its key joins the one run).
 
 **The reverse case is already covered.** When the service dies and agents are alive: its runs
 end `interrupted` at the next start, a `repeatable=True` key re-sent by the agent starts a
@@ -426,10 +435,10 @@ answer, or a plugin.
 | Situation with no run id | Today | Closes it |
 |---|---|---|
 | `admission.environment_busy` | "retry after it ends", naming nothing | `held_by` (the blocking run id) and `free_at` on the refusal, so the agent can `await_runs` it or send `after=`. |
-| `admission.queue_full`, `admission.home_busy`, `admission.service_draining` | `retryable: true`, no timing | `retry_after_s` on every retryable refusal. Under one service, draining means a restart is coming and "wait" is the whole answer. |
+| `admission.queue_full`, `admission.home_busy`, `admission.service_draining` | `retryable: true`, no timing | `retry_after_s` on every retryable refusal. Draining means the service is stopping; it comes back after `restart` or `upgrade`, not after `stop`. Wait `retry_after_s`; if it then does not answer, report it and stop. |
 | `admission.not_allowlisted` | the message | `list_plugins` under the restricted profile marks each plugin `allowlisted`, so an agent stops trying the rest. |
 | `admission.budget_does_not_fit`, `admission.ttl_out_of_range` | the message; the ceilings live in docs | the `status` view carries `deadline_ceiling_s` and `max_ttl_s`. |
-| What only `trestle doctor` shows | CLI only | `query(view="status")`, no params: profile mode, plugin dirs and the plugins that failed to load, slots in use and free, the deadline ceiling, live servers, whether this one is draining, home format, version. |
+| What only `trestle doctor` shows | CLI only | `query(view="status")`, no params: profile mode, plugin dirs and the plugins that failed to load, slots in use and free, the deadline ceiling, live servers, whether this one is draining, home format, version. Nothing about credentials (identities, grants, the store), though doctor shows them (Decision 2 wins). |
 | An orphaned run from a dead session holds an environment | under the restricted profile no session may cancel it | a run whose session has ended is cancellable by any session of the same user (change 2a). |
 | No plugin exists for a one-off command | the agent uses its shell | an operator-published `exec` plugin: argv list, no shell, cwd under declared roots, a bounded summary (exit code, tail), the full output as an artifact, and never a credential grant. |
 | `admission.plugin_not_found`, `admission.import_failed`, `admission.invalid_args`, `admission.idempotency_key_conflict`, `admission.after_unknown` | covered | `list_plugins` (its `catalog_hint` and failed-plugin reasons), `describe_plugin`, `run_by_key`, `recent_runs`. |
@@ -458,12 +467,12 @@ Each is its own change with its own tests and docs; none depends on a later one.
 |---|---|---|
 | 1 | **Bearer token on HTTP MCP.** `agent.token` from `init` and `service install`; the HTTP transport refuses requests without it; `install.md` shows the `headers` form. | A request without the header is refused; the proof harness and every host config send it; the ops port is unchanged. |
 | 1a | **Remove the stdio transport** (Decision 3). `serve` loses `--transport`; `tests/proof/mcp_host.py` drives the server over streamable HTTP on `--port 0` with the token; `test_mcp_stdio_smoke.py` goes; `.cursor/mcp.json` becomes a `url` entry; README, `install.md`, `security.md` and `overview.md` stop naming stdio. | No code path speaks stdio; every test that used the proof host passes over HTTP; no doc tells a host to spawn `trestle serve`. |
-| 1b | **`ctx.exec(argv, ...)` and `ctx.remaining()`** (added 2026-10-19, pack review R1), without credentials: argv only, a per-call timeout defaulting to the time left, the whole process tree killed on timeout, output captured and bounded with a tail in the result and the full output under one reused artifact name, the child's own environment inherited plus overrides. `credentials=` is reserved and refused until change 5. | A command that outlives its timeout is killed with its children and returns a timed-out result; 10 MB of output stays within the cap; a long poll does not use up the artifact count. |
+| 1b | **`ctx.exec(argv, ...)` and `ctx.remaining()`** (added 2026-10-19, pack review R1), without credentials: argv only, a per-call timeout defaulting to the time left, the whole process tree killed on timeout, output captured and bounded (each stream keeps its first `max_output_bytes`, so a truncated stream's "tail" is the end of the kept head) and the full kept output under one reused artifact name, the child's own environment inherited plus overrides. `credentials=` is reserved and refused until change 5. | A command that outlives its timeout is killed with its children and returns a timed-out result; 10 MB of output stays within the cap; a long poll does not use up the artifact count. |
 | 2 | **`trestle service` commands** (`install`, `uninstall`, `status`, `start`, `stop`, `restart`, `upgrade`) generating the LaunchAgent plist / `systemd --user` unit as in Decision 1, and a rewrite of `install.md` and the README making the service the only mode (see "The CLI" in Decision 1). | A fresh machine reaches a running service from `install.md` alone; `status` reports it with both versions; `stop` drains and stays down; `upgrade` on a newer build restarts onto it, and refuses while a run is live unless `--drain`; the project's instructions never tell an agent to run `trestle`. |
 | 2a | **Orphan visibility and cancel.** Record the end of a streamable-HTTP session; `trestle doctor` and `recent_runs` mark runs whose session is gone; a run whose session has ended is cancellable by any session of the same user, under either profile; `trestle cancel <run_id>` on the unscoped `Project.cancel` path; the dropped-`terminal`-wait test. | A run outlives its session untouched and is marked; another agent session or the operator can end it; `on_session_lost="cancel"` is possible to build on it (its own small change, after this one). |
 | 2b | **The `status` view and the refusal fields** (Decision 3). `query(view="status")` with no params; `held_by` and `free_at` on `environment_busy`; `retry_after_s` on every retryable refusal; `allowlisted` on `list_plugins` under the restricted profile. | Every row of the gap table above that names a view or a field has it, and a test reads each one through MCP alone. |
 | 2c | **The `exec` plugin** (Decision 3): a thin wrapper over `ctx.exec` (change 1b), not a second implementation; operator-published, argv list, no shell, cwd under declared roots, bounded summary, full output as an artifact, never a credential grant. | A one-off command runs through `run(plugin="exec")` with a bounded answer; a credential declaration on it is refused at publication. |
-| 2d | **Skill and agent docs rewrite.** "Fall back to running the command by hand" becomes "report it and stop"; `agents.md` and the skills name the `status` view, the refusal fields and `exec`; nothing agent-facing mentions the CLI. | An agent following the skill alone never runs a shell command for work Trestle does. |
+| 2d | **Skill and agent docs rewrite.** "Fall back to running the command by hand" becomes "report it and stop"; `agents.md` and the skills name the `status` view, the refusal fields and `exec`; agent-facing text never tells the agent to run a command that belongs to the service or its operator, in its shell, through `exec` or otherwise; such a command is quoted only as `the operator runs: <command>`. | An agent following the skill alone never runs a shell command for work Trestle does. |
 | 3 | **`[credentials.<name>]` tables, grants by digest, admission refusals, `@trestle(credentials=...)`, and the first Context shapes.** Resolution onto the `WorkOrder` secrets path; `ctx.credential_env` and `ctx.credential_file` (the channel directory, moved up from the pack); `secrets=` marked deprecated. One store backend is enough to prove the path: the encrypted `0600` file, with a stub keychain in tests. | `credential_not_granted` and `credential_unknown` are refused before a run id; a republished plugin loses its grant; the scrub covers values from both shapes. |
 | 4 | **Store backends and native providers behind the grant ports, with fakes.** macOS Keychain (`security`), 1Password (`op`), `aws_assume_role` against a fake STS, `github_app` against a fake App endpoint, `cli_passthrough`; `credential_interactive` and lifetime handling through the existing codes. | Each backend is proven in CI against its fake or stub; nothing real is configured. |
 | 5 | **`ctx.exec(credentials=...)` and `trestle cred-helper`** (`aws` credential_process, `git` credential helper) with run-scoped tickets answered only for a live run holding the grant; `ctx.exec` itself exists from change 1b, and this change lifts its `credentials=` refusal; `ctx.exec(argv, credentials=[...])` as the documented first choice; `credential_env` documented as the fallback. | A helper call after the run is terminal gets nothing; a plugin without the grant gets nothing; `ctx.exec` runs a tool with a granted identity while the plugin holds no value; the container channel is unchanged. |
@@ -604,6 +613,69 @@ Where the code differs from the text above, or settles what it left open, and wh
 - **`FakeContext(..., credentials={"gh": {"GH_TOKEN": "fake"}})`** gives authors both shapes with
   fake values; `ctx.exec(credentials=...)` stays refused in both contexts until change 5.
 
+### As implemented (changes 2a to 2d)
+
+Design: [`proposals/2026-10-22-agent-surface-2a-2d-design.md`](../proposals/2026-10-22-agent-surface-2a-2d-design.md),
+its owner decisions, and its "Record amendments" for the deviations below. Released as 0.5.1.
+
+- **The session watch is Trestle's own ASGI middleware** (`SessionWatch` in
+  `trestle/server/mcp_sessions.py`, innermost behind the bearer token). fastmcp 3.4.7 and mcp
+  1.30.0 give no hook for a session's end: every path ends in the SDK's private
+  `_discard_session`, which Trestle does not patch (a rename would silently disable the
+  feature). The middleware mirrors the SDK's idle rule with its public constants
+  (`DEFAULT_SESSION_IDLE_TIMEOUT`, `MCP_SESSION_ID_HEADER`) plus a 15 s guard, marks a DELETE
+  answered 2xx before the answer is forwarded, and a 404 at once. A pin test fails if fastmcp
+  starts passing its own idle timeout or the SDK changes its default.
+- **`servers/<server_id>.sessions.json`**, written whole by the server that opened the
+  sessions, holds ended session ids only (`{at, reason}`), each kept while an owned live run
+  names it and dropped 60 s after its end otherwise; the file goes when empty, with the server's
+  lock file (`ServerLock.close`, `live_servers(prune=True)`). No ledger row, nothing written at
+  restart. A run's `caller_session` is copied into `evidence/state.json`, never onto the wire.
+- **`session_ended`** is true or false for a live run sent over MCP and null otherwise, on the
+  `recent_runs` and `run` rows; `runs.session_ended` counts them in `status`; `trestle doctor`
+  lists them (`session_ended_runs`, at most 20 lines). Where the reader has the run's directory
+  (every reader that ships), whether its server runs is the run's own owner lock, the lock the
+  reaper reads; otherwise the owner's server lock.
+- **One predicate, `Project._in_scope`,** decides restricted cancel and child-view reads: the
+  session that received the run, or any session once the run's own session has ended. A run
+  sent outside MCP is never in an MCP session's scope; the full profile and the operator are
+  unscoped. The refusal stays `projection.not_owner`, now "run not received in this session, and
+  its session has not ended".
+- **`trestle cancel <run_id>`** exits 0 accepted (and says so when the run's server is not
+  running), 1 refused (unknown, ended, a child handle naming its root), 2 a refused home.
+- **`held_by` and `free_at`** on `admission.environment_busy`: `held_by` is the run whose recorded
+  deadline frees the environment last (`pool.busy_holder`, ties to the latest arrival; it
+  replaced `busy_until`), `free_at` that deadline in ISO 8601 UTC.
+- **`retry_after_s`** is on every `retryable: true` outcome, filled in `RequestOutcome.to_dict`
+  from `codes.RETRY_AFTER_S` (`queue_full` 5, `home_busy` 2, `service_draining` 10,
+  `not_finalized` 1, `cursor_expired` 0, `registry_conflict` 0, default 5);
+  `environment_busy` computes its own (at least 1). The credential refusals are not retryable
+  and carry none of the three fields.
+- **`query(view="status")`**: one row (version, profile, draining, home format, live server
+  count, limits, slots, live runs by state, up to 8 environments with `held_by`/`free_at`, plugin
+  counts, up to 4 missing plugin folders), within 4 KiB; answered by `ControlSurface` under both
+  profiles. Nothing about credentials, server ids, pids, ports, the admission lock, storage,
+  the allowlist or session ids.
+- **`allowlisted`** on each `list_plugins` item under the restricted profile only.
+- **`exec`** is the guide example `trestle://guide/examples/exec`, seeded by `trestle init` when
+  missing (never by an upgrade). `cwd` must resolve under `[plugins.env] TRESTLE_EXEC_ROOTS`
+  (absolute, joined by `:`); unset roots answer `blocked` (`plugin.exec_roots_unset`). Its
+  timeout is the run's deadline less 5 s; each stream keeps its first 16 MiB; the answer carries
+  two 1,500-byte tails and the output artifact; errors are returned (`ok: false`, `error`).
+  `argv[0]` named `trestle` answers `operator_command`, a steer and not a boundary.
+- **`exec` is off under the restricted profile unless listed**, and listing it on a home with a
+  credential identity is warned about (doctor, `trestle credentials add` and `grant`), never
+  refused.
+- **`exec` never carries a credential**: a declaration on a plugin named `exec` is refused at
+  publication (`publication.validation_failed`), and `trestle credentials grant`/`add --grant`
+  refuse it before anything is written.
+- **Operator commands in agent-facing text** appear only as `the operator runs: <command>`; the
+  credential refusals keep that clause whole under the 200-character cut, and
+  `credential_unavailable` no longer shows the store's detail. A doc test and a message test
+  enforce it.
+- **`on_session_lost` is not in 0.5.1.** Its seam is `McpSessions.end(sid, reason)`, called
+  once per ended session.
+
 ## What this record does not decide
 
 - Variable names each kind sets through `ctx.credential_env` (change 3 settled them for
@@ -612,5 +684,8 @@ Where the code differs from the text above, or settles what it left open, and wh
   (today it must not; v0.3.1 sharing stays).
 - A Windows service. With stdio gone there is no Windows path until a service exists there;
   this record does not design one.
-- Whether the `exec` plugin is allowlisted by default under the restricted profile, or only
-  when the operator lists it.
+- The session idle timeout (the SDK's 30 minutes is in force; settle it with `on_session_lost`).
+- A head-and-tail capture for `ctx.exec` (today each stream keeps its first bytes).
+- An unlock agents cannot perform: a separately signed service binary named by the Keychain ACL,
+  and handing run secrets to the child by something other than the environment; until both
+  exist, any process of the user's can reach the values.

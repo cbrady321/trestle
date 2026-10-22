@@ -47,8 +47,8 @@ Before any local work, ask four questions in order:
 
 Then let the answer decide the next move: `passed` means move on; `failed` means read the named
 failure and fix it; `blocked` means a person must act, so report the action and stop; a refusal
-means the request was wrong and nothing ran. Never fall back to doing the plugin's work in your
-own shell: if Trestle cannot do it, say so.
+means the request was wrong and nothing ran. Never do the plugin's work in your own shell
+instead: if Trestle cannot do it, say so.
 
 **Guide: `trestle://guide`.** An MCP resource on the Trestle server (read it with your host's
 resource reader, server `trestle`). It lists every guide resource, one line each: which query
@@ -58,17 +58,25 @@ you need. For people: [`docs/agents.md`](../../docs/agents.md) and
 
 ## Ground rules
 
-1. **MCP only.** Use the ten Trestle tools; never run `trestle`, or the work a plugin does, in your
-   own shell. If the tools are missing or the service does not answer, say so and stop: the
-   operator starts it with `trestle service start`. Never start a server yourself.
+1. **MCP only.** Use the ten Trestle tools. Never run `trestle`, or the work a plugin does, in
+   your own shell. If the tools are missing or the service does not answer (connection
+   refused, HTTP 401, every call failing the same way), say what you saw and stop: starting,
+   stopping and configuring the service is the operator's job. A message that says what "the
+   operator runs" is for the operator: report it word for word and stop. Never run it yourself,
+   through `exec` or any other way.
 2. **Plugins are not tools.** Run them with `run(plugin="name", args={...})`. `list_plugins`
    names them; `describe_plugin(plugin_id=...)` gives the input schema and `deadline_s`.
-3. **Refusals are not runs.** An `admission.*` or `publication.*` answer has no `run_id`; fix the
-   request (the message says how; `retryable` says whether resending can help) instead of
-   retrying blindly.
+3. **Refusals are not runs.** An `admission.*` or `publication.*` answer has no `run_id`.
+   `retryable: false`: fix the request (the message says how) or report it. `retryable: true`:
+   wait `retry_after_s` seconds, then resend. `admission.environment_busy` also names the run
+   holding the environment (`held_by`, free by `free_at`): send yours with
+   `after={"run": "<held_by>", "when": "ended"}` instead of retrying.
 4. **Verdict from the answer.** Read `answer.outcome` (`passed`, `failed`, `blocked`, `cancelled`,
    `timed_out`, `execution_error`), not `state`: `state` reads `succeeded` whenever the plugin
    returned.
+5. **Ask the service.** `query(view="status")` (no params) says what this service allows and
+   how busy it is: version, profile, deadline ceiling, longest key ttl, free slots, live runs,
+   and the environments in use with who holds them.
 
 ## Maximize impact: one call per objective
 
@@ -119,12 +127,42 @@ run(plugin="repo_tests",
   broke: report it, do not retry in a loop. `exit_code` 5: nothing matched.
 - In reports give the `summary` line and `files_run`, never the raw output.
 
+## One-off commands: `exec`
+
+When no plugin owns the work and you need one command (a `git status`, a version check), run it
+through the `exec` plugin, never your shell:
+
+```
+run(plugin="exec", args={"argv": ["git", "status", "--short"], "cwd": "<absolute dir>"},
+    wait_ms=1000, completion="terminal")
+```
+
+- `argv` is a list and no shell is added: no pipes, globs or `&&`.
+- `cwd` must be under a directory the operator lists; outside it, `error` says
+  `cwd_outside_roots` and names them.
+- Read `summary.ok`, `exit_code`, `stderr_tail` and `stdout_tail` (the last 1,500 bytes of
+  each). `output` is the whole kept output: `fetch` it with `tail` or `grep`.
+- Give it a deadline that fits: `run(..., deadline_s=600)`.
+- If `exec` is not in `list_plugins`, or is `allowlisted: false`, Trestle does not run one-off
+  commands on this service. Say so. Whether you may run it yourself is your host's rule, not
+  Trestle's.
+- A command you run again and again should be a plugin: propose one.
+
 ## When a run ends `blocked`
 
 A plugin that needs a person (an expired `aws sso login`, a missing tool) ends `blocked`:
 `answer.primary` carries `code` (a plugin's own codes read `plugin.<code>`), `human_action` and
 `resend`. Report the human action word for word and stop; resend the same request only after the
 action is done and `resend` is `succeeds_after_action`.
+
+## When your session ends
+
+Runs belong to the service, not to your session. Closing the chat, a reconnect or a host
+restart never stops one. Find it again by its key (`query(view="run_by_key")`, or
+`await_runs(run_ids=[], keys=[...])`). A live run whose session has ended shows
+`session_ended: true` in `query(view="recent_runs")` and `query(view="run")`. Cancel a run you
+did not send only when it blocks you (it is the `held_by` of your refusal) and its
+`session_ended` is true. Never cancel one as cleanup.
 
 ## Retrieval, smallest first
 
@@ -160,7 +198,13 @@ changing Trestle.
 | `admission.plugin_not_found` | `list_plugins`; check `catalog_hint` |
 | `admission.invalid_args` | `describe_plugin`, then resend with matching args |
 | `admission.import_failed` | the plugin's package is missing from the service: report it |
-| `admission.environment_busy` | another run holds that environment and the wait would not fit: resend later, or with a longer deadline |
+| `admission.environment_busy` | send yours with `after={"run": held_by, "when": "ended"}`; or, if `query(view="run", params={"run_id": held_by})` shows `session_ended: true` and it blocks you, `cancel(held_by)` |
+| `admission.queue_full`, `admission.home_busy` | wait `retry_after_s`, resend; again and again: report it |
+| `admission.service_draining` | the service is stopping or restarting: wait `retry_after_s`; if it then does not answer, report it and stop |
+| `admission.not_allowlisted` | `list_plugins` marks `allowlisted`; use one that is, or report it |
+| `admission.budget_does_not_fit`, `admission.ttl_out_of_range` | `query(view="status")` has `deadline_ceiling_s` and `max_ttl_s`; resend inside them |
+| `admission.credential_*` | the operator must act: report the message and stop |
 | `projection.not_finalized` | the run is still going: wait, then read |
+| `projection.not_owner` | another session's run, and that session is still open: leave it |
 | `execution.provenance_mismatch` | a declared package changed since publication: the operator republishes |
 | service down / tools missing | report it and stop |

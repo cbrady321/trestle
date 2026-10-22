@@ -1,106 +1,28 @@
 # Agent console MCP playbook
 
-**Audience:** coding agents (Cursor, Claude Desktop, other MCP hosts) using `trestle serve`.  
+**Audience:** coding agents (Cursor, Claude Desktop, other MCP hosts) reaching Trestle through the service's MCP endpoint.  
 **Quick start:** [`docs/agents.md`](agents.md) — scannable agent guide. **Cursor skill:** [`.cursor/skills/trestle/SKILL.md`](../.cursor/skills/trestle/SKILL.md).  
 **Install / lockdown:** [`install.md`](install.md) · [`security.md`](security.md).  
 **SSOT for:** ten-tool workflow, console evidence retrieval, host wiring. Do not invent tools or views.
 
-Agents reach run evidence **only** through MCP (`trestle serve`). There is no HTTP BFF for agents. Operators use `trestle doctor`, `pin`, and `recover` on the CLI; bounded retrieval for humans is via **`trestle ops serve`** ([`operator-sessions-telemetry.md`](operator-sessions-telemetry.md)). `query` / `fetch` are not CLI subcommands in v0.1 — agents use MCP tools below.
+Agents reach run evidence only through MCP. Operators use the CLI and trestle ops serve ([`operator-sessions-telemetry.md`](operator-sessions-telemetry.md)); nothing in this playbook runs trestle. There is no HTTP BFF for agents.
 
 ---
 
-## 0. Attach and bootstrap
+## 0. Attach
 
-### Install
-
-```bash
-pip install -e ".[dev]"
-pip install -e ".[packs]"          # workflow packs: Docker, pytest, migrations
-pytest -q   # optional sanity check
-```
-
-Workflow pack plugins live in `examples/packs/`. See [`docs/packs.md`](packs.md).
-
-### Plugin home
-
-Trestle loads plugins from configured **plugin search paths** (default `$TRESTLE_HOME/plugins/`). **An empty catalog means every `run` returns `admission.plugin_not_found`.**
-
-```bash
-trestle init                    # create ~/.trestle, plugins/, seed echo.py
-trestle doctor                  # plugin_search_paths + plugin counts
-```
-
-Or manually:
-
-```bash
-mkdir -p ~/.trestle/plugins
-cp examples/plugins/echo.py ~/.trestle/plugins/
-trestle doctor
-```
-
-**Project repos** — point the server at repo tool folders (repeatable flag replaces config/env for that process):
-
-```bash
-trestle serve --plugin-dir ./tools --plugin-dir ./packages/scripts
-```
-
-A `--plugin-dir` folder that does not exist refuses the start (exit 2). A relative `--plugin-dir` is resolved against the working directory; a relative path in `config.toml` or `TRESTLE_PLUGIN_DIRS` against `$TRESTLE_HOME`. A missing folder from config or env is logged to `service.log` and shown as `(missing)` by `trestle doctor`, which reports `health: degraded` when no watched folder exists.
-
-Or persist in `$TRESTLE_HOME/config.toml`:
-
-```toml
-[plugins]
-paths = ["~/.trestle/plugins", "/abs/path/to/repo/tools"]
-```
-
-Or env: `TRESTLE_PLUGIN_DIRS="$HOME/.trestle/plugins:/abs/repo/tools"`.
-
-Hot reload: drop a new `.py` file into any watched path, or call `publish_plugin`; then `list_plugins` (`registry_version` bumps).
-
-### Host wiring
-
-Full Cursor / Claude Desktop / Claude Code paths: [`install.md`](install.md). Lockdown: [`security.md`](security.md).
-
-**Cursor** — repo ships [`.cursor/mcp.json`](../.cursor/mcp.json). After `pip install -e .`, enable the `trestle` server in Cursor MCP settings (or merge into `~/.cursor/mcp.json`).
-
-**Claude Desktop** — same shape under `mcpServers` in the desktop config file.
-
-**Optional streamable HTTP** (alongside stdio, not a replacement; loopback only):
-
-```bash
-trestle serve --transport streamable-http --port 18732
-# endpoint: http://127.0.0.1:18732/mcp
-```
-
-```json
-{
-  "mcpServers": {
-    "trestle": {
-      "command": "trestle",
-      "args": [
-        "serve",
-        "--plugin-dir",
-        "${workspaceFolder}/examples/packs"
-      ],
-      "env": {
-        "TRESTLE_HOME": "~/.trestle"
-      }
-    }
-  }
-}
-```
-
-This repo ships [`.cursor/mcp.json`](../.cursor/mcp.json) with `examples/packs` wired. For generic bootstrap (echo only), use `"args": ["serve"]`.
-
-Use the absolute path to the Python environment where `trestle` is installed if `trestle` is not on the host `PATH` (e.g. `"command": "/path/to/venv/bin/trestle"`).
+The operator runs Trestle as a per-user service and wires each host once
+([`install.md`](install.md)): the URL `http://127.0.0.1:18732/mcp` with `Authorization:
+Bearer <agent token>`. Nothing in this playbook runs `trestle`.
 
 ### Verify attach
 
-1. `trestle doctor` — `health: ok`, `plugins` ≥ 1 after bootstrap.
-2. Host shows **ten** MCP tools: `run`, `await_runs`, `cancel`, `query`, `fetch`, `pin`, `unpin`, `list_plugins`, `describe_plugin`, `publish_plugin`.
-3. `tools/list` payload is small (~2.4 KB) — plugin schemas are **not** inlined.
+1. The host shows ten tools (nine under the restricted profile: no `publish_plugin`).
+2. `query(view="status")` answers with the service's `version`, `profile` and `draining: false`.
+3. `list_plugins` lists at least `echo`. An empty catalog carries a `catalog_hint`: report it
+   to the operator.
 
-FastMCP prints a startup banner on stderr; hosts should ignore it.
+If the tools are missing or the endpoint does not answer, report it and stop.
 
 ---
 
@@ -254,6 +176,32 @@ After MCP `run` returns terminal, evidence is finalized for that run — `not_fi
 
 `admission.*` outcomes (`plugin_not_found`, `invalid_args`, `queue_full`, …) **never** include `run_id`. Do not treat them as runs. `invalid_args` means the plugin schema (from `describe_plugin`) did not match `run.args` — pull that schema and retry.
 
+Every outcome says whether resending can help (`retryable`). A `retryable: true` outcome always
+carries `retry_after_s`: whole seconds to wait before sending the same request again (sooner is
+likely refused the same way; at or after it can still be refused, with its own value). The values
+are `admission.queue_full` 5, `admission.home_busy` 2, `admission.service_draining` 10,
+`projection.not_finalized` 1, `projection.cursor_expired` 0, `publication.registry_conflict` 0,
+and for `admission.environment_busy` the moment the same request would be queued instead.
+`admission.environment_busy` also names `held_by`, the run whose recorded deadline frees the
+environment last, and `free_at`, that deadline (ISO 8601 UTC). Send yours with
+`after={"run": held_by, "when": "ended"}`: it is held (no slot, none of its deadline spent) and
+starts when that run ends.
+
+```json
+{
+  "code": "admission.environment_busy",
+  "message": "the environment is held by r_… until at most 2026-10-22T10:05:00Z, too late for this request's deadline; wait for it (await_runs, or after=) or resend in 42s",
+  "retryable": true,
+  "origin": "admission",
+  "retry_after_s": 42,
+  "held_by": "r_…",
+  "free_at": "2026-10-22T10:05:00Z"
+}
+```
+
+A `retryable: false` outcome needs a changed request, or the operator: the credential refusals
+say what the operator runs; report them and stop.
+
 ### `limits_exceeded`
 
 When wrapper or child output exceeds caps, the terminal `RunView` includes `limits_exceeded` markers (stream, limit, bytes suppressed). Evidence is **honestly incomplete** — check this before assuming full logs.
@@ -303,16 +251,21 @@ When to pick each view vs `fetch`: MCP resource **`trestle://views`**. That cata
 
 | View | Params | Rows |
 |------|--------|------|
-| `run` | `run_id` | Status, plugin, state, timing, latest `progress` while running |
+| `run` | `run_id` | Status, plugin, state, timing, latest `progress` while running, `session_ended` |
 | `last_error` | `run_id` | The run's recorded explanation (`execution.*` code, phase, message), else the last error event; empty for a run that succeeded (K-10) |
 | `run_tail` | `run_id` | Wrapper stdout lines, oldest first |
 | `run_events` | `run_id` | Structured events; answers while running (`live: true`) |
-| `recent_runs` | — | Recent runs (paginated) |
+| `recent_runs` | — | Recent runs (paginated), each with `session_ended` |
 | `recent_failures` | — | Recent failed runs |
 | `run_provenance` | `run_id` | Snapshot, hashes |
 | `run_artifacts` | `run_id` | The run's current artifact per name (attached and promoted); answers while running (`live: true`) |
 | `artifact_refs` | `artifact_id` | Producer / referrers |
 | `run_by_key` | `idempotency_key` | Runs that used one key, newest first, with outcome and summary |
+| `status` | — | One row: what this service allows (version, profile, limits) and how busy it is (slots, live runs, environments in use with `held_by` and `free_at`) |
+
+`session_ended` is true for a live run whose MCP session has ended (the host deleted it, or 30
+minutes passed with no request in flight), false while that session is open, and null for a run
+that has ended or was sent outside MCP. A dropped connection is not an end.
 
 Every `BoundedView` includes `backend`, `as_of`, `items`, `truncated`, `next_cursor`.
 
@@ -360,16 +313,7 @@ Wrong kind → `projection.invalid_args`. Path-shaped target → `projection.inv
 
 ## 8. Smoke verification
 
-Run after install and plugin bootstrap:
-
-```bash
-pip install -e ".[dev]"
-python scripts/smoke_agent_mcp.py
-```
-
-Expected: `SMOKE OK` with a sample `run_id`, `fetch` jsonpath hit, and refusal checks.
-
-Manual MCP check: start `trestle serve`, call `list_plugins` → `run(echo)` → `fetch({run_id}/result, jsonpath $.message)`.
+Manual MCP check: `list_plugins` → `run(echo)` → `fetch({run_id}/result, jsonpath $.message)`.
 
 ---
 
@@ -377,8 +321,8 @@ Manual MCP check: start `trestle serve`, call `list_plugins` → `run(echo)` →
 
 | Role | Surface | Notes |
 |------|---------|-------|
-| **Agent** | MCP ten tools (`trestle serve`) | Retrieval-first; bounded slices |
-| **Operator (CLI)** | `trestle doctor`, `pin`, `unpin`, `recover` | Retention and diagnostics |
+| **Agent** | MCP ten tools (the service's endpoint) | Retrieval-first; bounded slices |
+| **Operator (CLI)** | `trestle doctor`, `pin`, `unpin`, `recover`, `cancel` | Retention, diagnostics and the unscoped cancel |
 | **Operator (HTTP)** | `trestle ops serve` + `console/web/` | Read-only sessions/telemetry — see [`operator-sessions-telemetry.md`](operator-sessions-telemetry.md) |
 
 Agents reach evidence **only** through MCP. Operator HTTP mirrors the same `query` / `fetch` admission rules — it does not replace MCP or expose `run` from the browser.

@@ -203,6 +203,21 @@ paths = ["~/.trestle/plugins", "/ABS/PATH/TO/trestle/examples/packs", "/ABS/PATH
 `[plugins.env]` table alone is read again at each run's start). A pack's wrappers are installed
 this way too: see [`packs.md`](packs.md#install).
 
+**The `exec` plugin.** `trestle init` seeds `exec.py` beside `echo.py`: agents run one-off
+commands through it (`run(plugin="exec", args={"argv": [...], "cwd": "<abs>"})`) instead of their
+own shell. It runs only in directories you list, and until you list one it answers `blocked`:
+
+```toml
+[plugins.env]
+TRESTLE_EXEC_ROOTS = "/Users/me/src/app:/Users/me/src/lib"   # absolute, joined by ':'
+```
+
+On an existing home, `trestle init` adds `exec.py` (it seeds only missing files; `service upgrade`
+never adds it). The off switch is leaving `TRESTLE_EXEC_ROOTS` unset (and, under the restricted
+profile, not listing `exec`), not deleting the file: `trestle init` puts a deleted seed file back.
+Keep secrets out of `[plugins.env]`: an agent can run `env` through `exec`. What listing `exec`
+gives agents: [`security.md`](security.md#the-exec-plugin).
+
 ## 4. Start, stop, restart
 
 ```bash
@@ -301,7 +316,9 @@ upgrade` runs for you.
 `trestle doctor` reports the home's health, the live servers and the live runs by owner, and, when
 an admission lock is stuck, who holds it. `trestle recover` reaps runs whose server is gone and runs
 the retention sweep. Idempotency keys live in `home/keys/`; `trestle doctor --rebuild-keys` repairs
-them.
+them. Each serving process keeps `servers/<server_id>.lock` and, while any of the MCP sessions it
+opened has ended with a live run naming it, `servers/<server_id>.sessions.json` (ended session ids
+only; see [`security.md`](security.md#sessions)).
 
 <!-- K-14 -->
 **Type checking.** `mypy` runs at zero errors and is gated in CI by its own `typecheck` job. The gate needs the workflow packs installed (`pip install -e ".[dev,packs]"`): `trestle_packs` ships a `py.typed` marker so `import trestle_packs` type-checks, and with `.[dev]` alone the package is absent and `mypy` reports `import-not-found`. Run it locally the same way: `pip install -e ".[dev,packs]" && mypy`.
@@ -324,6 +341,8 @@ them.
 | `admission.credential_unknown` | A plugin declares an identity no `trestle credentials add` created |
 | `admission.credential_not_granted` | `trestle credentials grant <name> <plugin>`, then `trestle service restart` (the plugin is new to the identity, or was republished) |
 | `admission.credential_unavailable` | The store or its key could not be read, or the identity has no value: `trestle doctor` |
+| An agent's run outlived its session and holds an environment | `trestle cancel <run_id>`; `trestle doctor` lists `session_ended_runs` |
+| `exec` answers `blocked`: `exec_roots_unset` | Set `TRESTLE_EXEC_ROOTS` under `[plugins.env]` in `config.toml` (absolute paths joined by `:`) |
 | `admission.ttl_out_of_range` | `idempotency_ttl_s` is negative, not whole seconds or above `[keys] max_ttl_s` in `config.toml` (default 604800) |
 
 ## Next
