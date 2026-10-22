@@ -1873,3 +1873,36 @@ direction = "additive"
 keys = ["$.views.status"]
 items = [{ path = "$.view_names", value = "status" }]
 authorized_by = "agent surface 2a-2d design, 2b query(view=\"status\") (registration)"
+
+# Pack core (delivery order step 5): an agent publish under a name a pack plugin or the operator's
+# own file serves is refused, naming the source and a new name (P-10).
+
+[[entry]]
+id = "ADD-code-publication-name-taken"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["publication.name_taken"]
+docs = ["trestle/plugin/_guide/topics/refusals.md", "docs/agent-console-mcp.md"]
+due_checkpoint = "pack core (step 5)"
+direction = "additive"
+authorized_by = "docs/decisions/packs.md P-10 (the same-name publish refusal names the source and a new name)"
+
+# Pack core: run_provenance gains the run's pack (P-1) and its configuration digests (P-20), null
+# for a plugin outside a pack.
+
+[[entry]]
+id = "ADD-run-provenance-pack-config"
+facet = "query_row_shapes"
+row_or_k = "MC-06"
+docs = []
+due_checkpoint = "pack core (step 5)"
+direction = "additive"
+keys = [
+  "$.views.run_provenance.observed.*.row_shape.pack",
+  "$.views.run_provenance.observed.*.row_shape.config",
+]
+items = [
+  { path = "$.views.run_provenance.declared_fields", value = "pack" },
+  { path = "$.views.run_provenance.declared_fields", value = "config" },
+]
+authorized_by = "docs/decisions/packs.md P-1 (run_provenance shows the pack) and P-20 (configuration digests in provenance)"
