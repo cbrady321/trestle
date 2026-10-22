@@ -12,4 +12,8 @@ A pack is a library plus a folder of thin `@trestle` wrapper files that call it:
 5. After a library upgrade, wrappers stop with `execution.provenance_mismatch` until they are
    published again (a restart republishes the folder).
 
+A pack's source, its wrappers and its library, is open: when a pack does not fit, read it with
+your file tools and adapt it rather than falling back to the shell. Trestle's own source and home
+stay closed. Running still goes through Trestle.
+
 See `trestle://guide/examples/pack_wrapper`.

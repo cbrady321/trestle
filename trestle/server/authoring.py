@@ -13,8 +13,9 @@ come in layers an agent reads on demand, so no read floods it with authoring con
   the workflow package);
 - `trestle://guide/examples/{name}`, one complete example plugin.
 
-Agents learn the surface from these, never from Trestle's source or its home (decision record
-service-and-credentials, Decision 3)."""
+Agents learn the surface from these, never from Trestle's own source or its home (decision record
+service-and-credentials, Decision 3). A pack's source is the exception: open to read and adapt
+(decision record packs, P-6)."""
 
 from __future__ import annotations
 
@@ -53,7 +54,8 @@ _GUIDE = resources.files("trestle.plugin._guide")
 
 def server_instructions(restricted: bool) -> str:
     """What the MCP `initialize` answer tells every agent: where to start, and that Trestle is
-    extended by plugins, never by reading or editing it."""
+    extended by plugins and packs, that a pack's source is open to read and adapt, and that
+    Trestle's own source and home stay closed (decision record packs, P-6)."""
     publishing = (
         "Runtime publishing is unavailable on this server (restricted profile). "
         if restricted
@@ -61,8 +63,9 @@ def server_instructions(restricted: bool) -> str:
     )
     return (
         f"Guidance is under {GUIDE_URI}: start there and read only what you need. "
-        f"{publishing}Extend Trestle by writing plugins and packs; do not read its source or "
-        "home directory, or modify it."
+        f"{publishing}Extend Trestle by writing plugins and packs. A pack's source is open: read "
+        "and adapt it. Trestle's own source and home directory are closed: do not read or "
+        "modify them."
     )
 
 

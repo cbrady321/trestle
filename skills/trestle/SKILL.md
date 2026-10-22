@@ -136,13 +136,15 @@ the MCP resource `trestle://views`.
 
 ## Writing plugins that run unattended
 
-Learn the surface from the server, one small read at a time, never from Trestle's source or
-`~/.trestle`; all of it is under `trestle://guide`. Start at `trestle://guide/plugins`, a short
+Learn the surface from the server, one small read at a time, never from Trestle's own source or
+`~/.trestle`; all of it is under `trestle://guide`. A pack's source (its wrappers and library) is
+the exception: read it with your file tools and adapt it when a pack does not fit, rather than
+falling back to the shell. Start at `trestle://guide/plugins`, a short
 index, and read only the topic you need (`trestle://guide/plugins/{topic}`).
 `trestle://guide/api` lists the public names, and `trestle://guide/api/{module}.{name}` gives
 one name's signature. `trestle://guide/examples/{name}` is a complete plugin that publishes
-as-is. Extend Trestle by writing a plugin or a pack, never by
-changing Trestle.
+as-is. Extend Trestle by writing or adapting a plugin or a pack, never by
+changing Trestle itself.
 
 - **`ctx.exec(argv, ...)`**, never `subprocess`; **`raise Blocked(code, human_action)`** when a
   person must act, never a failure.
