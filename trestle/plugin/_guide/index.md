@@ -14,6 +14,7 @@ Topics, `trestle://guide/plugins/{topic}`:
 - `shape-and-keywords`: writing a plugin
 - `context`: logs, progress, events
 - `exec`: running a command
+- `credentials`: tokens by name
 - `blocked`: a person must act
 - `artifacts`: files and status
 - `stopping`: cancel and deadlines

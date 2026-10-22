@@ -1,8 +1,10 @@
 # Decision record: one service per user, and credentials by name
 
-**Status:** decided; changes 1, 1a and 2 of the implementation sequence are implemented (the
-bearer token, the stdio transport removed, `trestle service`); the rest is not. Where the code
-differs from the text below, "As implemented" after the sequence table says how and why.
+**Status:** decided; changes 1, 1a, 2 and 3 of the implementation sequence are implemented (the
+bearer token, the stdio transport removed, `trestle service`, and credential identities with the
+`encrypted_file` store, grants by digest and `trestle credentials`); the rest is not. Where the
+code differs from the text below, the "As implemented" subsections after the sequence table say
+how and why.
 **Date:** 2026-10-19
 **Related:** [`security.md`](../security.md) (lockdown, profiles, what the boundary is not),
 [`install.md`](../install.md) (host wiring), [`environment.md`](../environment.md) (the demo
@@ -498,9 +500,92 @@ Where the code differs from the text above, and why:
   and the run continues, which is the session-loss policy above. The three stdio smoke tests moved
   into `tests/test_mcp_http_smoke.py`; the S0 node-id pin records the move.
 
+### As implemented (change 3)
+
+Where the code differs from the text above, or settles what it left open, and why:
+
+- **The tables live in `$TRESTLE_HOME/credentials.toml`, not `config.toml`.** The CLI writes them,
+  and the standard library reads TOML but cannot write it back with the operator's comments and
+  layout, so a CLI that edited `config.toml` would destroy the operator's file. A separate file
+  that only the CLI writes (mode `0600`, with a header saying so) has no such problem. It is read
+  once at server start like `config.toml`, so nothing an agent sends can change it, and a
+  malformed file stops the start the same way. It also holds `[store] key_provider`.
+- **One kind: `encrypted_file`.** A table names `kind = "encrypted_file"` and `env = "VAR"`, plus
+  `grants`. Any other kind from (a) is refused at load with a message saying it is not
+  implemented yet (change 4); an unknown kind is refused as unknown.
+- **Variable names (left open above).** An `encrypted_file` identity's table declares its one
+  variable name (`env`); `ctx.credential_env(name)` returns `{env: value}`. It is returned to the
+  plugin and never put into the process environment.
+- **Grants are written in the pinned form only.** `grant` (and `add --grant`) writes
+  `{ plugin, source_sha256, package_digests }`. A bare string in a hand-edited file is read as an
+  unpinned grant that covers nothing until `grant` pins it.
+- **A third refusal, `admission.credential_unavailable`.** A granted identity whose value the
+  store cannot give (no stored value, the store or its key unreadable, a wrong key) is refused
+  before a run id with this code, naming the identity and pointing at `trestle doctor` or
+  `add --replace`. Folding it into `credential_unknown` would tell the operator to add an identity
+  that exists.
+- **Where admission checks.** The grant check (`credential_unknown`, `credential_not_granted`)
+  runs right after the plugin and version are found, before import and argument validation: it
+  reads only the tables. The store is read after the plan is carved and before the admission lock,
+  so every cheaper refusal comes first; the values are read at each admission (one decryption), so
+  a value rotated with `add --replace` applies to the next run without a restart.
+- **Resolution onto the secrets path, as (c) says.** Each granted value is put on the run's
+  `WorkOrder` secrets under the key `credential:<name>:<ENV>`, which no argument name can take
+  (identity names allow no `.` or `:`). `TRESTLE_RUN_SECRETS` and the scrub are unchanged: the
+  child pops the variable as before, splits the credential entries off before restoring the
+  arguments, and every value is in the scrub set because every value on that path is. A run with a
+  credential records `has_secrets: true`, so a reaped run's outputs are not promoted.
+- **The channel directory is the run's own, not the pack's.** `ctx.credential_file(name)` writes
+  `<run dir>/channel/<name>` (directory `0700`, file `0600`, replaced whole by an atomic rename) on
+  first use. The child removes the directory when the plugin returns, the conductor removes it
+  again at finalization, and the reaper removes it from a dead owner's run. The grant pack's
+  `ChannelDelivery` (containers, refresh in place) is unchanged and stays the demo; an
+  `encrypted_file` value is static, so nothing refreshes it.
+- **A name not declared** raises `LookupError` from either shape, naming the declared ones.
+- **The publication origin is recorded in the manifest.** `manifest.json` carries `origin`:
+  `agent` for a source written by `publish_plugin`, `operator` for anything else in a watched
+  folder. The agent path records each source it writes (plugin name and `source_sha256`, under
+  `$TRESTLE_HOME/publications/`); a snapshot whose source matches that record is `agent`. `grant`
+  refuses an `agent` plugin. The same bytes stay `agent` even if the operator copies them; an
+  operator's own edit (any change to the bytes) makes the file the operator's. The origin is not
+  part of the snapshot identity. As the honest limit says, an agent with a shell can still write a
+  file into a watched folder itself; the record covers the `publish_plugin` path, which is the one
+  inside Trestle.
+- **The declaration** `credentials=[...]` takes a list (or tuple) of name literals, each lower case
+  letters, digits, `-` and `_`, none twice. It is recorded sorted in the manifest's `declared`
+  only when present, so the snapshot identity of every plugin that declares none is unchanged.
+- **`describe_plugin`** carries `credentials` (the declared names) only when some are declared,
+  and, for a plugin that declares `secrets=`, `secrets` (the argument names) and a `deprecated`
+  list saying to use `credentials` instead.
+- **The store.** Fernet (AES-128-CBC with an HMAC-SHA256 tag, from `cryptography`, now a declared
+  dependency) over one JSON document of all values, in `$TRESTLE_HOME/credentials/store.enc`
+  (`0600`, directory `0700`), replaced whole on every write. The key comes from a key provider:
+  `keychain` (the default on macOS: a generic password, service `trestle-credentials`, account
+  the home's absolute path, through `/usr/bin/security`, created by the first `add`) or `file`
+  (the default elsewhere: `credentials/store.key`, `0600`). The file provider is weaker and the
+  docs say so: anything that reads the home as the user reads both files. `security
+  add-generic-password` takes the password as an argument, so the store's key (never a credential
+  value) is in that one command's argv while it runs; `security` has no non-interactive stdin form.
+  The first `add` fixes the provider in `credentials.toml` (`--key-provider` chooses it then).
+  Tests use a stub `security` and never the real Keychain.
+- **The CLI.** `trestle credentials add NAME --env VAR [--grant PLUGIN ...] [--replace]
+  [--key-provider keychain|file]`, `remove`, `list`, `grant`, `revoke`, each with `--home`, and
+  `--restart` on those that change a table. The value is read with `getpass` from a terminal or
+  from stdin when piped; there is no argument for it. Every grant named on `add` is checked before
+  anything is stored. Commands that change `credentials.toml` end by naming `trestle service
+  restart`; a value-only rotation says it applies to the next run. The commands take a lock in the
+  store directory, so two of them never interleave. `grant` and `list` refresh a registry over the
+  home's watched folders to read each plugin's current digests, as a server start would.
+- **`trestle doctor`** shows the identities, each grant's status (`current`, `stale`, `plugin
+  missing`, `unpinned`) with a warning for each that is not current, and whether the store and its
+  key read; an unreadable store makes health `degraded`.
+- **`FakeContext(..., credentials={"gh": {"GH_TOKEN": "fake"}})`** gives authors both shapes with
+  fake values; `ctx.exec(credentials=...)` stays refused in both contexts until change 5.
+
 ## What this record does not decide
 
-- Variable names each kind sets through `ctx.credential_env` (change 3).
+- Variable names each kind sets through `ctx.credential_env` (change 3 settled them for
+  `encrypted_file`: the table's `env`; the other kinds' names are change 4's).
 - Whether the service should refuse to start when a second server is live on the home
   (today it must not; v0.3.1 sharing stays).
 - A Windows service. With stdio gone there is no Windows path until a service exists there;

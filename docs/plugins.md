@@ -23,7 +23,7 @@ Worked example: [`examples/plugins/echo.py`](../examples/plugins/echo.py).
 
 <!-- K-5 -->
 The decorator has two forms with the same runtime effect: bare `@trestle`, and the call form
-`@trestle(deadline=..., summary_fields=..., packages=..., env_arg=..., secrets=..., repeatable=...)`. The call form
+`@trestle(deadline=..., summary_fields=..., packages=..., env_arg=..., credentials=..., secrets=..., repeatable=..., stop_grace=...)`. The call form
 is read statically from the source at publication, so every value must be a literal; an unknown
 keyword or a non-literal value is refused at publication (`publication.validation_failed`). The
 entry point must be a plain `def`: an `async def` entry is refused at publication with a message
@@ -43,8 +43,8 @@ before any run id exists. `describe_plugin` shows the deadline in force (`deadli
 to whole seconds.
 <!-- /K-9 -->
 
-`summary_fields`, `env_arg` and `secrets` are declared and recorded in the snapshot's
-`manifest.json` (`declared`) and count toward its identity.
+`summary_fields`, `env_arg`, `credentials` and `secrets` are declared and recorded in the
+snapshot's `manifest.json` (`declared`) and count toward its identity.
 
 `summary_fields` names the result fields the run summary keeps first when the whole result does not
 fit the summary budget. An entry may name a list-of-objects field with columns,
@@ -79,6 +79,16 @@ plugin's own deadline, never added to it. A run stopped this way still ends `can
 `timed_out`; what it attached in the window is kept. It enters the snapshot identity only when
 declared; a workflow declaring it is refused at publication (a root's release slice is the
 operator's). See [the decision](decisions/plain-plugin-stop-grace.md).
+
+`credentials` names the credential identities the plugin uses, by name
+(`credentials=["gh", "ci-reader"]`: lower case letters, digits, `-` and `_`). The operator
+configures each identity and grants it to plugins (`trestle credentials`, see
+[Credentials](#credentials) below); the agent never sees a value. `describe_plugin` lists the
+names and nothing else about them.
+
+`secrets` (names of arguments whose values are secret) is **deprecated**: it keeps working, and
+`describe_plugin` marks a plugin that declares it (`deprecated`), but the agent that sends the
+value already holds it. Declare `credentials` instead.
 
 `packages` names the modules or packages the plugin imports from outside its own file, and is
 **recorded, not snapshotted** (R-J). Publication resolves each name on the import path the child
@@ -209,13 +219,54 @@ state = json.loads(result.stdout)["state"]
   fetch. Pass another `output` name to keep a command's output apart, or `output=None` to keep
   none.
 - Each call logs one line (`exec gh: exit 0 in 0.4s`).
-- `credentials=` is reserved for credential grants
+- `credentials=` is reserved for injecting a granted identity into one command
   ([decision record](decisions/service-and-credentials.md), change 5) and is refused with
-  `NotImplementedError` until they exist.
+  `NotImplementedError` until then. Today pass `ctx.credential_env(name)` as `env=` (see
+  [Credentials](#credentials)).
 - `ctx.exec` and the rest of the context are safe to call from several threads at once.
 
 `ExecResult` is importable from `trestle.plugin` for type hints. `result.ok` is true only for a
 command that ran to its end and exited 0.
+
+### Credentials
+
+A plugin that needs a token names the identity, never a value:
+
+```python
+@trestle(credentials=["gh"])
+def open_pr(ctx: Context, repo: str) -> dict[str, str]:
+    env = ctx.credential_env("gh")  # {"GH_TOKEN": "..."}, from the operator's store
+    result = ctx.exec(["gh", "pr", "create", "--fill", "-R", repo], env=env)
+    ...
+```
+
+- **Admission checks first.** A run of a plugin whose declared identity no operator configured
+  is refused `admission.credential_unknown`; one whose identity is not granted to this plugin as
+  now published is refused `admission.credential_not_granted`; one whose value the store cannot
+  give is refused `admission.credential_unavailable`. All three happen before a run id, run
+  directory or process exists, and the message names the identity and the operator command that
+  fixes it. An agent reports it and stops: only the operator can grant.
+- **A grant is pinned to the code.** It records the plugin's `source_sha256` and its declared
+  packages' digests at the time of the grant. Republishing the plugin with a changed entry file
+  or a changed declared package leaves the grant stale until the operator grants it again, and a
+  plugin an agent published (`publish_plugin`) is never granted.
+- **`ctx.credential_env(name)`** returns `{ENV_NAME: value}` (the variable name is the one the
+  operator gave the identity). It is not put into the plugin's environment: pass it to
+  `ctx.exec(env=...)` for the one command that needs it.
+- **`ctx.credential_file(name)`** writes the value to a file of its own (mode `0600`, in a `0700`
+  directory that belongs to the run) and returns its path, for a tool that reads a credentials
+  file. The directory is removed when the run ends.
+- A name the plugin did not declare raises `LookupError` from either.
+- **Every value is scrubbed.** Whichever shape a plugin uses, the value is in the run's scrub set:
+  a log line, a `print`, an event, an error message, a return value or an attached file that
+  holds it reads `<redacted>` on disk and in every answer.
+- `ctx.exec(credentials=...)`, which will inject an identity into one command without the plugin
+  holding the value, is the coming first choice (decision record change 5) and is refused until
+  then.
+- Tests give fake values: `FakeContext(tmp_path, credentials={"gh": {"GH_TOKEN": "fake"}})`.
+
+The store, its key and the operator commands are in [`install.md`](install.md#credentials); what
+the boundary is and is not is in [`security.md`](security.md#credentials).
 
 ### When a person must act: `Blocked`
 
@@ -256,13 +307,16 @@ def test_check_pr(tmp_path):
     assert ctx.exec_calls[0].argv == ("gh", "pr", "view", "7")
 ```
 
-- **`FakeContext(root, deadline=300, exec_handler=None)`** implements the whole plugin context and
+- **`FakeContext(root, deadline=300, exec_handler=None, credentials=None)`** implements the whole
+  plugin context and
   records what the plugin did: `logs`, `progress_updates`, `events`, `attachments` (each with the
   id it replaced), `artifacts` (each name's current bytes) and `exec_calls`. It refuses what the
   runtime refuses (a reserved event kind, an attach from outside `work/`, a shell string, a
   `credentials=`). `exec` runs the command for real, bounded as at run time, unless an
   `exec_handler(argv, **kwargs)` returns a scripted result (`exec_result(...)`). Set
   `ctx.cancelled = True` to stop the run; `deadline` takes seconds, a `timedelta` or a datetime.
+  `credentials` maps each identity name to one `{ENV_NAME: fake value}`, for `credential_env` and
+  `credential_file` (a `0600` file under `root/channel/`); a name not given raises `LookupError`.
 - **`call_plugin(fn, args, ctx=...)`** calls a `@trestle` function as the child process does:
   `args` in their JSON form, hydrated by the parameter annotations, and the result returned as
   the JSON value the run would record.

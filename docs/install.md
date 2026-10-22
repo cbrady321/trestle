@@ -243,6 +243,54 @@ shows `(stale: restart or upgrade)`.
 trestle service uninstall   # stop (draining), unload, delete the unit; the home stays
 ```
 
+## Credentials
+
+A plugin that needs a token declares an identity by name (`@trestle(credentials=["gh"])`, see
+[`plugins.md`](plugins.md#credentials)). You, the operator, give the identity its value and say
+which plugins may use it. No agent ever sees the value, and nothing an agent sends can add an
+identity or widen a grant.
+
+```bash
+# store the value: typed at a hidden prompt, or piped in (never a command-line argument)
+trestle credentials add gh --env GH_TOKEN
+op read "op://ci/github/token" | trestle credentials add gh --env GH_TOKEN
+
+trestle credentials grant gh release     # let the plugin `release`, as published now, use it
+trestle credentials list                 # identities, env names, each grant's status; no values
+trestle service restart                  # identities and grants are read at start
+
+trestle credentials add gh --replace     # rotate the value: applies to the next run, no restart
+trestle credentials revoke gh release    # take the grant away (restart)
+trestle credentials remove gh            # delete the identity and its stored value (restart)
+```
+
+- **Where things live.** The identities and grants are in `$TRESTLE_HOME/credentials.toml`
+  (`0600`), which the commands write; read it, but change it through them. It holds no value. The
+  values are in one encrypted file, `$TRESTLE_HOME/credentials/store.enc` (`0600`, directory
+  `0700`).
+- **The key.** On macOS the store's key is a generic password in your login Keychain (service
+  `trestle-credentials`, account the home's path), created by the first `add`. Elsewhere it is
+  `$TRESTLE_HOME/credentials/store.key` (`0600`), which is weaker: anything that can read your home
+  as you can read the key and the store together, so the encryption only protects a copy of
+  `store.enc` taken on its own. `add --key-provider file` picks the key file on macOS too; the
+  choice is made by the first `add` and kept.
+- **A grant is pinned to the plugin's code**: its `source_sha256` and its declared packages'
+  digests as published when you ran `grant`. Republish the plugin with a change to either and the
+  grant goes stale (`list` and `trestle doctor` say so, and its runs are refused
+  `admission.credential_not_granted`) until you run `grant` again. A plugin an agent published
+  with `publish_plugin` cannot be granted; review it, and save it into a watched folder as your
+  own edit first.
+- **When a change applies.** `credentials.toml` is read once at start, like `config.toml`: every
+  command that changes an identity or a grant says so and names `trestle service restart`, or
+  restarts for you with `--restart`. A value rotated with `add --replace` applies to the next run
+  without a restart, because the service reads values from the store at each admission.
+- `trestle doctor` shows the identities, each grant's status and whether the store and its key
+  can be read.
+- Only `kind = "encrypted_file"` exists in this build. The other kinds in the
+  [decision record](decisions/service-and-credentials.md) (Keychain items, 1Password, AWS roles,
+  GitHub Apps, a tool's own login) come later; a table naming one stops the service from starting
+  with a message saying so.
+
 ## The home
 
 The home (`TRESTLE_HOME`, default `~/.trestle`) must be on a local file system: every entry point
@@ -273,6 +321,9 @@ them.
 | `a v0.3.0 home` | `trestle service upgrade`, or `trestle init --upgrade` with the service stopped |
 | `admission.home_busy` | Another process held the home's admission lock over 2 s; retry, and see `trestle doctor` |
 | `admission.after_unknown` | `run(after=...)` names a run or key no run used |
+| `admission.credential_unknown` | A plugin declares an identity no `trestle credentials add` created |
+| `admission.credential_not_granted` | `trestle credentials grant <name> <plugin>`, then `trestle service restart` (the plugin is new to the identity, or was republished) |
+| `admission.credential_unavailable` | The store or its key could not be read, or the identity has no value: `trestle doctor` |
 | `admission.ttl_out_of_range` | `idempotency_ttl_s` is negative, not whole seconds or above `[keys] max_ttl_s` in `config.toml` (default 604800) |
 
 ## Next

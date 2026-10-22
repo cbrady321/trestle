@@ -595,6 +595,9 @@ See [`plugins.md`](plugins.md) for authoring, filesystem drop-in, and `publish_p
 | Two servers publish the same plugin name at once | `publication.registry_conflict` (names the winner) | `describe_plugin`, then republish if needed |
 | `after` malformed (not exactly one of `run` and `key`, bad `when`, `match` with `when: "ended"`) | `admission.invalid_args` | See "Run after another run" |
 | `after` names a run or key no run used | `admission.after_unknown` (no run id) | Send the earlier run first |
+| The plugin declares a credential identity the operator has not configured | `admission.credential_unknown` (no run id; names the identity) | Report it and stop: only the operator adds identities |
+| The identity is not granted to this plugin as now published (new, or republished since) | `admission.credential_not_granted` (no run id; names the operator's command) | Report it and stop: only the operator grants |
+| The operator's credential store could not give the value | `admission.credential_unavailable` (no run id) | Report it and stop |
 | A held run's `after` is not met | the held run ends `cancelled`, `error.code` `execution.after_unmet` (the message names the earlier run and why) | Read the earlier run; send a new run when it is fixed |
 
 ### Find a run by its key, wait on keys, keep an answer longer

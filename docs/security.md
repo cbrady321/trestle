@@ -73,6 +73,38 @@ This is part of the same statement as "not a sandbox" above: plugins run as your
 user, and stopping a run is best effort for exactly the processes Trestle can
 attribute.
 
+## Credentials
+
+Agents name credential identities; they never hold a value
+([decision record](decisions/service-and-credentials.md), Decision 2). A plugin declares the
+identities it uses (`@trestle(credentials=["gh"])`); the operator stores each value and grants it
+to plugins with `trestle credentials` ([`install.md`](install.md#credentials)).
+
+- **No value on an agent-facing surface.** `describe_plugin` lists the names a plugin declared and
+  nothing else; no tool lists, reads or sets an identity. Admission resolves a granted identity's
+  value in memory and hands it to the run the way `secrets=` values travel: one environment
+  variable the child removes before the plugin is imported. Whatever the plugin then does with it
+  (logs, prints, returns, raises, attaches) is scrubbed to `<redacted>` on disk and in every
+  answer.
+- **Grants are pinned to code.** A grant records the plugin's entry-file digest and its declared
+  packages' digests. A republish that changes either loses the grant until the operator grants it
+  again, and a plugin published by an agent (`publish_plugin`) is never granted. An agent that can
+  publish can still run code as you; it gets no credential from Trestle.
+- **The tables are the operator's.** `credentials.toml` is read once at start; nothing an agent
+  sends changes it.
+- **The store.** Values are in an encrypted `0600` file in the home. On macOS its key is in the
+  login Keychain; elsewhere it is a `0600` key file beside the store, which protects only a copy
+  of the store taken alone.
+- **What this is not.** A granted plugin is trusted code running as you, and can do with the value
+  whatever you could. The agent's own shell also runs as you: "agents cannot see the store" holds
+  inside Trestle, and outside it only when the host sandboxes the agent's shell or the store needs
+  an unlock the agent cannot perform. `/usr/bin/security` reads the Keychain item for any process
+  of yours without a prompt, so the Keychain keeps the key out of the home, not out of reach of
+  your own processes. See the decision record's "honest limit".
+- `credential_file` writes the value to a `0600` file in a `0700` directory of the run, removed
+  when the run ends; `credential_env` returns the value to the plugin and puts nothing into its
+  environment.
+
 ## Profiles: full and restricted
 
 The operator picks the service profile in `$TRESTLE_HOME/config.toml`; the server reads it once at start, so nothing an agent sends (a tool argument, plugin intent) can change it.
@@ -99,10 +131,11 @@ Every value an agent can select is a closed set or is validated before it acts: 
 
 - **Agents** use the service's MCP endpoint — can admit and `run` work. Nothing agent-facing runs `trestle` itself.
 - **Operators** start, stop and upgrade the service with `trestle service`.
+- **Operators** manage credential identities, values and grants with `trestle credentials`.
 - **Operators** use CLI (`doctor`, `pin`, `unpin`, `recover`) and optional `trestle ops serve` — browse sessions and telemetry; no admit/`run` from the browser.
 
 ## Related
 
 - Install and host wiring: [`install.md`](install.md)
-- One per-user service, credentials by name, MCP only (the service, the token and MCP only are implemented; credentials are not yet): [`decisions/service-and-credentials.md`](decisions/service-and-credentials.md)
+- One per-user service, credentials by name, MCP only (the service, the token, MCP only and the first credential store are implemented; the other store kinds and `ctx.exec(credentials=...)` are not yet): [`decisions/service-and-credentials.md`](decisions/service-and-credentials.md)
 - Product overview: [`overview.md`](overview.md)
