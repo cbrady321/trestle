@@ -1,7 +1,8 @@
 # Writing Trestle plugins
 
 A plugin is one file with one `@trestle` function. A pack is a library plus a folder of plugin
-files that call it. Read one topic when you need it; do not read Trestle's source or home.
+files that call it. Read one topic when you need it. A pack's source is open to read and adapt;
+Trestle's own source and home are not.
 
 Rules:
 1. Hint every parameter and the return (`dict[str, str]`, not `dict`).
