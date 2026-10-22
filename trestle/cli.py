@@ -153,6 +153,10 @@ def main(argv: list[str] | None = None) -> int:
 
     add_credentials_parser(sub)
 
+    from trestle.packs.cli import add_parser as add_pack_parser
+
+    add_pack_parser(sub)
+
     args = parser.parse_args(argv)
     if args.version:
         from trestle.common.build import build_version
@@ -194,6 +198,11 @@ def _dispatch(args: argparse.Namespace) -> int:
 
         home = Path(args.home).expanduser() if args.home else default_home()
         return credentials_cli.run(args, home=home)
+    if args.command == "pack":
+        from trestle.packs import cli as pack_cli
+
+        home = Path(args.home).expanduser() if args.home else default_home()
+        return pack_cli.run(args, home=home)
     if args.command == "init":
         trestle_home = Path(args.home) if args.home else default_home()
         return run_init(home=trestle_home, seed=not args.no_seed, upgrade=args.upgrade)
