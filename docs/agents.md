@@ -242,7 +242,7 @@ This is a knowing change (K-8): before it, a process a plugin forgot outlived a 
 <!-- K-2 -->
 A plugin's snapshot id (`snap_` plus 16 hex digits) no longer hashes `plugin.py` alone. It covers the
 source, the digests of the packages the plugin declares (`@trestle(packages=[...])`), the input and
-return schemas, the declared metadata (deadline, summary fields, packages, env arg, secrets and the
+return schemas, the declared metadata (deadline, summary fields, packages, env arg, credential names and the
 summary budget) and the Trestle runtime version. Two publications with equal ids share source, declared-package digests, schemas and
 declarations (not undeclared imports, non-`.py` package content or the environment); an edit to a declared package or a declared value gives a new id. Anyone who
 compared snapshot ids to detect a change in `plugin.py` bytes should compare `source_sha256`, which
@@ -311,9 +311,9 @@ Several servers may share one `TRESTLE_HOME` (v0.3.1). Each run is owned by the 
 it, through a lock the kernel drops when that server exits, even on SIGKILL; only runs whose owner
 is gone are recovered, by the reaper every running server runs (at start, then every 10 s, and at
 once when an `await_runs` or `completion="terminal"` waiter sees its run's owner gone). Starting a
-server never touches another live server's runs. A reaped run whose call gave no declared secret a
+server never touches another live server's runs. A reaped run that was given no credential value a
 value keeps what it left in `work/outputs/` (and staged artifacts) as artifacts:
-`query(view="run_artifacts")` lists them; a run with a secret value keeps none.
+`query(view="run_artifacts")` lists them; a run with a credential value keeps none.
 
 ---
 

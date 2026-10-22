@@ -55,10 +55,10 @@ class AdmitResultAdmitted:
     tag: Literal["admitted"]
     run_id: Handle
     existing: bool = False
-    # The real values of the run's declared secret arguments, by declared name (MC-CORE-13). Held
-    # in memory from admission to the run's start and never written: not in `spec.json`, the
-    # ledger or the idempotency store; hidden from repr and comparison.
-    secrets: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
+    # The granted credential identities' values, name -> (env name, value) (change 3). Held in
+    # memory from admission to the run's start and never written: not in `spec.json`, the ledger
+    # or the idempotency store; hidden from repr and comparison.
+    credentials: dict[str, tuple[str, str]] = field(default_factory=dict, repr=False, compare=False)
 
 
 AdmitResult = AdmitResultRefused | AdmitResultAdmitted
@@ -69,9 +69,9 @@ class WorkOrder:
     run_id: Handle
     snapshot_id: str
     spec_hash: str
-    # In-memory only (see `AdmitResultAdmitted.secrets`): delivered to the wrapper and child
-    # through the environment, never persisted; hidden from repr and comparison.
-    secrets: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
+    # In-memory only (see `AdmitResultAdmitted.credentials`): handed to the wrapper and child over
+    # an inherited pipe (`trestle.common.credentials`), never persisted or put in an environment.
+    credentials: dict[str, tuple[str, str]] = field(default_factory=dict, repr=False, compare=False)
 
 
 @dataclass
@@ -179,7 +179,6 @@ class DeclaredMetadata:
     summary_fields: tuple[str, ...] = ()
     packages: tuple[str, ...] = ()
     env_arg: str | None = None
-    secrets: frozenset[str] = frozenset()
     # Decision record change 3: the credential identities the plugin uses, by name. Admission
     # refuses a run unless each is configured and granted to this plugin at its current digests.
     credentials: tuple[str, ...] = ()
@@ -200,7 +199,6 @@ class DeclaredMetadata:
             "summary_fields": list(self.summary_fields),
             "packages": list(self.packages),
             "env_arg": self.env_arg,
-            "secrets": sorted(self.secrets),
             "package_digests": {k: self.package_digests[k] for k in sorted(self.package_digests)},
             # only when declared, so the manifest (and identity) of every other plugin is unchanged
             **({"repeatable": True} if self.repeatable else {}),
@@ -226,7 +224,6 @@ class DeclaredMetadata:
             summary_fields=tuple(str(x) for x in declared.get("summary_fields", ())),
             packages=tuple(str(x) for x in declared.get("packages", ())),
             env_arg=str(env_arg) if isinstance(env_arg, str) else None,
-            secrets=frozenset(str(x) for x in declared.get("secrets", ())),
             credentials=tuple(str(x) for x in declared.get("credentials", ())),
             repeatable=declared.get("repeatable") is True,
             stop_grace_s=float(grace)

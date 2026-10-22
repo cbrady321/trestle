@@ -46,14 +46,12 @@ def main(argv: list[str] | None = None) -> int:
     evidence = run_dir / "evidence"
     work = run_dir / "work"
     spec = RunSpec.from_dict(json.loads((evidence / "spec.json").read_text(encoding="utf-8")))
-    # MC-CORE-13: the run's real secret values arrive in the environment and leave it here, before
-    # any plugin code is imported, so nothing the plugin starts inherits them. They are held in
-    # memory only: `spec.json` carries the redacted arguments.
-    secret_values = redact.take_env(os.environ)
-    secrets = redact.secret_strings(secret_values)
-    # change 3: granted identities travel on the same path, under keys no argument can have
-    arg_values, delivered = credentials.split_secrets(secret_values)
-    plugin_args = redact.restore_args(spec.args, arg_values)
+    # MC-CORE-13, change 3: the run's credential values arrive over the wrapper's pipe and are read
+    # here, before any plugin code is imported; the pipe is closed, so nothing the plugin starts
+    # inherits it. They are held in memory only and are the run's scrub set.
+    delivered = credentials.receive(os.environ)
+    secrets = credentials.scrub_set(delivered)
+    plugin_args = dict(spec.args)
 
     os.chdir(work)
     os.environ["TMPDIR"] = str(work / "tmp")

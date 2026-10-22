@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -108,7 +108,6 @@ def trestle(
     packages: Sequence[str] = (),
     env_arg: str | None = None,
     credentials: Sequence[str] = (),
-    secrets: Collection[str] = (),
     repeatable: bool = False,
     stop_grace: float | None = None,
 ) -> Callable[[F], F]: ...
@@ -123,20 +122,19 @@ def trestle(  # noqa: UP047
     packages: Sequence[str] = (),
     env_arg: str | None = None,
     credentials: Sequence[str] = (),
-    secrets: Collection[str] = (),
     repeatable: bool = False,
     stop_grace: float | None = None,
 ) -> F | Callable[[F], F]:
     """Mark a callable as a Trestle plugin entry point.
 
     Bare (`@trestle`) or call form (`@trestle(deadline=..., summary_fields=..., packages=...,
-    env_arg=..., credentials=..., secrets=..., repeatable=..., stop_grace=...)`). The metadata is
+    env_arg=..., credentials=..., repeatable=..., stop_grace=...)`). The metadata is
     read statically from the source at publication (literals only), never from this call; at run
     time the call form marks the callable exactly as the bare form does.
 
     `credentials` names the identities the plugin uses (`ctx.credential_env`,
-    `ctx.credential_file`); the operator configures and grants each. `secrets` (secret
-    arguments, whose values the agent sends) is deprecated in favour of `credentials`.
+    `ctx.credential_file`); the operator configures and grants each, and no value is ever an
+    argument.
     """
 
     def mark(target: F) -> F:

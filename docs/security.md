@@ -82,8 +82,10 @@ to plugins with `trestle credentials` ([`install.md`](install.md#credentials)).
 
 - **No value on an agent-facing surface.** `describe_plugin` lists the names a plugin declared and
   nothing else; no tool lists, reads or sets an identity. Admission resolves a granted identity's
-  value in memory and hands it to the run the way `secrets=` values travel: one environment
-  variable the child removes before the plugin is imported. Whatever the plugin then does with it
+  value in memory and hands it to the run's wrapper, and the wrapper to the plugin's process, over
+  an inherited pipe: never in a process's environment or argv, which any process of yours can read
+  (`ps -E`, `/proc/<pid>/environ`). The plugin's process reads the pipe and closes it before the
+  plugin is imported, so nothing the plugin starts inherits it. Whatever the plugin then does with it
   (logs, prints, returns, raises, attaches) is scrubbed to `<redacted>` on disk and in every
   answer.
 - **Grants are pinned to code.** A grant records the plugin's entry-file digest and its declared
@@ -98,9 +100,11 @@ to plugins with `trestle credentials` ([`install.md`](install.md#credentials)).
 - **What this is not.** A granted plugin is trusted code running as you, and can do with the value
   whatever you could. The agent's own shell also runs as you: "agents cannot see the store" holds
   inside Trestle, and outside it only when the host sandboxes the agent's shell or the store needs
-  an unlock the agent cannot perform. `/usr/bin/security` reads the Keychain item for any process
-  of yours without a prompt, so the Keychain keeps the key out of the home, not out of reach of
-  your own processes. See the decision record's "honest limit".
+  an unlock the agent cannot perform. The Keychain item is created without a `-T` list of trusted
+  applications, so any process of yours can read it through `/usr/bin/security` without a prompt:
+  the same exposure as the key file. The Keychain keeps the key out of the home and its backups,
+  not out of reach of your own processes; the boundary is your OS user, as the decision record's
+  "honest limit" says.
 - `credential_file` writes the value to a `0600` file in a `0700` directory of the run, removed
   when the run ends; `credential_env` returns the value to the plugin and puts nothing into its
   environment.

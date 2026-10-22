@@ -42,6 +42,49 @@ from trestle.server.snapshots import (
 DEFAULT_PLUGIN_DIR = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "plugins"
 
 
+def grant_fake_credential(
+    home: Path,
+    plugin_dirs: Sequence[Path],
+    *,
+    name: str,
+    env: str,
+    value: str,
+    plugins: Sequence[str],
+) -> None:
+    """Configure identity `name` on `home` with a fake `value` (D-9) and grant it to `plugins` as
+    the watched folders publish them now, as `trestle credentials add --grant` would, with the
+    store's key in a key file (no keychain). Call it before the server starts: the tables are read
+    at start."""
+    from trestle.server.credentials import (
+        CredentialsConfig,
+        Grant,
+        Identity,
+        load_credentials,
+        save_credentials,
+        with_identity,
+    )
+    from trestle.server.registry import Registry
+    from trestle.server.snapshots import load_declared
+
+    home.mkdir(parents=True, exist_ok=True)
+    registry = Registry(home=home, plugin_dirs=list(plugin_dirs))
+    registry.refresh()
+    grants = []
+    for plugin in plugins:
+        snap = registry.get(plugin)
+        assert snap is not None, f"{plugin} is not published on {home}"
+        digests = dict(load_declared(snap).package_digests)
+        grants.append(Grant(plugin, snap.source_sha256, digests))
+    config = load_credentials(home)
+    if config.key_provider is None:
+        config = CredentialsConfig(identities=config.identities, key_provider="file")
+    config = with_identity(
+        config, Identity(name=name, kind="encrypted_file", env=env, grants=tuple(grants))
+    )
+    config.store(home).put(name, value)
+    save_credentials(home, config)
+
+
 def fresh_kernel(
     plugin_dirs: list[Path] | None = None,
     *,
@@ -154,7 +197,7 @@ def admit_tree(
         run_id=admitted.run_id,
         snapshot_id=snap.snapshot_id,
         spec_hash=admitted.spec_hash,
-        secrets=admitted.secrets,
+        credentials=admitted.credentials,
     )
     return AdmittedTree(
         kernel, plugin, admitted.run_id, run_dir_for(kernel.home, admitted.run_id), order

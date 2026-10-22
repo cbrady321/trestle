@@ -140,7 +140,7 @@ def _admit_as(kernel: Kernel, plugin: Path, caller_session: str) -> harness.Admi
         run_id=made.run_id,
         snapshot_id=snap.snapshot_id,
         spec_hash=made.spec_hash,
-        secrets=made.secrets,
+        credentials=made.credentials,
     )
     return harness.AdmittedTree(
         kernel, name, made.run_id, run_dir_for(kernel.home, made.run_id), order

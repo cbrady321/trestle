@@ -75,9 +75,9 @@ What `install` writes, for the current user only:
   Every plugin run gets these variables over the service's own environment. Only `config.toml`
   sets them, never a request; the table is read at each run's start, so an edit applies to the
   next run without a restart. Values are strings; a malformed table, or one that sets
-  `TRESTLE_HOME` or `TRESTLE_RUN_SECRETS`, stops the server from loading its config. Put no
-  secret here: a value in this table is not scrubbed from a run's output (declare secrets with
-  `@trestle(secrets=...)`).
+  `TRESTLE_HOME` or `TRESTLE_RUN_SECRETS_FD`, stops the server from loading its config. Put no
+  secret here: a value in this table is not scrubbed from a run's output (store a secret with
+  `trestle credentials`, see [Credentials](#credentials)).
 - It starts at login (`RunAtLoad`, `WantedBy=default.target`) and is restarted after a crash
   (`KeepAlive = {SuccessfulExit = false}`, `Restart=on-failure`). A clean exit is not restarted:
   that is how a drained stop stays stopped.

@@ -521,20 +521,40 @@ Where the code differs from the text above, or settles what it left open, and wh
   unpinned grant that covers nothing until `grant` pins it.
 - **A third refusal, `admission.credential_unavailable`.** A granted identity whose value the
   store cannot give (no stored value, the store or its key unreadable, a wrong key) is refused
-  before a run id with this code, naming the identity and pointing at `trestle doctor` or
-  `add --replace`. Folding it into `credential_unknown` would tell the operator to add an identity
-  that exists.
+  before a run id with this code. Folding it into `credential_unknown` would tell the operator to
+  add an identity that exists.
+- **Refusal text names the identity and the operator's command, nothing else.** Every credential
+  refusal reads `the operator runs: trestle ...; credential '<name>' ...`: the instruction first,
+  so the 200-character cut can never drop it. It never says where the store or its key is (the
+  Keychain service and account, a file path): that goes to the operator's `trestle doctor` and to
+  `service.log`, never to an answer an agent reads.
 - **Where admission checks.** The grant check (`credential_unknown`, `credential_not_granted`)
   runs right after the plugin and version are found, before import and argument validation: it
   reads only the tables. The store is read after the plan is carved and before the admission lock,
   so every cheaper refusal comes first; the values are read at each admission (one decryption), so
   a value rotated with `add --replace` applies to the next run without a restart.
-- **Resolution onto the secrets path, as (c) says.** Each granted value is put on the run's
-  `WorkOrder` secrets under the key `credential:<name>:<ENV>`, which no argument name can take
-  (identity names allow no `.` or `:`). `TRESTLE_RUN_SECRETS` and the scrub are unchanged: the
-  child pops the variable as before, splits the credential entries off before restoring the
-  arguments, and every value is in the scrub set because every value on that path is. A run with a
-  credential records `has_secrets: true`, so a reaped run's outputs are not promoted.
+- **Resolution reuses the scrub, not the environment variable (a change to (c)).** The
+  `TRESTLE_RUN_SECRETS` environment variable is gone. A process's initial environment is readable
+  by any process of the same user (`ps -E` on macOS, `/proc/<pid>/environ` on Linux), and popping
+  a variable from `os.environ` does not remove it from the kernel's copy, so a value in the
+  environment was visible for the whole run. The `WorkOrder` now carries the granted identities
+  (`credentials`: name to env name and value) in memory, and the conductor hands them to the
+  wrapper, and the wrapper to the child, over an inherited pipe: the environment carries only the
+  pipe's descriptor number (`TRESTLE_RUN_SECRETS_FD`), the sender writes the values and closes
+  it, and the receiver reads to EOF and closes it before any plugin code is imported. No value is
+  in any argv or environment Trestle creates. The scrub is unchanged: the values are each process's
+  scrub set, as the `secrets=` values were. A run with a credential still records
+  `has_secrets: true`, so a reaped run's outputs are not promoted. A test reads the child's and
+  the wrapper's environments the way another process would and finds no value. (A plugin that
+  passes `credential_env`'s result to `ctx.exec(env=...)` puts the value in that command's
+  environment, visible the same way; the docs say so and prefer `credential_file`.)
+- **`secrets=` is removed, not deprecated (a change to Decision 2).** Trestle has no consumers
+  outside this repository, and every in-repo use was a test of the mechanism itself, each now
+  proved over a credential identity. Keeping it would have kept a second path whose whole flaw is
+  that the agent holds the value, plus argument redaction in `spec.json` and an argument-restore
+  step in the child. `@trestle(secrets=...)` is refused at publication with a message pointing at
+  `credentials`; the manifest's `declared` no longer has a `secrets` slot, so every snapshot id
+  changed once.
 - **The channel directory is the run's own, not the pack's.** `ctx.credential_file(name)` writes
   `<run dir>/channel/<name>` (directory `0700`, file `0600`, replaced whole by an atomic rename) on
   first use. The child removes the directory when the plugin returns, the conductor removes it
@@ -554,9 +574,7 @@ Where the code differs from the text above, or settles what it left open, and wh
 - **The declaration** `credentials=[...]` takes a list (or tuple) of name literals, each lower case
   letters, digits, `-` and `_`, none twice. It is recorded sorted in the manifest's `declared`
   only when present, so the snapshot identity of every plugin that declares none is unchanged.
-- **`describe_plugin`** carries `credentials` (the declared names) only when some are declared,
-  and, for a plugin that declares `secrets=`, `secrets` (the argument names) and a `deprecated`
-  list saying to use `credentials` instead.
+- **`describe_plugin`** carries `credentials` (the declared names) only when some are declared.
 - **The store.** Fernet (AES-128-CBC with an HMAC-SHA256 tag, from `cryptography`, now a declared
   dependency) over one JSON document of all values, in `$TRESTLE_HOME/credentials/store.enc`
   (`0600`, directory `0700`), replaced whole on every write. The key comes from a key provider:
@@ -566,6 +584,10 @@ Where the code differs from the text above, or settles what it left open, and wh
   docs say so: anything that reads the home as the user reads both files. `security
   add-generic-password` takes the password as an argument, so the store's key (never a credential
   value) is in that one command's argv while it runs; `security` has no non-interactive stdin form.
+  The item is created without a `-T` list of trusted applications, so any process of the user's
+  can read it through `/usr/bin/security` without a prompt: the same exposure as the key file. The
+  Keychain keeps the key out of the home and its backups; the boundary is the OS user, as "the
+  honest limit" above says.
   The first `add` fixes the provider in `credentials.toml` (`--key-provider` chooses it then).
   Tests use a stub `security` and never the real Keychain.
 - **The CLI.** `trestle credentials add NAME --env VAR [--grant PLUGIN ...] [--replace]

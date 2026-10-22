@@ -1,6 +1,7 @@
 # Credentials: tokens by name
 
-Never take a token as an argument. Declare the identity and read it at run time:
+Never take a token as an argument (there is no `secrets=` keyword: it was removed). Declare the
+identity and read it at run time:
 
 ```python
 @trestle(credentials=["gh"])
@@ -11,7 +12,8 @@ def open_pr(ctx: Context, repo: str) -> dict[str, str]:
 ```
 
 - `ctx.credential_env(name)` returns `{ENV_NAME: value}`. Nothing is put into the plugin's
-  environment: pass it to `ctx.exec(env=...)` for the command that needs it.
+  environment: pass it to `ctx.exec(env=...)` for the command that needs it. Other processes of
+  the user can read a command's environment, so prefer `credential_file` when the tool can.
 - `ctx.credential_file(name)` writes the value to a `0600` file of the run and returns its path,
   for a tool that reads a credentials file. The file is removed when the run ends.
 - A name the plugin did not declare raises `LookupError`.

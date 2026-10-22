@@ -19,7 +19,6 @@ from trestle.common.fsutil import atomic_write_json, fsync_dir
 from trestle.common.ids import generate_run_id
 from trestle.common.plan import carving, compiler
 from trestle.common.plan.compiler import AdmittedPlan
-from trestle.common.redact import redact_args, secret_values
 from trestle.common.types import (
     AdmitRequest,
     AdmitResult,
@@ -36,6 +35,7 @@ from trestle.server.config import ProfileConfig, load_config
 from trestle.server.credentials import CredentialsConfig
 from trestle.server.credentials import refusal as credential_refusal
 from trestle.server.credentials import resolve as credential_resolve
+from trestle.server.credentials import service_log as credential_log
 from trestle.server.home import (
     ADMISSION_WAIT_S,
     ADMITTING_PREFIX,
@@ -281,8 +281,13 @@ class Admission:
         if isinstance(planned, AdmitResultRefused):
             return planned
         # change 3: the granted identities' values, read from the store now (so a rotated value
-        # applies to this run), in memory only, onto the run's secrets like `secrets=` values
-        credential_values = credential_resolve(self.credentials, self.home, declared.credentials)
+        # applies to this run), in memory only, onto the run's work order
+        credential_values = credential_resolve(
+            self.credentials,
+            self.home,
+            declared.credentials,
+            log=lambda line: credential_log(self.home, line),
+        )
         if isinstance(credential_values, RequestOutcome):
             return AdmitResultRefused(tag="refused", outcome=credential_values)
         try:
@@ -307,7 +312,7 @@ class Admission:
         deadline_s: float,
         planned: AdmittedPlan,
         after: chain.After | None = None,
-        credential_values: dict[str, str] | None = None,
+        credential_values: dict[str, tuple[str, str]] | None = None,
     ) -> AdmitResult:
         """v0.3.1 rule 7: the admission's locked section, its steps in order. Everything slow
         (registry refresh, import validation, schema validation, compile and carve) ran before the
@@ -359,7 +364,7 @@ class Admission:
         )
         # (5) a new waiting run, (7) write home/sched.json. (6) The run's grant comes with its
         #     hand-off to this server's FIFO (`Scheduler.enqueue`), whose pass takes the lock again:
-        #     its work order (with the secrets) exists only after admission returns.
+        #     its work order (with the credentials) exists only after admission returns.
         #     A held run is in neither: it is not startable and `home/sched.json` lists no held run.
         if pool is not None and state is not None and hold is None:
             pools.add_waiting(
@@ -372,7 +377,9 @@ class Admission:
             )
             pool.write(state)
         # the real values travel in memory to the run's WorkOrder and no further
-        return AdmitResultAdmitted(tag="admitted", run_id=admitted.run_id, secrets=admitted.secrets)
+        return AdmitResultAdmitted(
+            tag="admitted", run_id=admitted.run_id, credentials=admitted.credentials
+        )
 
     def write_run(self, snap: PluginSnapshot, req: AdmitRequest, plan: AdmittedPlan) -> AdmittedRun:
         """`write_admitted_run` for a caller outside `admit` (the harness's `run_tree`, L.SV-5.7):
@@ -600,8 +607,8 @@ def key_window_s(deadline_s: float, idempotency_ttl_s: float) -> float:
 @dataclass(frozen=True)
 class AdmittedRun:
     """What `write_admitted_run` minted: the run id, the hash of its spec (the run's identity,
-    which the plan digest is part of), and the real values of its declared secrets (in memory
-    only, MC-CORE-13). `lease_key` is the environment key recorded in the `created` row (None when
+    which the plan digest is part of), and its granted credentials' values (in memory only,
+    MC-CORE-13). `lease_key` is the environment key recorded in the `created` row (None when
     the run holds no lease) and `deadline_epoch` its admitted deadline, wall clock."""
 
     run_id: str
@@ -611,7 +618,7 @@ class AdmittedRun:
     run_dir: Path = Path()
     arrival: float = 0.0  # created.at, epoch seconds: a key's waiters start in this order
     held: bool = False  # Feature 3: admitted into the held state, no slot until released
-    secrets: dict[str, object] = field(default_factory=dict, repr=False, compare=False)
+    credentials: dict[str, tuple[str, str]] = field(default_factory=dict, repr=False, compare=False)
 
 
 def _run_state(run_dir: Path) -> str:
@@ -637,7 +644,7 @@ def write_admitted_run(
     ownership: Ownership,
     retry_of: str | None = None,
     hold: HoldPlan | None = None,
-    credential_values: dict[str, str] | None = None,
+    credential_values: dict[str, tuple[str, str]] | None = None,
 ) -> AdmittedRun:
     """The post-refusal half of admission (MC-B2-08): mint the run id and build the run, lock
     before visible (v0.3.1 rule 1). Every refusal has already happened, and the caller holds the
@@ -690,8 +697,7 @@ def write_admitted_run(
             plugin=snap.plugin,
             version=snap.version,
             snapshot_id=snap.snapshot_id,
-            # declared secrets are redacted (MC-CORE-13); args_hash above is over the real intent
-            args=redact_args(req.args, declared.secrets),
+            args=req.args,
             args_hash=a_hash,
             source_sha256=snap.source_sha256,
             schema_sha256=snap.schema_sha256,
@@ -713,9 +719,7 @@ def write_admitted_run(
         ).hexdigest()
         _admission_step("spec")
 
-        secrets = secret_values(req.args, declared.secrets)
-        # change 3: granted identities' values, keyed so no argument name can collide
-        secrets.update(credential_values or {})
+        credentials = dict(credential_values or {})
         ledger = RunLedger.open(ledger_path(building))
         created_fields: dict[str, object] = {
             "run_id": run_id,
@@ -724,7 +728,7 @@ def write_admitted_run(
             # service epoch), and whether any declared secret had a value in the call (a reaped
             # run without one has its outputs promoted, rule 3)
             "owner": ownership.server_id,
-            "has_secrets": bool(secrets),
+            "has_secrets": bool(credentials),
             "plugin": snap.plugin,
             "version": snap.version,
             "snapshot_id": snap.snapshot_id,
@@ -809,5 +813,5 @@ def write_admitted_run(
         run_dir=run_dir,
         arrival=pools.epoch(created["at"]),
         held=hold is not None,
-        secrets=secrets,
+        credentials=credentials,
     )

@@ -275,9 +275,7 @@ def test_changed_package_loses_the_grant(
     assert finished(kernel_on(home), "cred_pkg_probe").state == "succeeded"
 
 
-def test_describe_lists_names_only_and_marks_secrets_deprecated(
-    home: Path, credentials_cli: Cli
-) -> None:
+def test_describe_lists_names_only_and_secrets_is_refused(home: Path, credentials_cli: Cli) -> None:
     (home / "plugins" / "old_secret.py").write_text(
         "from trestle.plugin import Context, trestle\n\n\n"
         '@trestle(secrets=["token"])\n'
@@ -292,7 +290,87 @@ def test_describe_lists_names_only_and_marks_secrets_deprecated(
     assert described["credentials"] == ["demo-token"]
     text = json.dumps(described)
     assert SENTINEL not in text and "DEMO_TOKEN" not in text and "grants" not in text
-    old = kernel.control.describe_plugin("old_secret")
-    assert isinstance(old, dict)
-    assert old["secrets"] == ["token"] and "deprecated" in old["deprecated"][0]
-    assert "credentials" not in old
+    # `secrets=` is gone: the plugin is not published, and the reason says what to use
+    assert not isinstance(kernel.control.describe_plugin("old_secret"), dict)
+    failed = {row["name"]: row for row in kernel.control.list_plugins()["failed"]}
+    assert "secrets= was removed" in failed["old_secret"]["reason"]
+    assert "credentials=" in failed["old_secret"]["reason"]
+
+
+ENV_PROBE = """\
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+from trestle.plugin import Context, trestle
+
+
+def _environment(pid: int) -> str | None:
+    if sys.platform == "darwin":
+        done = subprocess.run(
+            ["/bin/ps", "-E", "-ww", "-o", "command=", "-p", str(pid)],
+            capture_output=True, text=True, check=False,
+        )
+        return done.stdout if done.returncode == 0 else None
+    try:
+        return Path(f"/proc/{pid}/environ").read_bytes().decode("utf-8", "replace")
+    except OSError:
+        return None
+
+
+@trestle(credentials=["demo-token"])
+def env_probe(ctx: Context) -> dict[str, str]:
+    value = ctx.credential_env("demo-token")["DEMO_TOKEN"]
+    out: dict[str, str] = {}
+    # this child, and its parent (the run's wrapper), read the way any process of the user can
+    for role, pid in (("child", os.getpid()), ("wrapper", os.getppid())):
+        seen = _environment(pid)
+        if seen is None or "TRESTLE_HOME=" not in seen:
+            out[role] = "unreadable"
+        else:
+            out[role] = "holds the value" if value in seen else "clean"
+    return out
+"""
+
+
+def test_values_are_not_in_any_spawned_environment(home: Path, credentials_cli: Cli) -> None:
+    """Fix A: a process's initial environment is readable by any process of the user (`ps -E`,
+    `/proc/<pid>/environ`), so the values reach the wrapper and the child over a pipe."""
+    (home / "plugins" / "env_probe.py").write_text(ENV_PROBE, encoding="utf-8")
+    add(credentials_cli, home, "--grant", "env_probe")
+    kernel = kernel_on(home)
+    ended = finished(kernel, "env_probe")
+    assert ended.state == "succeeded", ended
+    seen = result_of(kernel, ended)
+    if set(seen.values()) == {"unreadable"}:
+        pytest.skip("this platform does not show another process's environment")
+    assert seen == {"child": "clean", "wrapper": "clean"}, seen
+
+
+def test_store_failure_names_no_store_location(home: Path, credentials_cli: Cli) -> None:
+    """Fix B: the refusal an agent reads names the identity and the operator's command only; where
+    the store and its key are goes to the operator's service log."""
+    add(credentials_cli, home, "--grant", "cred_probe", "--key-provider", "file")
+    (home / "credentials" / "store.key").unlink()
+    kernel = kernel_on(home)
+    refused = run(kernel, "cred_probe")
+    assert isinstance(refused, RequestOutcome), refused
+    assert refused.code == codes.ADMISSION_CREDENTIAL_UNAVAILABLE
+    assert refused.message.startswith("the operator runs: trestle doctor; credential 'demo-token'")
+    for where in ("store.key", "store.enc", str(home), "trestle-credentials", "Keychain"):
+        assert where not in refused.message, where
+    no_run_exists(home)
+    log = (home / "service.log").read_text(encoding="utf-8")
+    assert "credential store unreadable for demo-token" in log and "key" in log
+
+
+def test_refusal_instruction_survives_the_cut(home: Path) -> None:
+    """Every credential refusal leads with the operator's command, so the 200-character cut keeps
+    it even for long names."""
+    from trestle.server.credentials import CredentialsConfig, refusal
+
+    long_plugin = "p" * 150
+    out = refusal(CredentialsConfig(), long_plugin, ["x" * 64], "s", {})
+    assert out is not None and out.message.startswith("the operator runs: trestle credentials add")
+    assert len(out.message) <= 200

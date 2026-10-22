@@ -55,11 +55,6 @@ from trestle.server.snapshots import (
 MAX_PUBLISH_SOURCE_BYTES = 512 * 1024
 # v0.3.1: the home's one registry version counter, bumped under `locks/registry.lock`
 REGISTRY_VERSION_FILE = "registry_version"
-# change 3: what `describe_plugin` says of a plugin that still declares `secrets=`
-SECRETS_DEPRECATED = (
-    "secrets= is deprecated: the caller must hold the value; declare credentials=[...] "
-    "identities the operator grants instead"
-)
 # how much of a validation failure's message `list_plugins` carries per failed plugin
 FAILED_REASON_MAX = 300
 
@@ -374,9 +369,6 @@ class Registry:
         if declared.credentials:
             # change 3: the identities the plugin uses, by name and nothing else about them
             view["credentials"] = list(declared.credentials)
-        if declared.secrets:
-            view["secrets"] = sorted(declared.secrets)
-            view["deprecated"] = [SECRETS_DEPRECATED]
         warning = import_warning(snap)
         if warning is not None:  # R6a: shown, never refused
             view["warnings"] = [warning]

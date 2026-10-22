@@ -350,7 +350,6 @@ DECLARED_KEYWORDS = (
     "packages",
     "env_arg",
     "credentials",
-    "secrets",
     "repeatable",
     "stop_grace",
 )
@@ -394,6 +393,12 @@ def declared_from_function(fn: _FnDef) -> DeclaredMetadata:
     for kw in call.keywords:
         if kw.arg is None:
             raise DeclarationError("@trestle(**...) is not statically readable")
+        if kw.arg == "secrets":
+            # change 3: secret arguments are gone; the agent that sent one held the value
+            raise DeclarationError(
+                "@trestle: secrets= was removed; declare credentials=[...] identities the "
+                f"operator grants, and read them with ctx.credential_env; see {SHAPE_POINTER}"
+            )
         if kw.arg not in DECLARED_KEYWORDS:
             raise DeclarationError(
                 f"@trestle: unknown keyword {kw.arg!r}; allowed: {', '.join(DECLARED_KEYWORDS)}"
@@ -407,7 +412,6 @@ def declared_from_function(fn: _FnDef) -> DeclaredMetadata:
         summary_fields=_declared_names(values.get("summary_fields"), "summary_fields"),
         packages=_declared_names(values.get("packages"), "packages"),
         env_arg=_declared_env_arg(values["env_arg"]) if "env_arg" in values else None,
-        secrets=frozenset(_declared_names(values.get("secrets"), "secrets", allow_set=True)),
         credentials=_declared_credentials(values.get("credentials")),
         repeatable=_declared_bool(values["repeatable"], "repeatable")
         if "repeatable" in values

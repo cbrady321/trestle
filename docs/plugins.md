@@ -23,7 +23,7 @@ Worked example: [`examples/plugins/echo.py`](../examples/plugins/echo.py).
 
 <!-- K-5 -->
 The decorator has two forms with the same runtime effect: bare `@trestle`, and the call form
-`@trestle(deadline=..., summary_fields=..., packages=..., env_arg=..., credentials=..., secrets=..., repeatable=..., stop_grace=...)`. The call form
+`@trestle(deadline=..., summary_fields=..., packages=..., env_arg=..., credentials=..., repeatable=..., stop_grace=...)`. The call form
 is read statically from the source at publication, so every value must be a literal; an unknown
 keyword or a non-literal value is refused at publication (`publication.validation_failed`). The
 entry point must be a plain `def`: an `async def` entry is refused at publication with a message
@@ -43,8 +43,8 @@ before any run id exists. `describe_plugin` shows the deadline in force (`deadli
 to whole seconds.
 <!-- /K-9 -->
 
-`summary_fields`, `env_arg`, `credentials` and `secrets` are declared and recorded in the
-snapshot's `manifest.json` (`declared`) and count toward its identity.
+`summary_fields`, `env_arg` and `credentials` are declared and recorded in the snapshot's
+`manifest.json` (`declared`) and count toward its identity.
 
 `summary_fields` names the result fields the run summary keeps first when the whole result does not
 fit the summary budget. An entry may name a list-of-objects field with columns,
@@ -86,9 +86,9 @@ configures each identity and grants it to plugins (`trestle credentials`, see
 [Credentials](#credentials) below); the agent never sees a value. `describe_plugin` lists the
 names and nothing else about them.
 
-`secrets` (names of arguments whose values are secret) is **deprecated**: it keeps working, and
-`describe_plugin` marks a plugin that declares it (`deprecated`), but the agent that sends the
-value already holds it. Declare `credentials` instead.
+There is no `secrets` keyword any more. It named arguments whose values were secret, which meant
+the agent sending the value already held it; a plugin that declares it is refused at publication
+with a message pointing at `credentials`.
 
 `packages` names the modules or packages the plugin imports from outside its own file, and is
 **recorded, not snapshotted** (R-J). Publication resolves each name on the import path the child
@@ -111,7 +111,7 @@ their digests for each run.
 - Use `ctx.log` for structured events; wrapper stdout/`print` appears in `query(run_tail)`.
 - Use `ctx.event(kind, **fields)` to record an event of your own kind. It shares the limits of
   `ctx.log` and `ctx.progress` (per-event size, count, rate; over a limit the event is dropped and
-  the run's `limits_exceeded` names it) and the same secret scrubbing. A kind the runtime records
+  the run's `limits_exceeded` names it) and the same credential scrubbing. A kind the runtime records
   itself (`log`, `progress`, `artifact_available`, `error`) or uses for a run's lane record
   (`plan`, `issue`, `confirmation`, `result`, `released`, `step`, `node_end`) is refused with
   `ValueError`, as is an empty kind.
@@ -135,7 +135,7 @@ A run may hold at most 1 000 artifacts and 2 GiB of artifact bytes in all (10 an
 `limits_exceeded` names the limit once (`stream: "artifacts"`, `limit: "max_artifact_count"` or
 `"max_artifact_bytes"`, with the bytes left out): a refused promotion leaves the file where the plugin
 wrote it, and a refused `attach` returns the empty string, so a handle a plugin was given always
-fetches. Every promoted artifact is scrubbed of declared secret values first; a binary artifact that
+fetches. Every promoted artifact is scrubbed of credential values first; a binary artifact that
 holds one is refused with a `secret_in_binary` marker. Limit markers are one per (stream, limit) for
 the whole run, however many things were dropped: the marker's byte total counts them all.
 
@@ -252,7 +252,9 @@ def open_pr(ctx: Context, repo: str) -> dict[str, str]:
   plugin an agent published (`publish_plugin`) is never granted.
 - **`ctx.credential_env(name)`** returns `{ENV_NAME: value}` (the variable name is the one the
   operator gave the identity). It is not put into the plugin's environment: pass it to
-  `ctx.exec(env=...)` for the one command that needs it.
+  `ctx.exec(env=...)` for the one command that needs it. A command's environment is readable by
+  any process of yours while it runs (`ps -E`), so prefer `credential_file` for a tool that can
+  read a file.
 - **`ctx.credential_file(name)`** writes the value to a file of its own (mode `0600`, in a `0700`
   directory that belongs to the run) and returns its path, for a tool that reads a credentials
   file. The directory is removed when the run ends.
@@ -287,7 +289,7 @@ answer's `primary` carries `code` as `plugin.<code>` (here `plugin.aws_login`: a
 never reads as one of Trestle's own `admission.*` or `execution.*` codes), the `human_action`,
 and `resend`: `"succeeds_after_action"` (the default: send the same request again once the action
 is done), `"will_not_succeed"` or `"unknown"`. The code is lower-case words joined by `_` or `.`;
-the human action is scrubbed of declared secrets like an error message. An agent reads the
+the human action is scrubbed of credential values like an error message. An agent reads the
 verdict from `answer.outcome`, reports the human action, and stops.
 
 ## Testing a plugin without a server

@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import json
 import tomllib
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -279,7 +279,23 @@ def grant_status(grant: Grant, current: tuple[str, Mapping[str, str]] | None) ->
 # --- admission ---------------------------------------------------------------------------------
 
 
-def _outcome(code: str, message: str) -> RequestOutcome:
+OPERATOR_RUNS = "the operator runs: "
+
+
+def service_log(home: Path, message: str) -> None:
+    """One operator-side line in `$TRESTLE_HOME/service.log` (never an agent-facing answer)."""
+    try:
+        with (home / "service.log").open("a", encoding="utf-8") as fh:
+            fh.write(f"credentials: {message}\n")
+    except OSError:
+        pass
+
+
+def _outcome(code: str, command: str, detail: str) -> RequestOutcome:
+    """An admission refusal an agent reads: the fixed operator instruction first, so the errtext
+    cut can never drop it, then what is wrong in terms of the identity alone. It never names
+    where the store or its key is (that is in the operator's `trestle doctor` and the log)."""
+    message = f"{OPERATOR_RUNS}{command}; {detail}"
     return RequestOutcome(code=code, message=message[:200], retryable=False, origin="admission")
 
 
@@ -298,43 +314,50 @@ def refusal(
         if ident is None:
             return _outcome(
                 codes.ADMISSION_CREDENTIAL_UNKNOWN,
-                f"credential {name!r} (declared by {plugin}) is not configured on this service; "
-                f"the operator adds it: trestle credentials add {name} --env VAR",
+                f"trestle credentials add {name} --env VAR",
+                f"credential {name!r} is not configured on this service",
             )
         if not ident.covers(plugin, source_sha256, package_digests):
             return _outcome(
                 codes.ADMISSION_CREDENTIAL_NOT_GRANTED,
-                f"credential {name!r} is not granted to {plugin} as now published; "
-                f"the operator runs: trestle credentials grant {name} {plugin}",
+                f"trestle credentials grant {name} {plugin}",
+                f"credential {name!r} is not granted to this plugin as now published",
             )
     return None
 
 
 def resolve(
-    config: CredentialsConfig, home: Path, declared: Iterable[str]
-) -> dict[str, str] | RequestOutcome:
-    """The declared identities' values as `WorkOrder` secrets entries (`credential:<name>:<ENV>`
-    to value), read from the store now (a rotated value applies to this run); or
-    `admission.credential_unavailable` naming the identity when the store cannot give it."""
+    config: CredentialsConfig,
+    home: Path,
+    declared: Iterable[str],
+    *,
+    log: Callable[[str], None] | None = None,
+) -> cred.Delivered | RequestOutcome:
+    """The declared identities as `(env name, value)` by name, read from the store now (a rotated
+    value applies to this run); or `admission.credential_unavailable` naming the identity when the
+    store cannot give it. Why the store failed, and where it is, goes to `log` (the operator's
+    service log), never into the refusal."""
     names = sorted(declared)
     if not names:
         return {}
     try:
         stored = config.store(home).read_all()
     except StoreError as exc:
+        if log is not None:
+            log(f"credential store unreadable for {', '.join(names)}: {exc}")
         return _outcome(
             codes.ADMISSION_CREDENTIAL_UNAVAILABLE,
-            f"credential {names[0]!r}: the store could not be read ({exc}); "
-            "the operator runs: trestle doctor",
+            "trestle doctor",
+            f"credential {names[0]!r}: the credential store could not give its value",
         )
-    out: dict[str, str] = {}
+    out: cred.Delivered = {}
     for name in names:
         value = stored.get(name)
         if not value:
             return _outcome(
                 codes.ADMISSION_CREDENTIAL_UNAVAILABLE,
-                f"credential {name!r} has no stored value; "
-                f"the operator runs: trestle credentials add {name} --replace",
+                f"trestle credentials add {name} --replace",
+                f"credential {name!r} has no stored value",
             )
-        out[cred.secret_key(name, config.identities[name].env)] = value
+        out[name] = (config.identities[name].env, value)
     return out

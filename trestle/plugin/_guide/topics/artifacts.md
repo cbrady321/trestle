@@ -10,5 +10,5 @@
   `status.md` each round of a long job. Its bytes still count.
 - Limits: 1 000 artifacts and 2 GiB per run. An artifact over a limit is not stored, and
   `limits_exceeded` names the limit. A refused `attach` returns the empty string.
-- Declared secret values are scrubbed from every artifact. A binary artifact that holds one is
+- Credential values are scrubbed from every artifact. A binary artifact that holds one is
   refused.
