@@ -176,3 +176,21 @@ EXECUTION_CODES: frozenset[str] = frozenset(
         VERTEX_UNENDED,
     }
 )
+
+
+# Change 2b: how long, in whole seconds, to wait before resending a request refused with a
+# retryable code. `RequestOutcome.to_dict` fills `retry_after_s` from this table on every
+# retryable outcome that does not carry its own value, so no refusal site can forget it. A resend
+# sooner is likely refused the same way; one at or after it can still be refused, with its own
+# value. `admission.environment_busy` computes its own (the moment the same request would be
+# queued); its entry here is the floor used if a site does not.
+RETRY_AFTER_S: dict[str, int] = {
+    ADMISSION_ENVIRONMENT_BUSY: 1,
+    QUEUE_FULL: 5,
+    ADMISSION_HOME_BUSY: 2,
+    SERVICE_DRAINING: 10,
+    NOT_FINALIZED: 1,
+    CURSOR_EXPIRED: 0,
+    PUBLICATION_REGISTRY_CONFLICT: 0,
+}
+DEFAULT_RETRY_AFTER_S = 5

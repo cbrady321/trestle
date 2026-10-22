@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from trestle.common import codes
+
 Handle = str
 JoinMode = Literal["all", "any", "first_failure"]
 
@@ -15,14 +17,32 @@ class RequestOutcome:
     message: str
     retryable: bool
     origin: Literal["admission", "projection", "publication"]
+    # Change 2b: whole seconds to wait before resending (only when `retryable`). None: filled
+    # from `codes.RETRY_AFTER_S` on the wire, so every retryable outcome carries one.
+    retry_after_s: int | None = None
+    # Change 2b, `admission.environment_busy` only: the run whose recorded deadline frees the
+    # environment last, and that deadline (ISO 8601 UTC).
+    held_by: str | None = None
+    free_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "code": self.code,
             "message": self.message,
             "retryable": self.retryable,
             "origin": self.origin,
         }
+        if self.retryable:
+            out["retry_after_s"] = (
+                self.retry_after_s
+                if self.retry_after_s is not None
+                else codes.RETRY_AFTER_S.get(self.code, codes.DEFAULT_RETRY_AFTER_S)
+            )
+        if self.held_by is not None:
+            out["held_by"] = self.held_by
+        if self.free_at is not None:
+            out["free_at"] = self.free_at
+        return out
 
 
 @dataclass

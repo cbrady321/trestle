@@ -1791,3 +1791,38 @@ docs = ["docs/plugins.md", "docs/install.md"]
 due_checkpoint = "credentials change 3"
 direction = "additive"
 authorized_by = "docs/decisions/service-and-credentials.md change 3 (admission refusals; As implemented adds credential_unavailable)"
+
+# Agent surface 2b (docs/proposals/2026-10-22-agent-surface-2a-2d-design.md): the refusal fields.
+# retry_after_s is on the wire on every retryable outcome; held_by and free_at only on
+# admission.environment_busy. The refusal_frame (a plugin_not_found refusal) is unchanged.
+
+[[entry]]
+id = "ADD-outcome-retry-after-s"
+facet = "refusal_codes"
+row_or_k = "MC-06"
+docs = []
+due_checkpoint = "agent surface 2b"
+direction = "additive"
+items = [{ path = "$.outcome_fields", value = ["retry_after_s", "int | None"] }]
+authorized_by = "agent surface 2a-2d design, 2b Refusal fields (retry_after_s)"
+
+[[entry]]
+id = "ADD-outcome-held-by"
+facet = "refusal_codes"
+row_or_k = "MC-06"
+docs = []
+due_checkpoint = "agent surface 2b"
+direction = "additive"
+items = [{ path = "$.outcome_fields", value = ["held_by", "str | None"] }]
+authorized_by = "agent surface 2a-2d design, 2b held_by and free_at"
+
+[[entry]]
+id = "ADD-outcome-free-at"
+facet = "refusal_codes"
+row_or_k = "MC-06"
+docs = []
+due_checkpoint = "agent surface 2b"
+direction = "additive"
+items = [{ path = "$.outcome_fields", value = ["free_at", "str | None"] }]
+authorized_by = "agent surface 2a-2d design, 2b held_by and free_at"
+

@@ -434,26 +434,44 @@ class Admission:
         run that fits."""
         if not plan.lease_set or state is None:
             return None
-        free_at = pools.busy_until(state, plan.lease_set[0])
-        if free_at is None:
+        holder = pools.busy_holder(state, plan.lease_set[0])
+        if holder is None:
             return None
+        held_by, free_at = holder
         worst_case = carving.worst_case_s(plan, clock.FINALIZATION_RESERVE_S)
-        if not lease.leaves_too_little(
-            free_at, time.time() + deadline_s, worst_case, plan.release_slice
-        ):
+        now = time.time()
+        if not lease.leaves_too_little(free_at, now + deadline_s, worst_case, plan.release_slice):
             return None
-        return AdmitResultRefused(
-            tag="refused",
-            outcome=RequestOutcome(
-                code=codes.ADMISSION_ENVIRONMENT_BUSY,
-                message=(
-                    "the environment is held by a run whose deadline leaves this request too "
-                    "little time; retry after it ends"
-                ),
-                retryable=True,
-                origin="admission",
-            ),
+        return _environment_busy_refusal(
+            held_by, free_at, worst_case + plan.release_slice - deadline_s, now
         )
+
+
+def _environment_busy_refusal(
+    held_by: str, free_at: float, need_s: float, now: float
+) -> AdmitResultRefused:
+    """Change 2b: `held_by` is the run whose recorded deadline frees the environment last,
+    `free_at` that deadline, and `retry_after_s` the inverse of `leaves_too_little`: the first
+    moment the same request's would-be deadline leaves room after `free_at` (at least 1 s).
+    `need_s` is the plan's worst case plus its release slice, less the request's deadline."""
+    retry_after = max(1, math.ceil(free_at + need_s - now))
+    at = datetime.fromtimestamp(free_at, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    message = (
+        f"the environment is held by {held_by} until at most {at}, too late for this "
+        f"request's deadline; wait for it (await_runs, or after=) or resend in {retry_after}s"
+    )
+    return AdmitResultRefused(
+        tag="refused",
+        outcome=RequestOutcome(
+            code=codes.ADMISSION_ENVIRONMENT_BUSY,
+            message=message[:200],
+            retryable=True,
+            origin="admission",
+            retry_after_s=retry_after,
+            held_by=held_by,
+            free_at=at,
+        ),
+    )
 
 
 def _refuse_deadline(
