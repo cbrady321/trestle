@@ -139,6 +139,26 @@ def _home_busy(busy: HomeBusy) -> AdmitResultRefused:
     )
 
 
+def bundled_hint(home: Path, plugin: str) -> str:
+    """For a plugin an available bundled pack provides and no installed pack does: the pack and
+    the operator's command, so the agent's dead end is one answer (no list_plugins round trip).
+    The bundled tree is read from source; nothing is imported."""
+    from trestle.packs import PackError
+    from trestle.packs.bundled import bundled_plugin_index
+
+    pack = bundled_plugin_index().get(plugin)
+    if pack is None:
+        return ""
+    from trestle.packs.lock import read_lock
+
+    try:
+        if any(entry.name == pack for entry in read_lock(home)):
+            return ""  # installed: its plugin failed validation, which list_plugins reports
+    except PackError:
+        pass
+    return f"; bundled pack {pack} provides it, and the operator runs: trestle pack install {pack}"
+
+
 @dataclass
 class Admission:
     home: Path
@@ -184,7 +204,7 @@ class Admission:
                 tag="refused",
                 outcome=RequestOutcome(
                     code=codes.PLUGIN_NOT_FOUND,
-                    message=f"plugin not found: {req.plugin}",
+                    message=f"plugin not found: {req.plugin}{bundled_hint(self.home, req.plugin)}",
                     retryable=False,
                     origin="admission",
                 ),

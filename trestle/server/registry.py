@@ -26,6 +26,7 @@ from trestle.packs import PackError
 from trestle.packs.lock import LockedPack, lock_path, read_lock
 from trestle.packs.sources import (
     TIER_PACK,
+    TIER_RUNTIME,
     PluginSource,
     SourcePlan,
     plan_sources,
@@ -52,6 +53,7 @@ from trestle.server.plugin_validate import (
     validate_plugin_imports,
 )
 from trestle.server.snapshots import (
+    ORIGIN_AGENT,
     deadline_of,
     discover_plugin_name,
     discover_plugin_name_from_source,
@@ -60,6 +62,7 @@ from trestle.server.snapshots import (
     load_snapshot_return_schema,
     load_snapshot_schema,
     materialize_snapshot,
+    publication_origin,
     record_agent_publication,
 )
 
@@ -482,9 +485,47 @@ class Registry:
         return view
 
     def writable_plugin_dir(self) -> Path:
-        if self.plugin_dirs:
-            return self.plugin_dirs[0]
-        return self.home / "plugins"
+        """Where `publish_plugin` writes: the runtime folder, the agents' own, never a pack copy
+        or the operator's folder."""
+        return runtime_dir(self.home)
+
+    def _name_taken(self, plugin_name: str) -> RequestOutcome | Path | None:
+        """P-10: a publish under a name served from outside the runtime folder is refused, naming
+        the served source and a new name to adapt it under. None: free. A Path: the name is
+        served by an agent's own unchanged file in the operator's folder (a publish from before
+        the runtime folder existed), which this publish moves to the runtime folder."""
+        source = self.sources.get(plugin_name)
+        if source is None or source.tier == TIER_RUNTIME:
+            return None
+        if source.tier != TIER_PACK:
+            try:
+                digest = sha256_file(source.path)
+            except OSError:
+                digest = ""
+            if publication_origin(self.home, plugin_name, digest) == ORIGIN_AGENT:
+                return source.path
+        served_by = (
+            f"pack {source.pack_label}" if source.pack_label is not None else "the operator's file"
+        )
+        suggestion = self._free_name(f"{plugin_name}_adapted")
+        return RequestOutcome(
+            code=codes.PUBLICATION_NAME_TAKEN,
+            message=(
+                f"{plugin_name} is served by {served_by} and an agent publish cannot replace it. "
+                f"Read its source at {source.path} and publish your version as {suggestion}, "
+                f'with @trestle(adapted_from="{plugin_name}")'
+            )[:600],
+            retryable=False,
+            origin="publication",
+        )
+
+    def _free_name(self, base: str) -> str:
+        if base not in self.snapshots:
+            return base
+        n = 2
+        while f"{base}{n}" in self.snapshots:
+            n += 1
+        return f"{base}{n}"
 
     def publish_source(
         self,
@@ -544,9 +585,15 @@ class Registry:
         # The write, its refresh and the read-back are one step: no other refresh lands between
         # them, so the outcome reported is this source's.
         with self._lock:
-            return self._write_and_publish(discovered, encoded)
+            self.maybe_refresh()
+            taken = self._name_taken(discovered)
+            if isinstance(taken, RequestOutcome):
+                return taken
+            return self._write_and_publish(discovered, encoded, legacy=taken)
 
-    def _write_and_publish(self, plugin_name: str, encoded: bytes) -> PublishView | RequestOutcome:
+    def _write_and_publish(
+        self, plugin_name: str, encoded: bytes, *, legacy: Path | None = None
+    ) -> PublishView | RequestOutcome:
         plugin_dir = self.writable_plugin_dir()
         plugin_dir.mkdir(parents=True, exist_ok=True)
         path = plugin_dir / f"{plugin_name}.py"
@@ -556,6 +603,10 @@ class Registry:
         # change 3: this source came from an agent; its snapshot's manifest says so
         record_agent_publication(self.home, plugin_name, source_sha256)
         atomic_write(path, encoded)
+        if legacy is not None:
+            # the agent's own earlier publish, unchanged since, moves to the runtime folder
+            legacy.unlink(missing_ok=True)
+            log_plugin_warning(self.home, f"moved agent publish {legacy} to {path}")
         self.refresh()
         snap = self.get(plugin_name)
         if snap is None or snap.source_sha256 != source_sha256:
