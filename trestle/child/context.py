@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import threading
 import time
 import uuid
@@ -13,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from trestle.child import execproc
+from trestle.common import credentials as credentials_mod
 from trestle.common import redact
 from trestle.common.fsutil import append_ndjson, atomic_write
 from trestle.common.limits import CaptureLimits, capture_limits
@@ -82,8 +84,17 @@ class RuntimeContext:
         limits: CaptureLimits | None = None,
         scrubber: redact.Scrubber = redact.NO_SCRUB,
         watch_release_point: bool = False,
+        credentials: Mapping[str, tuple[str, str]] | None = None,
+        channel: Path | None = None,
     ) -> None:
         self._scrubber = scrubber
+        # change 3: the identities admission resolved for this run, name -> (env name, value);
+        # every value is already in `scrubber.secrets`. `channel` is where `credential_file`
+        # writes (the run's channel directory, removed when the run ends).
+        self._credentials = dict(credentials or {})
+        self._channel = (
+            channel if channel is not None else work.parent / credentials_mod.CHANNEL_DIR
+        )
         # G3: only a plugin that declared `stop_grace` sees its release point as a stop; any other
         # keeps today's behaviour (cancelled reads the cancel flag alone, the kill ends it)
         self._watch_release_point = watch_release_point
@@ -224,6 +235,31 @@ class RuntimeContext:
         finally:
             staged.unlink(missing_ok=True)
         return replace(result, artifact=handle)
+
+    def _credential(self, name: str) -> tuple[str, str]:
+        found = self._credentials.get(name)
+        if found is None:
+            raise credentials_mod.not_declared(name, self._credentials)
+        return found
+
+    def credential_env(self, name: str) -> dict[str, str]:
+        """Identity `name` as `{ENV_NAME: value}`, for a tool with no helper protocol. Returned
+        to the plugin, never put into this process's environment: pass it to `exec(env=...)`.
+        The value is in the run's scrub set, so it is `<redacted>` wherever it is written. A name
+        the plugin did not declare raises LookupError."""
+        env, value = self._credential(name)
+        return {env: value}
+
+    def credential_file(self, name: str) -> Path:
+        """Identity `name`'s value in a file of its own, mode 0600, in the run's channel
+        directory (0700), for a tool that reads a credentials file. The directory and the file
+        are removed when the run ends. A name the plugin did not declare raises LookupError."""
+        _env, value = self._credential(name)
+        return credentials_mod.write_channel_file(self._channel, name, value)
+
+    def remove_channel(self) -> None:
+        """Remove the run's channel directory (the runtime's, at the end of the run)."""
+        shutil.rmtree(self._channel, ignore_errors=True)
 
     def artifact(self, name: str) -> Path:
         if ".." in name or name.startswith("/"):

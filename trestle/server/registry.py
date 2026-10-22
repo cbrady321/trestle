@@ -49,11 +49,17 @@ from trestle.server.snapshots import (
     load_snapshot_return_schema,
     load_snapshot_schema,
     materialize_snapshot,
+    record_agent_publication,
 )
 
 MAX_PUBLISH_SOURCE_BYTES = 512 * 1024
 # v0.3.1: the home's one registry version counter, bumped under `locks/registry.lock`
 REGISTRY_VERSION_FILE = "registry_version"
+# change 3: what `describe_plugin` says of a plugin that still declares `secrets=`
+SECRETS_DEPRECATED = (
+    "secrets= is deprecated: the caller must hold the value; declare credentials=[...] "
+    "identities the operator grants instead"
+)
 # how much of a validation failure's message `list_plugins` carries per failed plugin
 FAILED_REASON_MAX = 300
 
@@ -364,6 +370,13 @@ class Registry:
             "input_schema": load_snapshot_schema(snap),
             "return_schema": load_snapshot_return_schema(snap),
         }
+        declared = load_declared(snap)
+        if declared.credentials:
+            # change 3: the identities the plugin uses, by name and nothing else about them
+            view["credentials"] = list(declared.credentials)
+        if declared.secrets:
+            view["secrets"] = sorted(declared.secrets)
+            view["deprecated"] = [SECRETS_DEPRECATED]
         warning = import_warning(snap)
         if warning is not None:  # R6a: shown, never refused
             view["warnings"] = [warning]
@@ -448,6 +461,8 @@ class Registry:
         created = not path.exists()
         previous = self.snapshots.get(plugin_name)
         source_sha256 = sha256_bytes(encoded)
+        # change 3: this source came from an agent; its snapshot's manifest says so
+        record_agent_publication(self.home, plugin_name, source_sha256)
         atomic_write(path, encoded)
         self.refresh()
         snap = self.get(plugin_name)

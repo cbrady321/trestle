@@ -33,6 +33,9 @@ from trestle.server import chain, lease
 from trestle.server import idempotency as keys
 from trestle.server import pool as pools
 from trestle.server.config import ProfileConfig, load_config
+from trestle.server.credentials import CredentialsConfig
+from trestle.server.credentials import refusal as credential_refusal
+from trestle.server.credentials import resolve as credential_resolve
 from trestle.server.home import (
     ADMISSION_WAIT_S,
     ADMITTING_PREFIX,
@@ -144,6 +147,8 @@ class Admission:
     # the owner locks this server holds (v0.3.1 rule 1); its `server_id` is `created.owner`
     ownership: Ownership
     profile: ProfileConfig = ProfileConfig()
+    # change 3: the identity tables of credentials.toml, read once at start like the profile
+    credentials: CredentialsConfig = field(default_factory=CredentialsConfig)
 
     @property
     def server_id(self) -> str:
@@ -195,6 +200,20 @@ class Admission:
                     origin="admission",
                 ),
             )
+
+        # change 3: every declared identity configured and granted to this plugin at its current
+        # source and package digests, before anything is minted (no run id, directory or process)
+        declared = load_declared(snap)
+        if declared.credentials:
+            not_granted = credential_refusal(
+                self.credentials,
+                snap.plugin,
+                declared.credentials,
+                snap.source_sha256,
+                declared.package_digests,
+            )
+            if not_granted is not None:
+                return AdmitResultRefused(tag="refused", outcome=not_granted)
 
         import_error = validate_plugin_imports(Path(snap.source_path))
         if import_error is not None:
@@ -261,6 +280,11 @@ class Admission:
         planned = plan_for_admission(snap, req, deadline_s, deadline_ceiling_s=ceiling)
         if isinstance(planned, AdmitResultRefused):
             return planned
+        # change 3: the granted identities' values, read from the store now (so a rotated value
+        # applies to this run), in memory only, onto the run's secrets like `secrets=` values
+        credential_values = credential_resolve(self.credentials, self.home, declared.credentials)
+        if isinstance(credential_values, RequestOutcome):
+            return AdmitResultRefused(tag="refused", outcome=credential_values)
         try:
             with admission_lock(self.home):
                 return self._admit_locked(
@@ -270,6 +294,7 @@ class Admission:
                     deadline_s,
                     planned,
                     after if isinstance(after, chain.After) else None,
+                    credential_values,
                 )
         except HomeBusy as busy:
             return _home_busy(busy)
@@ -282,6 +307,7 @@ class Admission:
         deadline_s: float,
         planned: AdmittedPlan,
         after: chain.After | None = None,
+        credential_values: dict[str, str] | None = None,
     ) -> AdmitResult:
         """v0.3.1 rule 7: the admission's locked section, its steps in order. Everything slow
         (registry refresh, import validation, schema validation, compile and carve) ran before the
@@ -326,6 +352,7 @@ class Admission:
             ownership=self.ownership,
             retry_of=claim.retry_of,
             hold=hold,
+            credential_values=credential_values,
         )
         self.scheduler.mint(
             admitted.run_id, snap.snapshot_id, admitted.spec_hash, held=hold is not None
@@ -610,6 +637,7 @@ def write_admitted_run(
     ownership: Ownership,
     retry_of: str | None = None,
     hold: HoldPlan | None = None,
+    credential_values: dict[str, str] | None = None,
 ) -> AdmittedRun:
     """The post-refusal half of admission (MC-B2-08): mint the run id and build the run, lock
     before visible (v0.3.1 rule 1). Every refusal has already happened, and the caller holds the
@@ -686,6 +714,8 @@ def write_admitted_run(
         _admission_step("spec")
 
         secrets = secret_values(req.args, declared.secrets)
+        # change 3: granted identities' values, keyed so no argument name can collide
+        secrets.update(credential_values or {})
         ledger = RunLedger.open(ledger_path(building))
         created_fields: dict[str, object] = {
             "run_id": run_id,

@@ -21,7 +21,7 @@ from trestle.child.validate import (
     check_package_digests,
     select_entry,
 )
-from trestle.common import codes, redact
+from trestle.common import codes, credentials, redact
 from trestle.common.errtext import sanitize
 from trestle.common.fsutil import atomic_write, atomic_write_json, read_ndjson
 from trestle.common.limits import CaptureLimits, capture_limits
@@ -51,7 +51,9 @@ def main(argv: list[str] | None = None) -> int:
     # memory only: `spec.json` carries the redacted arguments.
     secret_values = redact.take_env(os.environ)
     secrets = redact.secret_strings(secret_values)
-    plugin_args = redact.restore_args(spec.args, secret_values)
+    # change 3: granted identities travel on the same path, under keys no argument can have
+    arg_values, delivered = credentials.split_secrets(secret_values)
+    plugin_args = redact.restore_args(spec.args, arg_values)
 
     os.chdir(work)
     os.environ["TMPDIR"] = str(work / "tmp")
@@ -91,6 +93,8 @@ def main(argv: list[str] | None = None) -> int:
         limits=limits,
         scrubber=redact.Scrubber(secrets=secrets, roots=roots),
         watch_release_point=_declares_stop_grace(plugin_path),
+        credentials=delivered,
+        channel=credentials.channel_dir(run_dir),
     )
     if plan is not None:
         # B2-C14: a workflow run's callable reaches the run's services through its Context;
@@ -111,6 +115,7 @@ def main(argv: list[str] | None = None) -> int:
         return _call_plugin(fn, ctx, plugin_args, limits, evidence, roots, secrets)
     finally:
         ctx.flush_limits()  # the run's limit markers carry their totals, one line per kind
+        ctx.remove_channel()  # no credential file outlives the plugin (the conductor checks too)
 
 
 def _released_deadline(evidence: Path) -> str | None:

@@ -14,6 +14,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Literal, NoReturn, cast
 
+from trestle.common import credentials as credential_names
 from trestle.common.canonical import canonical_json
 from trestle.common.fsutil import sha256_bytes
 from trestle.common.types import DeclaredMetadata
@@ -348,6 +349,7 @@ DECLARED_KEYWORDS = (
     "summary_fields",
     "packages",
     "env_arg",
+    "credentials",
     "secrets",
     "repeatable",
     "stop_grace",
@@ -406,11 +408,34 @@ def declared_from_function(fn: _FnDef) -> DeclaredMetadata:
         packages=_declared_names(values.get("packages"), "packages"),
         env_arg=_declared_env_arg(values["env_arg"]) if "env_arg" in values else None,
         secrets=frozenset(_declared_names(values.get("secrets"), "secrets", allow_set=True)),
+        credentials=_declared_credentials(values.get("credentials")),
         repeatable=_declared_bool(values["repeatable"], "repeatable")
         if "repeatable" in values
         else False,
         stop_grace_s=_declared_stop_grace(values["stop_grace"]) if "stop_grace" in values else None,
     )
+
+
+def _declared_credentials(node: ast.expr | None) -> tuple[str, ...]:
+    """Decision record change 3: `credentials`, a list (or tuple) of identity-name literals, each
+    lower case, digits, '-' and '_' (`"ci-reader"`), none twice. Recorded sorted."""
+    if node is None:
+        return ()
+    if not isinstance(node, (ast.List, ast.Tuple)):
+        raise DeclarationError("@trestle: credentials must be a list of identity-name literals")
+    names: list[str] = []
+    for item in node.elts:
+        if not (isinstance(item, ast.Constant) and isinstance(item.value, str)):
+            raise DeclarationError("@trestle: credentials entries must be string literals")
+        if not credential_names.valid_name(item.value):
+            raise DeclarationError(
+                f"@trestle: credentials entry {item.value!r} is not an identity name "
+                "(lower case letters, digits, '-' and '_')"
+            )
+        names.append(item.value)
+    if len(set(names)) != len(names):
+        raise DeclarationError("@trestle: credentials lists an identity twice")
+    return tuple(sorted(names))
 
 
 def _declared_stop_grace(node: ast.expr) -> float | None:

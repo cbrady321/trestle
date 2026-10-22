@@ -18,7 +18,9 @@ def fsync_dir(path: Path) -> None:
         os.close(fd)
 
 
-def atomic_write(path: Path, data: bytes, *, stat_from: Path | None = None) -> None:
+def atomic_write(
+    path: Path, data: bytes, *, stat_from: Path | None = None, mode: int | None = None
+) -> None:
     """tmp → fsync file → rename → fsync dir (R-STORE-8).
 
     The temporary file is this call's own (a fresh name beside `path`, created exclusively), so
@@ -26,11 +28,14 @@ def atomic_write(path: Path, data: bytes, *, stat_from: Path | None = None) -> N
     rename wins. A failed write removes its temporary. The name keeps the `.tmp` suffix that
     recovery sweeps (`sweep_tmp_partial`), and the file is created with the mode an `open(..., "w")`
     gives (0o666 less the umask). `stat_from` copies that file's mode and times onto the
-    temporary before the rename, as `shutil.copy2` would."""
+    temporary before the rename, as `shutil.copy2` would. `mode` creates the temporary with
+    exactly that mode instead (a credential file's 0600), whatever the umask."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.{secrets.token_hex(8)}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666 if mode is None else mode)
     try:
+        if mode is not None:
+            os.fchmod(fd, mode)
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)
             fh.flush()

@@ -20,6 +20,7 @@ from trestle.server.admission import Admission
 from trestle.server.conductor import Conductor
 from trestle.server.config import ProfileConfig, load_config
 from trestle.server.control import ControlSurface
+from trestle.server.credentials import load_credentials
 from trestle.server.home import (
     Ownership,
     ServerLock,
@@ -121,6 +122,8 @@ def create_kernel(
         scheduler=scheduler,
         ownership=ownership,
         profile=config.profile,
+        # change 3: the identity tables, read once here like the profile; values at admission
+        credentials=load_credentials(trestle_home),
     )
 
     def complete(run_id: str) -> None:

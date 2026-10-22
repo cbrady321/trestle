@@ -92,6 +92,8 @@ class Context(Protocol):
         max_output_bytes: int = 1024 * 1024,
         credentials: Sequence[str] | None = None,
     ) -> ExecResult: ...
+    def credential_env(self, name: str) -> dict[str, str]: ...
+    def credential_file(self, name: str) -> Path: ...
 
 
 @overload
@@ -105,6 +107,7 @@ def trestle(
     summary_fields: Sequence[str] = (),
     packages: Sequence[str] = (),
     env_arg: str | None = None,
+    credentials: Sequence[str] = (),
     secrets: Collection[str] = (),
     repeatable: bool = False,
     stop_grace: float | None = None,
@@ -119,6 +122,7 @@ def trestle(  # noqa: UP047
     summary_fields: Sequence[str] = (),
     packages: Sequence[str] = (),
     env_arg: str | None = None,
+    credentials: Sequence[str] = (),
     secrets: Collection[str] = (),
     repeatable: bool = False,
     stop_grace: float | None = None,
@@ -126,9 +130,13 @@ def trestle(  # noqa: UP047
     """Mark a callable as a Trestle plugin entry point.
 
     Bare (`@trestle`) or call form (`@trestle(deadline=..., summary_fields=..., packages=...,
-    env_arg=..., secrets=..., repeatable=..., stop_grace=...)`). The metadata is read statically
-    from the source at publication (literals only), never from this call; at run time the call
-    form marks the callable exactly as the bare form does.
+    env_arg=..., credentials=..., secrets=..., repeatable=..., stop_grace=...)`). The metadata is
+    read statically from the source at publication (literals only), never from this call; at run
+    time the call form marks the callable exactly as the bare form does.
+
+    `credentials` names the identities the plugin uses (`ctx.credential_env`,
+    `ctx.credential_file`); the operator configures and grants each. `secrets` (secret
+    arguments, whose values the agent sends) is deprecated in favour of `credentials`.
     """
 
     def mark(target: F) -> F:

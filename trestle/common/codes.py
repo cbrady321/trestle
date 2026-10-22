@@ -24,6 +24,15 @@ ADMISSION_TTL_OUT_OF_RANGE = "admission.ttl_out_of_range"
 # v0.3.1 (Feature 3): `after` names a run (or a key whose runs) that does not exist; refused before
 # any run id.
 ADMISSION_AFTER_UNKNOWN = "admission.after_unknown"
+# Decision record change 3: the plugin declares an identity (`@trestle(credentials=[...])`) that
+# no `credentials.toml` table defines; refused before any run id.
+ADMISSION_CREDENTIAL_UNKNOWN = "admission.credential_unknown"
+# ... an identity whose grants do not cover this plugin at its current `source_sha256` and
+# `package_digests` (a republish that changed either loses the grant); refused before any run id.
+ADMISSION_CREDENTIAL_NOT_GRANTED = "admission.credential_not_granted"
+# ... a granted identity whose value the store cannot give (no stored value, the key or the store
+# unreadable); refused before any run id.
+ADMISSION_CREDENTIAL_UNAVAILABLE = "admission.credential_unavailable"
 NOT_IMPLEMENTED = "projection.not_implemented"
 INVALID_HANDLE = "projection.invalid_handle"
 NOT_OWNER = "projection.not_owner"

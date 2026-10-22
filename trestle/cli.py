@@ -143,6 +143,10 @@ def main(argv: list[str] | None = None) -> int:
                 help="What pip installs (default: where this trestle was installed from)",
             )
 
+    from trestle.server.credentials_cli import add_parser as add_credentials_parser
+
+    add_credentials_parser(sub)
+
     args = parser.parse_args(argv)
     if args.version:
         from trestle.common.build import build_version
@@ -179,6 +183,11 @@ def _dispatch(args: argparse.Namespace) -> int:
         )
     if args.command == "service":
         return _service_cli(args)
+    if args.command == "credentials":
+        from trestle.server import credentials_cli
+
+        home = Path(args.home).expanduser() if args.home else default_home()
+        return credentials_cli.run(args, home=home)
     if args.command == "init":
         trestle_home = Path(args.home) if args.home else default_home()
         return run_init(home=trestle_home, seed_echo=not args.no_seed, upgrade=args.upgrade)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
 import signal
 import subprocess
 import time
@@ -12,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from trestle.common import clock, codes, redact
+from trestle.common import clock, codes, credentials, redact
 from trestle.common.errtext import sanitize
 from trestle.common.fsutil import atomic_write, atomic_write_json
 from trestle.common.ids import generate_artifact_id
@@ -365,6 +366,8 @@ class Conductor:
         # nothing can write to the work directory now: what the plugin left there is scrubbed too,
         # so the run directory holds no declared secret anywhere (WR-EVID-8)
         redact.scrub_tree(work_dir(run_dir), secrets)
+        # change 3: the run's credential channel goes with the run, whatever the child managed
+        shutil.rmtree(credentials.channel_dir(run_dir), ignore_errors=True)
         child_limits = _read_ndjson(evidence_dir(run_dir) / "capture_limits.ndjson")
         limits_exceeded = _merge_limit_markers(wrapper_limits + child_limits + promotion_markers)
         if limits_exceeded:
