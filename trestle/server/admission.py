@@ -28,6 +28,7 @@ from trestle.common.types import (
     RequestOutcome,
     RunSpec,
 )
+from trestle.packs.provenance import pack_provenance
 from trestle.server import chain, lease
 from trestle.server import idempotency as keys
 from trestle.server import pool as pools
@@ -746,7 +747,12 @@ def write_admitted_run(
             timeout_s=math.ceil(deadline_s),
             deadline=deadline.isoformat(),
             # what publication recorded for the declared packages; the child checks it first
-            provenance={"packages": dict(declared.package_digests)},
+            provenance={
+                "packages": dict(declared.package_digests),
+                # P-1, P-20: the pack identity and its configuration files' digests, read by the
+                # host now (empty for a plugin outside a pack)
+                **pack_provenance(home, snap),
+            },
             plan=json.loads(plan.to_json()),
         )
         spec_dict = spec.to_dict()

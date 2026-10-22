@@ -63,7 +63,10 @@ _VIEW_WHEN: dict[str, dict[str, str]] = {
         "params": "",
     },
     "run_provenance": {
-        "use_when": "Snapshot id and hashes for one run.",
+        "use_when": (
+            "Snapshot id and hashes for one run; for a pack plugin also its pack and the "
+            "digests of the pack's configuration files."
+        ),
         "params": "run_id",
     },
     "run_artifacts": {

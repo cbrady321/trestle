@@ -163,13 +163,19 @@ class RunSpec:
 
 def _provenance(raw: object) -> dict[str, Any]:
     """`spec.json`'s `provenance`: the declared packages and the digests recorded for them at
-    publication (MC-18). A spec that predates it records none."""
+    publication (MC-18); for a pack plugin also `pack` (P-1) and `config` (P-20). A spec that
+    predates them records none."""
     packages = raw.get("packages") if isinstance(raw, dict) else None
-    return {
+    out: dict[str, Any] = {
         "packages": {str(k): str(v) for k, v in packages.items()}
         if isinstance(packages, dict)
         else {}
     }
+    if isinstance(raw, dict):
+        for key in ("pack", "config"):
+            if isinstance(raw.get(key), dict):
+                out[key] = raw[key]
+    return out
 
 
 @dataclass

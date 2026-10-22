@@ -583,7 +583,20 @@ def _run_provenance_row(record: RunRecord) -> dict[str, object]:
         "args_hash": record.args_hash,
         "source_sha256": record.source_sha256,
         "packages": _recorded_packages(record),
+        # P-1, P-20: the pack and its configuration digests, null for a plugin outside a pack
+        "pack": _recorded(record, "pack"),
+        "config": _recorded(record, "config"),
     }
+
+
+def _recorded(record: RunRecord, key: str) -> dict[str, object] | None:
+    try:
+        loaded = json.loads((evidence_dir(record.run_dir) / "spec.json").read_text("utf-8"))
+    except (OSError, ValueError):
+        return None
+    provenance = loaded.get("provenance") if isinstance(loaded, dict) else None
+    value = provenance.get(key) if isinstance(provenance, dict) else None
+    return value if isinstance(value, dict) else None
 
 
 def _recorded_packages(record: RunRecord) -> dict[str, str]:

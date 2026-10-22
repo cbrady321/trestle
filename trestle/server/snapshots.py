@@ -168,7 +168,7 @@ def materialize_snapshot(
     version: str = "0.1.0",
     summary_budget: int = 4096,
     timeout_s: int = 300,
-    pack: dict[str, str] | None = None,
+    pack: dict[str, object] | None = None,
 ) -> PluginSnapshot:
     # One read: the bytes hashed into the snapshot id are the bytes the snapshot keeps, whatever
     # happens to the source file meanwhile. The text is decoded as `read_text` would.

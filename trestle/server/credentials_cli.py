@@ -69,6 +69,8 @@ class Published:
     source_sha256: str
     package_digests: Mapping[str, str]
     origin: str
+    # the wrapper file the plugin is served from (P-7), for the operator to review
+    source_path: str = ""
 
 
 def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -130,6 +132,14 @@ def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
     )
     grant.add_argument("name")
     grant.add_argument("plugin")
+    grant.add_argument(
+        "--reviewed",
+        action="store_true",
+        help=(
+            "Grant a plugin an agent published (publish_plugin) once you have reviewed its "
+            "source: the grant pins the reviewed digests and drops on any change"
+        ),
+    )
     common(grant, restart=True)
 
     revoke = csub.add_parser("revoke", help="Remove a plugin's grant")
@@ -170,11 +180,18 @@ def published_plugins(home: Path) -> dict[str, Published]:
             source_sha256=snap.source_sha256,
             package_digests=dict(load_declared(snap).package_digests),
             origin=load_origin(snap),
+            source_path=str(registry.sources[name].path) if name in registry.sources else "",
         )
     return out
 
 
-def _pin(home: Path, plugin: str, published: dict[str, Published] | None = None) -> Grant:
+def _pin(
+    home: Path,
+    plugin: str,
+    published: dict[str, Published] | None = None,
+    *,
+    reviewed: bool = False,
+) -> Grant:
     from trestle.server.snapshots import ORIGIN_AGENT
 
     if plugin in cred.NEVER_GRANTED:
@@ -186,10 +203,13 @@ def _pin(home: Path, plugin: str, published: dict[str, Published] | None = None)
         raise CredentialsCliError(
             f"no plugin {plugin!r} is published on this home (check `trestle doctor`)"
         )
-    if found.origin == ORIGIN_AGENT:
+    if found.origin == ORIGIN_AGENT and not reviewed:
+        # P-12: never without an operator pin. The pin is to the digests reviewed now, and drops
+        # on any change, as every grant does.
         raise CredentialsCliError(
-            f"plugin {plugin!r} was published by an agent (publish_plugin) and is never granted "
-            "a credential; review it and save it into a watched folder as your own edit first"
+            f"plugin {plugin!r} was published by an agent (publish_plugin); review its source"
+            f"{f' at {found.source_path}' if found.source_path else ''} and grant it with "
+            f"`trestle credentials grant <name> {plugin} --reviewed`"
         )
     return Grant(
         plugin=plugin,
@@ -323,7 +343,7 @@ def _status(grant: Grant, published: Mapping[str, Published]) -> str:
 def cmd_grant(home: Path, args: argparse.Namespace, out: TextIO) -> bool:
     config = load_credentials(home)
     ident = _identity_or_fail(config, args.name)
-    grant = _pin(home, args.plugin)
+    grant = _pin(home, args.plugin, reviewed=args.reviewed)
     previous = ident.grant_for(args.plugin)
     if previous == grant:
         print(f"{args.name} is already granted to {args.plugin} as now published", file=out)

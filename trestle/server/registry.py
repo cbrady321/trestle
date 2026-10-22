@@ -699,9 +699,13 @@ def library_times(root: Path) -> list[tuple[str, int, int]]:
     return out
 
 
-def _pack_stamp(source: PluginSource) -> dict[str, str] | None:
-    """P-1: the pack identity a snapshot's manifest records."""
+def _pack_stamp(source: PluginSource) -> dict[str, object] | None:
+    """P-1: the pack identity a snapshot's manifest records, with the variables naming the
+    pack's configuration files (P-20), whose digests admission records."""
     if source.tier != TIER_PACK or source.pack is None:
         return None
     pack = source.pack
-    return {"name": pack.name, "version": pack.version, "owner": pack.owner}
+    stamp: dict[str, object] = {"name": pack.name, "version": pack.version, "owner": pack.owner}
+    if pack.config_files:
+        stamp["config_files"] = list(pack.config_files)
+    return stamp

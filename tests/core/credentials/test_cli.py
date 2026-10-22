@@ -151,11 +151,29 @@ def test_grant_refuses_an_agent_published_plugin(home: Path, credentials_cli: Cl
     assert code == 0
     code, _, err = credentials_cli(home, "grant", "demo-token", "cred_agent")
     assert code == 1 and "published by an agent" in err
+    # P-12: the refusal names the source to review and the flag that grants it
+    assert str(home / "plugins" / "runtime" / "cred_agent.py") in err and "--reviewed" in err
     # an operator's own edit of the file makes it the operator's publication
-    path = home / "plugins" / "cred_agent.py"
+    path = home / "plugins" / "runtime" / "cred_agent.py"
     path.write_text(path.read_text(encoding="utf-8") + "\n# reviewed\n", encoding="utf-8")
     code, out, err = credentials_cli(home, "grant", "demo-token", "cred_agent")
     assert code == 0, err
+
+
+def test_grant_pins_a_reviewed_agent_publish(home: Path, credentials_cli: Cli) -> None:
+    """P-12: an operator may grant a reviewed agent publish; the pin drops on any change."""
+    kernel = create_kernel(home=home, plugin_dirs=[home / "plugins"], skip_recovery=True)
+    assert isinstance(kernel.control.publish_plugin(AGENT_PLUGIN), PublishView)
+    code, _, err = credentials_cli(home, "add", "demo-token", "--env", "DEMO_TOKEN", stdin=VALUE)
+    assert code == 0, err
+    code, out, err = credentials_cli(home, "grant", "demo-token", "cred_agent", "--reviewed")
+    assert code == 0, err
+    code, out, _ = credentials_cli(home, "list")
+    assert "grant cred_agent: current" in out
+    changed = AGENT_PLUGIN + "\n# changed\n"
+    assert isinstance(kernel.control.publish_plugin(changed), PublishView)
+    code, out, _ = credentials_cli(home, "list")
+    assert "grant cred_agent: stale" in out
 
 
 def test_doctor_reports_identities_and_stale_grants(home: Path, credentials_cli: Cli) -> None:
