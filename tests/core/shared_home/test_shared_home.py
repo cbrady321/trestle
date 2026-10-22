@@ -446,7 +446,8 @@ def test_concurrent_publish_answers_registry_conflict(
     real_refresh = registry.refresh
 
     def other_server_wins() -> None:
-        (plugins / "raced.py").write_text(theirs, encoding="utf-8")  # written after ours
+        # the other server's publish, written after ours, to the same runtime folder
+        (home / "plugins" / "runtime" / "raced.py").write_text(theirs, encoding="utf-8")
         real_refresh()
 
     monkeypatch.setattr(registry, "refresh", other_server_wins)
