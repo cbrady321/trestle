@@ -324,10 +324,10 @@ and what counts as healthy.
 **Why not now.**
 
 1. **Apps would die with the run.** The point of such a launcher is to leave an app running for
-   the next test. Trestle stops every process a run started when the run ends (K-8), so an app
-   started by `project_up` would be killed as soon as the plugin returned. Keeping it alive needs
-   a "durable" process lifetime for plain plugins, which core deliberately does not offer yet
-   (review item R7, deferred).
+   the next test. Trestle stops every attributable process a run started when the run ends
+   (K-8), so an app started by `project_up` would be killed as soon as the plugin returned.
+   Keeping it alive needs a "durable" process lifetime for plain plugins, which core
+   deliberately does not offer yet (review item R7, deferred).
 2. **Its process handling is unsafe as written.** It kills whatever is listening on a known port,
    and signals recorded process ids that may since belong to an unrelated program. It must be
    rebuilt on core's process-identity checks first.
