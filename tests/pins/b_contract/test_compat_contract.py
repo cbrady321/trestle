@@ -40,6 +40,8 @@ def test_context_surface_preserved() -> None:
         "event",
         "exec",
         "remaining",
+        "credential_env",
+        "credential_file",
     }
     assert current["decorator"]["bare"] is True
 

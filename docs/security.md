@@ -99,8 +99,8 @@ to plugins with `trestle credentials` ([`install.md`](install.md#credentials)).
   of the store taken alone.
 - **What this is not.** A granted plugin is trusted code running as you, and can do with the value
   whatever you could. The agent's own shell also runs as you: "agents cannot see the store" holds
-  inside Trestle, and outside it only when the host sandboxes the agent's shell or the store needs
-  an unlock the agent cannot perform. The Keychain item is created without a `-T` list of trusted
+  inside Trestle (which is not a sandbox), and outside it only when the host confines the agent's
+  shell or the store needs an unlock the agent cannot perform. The Keychain item is created without a `-T` list of trusted
   applications, so any process of yours can read it through `/usr/bin/security` without a prompt:
   the same exposure as the key file. The Keychain keeps the key out of the home and its backups,
   not out of reach of your own processes; the boundary is your OS user, as the decision record's

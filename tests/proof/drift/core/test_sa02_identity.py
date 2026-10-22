@@ -27,7 +27,13 @@ INGREDIENTS = {
     "runtime_version",
 }
 # The only modules that may read a manifest's declared block or entry name.
-MANIFEST_READERS = {"trestle/common/types.py", "trestle/server/snapshots.py"}
+MANIFEST_READERS = {
+    "trestle/common/types.py",
+    "trestle/server/snapshots.py",
+    # change 3: a credentials.toml grant pins `package_digests` of its own (read from that file,
+    # never from a manifest; the current digests come through `load_declared`)
+    "trestle/server/credentials.py",
+}
 
 
 @pytest.mark.parametrize("sa", ["SA-02"])

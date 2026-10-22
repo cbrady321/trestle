@@ -1764,3 +1764,30 @@ due_checkpoint = "live-run visibility T1"
 direction = "additive"
 items = [{ path = "$.fields", value = ["progress", "dict[str, Any] | None"] }]
 authorized_by = "2026-10-19 beta proposal T1 (latest progress on the run view of a running run)"
+
+# Credentials change 3 (docs/decisions/service-and-credentials.md): Context.credential_env and
+# Context.credential_file, and the three credential refusals before a run id. Additive.
+
+[[entry]]
+id = "ADD-context-credential-shapes"
+facet = "context_surface"
+row_or_k = "none"
+docs = ["docs/plugins.md"]
+due_checkpoint = "credentials change 3"
+direction = "additive"
+keys = ["$.context.methods.credential_env", "$.context.methods.credential_file"]
+authorized_by = "docs/decisions/service-and-credentials.md change 3 (the first Context shapes)"
+
+[[entry]]
+id = "ADD-code-admission-credentials"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = [
+  "admission.credential_unknown",
+  "admission.credential_not_granted",
+  "admission.credential_unavailable",
+]
+docs = ["docs/plugins.md", "docs/install.md"]
+due_checkpoint = "credentials change 3"
+direction = "additive"
+authorized_by = "docs/decisions/service-and-credentials.md change 3 (admission refusals; As implemented adds credential_unavailable)"
