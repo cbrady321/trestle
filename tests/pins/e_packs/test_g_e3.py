@@ -1,8 +1,8 @@
-"""G-E3: (a) the legacy pytest runner counts setup, teardown and collection errors (BFD-46),
-flipped by L.NW-1.5 (it used to report errors == 0 for a setup error); (b) `integration_pipeline`
-stops its stack exactly once on every path (K-15), flipped by L.NW-1.2 (it used to tear down
-twice when `up` fails and never on success). Both run in a subprocess driver against a
-lane-local fake ComposeBackend (never an engine)."""
+"""G-E3: (a) `pytest_run` counts setup, teardown and collection errors (BFD-46), flipped by
+L.NW-1.5 (it used to report errors == 0 for a setup error); (b) `stack_pipeline` (was
+`integration_pipeline`) stops its stack exactly once on every path (K-15), flipped by L.NW-1.2 (it
+used to tear down twice when `up` fails and never on success). Both run in a subprocess driver;
+the pipeline's docker is the fake docker CLI (never an engine)."""
 
 from __future__ import annotations
 
@@ -21,11 +21,17 @@ from tests.proof.markers import target_check
 ROOT = Path(__file__).resolve().parents[3]
 DRIVER = Path(__file__).resolve().parent / "driver_g_e3.py"
 
+# K-3/K-4: the pack plugins take and return typed records (skipped if they are declined).
+pytestmark = pytest.mark.typed_records
+
 
 def _drive(mode: str) -> dict[str, Any]:
     env = {
         **os.environ,
-        "PYTHONPATH": os.pathsep.join([str(ROOT), str(ROOT / "packages" / "trestle-packs")]),
+        "PYTHONPATH": os.pathsep.join(
+            [str(ROOT), str(ROOT / "packages" / "trestle-packs")]
+            + [str(pack) for pack in sorted((ROOT / "packages").glob("trestle-pack-*"))]
+        ),
     }
     env.pop("TRESTLE_PROOF_GATE", None)
     proc = subprocess.run(
@@ -62,9 +68,9 @@ def test_target_setup_error_counted_not_passed() -> None:
 )
 def test_target_pipeline_down_exactly_once() -> None:
     failed = _drive("pipeline_fail")
-    assert failed["raised"]
+    assert (failed["ok"], failed["failed_stage"]) == (False, "docker")
     ok = _drive("pipeline_ok")
-    assert ok["raised"] == ""
+    assert (ok["ok"], ok["failed_stage"]) == (True, None)
     target_check(
         failed["down"] == 1 and ok["down"] == 1,
         "G-E3",

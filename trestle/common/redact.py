@@ -1,21 +1,12 @@
-"""The one write-path scrub for declared secrets (MC-CORE-13; WR-EVID-8).
+"""The one write-path scrub for a run's credential values (MC-CORE-13; WR-EVID-8).
 
-A plugin declares its secret arguments by name (`@trestle(secrets=[...])`, MC-18). Two things
-follow. Admission writes `spec.json` with those arguments redacted (`redact_args`) and keeps the
-real values in memory only, on the run's `WorkOrder`; the wrapper and the child receive them
-through one environment variable that the child removes before the plugin is called
-(`encode_env`, `take_env`). And every write path applies the same scrub to what it is about to
-persist (`scrub`, `scrub_json`), so a secret the plugin logs, prints, raises, returns or attaches
-never reaches disk as its value.
+A run that was given credential values (`trestle.common.credentials`) holds them in memory only.
+Every write path applies the same scrub to what it is about to persist (`scrub`, `scrub_json`,
+`Scrubber`), so a value the plugin logs, prints, raises, returns or attaches never reaches disk,
+or any answer built from what is on disk, as its value: it reads `REDACTED`.
 
-Two vocabularies, both fixed here:
-
-- a *declared name* is what the decorator lists: an argument name, or a dotted path into a dict
-  argument (`"auth.password"`). An exact key that itself contains a dot wins over the path.
-- a *secret value* is a string found in the real arguments at a declared name (every string leaf,
-  when the value is a list or a dict). `scrub` and `holds_secret` take a set of these strings.
-  Only strings are scrubbed: a number or a boolean has no stable text form to look for, and an
-  empty string would match everywhere.
+`scrub` and `holds_secret` take a set of secret strings. Only non-empty strings are scrubbed: an
+empty string would match everywhere.
 
 This module imports nothing of the plugin, the workflow or the packs.
 """
@@ -25,7 +16,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
-from collections.abc import Iterable, Mapping, MutableMapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, overload
@@ -37,143 +28,13 @@ from trestle.common.fsutil import atomic_write
 # was there, never what it was).
 REDACTED = "<redacted>"
 # What stands in for a file that held a secret and cannot be scrubbed as text.
-REFUSED_BINARY = b"[refused: the file held a declared secret]"
+REFUSED_BINARY = b"[refused: the file held a credential value]"
 # The limit marker a refused binary artifact leaves (`limit_exceeded`, stream "artifacts").
 BINARY_LIMIT = "secret_in_binary"
-# The one environment variable that carries the real values from the conductor to the child.
-SECRETS_ENV = "TRESTLE_RUN_SECRETS"
 # A file larger than this is never read whole for a text rewrite; it is streamed for a match and
 # treated as binary (a secret in it is refused, not scrubbed).
 TEXT_SCRUB_MAX = 64 * 1024 * 1024
 _CHUNK = 1024 * 1024
-
-
-# --- declared names -> values in the arguments -------------------------------------------------
-
-
-def _resolve(args: Mapping[str, Any], name: str) -> tuple[str, ...] | None:
-    """The key path in `args` a declared name points at, or None when the arguments do not carry
-    it (an optional secret the caller left at its default)."""
-    if name in args:
-        return (name,)
-    parts = tuple(name.split("."))
-    if len(parts) < 2:
-        return None
-    node: Any = args
-    for part in parts:
-        if not isinstance(node, dict) or part not in node:
-            return None
-        node = node[part]
-    return parts
-
-
-def _get(args: Mapping[str, Any], path: tuple[str, ...]) -> Any:
-    node: Any = args
-    for key in path:
-        node = node[key]
-    return node
-
-
-def _set(args: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
-    node = args
-    for key in path[:-1]:
-        node = node[key]
-    node[path[-1]] = value
-
-
-def _copy(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {k: _copy(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_copy(v) for v in value]
-    return value
-
-
-def redact_args(args: Mapping[str, Any], declared_secrets: Iterable[str]) -> dict[str, Any]:
-    """`args` as `spec.json` records them: a copy, each declared secret's value replaced by
-    `REDACTED`. A declared name the arguments do not carry changes nothing."""
-    out = _copy(dict(args))
-    for name in sorted(declared_secrets):
-        path = _resolve(out, name)
-        if path is not None:
-            _set(out, path, REDACTED)
-    return out  # type: ignore[no-any-return]
-
-
-def secret_values(args: Mapping[str, Any], declared_secrets: Iterable[str]) -> dict[str, Any]:
-    """The real values at the declared names, by declared name (only those the arguments carry).
-    This is what a `WorkOrder` holds in memory."""
-    found: dict[str, Any] = {}
-    for name in sorted(declared_secrets):
-        path = _resolve(args, name)
-        if path is not None:
-            found[name] = _copy(_get(args, path))
-    return found
-
-
-def restore_args(args: Mapping[str, Any], values: Mapping[str, Any]) -> dict[str, Any]:
-    """`args` (as `spec.json` holds them) with the real values put back at their declared
-    names. The child's in-memory arguments; never written."""
-    out = _copy(dict(args))
-    for name in sorted(values, key=lambda n: (n.count("."), n)):
-        path = _resolve(out, name)
-        if path is not None:
-            _set(out, path, _copy(values[name]))
-    return out  # type: ignore[no-any-return]
-
-
-def secret_strings(values: Mapping[str, Any]) -> frozenset[str]:
-    """Every non-empty string leaf of the secret values: the set `scrub` looks for."""
-    found: set[str] = set()
-
-    def walk(node: Any) -> None:
-        if isinstance(node, str):
-            if node:
-                found.add(node)
-        elif isinstance(node, dict):
-            for item in node.values():
-                walk(item)
-        elif isinstance(node, (list, tuple)):
-            for item in node:
-                walk(item)
-
-    for value in values.values():
-        walk(value)
-    return frozenset(found)
-
-
-# --- the environment hand-over ------------------------------------------------------------------
-
-
-def encode_env(values: Mapping[str, Any]) -> str:
-    return json.dumps(dict(values), sort_keys=True, separators=(",", ":"))
-
-
-def _decode_env(raw: str | None) -> dict[str, Any]:
-    if not raw:
-        return {}
-    try:
-        loaded = json.loads(raw)
-    except ValueError:
-        return {}
-    return loaded if isinstance(loaded, dict) else {}
-
-
-def env_values(environ: Mapping[str, str]) -> dict[str, Any]:
-    """The secret values an environment carries (empty when it carries none). Reads only."""
-    return _decode_env(environ.get(SECRETS_ENV))
-
-
-def take_env(environ: MutableMapping[str, str]) -> dict[str, Any]:
-    """The secret values an environment carries, and the variable removed from it, so a process
-    the plugin starts afterwards never inherits them."""
-    return _decode_env(environ.pop(SECRETS_ENV, None))
-
-
-def env_strings(environ: Mapping[str, str] | None = None) -> frozenset[str]:
-    """The scrub set of the running process's environment (the wrapper reads this: it never
-    touches the plugin's arguments, only the console the plugin wrote)."""
-    return secret_strings(env_values(os.environ if environ is None else environ))
 
 
 # --- the scrub ---------------------------------------------------------------------------------

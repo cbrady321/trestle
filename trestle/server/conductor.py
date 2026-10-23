@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
 import signal
 import subprocess
 import time
@@ -12,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from trestle.common import clock, codes, redact
+from trestle.common import clock, codes, credentials, redact
 from trestle.common.errtext import sanitize
 from trestle.common.fsutil import atomic_write, atomic_write_json
 from trestle.common.ids import generate_artifact_id
@@ -203,20 +204,27 @@ class Conductor:
         wrapper_cmd = python_argv("-m", "trestle.wrapper.main", "--run-dir", str(run_dir))
         env = build_child_env(home=self.home)
         env.update(load_config(self.home).plugin_env)  # G1: the operator's [plugins.env]
-        env.pop(redact.SECRETS_ENV, None)  # only this run's own values, never an inherited variable
-        if order.secrets:  # MC-CORE-13: the real values go to the wrapper and child by environment
-            env[redact.SECRETS_ENV] = redact.encode_env(order.secrets)
-        secrets = redact.secret_strings(order.secrets)
+        # MC-CORE-13, change 3: the run's credential values go to the wrapper over an inherited
+        # pipe; its environment carries only the pipe's descriptor number, never a value
+        handover = credentials.Handover(order.credentials)
+        pass_fds = handover.prepare(env)
+        secrets = credentials.scrub_set(order.credentials)
         started = time.monotonic()
-        proc = subprocess.Popen(
-            wrapper_cmd,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env,
-            start_new_session=True,
-        )
+        try:
+            proc = subprocess.Popen(
+                wrapper_cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env,
+                start_new_session=True,
+                pass_fds=pass_fds,
+            )
+        except BaseException:
+            handover.failed()
+            raise
+        handover.started()
         # B2-C16: the leader's identity row goes down after spawn and before the first liveness
         # poll; the wrapper does not wait on it. Every identity row goes to the sidecar, the
         # leader's to the ledger too (v0.3.1 Problem C).
@@ -365,6 +373,8 @@ class Conductor:
         # nothing can write to the work directory now: what the plugin left there is scrubbed too,
         # so the run directory holds no declared secret anywhere (WR-EVID-8)
         redact.scrub_tree(work_dir(run_dir), secrets)
+        # change 3: the run's credential channel goes with the run, whatever the child managed
+        shutil.rmtree(credentials.channel_dir(run_dir), ignore_errors=True)
         child_limits = _read_ndjson(evidence_dir(run_dir) / "capture_limits.ndjson")
         limits_exceeded = _merge_limit_markers(wrapper_limits + child_limits + promotion_markers)
         if limits_exceeded:

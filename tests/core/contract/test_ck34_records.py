@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from types import ModuleType
-from typing import Any
 
 import pytest
 
@@ -24,6 +23,9 @@ from trestle.child.serialize import write_result
 from trestle.common.types import RunView
 from trestle.plugin import _codec
 from trestle.server.ledger import run_dir_for
+
+# K-3/K-4: these plugins take and return typed records (skipped if they are declined).
+pytestmark = pytest.mark.typed_records
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -210,43 +212,9 @@ def test_dataclass_return_switch_cleared_is_refused(
 # ---------------------------------------------------------------------------
 
 
-class _FakeRunner:
-    """Stands in for the docker StackRunner: records that `up` ran, touches no engine."""
-
-    ups: list[object] = []
-
-    def __init__(self, ctx: object) -> None:
-        pass
-
-    def up(self, stack: object, *, cwd: Path) -> Any:
-        _FakeRunner.ups.append(stack)
-        return _Result({"up": "ok"})
-
-    def down(self, stack: object, *, cwd: Path) -> None:
-        pass
-
-
-class _Ctx:
-    def __init__(self, work: Path) -> None:
-        self.outputs = work
-
-    def log(self, message: str) -> None:
-        pass
-
-
-class _Result:
-    def __init__(self, payload: dict[str, Any], exit_code: int = 0) -> None:
-        self.payload = payload
-        self.exit_code = exit_code
-        self.report_path = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return self.payload
-
-
 def _load_pipeline() -> ModuleType:
-    path = REPO / "examples" / "packs" / "integration_pipeline.py"
-    spec = importlib.util.spec_from_file_location("integration_pipeline_under_test", path)
+    path = REPO / "packages" / "trestle-pack-stack" / "plugins" / "stack_pipeline.py"
+    spec = importlib.util.spec_from_file_location("stack_pipeline_under_test", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -265,34 +233,37 @@ def _k_block(text: str, k: str) -> str:
 def test_pipeline_receives_typed_stack_spec(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from trestle_pack_docker.fake_cli import FakeDocker, write_fake_docker
+
+    from trestle.plugin.testing import FakeContext
+
     module = _load_pipeline()
-    monkeypatch.setattr(module, "StackRunner", _FakeRunner)
-    monkeypatch.setattr(module, "run_pytest", lambda spec, report_dir: _Result({"ok": True}))
-    seen: list[dict[str, Any]] = []
-    real_from_dict = module.StackSpec.from_dict
-    monkeypatch.setattr(
-        module.StackSpec,
-        "from_dict",
-        classmethod(lambda cls, raw: (seen.append(raw), real_from_dict(raw))[1]),
+    fake = FakeDocker(tmp_path / "docker.json")
+    monkeypatch.setenv(
+        "TRESTLE_DOCKER_PATH", str(write_fake_docker(tmp_path / "bin", fake.state_path))
     )
+    work = tmp_path / "work"
+    (work / "tests").mkdir(parents=True)
+    (work / "docker-compose.yml").write_text("services:\n  web:\n    image: x\n", encoding="utf-8")
+    (work / "tests" / "test_ok.py").write_text("def test_ok():\n    pass\n", encoding="utf-8")
     args = {
         "stack_spec": {
             "project": "p",
             "waves": [{"name": "app", "services": ["web"], "wait": "started", "timeout_s": 60}],
             "probes": {"db": {"kind": "command", "command": ["true"]}},
         },
-        "workdir": str(tmp_path),
+        "workdir": str(work),
+        "python": sys.executable,
     }
-    bound = _bind_args(module.integration_pipeline, args)
+    bound = _bind_args(module.stack_pipeline, args)
     assert isinstance(bound["stack_spec"], module.PipelineStack)
     assert isinstance(bound["stack_spec"].waves[0], module.PipelineWave)
     assert isinstance(bound["stack_spec"].probes["db"], module.PipelineProbe)
 
-    result = module.integration_pipeline(_Ctx(tmp_path), **bound)
-    assert result["ok"] is True
-    assert len(_FakeRunner.ups) >= 1
-    (raw,) = seen  # the plugin turned the typed record back into the spec it hands the runner
-    assert raw["project"] == "p" and raw["waves"][0]["services"] == ["web"]
+    result = module.stack_pipeline(FakeContext(tmp_path / "ctx"), **bound)
+    assert result.ok is True
+    # the plugin built its docker commands from the typed record
+    assert "up --detach web" in fake.calls
 
     # K-3 / K-4: one delimited block each in docs/plugins.md (MC-05)
     plugins = (REPO / "docs" / "plugins.md").read_text(encoding="utf-8")
@@ -302,7 +273,9 @@ def test_pipeline_receives_typed_stack_spec(
     for needle in ("dataclass", "JSON", "execution.result_unencodable"):
         assert needle in k4, needle
     # the workaround the typed arrival replaces is gone
-    source = (REPO / "examples" / "packs" / "integration_pipeline.py").read_text(encoding="utf-8")
+    source = (REPO / "packages" / "trestle-pack-stack" / "plugins" / "stack_pipeline.py").read_text(
+        encoding="utf-8"
+    )
     assert "isinstance(stack_spec, dict)" not in source
 
 

@@ -20,7 +20,10 @@ A first run checks out the release, creates `~/.trestle-venv`, installs Trestle 
 the home and installs and starts the service. Run again after a new release: it stops the service
 (draining), checks out the release and runs `trestle service upgrade`. It refuses while a run is
 live unless given `--drain`, and refuses a checkout with uncommitted changes. `--no-packs` skips
-the packs; `--venv DIR` picks another venv. The steps it runs are below.
+the packs; `--venv DIR` picks another venv. Each run also links `trestle` into `~/.local/bin`
+(`--bin-dir DIR` picks another, `--no-link` skips it) so the current user's shells find it; the
+link points into the venv, so upgrades keep it current, and it never replaces a `trestle` it did
+not link. If that directory is not on `PATH` it prints the line to add. The steps it runs are below.
 
 By hand, from the Trestle checkout:
 
@@ -29,6 +32,7 @@ python3 -m venv ~/.trestle-venv
 ~/.trestle-venv/bin/pip install -e ".[packs]"    # packs optional: Docker / pytest / migration plugins
 ~/.trestle-venv/bin/trestle init                 # creates ~/.trestle, seeds echo.py, writes agent.token
 ~/.trestle-venv/bin/trestle service install      # writes and loads the unit; the service starts
+ln -sfn ~/.trestle-venv/bin/trestle ~/.local/bin/trestle   # `trestle` on PATH (~/.local/bin must be on it)
 ```
 
 Run `trestle service install` from the venv you want the service to run: the unit names that
@@ -75,9 +79,9 @@ What `install` writes, for the current user only:
   Every plugin run gets these variables over the service's own environment. Only `config.toml`
   sets them, never a request; the table is read at each run's start, so an edit applies to the
   next run without a restart. Values are strings; a malformed table, or one that sets
-  `TRESTLE_HOME` or `TRESTLE_RUN_SECRETS`, stops the server from loading its config. Put no
-  secret here: a value in this table is not scrubbed from a run's output (declare secrets with
-  `@trestle(secrets=...)`).
+  `TRESTLE_HOME` or `TRESTLE_RUN_SECRETS_FD`, stops the server from loading its config. Put no
+  secret here: a value in this table is not scrubbed from a run's output (store a secret with
+  `trestle credentials`, see [Credentials](#credentials)).
 - It starts at login (`RunAtLoad`, `WantedBy=default.target`) and is restarted after a crash
   (`KeepAlive = {SuccessfulExit = false}`, `Restart=on-failure`). A clean exit is not restarted:
   that is how a drained stop stays stopped.
@@ -196,12 +200,27 @@ The service runs with no `--plugin-dir`. Its watched folders come from `$TRESTLE
 
 ```toml
 [plugins]
-paths = ["~/.trestle/plugins", "/ABS/PATH/TO/trestle/examples/packs", "/ABS/PATH/TO/project/tools"]
+paths = ["~/.trestle/plugins", "/ABS/PATH/TO/project/tools"]
 ```
 
 `config.toml` is read once at start: `trestle service restart` after changing it (the
-`[plugins.env]` table alone is read again at each run's start). A pack's wrappers are installed
-this way too: see [`packs.md`](packs.md#install).
+`[plugins.env]` table alone is read again at each run's start). Packs are not listed here:
+`trestle pack install <name>` installs one, with no restart (see [`packs.md`](packs.md#install)).
+
+**The `exec` plugin.** `trestle init` seeds `exec.py` beside `echo.py`: agents run one-off
+commands through it (`run(plugin="exec", args={"argv": [...], "cwd": "<abs>"})`) instead of their
+own shell. It runs only in directories you list, and until you list one it answers `blocked`:
+
+```toml
+[plugins.env]
+TRESTLE_EXEC_ROOTS = "/Users/me/src/app:/Users/me/src/lib"   # absolute, joined by ':'
+```
+
+On an existing home, `trestle init` adds `exec.py` (it seeds only missing files; `service upgrade`
+never adds it). The off switch is leaving `TRESTLE_EXEC_ROOTS` unset (and, under the restricted
+profile, not listing `exec`), not deleting the file: `trestle init` puts a deleted seed file back.
+Keep secrets out of `[plugins.env]`: an agent can run `env` through `exec`. What listing `exec`
+gives agents: [`security.md`](security.md#the-exec-plugin).
 
 ## 4. Start, stop, restart
 
@@ -221,7 +240,7 @@ in one line.
 `scripts/update.sh` fetches the newest release from GitHub and runs that release's own
 `scripts/install.sh`, so a release can change how it is installed. It takes `--release vX.Y.Z`,
 `--dir DIR` (the checkout; cloned there when missing, default `~/trestle` outside a checkout) and
-passes `--drain`, `--no-packs` and `--venv` through. `scripts/install.sh` alone does the same from
+passes `--drain`, `--no-packs`, `--venv`, `--bin-dir` and `--no-link` through. `scripts/install.sh` alone does the same from
 the checkout as it is. By hand:
 
 ```bash
@@ -243,6 +262,54 @@ shows `(stale: restart or upgrade)`.
 trestle service uninstall   # stop (draining), unload, delete the unit; the home stays
 ```
 
+## Credentials
+
+A plugin that needs a token declares an identity by name (`@trestle(credentials=["gh"])`, see
+[`plugins.md`](plugins.md#credentials)). You, the operator, give the identity its value and say
+which plugins may use it. No agent ever sees the value, and nothing an agent sends can add an
+identity or widen a grant.
+
+```bash
+# store the value: typed at a hidden prompt, or piped in (never a command-line argument)
+trestle credentials add gh --env GH_TOKEN
+op read "op://ci/github/token" | trestle credentials add gh --env GH_TOKEN
+
+trestle credentials grant gh release     # let the plugin `release`, as published now, use it
+trestle credentials list                 # identities, env names, each grant's status; no values
+trestle service restart                  # identities and grants are read at start
+
+trestle credentials add gh --replace     # rotate the value: applies to the next run, no restart
+trestle credentials revoke gh release    # take the grant away (restart)
+trestle credentials remove gh            # delete the identity and its stored value (restart)
+```
+
+- **Where things live.** The identities and grants are in `$TRESTLE_HOME/credentials.toml`
+  (`0600`), which the commands write; read it, but change it through them. It holds no value. The
+  values are in one encrypted file, `$TRESTLE_HOME/credentials/store.enc` (`0600`, directory
+  `0700`).
+- **The key.** On macOS the store's key is a generic password in your login Keychain (service
+  `trestle-credentials`, account the home's path), created by the first `add`. Elsewhere it is
+  `$TRESTLE_HOME/credentials/store.key` (`0600`), which is weaker: anything that can read your home
+  as you can read the key and the store together, so the encryption only protects a copy of
+  `store.enc` taken on its own. `add --key-provider file` picks the key file on macOS too; the
+  choice is made by the first `add` and kept.
+- **A grant is pinned to the plugin's code**: its `source_sha256` and its declared packages'
+  digests as published when you ran `grant`. Republish the plugin with a change to either and the
+  grant goes stale (`list` and `trestle doctor` say so, and its runs are refused
+  `admission.credential_not_granted`) until you run `grant` again. A plugin an agent published
+  with `publish_plugin` is granted only after you review it: `grant NAME PLUGIN --reviewed` pins
+  the reviewed digests (P-12), and any republish drops the grant.
+- **When a change applies.** `credentials.toml` is read once at start, like `config.toml`: every
+  command that changes an identity or a grant says so and names `trestle service restart`, or
+  restarts for you with `--restart`. A value rotated with `add --replace` applies to the next run
+  without a restart, because the service reads values from the store at each admission.
+- `trestle doctor` shows the identities, each grant's status and whether the store and its key
+  can be read.
+- Only `kind = "encrypted_file"` exists in this build. The other kinds in the
+  [decision record](decisions/service-and-credentials.md) (Keychain items, 1Password, AWS roles,
+  GitHub Apps, a tool's own login) come later; a table naming one stops the service from starting
+  with a message saying so.
+
 ## The home
 
 The home (`TRESTLE_HOME`, default `~/.trestle`) must be on a local file system: every entry point
@@ -253,7 +320,9 @@ upgrade` runs for you.
 `trestle doctor` reports the home's health, the live servers and the live runs by owner, and, when
 an admission lock is stuck, who holds it. `trestle recover` reaps runs whose server is gone and runs
 the retention sweep. Idempotency keys live in `home/keys/`; `trestle doctor --rebuild-keys` repairs
-them.
+them. Each serving process keeps `servers/<server_id>.lock` and, while any of the MCP sessions it
+opened has ended with a live run naming it, `servers/<server_id>.sessions.json` (ended session ids
+only; see [`security.md`](security.md#sessions)).
 
 <!-- K-14 -->
 **Type checking.** `mypy` runs at zero errors and is gated in CI by its own `typecheck` job. The gate needs the workflow packs installed (`pip install -e ".[dev,packs]"`): `trestle_packs` ships a `py.typed` marker so `import trestle_packs` type-checks, and with `.[dev]` alone the package is absent and `mypy` reports `import-not-found`. Run it locally the same way: `pip install -e ".[dev,packs]" && mypy`.
@@ -273,6 +342,11 @@ them.
 | `a v0.3.0 home` | `trestle service upgrade`, or `trestle init --upgrade` with the service stopped |
 | `admission.home_busy` | Another process held the home's admission lock over 2 s; retry, and see `trestle doctor` |
 | `admission.after_unknown` | `run(after=...)` names a run or key no run used |
+| `admission.credential_unknown` | A plugin declares an identity no `trestle credentials add` created |
+| `admission.credential_not_granted` | `trestle credentials grant <name> <plugin>`, then `trestle service restart` (the plugin is new to the identity, or was republished) |
+| `admission.credential_unavailable` | The store or its key could not be read, or the identity has no value: `trestle doctor` |
+| An agent's run outlived its session and holds an environment | `trestle cancel <run_id>`; `trestle doctor` lists `session_ended_runs` |
+| `exec` answers `blocked`: `exec_roots_unset` | Set `TRESTLE_EXEC_ROOTS` under `[plugins.env]` in `config.toml` (absolute paths joined by `:`) |
 | `admission.ttl_out_of_range` | `idempotency_ttl_s` is negative, not whole seconds or above `[keys] max_ttl_s` in `config.toml` (default 604800) |
 
 ## Next

@@ -1,6 +1,6 @@
 """L.CK-14.1: the zero-error mypy gate (K-14). The gate is the `typecheck` CI job's `mypy`
 command; it must pass on HEAD, fail on a planted error, install the packs before it runs, and
-`_packs_hint` keeps both of its messages."""
+`_packs_hint` lists the bundled packs not yet installed."""
 
 from __future__ import annotations
 
@@ -95,16 +95,21 @@ def test_typecheck_job_installs_packs() -> None:
     assert not installs_packs_before_mypy(_typecheck_job(installs_after))
 
 
-def test_init_packs_hint_both_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    import trestle_packs  # noqa: F401  (present in the tests' environment)
+def test_init_packs_hint_both_branches(tmp_path: Path) -> None:
+    from trestle.packs.bundled import available_bundled
+    from trestle.packs.lock import LockedPack, write_lock
 
-    assert init_cmd._packs_hint() == (
-        "workflow packs: add examples/packs to [plugins] paths in config.toml (see docs/packs.md)"
+    bundled = sorted(available_bundled())
+    assert {"docker", "migrate", "pytest", "stack"} <= set(bundled)
+    assert init_cmd._packs_hint(tmp_path) == (
+        f"bundled packs: {', '.join(bundled)}; install with: trestle pack install <name> "
+        "(stack installs docker, pytest and migrate too; see docs/packs.md)"
     )
-    monkeypatch.setitem(sys.modules, "trestle_packs", None)  # `import trestle_packs` -> ImportError
-    assert init_cmd._packs_hint() == (
-        'workflow packs: pip install -e ".[packs]" (see docs/packs.md)'
-    )
+    installed = [
+        LockedPack(n, "trestle", "bundled", n, "0", pack_dir="", plugins_dir="") for n in bundled
+    ]
+    write_lock(tmp_path, installed)
+    assert init_cmd._packs_hint(tmp_path) is None
 
 
 @pytest.mark.proves("WR-PROOF-10", "WR-PROOF-10:K-14", "core", "core", "INSPECT", "CI")

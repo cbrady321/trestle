@@ -18,7 +18,7 @@ from typing import Any
 
 import pytest
 
-from tests.proof import mcp_host, tolerances
+from tests.proof import harness, mcp_host, tolerances
 from trestle import cli
 from trestle.common import codes
 from trestle.common.types import AdmitRequest, RequestOutcome, RunView
@@ -181,15 +181,18 @@ def test_reaped_run_keeps_its_log_only_without_secret_values(
     tmp_path: Path, fast_stop: None
 ) -> None:
     home = _home(tmp_path)
+    harness.grant_fake_credential(
+        home,
+        [home / "plugins"],
+        name="gate-token",
+        env="GATE_TOKEN",
+        value="FAKE-s3cret-value",
+        plugins=["gate_log_secret"],
+    )
     with mcp_host.McpHost(home=home) as a, mcp_host.McpHost(home=home) as b:
         plain = a.call("run", {"plugin": "gate_log", "args": {"seconds": LONG_S}, "wait_ms": 0})
         secret = a.call(
-            "run",
-            {
-                "plugin": "gate_log",
-                "args": {"seconds": LONG_S, "token": "s3cret-value"},
-                "wait_ms": 0,
-            },
+            "run", {"plugin": "gate_log_secret", "args": {"seconds": LONG_S}, "wait_ms": 0}
         )
         run_ids = [plain["run_id"], secret["run_id"]]
         for run_id in run_ids:
@@ -443,7 +446,8 @@ def test_concurrent_publish_answers_registry_conflict(
     real_refresh = registry.refresh
 
     def other_server_wins() -> None:
-        (plugins / "raced.py").write_text(theirs, encoding="utf-8")  # written after ours
+        # the other server's publish, written after ours, to the same runtime folder
+        (home / "plugins" / "runtime" / "raced.py").write_text(theirs, encoding="utf-8")
         real_refresh()
 
     monkeypatch.setattr(registry, "refresh", other_server_wins)

@@ -34,13 +34,18 @@ def echo(ctx: Context, message: str = "hello") -> dict[str, str]:
 '''
 
 
-def _packs_hint() -> str:
-    try:
-        import trestle_packs  # noqa: F401
-    except ImportError:
-        return 'workflow packs: pip install -e ".[packs]" (see docs/packs.md)'
+def _packs_hint(home: Path) -> str | None:
+    """The bundled packs this release offers and the home has not installed (P-16: a fresh
+    install adds none; the operator chooses)."""
+    from trestle.packs.bundled import available_bundled
+    from trestle.packs.lock import read_lock
+
+    available = sorted(set(available_bundled()) - {p.name for p in read_lock(home)})
+    if not available:
+        return None
     return (
-        "workflow packs: add examples/packs to [plugins] paths in config.toml (see docs/packs.md)"
+        f"bundled packs: {', '.join(available)}; install with: trestle pack install <name> "
+        "(stack installs docker, pytest and migrate too; see docs/packs.md)"
     )
 
 
@@ -100,7 +105,20 @@ def _spec_deadline(run_dir: Path) -> float | None:
         return None
 
 
-def run_init(*, home: Path, seed_echo: bool = True, upgrade: bool = False) -> int:
+def seed_exec_source() -> bytes:
+    """The `exec` plugin `trestle init` seeds: the guide's example, byte for byte (change 2c), so
+    the served example and the seeded file cannot drift."""
+    from importlib import resources
+
+    return (resources.files("trestle.plugin._guide") / "examples" / "exec.py").read_bytes()
+
+
+EXEC_ROOTS_NOTE = (
+    "exec: set TRESTLE_EXEC_ROOTS under [plugins.env] in config.toml; until then it answers blocked"
+)
+
+
+def run_init(*, home: Path, seed: bool = True, upgrade: bool = False) -> int:
     """`trestle init`: create the home (format 2) and seed the plugins directory. It never
     recovers or reaps runs. A v0.3.0 home is refused unless `upgrade`."""
     try:
@@ -126,17 +144,28 @@ def run_init(*, home: Path, seed_echo: bool = True, upgrade: bool = False) -> in
         return 2
     plugins = home / "plugins"
     plugins.mkdir(parents=True, exist_ok=True)
-    if seed_echo:
+    if upgrade:
+        from trestle.packs.migrate_home import migrate_home
+
+        migrate_home(home, print)
+    if seed:
+        # only missing files: an operator's edit (or a deleted echo.py) is theirs until init runs
         echo_path = plugins / "echo.py"
         if not echo_path.exists():
             echo_path.write_text(_SEED_ECHO, encoding="utf-8")
+        exec_path = plugins / "exec.py"
+        if not exec_path.exists():
+            exec_path.write_bytes(seed_exec_source())
     _, created = ensure_token(home)
     print(f"trestle home: {home}")
     print(f"agent token: {token_path(home)}{' (created)' if created else ''}")
     if upgraded is not None:
         print(f"upgraded to format {HOME_FORMAT}: {len(upgraded.live)} live runs listed")
     print(f"plugins: {plugins}")
-    if seed_echo:
-        print("seeded: echo.py")
-    print(_packs_hint())
+    if seed:
+        print("seeded: echo.py, exec.py")
+        print(EXEC_ROOTS_NOTE)
+    hint = _packs_hint(home)
+    if hint is not None:
+        print(hint)
     return 0

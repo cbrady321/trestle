@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from trestle.common import codes
+
 Handle = str
 JoinMode = Literal["all", "any", "first_failure"]
 
@@ -15,14 +17,32 @@ class RequestOutcome:
     message: str
     retryable: bool
     origin: Literal["admission", "projection", "publication"]
+    # Change 2b: whole seconds to wait before resending (only when `retryable`). None: filled
+    # from `codes.RETRY_AFTER_S` on the wire, so every retryable outcome carries one.
+    retry_after_s: int | None = None
+    # Change 2b, `admission.environment_busy` only: the run whose recorded deadline frees the
+    # environment last, and that deadline (ISO 8601 UTC).
+    held_by: str | None = None
+    free_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "code": self.code,
             "message": self.message,
             "retryable": self.retryable,
             "origin": self.origin,
         }
+        if self.retryable:
+            out["retry_after_s"] = (
+                self.retry_after_s
+                if self.retry_after_s is not None
+                else codes.RETRY_AFTER_S.get(self.code, codes.DEFAULT_RETRY_AFTER_S)
+            )
+        if self.held_by is not None:
+            out["held_by"] = self.held_by
+        if self.free_at is not None:
+            out["free_at"] = self.free_at
+        return out
 
 
 @dataclass
@@ -55,10 +75,10 @@ class AdmitResultAdmitted:
     tag: Literal["admitted"]
     run_id: Handle
     existing: bool = False
-    # The real values of the run's declared secret arguments, by declared name (MC-CORE-13). Held
-    # in memory from admission to the run's start and never written: not in `spec.json`, the
-    # ledger or the idempotency store; hidden from repr and comparison.
-    secrets: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
+    # The granted credential identities' values, name -> (env name, value) (change 3). Held in
+    # memory from admission to the run's start and never written: not in `spec.json`, the ledger
+    # or the idempotency store; hidden from repr and comparison.
+    credentials: dict[str, tuple[str, str]] = field(default_factory=dict, repr=False, compare=False)
 
 
 AdmitResult = AdmitResultRefused | AdmitResultAdmitted
@@ -69,9 +89,9 @@ class WorkOrder:
     run_id: Handle
     snapshot_id: str
     spec_hash: str
-    # In-memory only (see `AdmitResultAdmitted.secrets`): delivered to the wrapper and child
-    # through the environment, never persisted; hidden from repr and comparison.
-    secrets: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
+    # In-memory only (see `AdmitResultAdmitted.credentials`): handed to the wrapper and child over
+    # an inherited pipe (`trestle.common.credentials`), never persisted or put in an environment.
+    credentials: dict[str, tuple[str, str]] = field(default_factory=dict, repr=False, compare=False)
 
 
 @dataclass
@@ -143,13 +163,19 @@ class RunSpec:
 
 def _provenance(raw: object) -> dict[str, Any]:
     """`spec.json`'s `provenance`: the declared packages and the digests recorded for them at
-    publication (MC-18). A spec that predates it records none."""
+    publication (MC-18); for a pack plugin also `pack` (P-1) and `config` (P-20). A spec that
+    predates them records none."""
     packages = raw.get("packages") if isinstance(raw, dict) else None
-    return {
+    out: dict[str, Any] = {
         "packages": {str(k): str(v) for k, v in packages.items()}
         if isinstance(packages, dict)
         else {}
     }
+    if isinstance(raw, dict):
+        for key in ("pack", "config"):
+            if isinstance(raw.get(key), dict):
+                out[key] = raw[key]
+    return out
 
 
 @dataclass
@@ -179,13 +205,17 @@ class DeclaredMetadata:
     summary_fields: tuple[str, ...] = ()
     packages: tuple[str, ...] = ()
     env_arg: str | None = None
-    secrets: frozenset[str] = frozenset()
+    # Decision record change 3: the credential identities the plugin uses, by name. Admission
+    # refuses a run unless each is configured and granted to this plugin at its current digests.
+    credentials: tuple[str, ...] = ()
     # v0.3.1 Feature 2: a run of this plugin that ends interrupted frees its idempotency key, so an
     # identical re-send starts a fresh run (`retry_of`). Only the author knows a repeat is safe.
     repeatable: bool = False
     # G3: seconds a plain plugin asks for between a stop (cancel or deadline) and the kill, to
     # finish cleanly; admission caps it at the operator's release slice. None: no window.
     stop_grace_s: float | None = None
+    # P-10: the plugin this one was adapted from (a pack plugin's name), shown by describe_plugin
+    adapted_from: str | None = None
     # Recorded at publication, not declared in source: each declared package's digest as the
     # publication validator resolved it. Empty for a plugin that declares no packages.
     package_digests: dict[str, str] = field(default_factory=dict)
@@ -197,11 +227,12 @@ class DeclaredMetadata:
             "summary_fields": list(self.summary_fields),
             "packages": list(self.packages),
             "env_arg": self.env_arg,
-            "secrets": sorted(self.secrets),
             "package_digests": {k: self.package_digests[k] for k in sorted(self.package_digests)},
             # only when declared, so the manifest (and identity) of every other plugin is unchanged
             **({"repeatable": True} if self.repeatable else {}),
+            **({"credentials": sorted(self.credentials)} if self.credentials else {}),
             **({"stop_grace_s": self.stop_grace_s} if self.stop_grace_s is not None else {}),
+            **({"adapted_from": self.adapted_from} if self.adapted_from is not None else {}),
         }
 
     @classmethod
@@ -214,6 +245,7 @@ class DeclaredMetadata:
         deadline = declared.get("deadline_s")
         env_arg = declared.get("env_arg")
         grace = declared.get("stop_grace_s")
+        adapted = declared.get("adapted_from")
         return cls(
             entry=str(entry) if isinstance(entry, str) else None,
             deadline_s=deadline
@@ -222,11 +254,12 @@ class DeclaredMetadata:
             summary_fields=tuple(str(x) for x in declared.get("summary_fields", ())),
             packages=tuple(str(x) for x in declared.get("packages", ())),
             env_arg=str(env_arg) if isinstance(env_arg, str) else None,
-            secrets=frozenset(str(x) for x in declared.get("secrets", ())),
+            credentials=tuple(str(x) for x in declared.get("credentials", ())),
             repeatable=declared.get("repeatable") is True,
             stop_grace_s=float(grace)
             if isinstance(grace, (int, float)) and not isinstance(grace, bool) and grace > 0
             else None,
+            adapted_from=adapted if isinstance(adapted, str) else None,
             package_digests={
                 str(k): str(v)
                 for k, v in (
@@ -351,15 +384,37 @@ class PluginCatalogRow:
     description: str
     valid: bool
     capability_class: str | None = None
+    # change 2b: under the restricted profile, whether the operator's allowlist names the plugin
+    # (`run` admits only those); None, and absent on the wire, under the full profile
+    allowlisted: bool | None = None
+    # P-5: whose code it is (`trestle`, `company`, `user`, `local`); P-1: the pack, as
+    # `name@version (owner)`, absent for a loose file
+    owner: str | None = None
+    pack: str | None = None
+    # P-11: the pack plugin this one overrides, absent when it overrides none
+    overrides: str | None = None
+    # P-14: under the restricted profile, an allowlisted name served by an override
+    override_flagged: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "name": self.name,
             "version": self.version,
             "description": self.description,
             "valid": self.valid,
             "capability_class": self.capability_class,
         }
+        if self.allowlisted is not None:
+            out["allowlisted"] = self.allowlisted
+        if self.owner is not None:
+            out["owner"] = self.owner
+        if self.pack is not None:
+            out["pack"] = self.pack
+        if self.overrides is not None:
+            out["overrides"] = self.overrides
+        if self.override_flagged:
+            out["override_flagged"] = True
+        return out
 
 
 @dataclass

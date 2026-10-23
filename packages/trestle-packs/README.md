@@ -1,25 +1,15 @@
 # trestle-packs
 
-Pre-built workflow libraries for Trestle plugins: Docker stack orchestration, pytest runs, and database migrations.
+The workflow foundation that Trestle's composite plugins and the reference environment build on:
+the `process`, `container`, `grant`, `testrun`, `toolchain` and `provision` ports, their fakes
+(`trestle_packs.fakes`), and the shared `core` helpers (wave planning, readiness polling). It moves
+into Trestle core later (P-15); its name is reserved.
 
-Install alongside Trestle:
-
-```bash
-pip install -e ".[dev]"                    # from repo root
-pip install -e "packages/trestle-packs[all]"
-```
-
-Point Trestle at example plugins:
-
-```bash
-trestle service restart   # after adding examples/packs to [plugins] paths in $TRESTLE_HOME/config.toml
-```
-
-Agent quick-start: [`docs/packs.md`](../../docs/packs.md). Install and lockdown: [`docs/install.md`](../../docs/install.md).
-
-Verify adoption:
+The tool plugins `docker_stack`, `pytest_run`, `migrate_apply` and `stack_pipeline` are not here:
+they are the bundled packs in `packages/trestle-pack-docker/`, `-pytest/`, `-migrate/` and
+`-stack/`, each with its own library, installed with `trestle pack install stack`. See
+[`docs/packs.md`](../../docs/packs.md).
 
 ```bash
-python scripts/smoke_packs.py
-python scripts/demo_pack_workflows.py
+pip install -e ".[dev,packs]"   # from repo root; [all] adds pytest, Alembic, Yoyo for the tests
 ```

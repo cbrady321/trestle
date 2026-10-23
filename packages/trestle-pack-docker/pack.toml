@@ -1,0 +1,4 @@
+[pack]
+name = "docker"
+summary = "Bring a Docker Compose stack up in dependency waves, stop it, or take it down"
+library = "."

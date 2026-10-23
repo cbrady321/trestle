@@ -28,6 +28,7 @@ from trestle.server.ledger import (
     state_record,
 )
 from trestle.server.live import attached_artifacts, latest_progress
+from trestle.server.mcp_sessions import SessionReader
 from trestle.server.pins import PinStore
 from trestle.server.recovery import find_run_dir
 from trestle.server.runstate import trusted_state
@@ -51,6 +52,14 @@ class RunRecord:
     args_hash: str
     source_sha256: str
     resolved_artifacts: dict[str, str]
+    # change 2a: the server that admitted the run and the MCP session it arrived on (None outside
+    # MCP); `session_ended` on the `run` and `recent_runs` rows is computed from them at each query
+    owner: str | None = None
+    caller_session: str | None = None
+
+
+def _opt_str(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
 
 
 class FilesystemQueryBackend:
@@ -150,7 +159,8 @@ class FilesystemQueryBackend:
             rows = self._rows_for_run_view(view, record)
             live = view in view_defs.LIVE_VIEWS and not record.finalized
         elif view == "recent_runs":
-            rows = [_recent_run_row(record) for record in runs]
+            reader = SessionReader(self.home)
+            rows = [_recent_run_row(record, reader) for record in runs]
         elif view == "recent_failures":
             rows = [
                 _recent_failure_row(record)
@@ -379,7 +389,7 @@ class FilesystemQueryBackend:
 
     def _rows_for_run_view(self, view: str, record: RunRecord) -> list[dict[str, object]]:
         if view == "run":
-            return [_run_row(record)]
+            return [_run_row(record, SessionReader(self.home))]
         if view == "last_error":
             return _last_error_rows(record)
         if view == "run_tail":
@@ -487,6 +497,8 @@ def _load_run_record(run_id: str, run_dir: Path) -> RunRecord | None:
         args_hash=str(spec.get("args_hash", "")),
         source_sha256=str(spec.get("source_sha256", "")),
         resolved_artifacts=resolved,
+        owner=_opt_str(created.get("owner")),
+        caller_session=_opt_str(created.get("caller_session")),
     )
 
 
@@ -516,10 +528,21 @@ def _record_from_state(
         args_hash=str(spec.get("args_hash", "")),
         source_sha256=str(spec.get("source_sha256", "")),
         resolved_artifacts=resolved,
+        owner=_opt_str(st.get("owner")),
+        caller_session=_opt_str(st.get("caller_session")),
     )
 
 
-def _run_row(record: RunRecord) -> dict[str, object]:
+def _session_ended(record: RunRecord, reader: SessionReader) -> bool | None:
+    """Change 2a: true or false for a live run that arrived on an MCP session, null for a run that
+    has ended or was admitted outside MCP."""
+    return reader.ended(
+        {"state": record.state, "owner": record.owner, "caller_session": record.caller_session},
+        record.run_dir,
+    )
+
+
+def _run_row(record: RunRecord, reader: SessionReader) -> dict[str, object]:
     return {
         "run_id": record.run_id,
         "plugin": record.plugin,
@@ -529,15 +552,17 @@ def _run_row(record: RunRecord) -> dict[str, object]:
         "ended_at": record.ended_at,
         # T1: the run's latest `ctx.progress` while it is in flight; null once it has ended
         "progress": (None if record.finalized else latest_progress(evidence_dir(record.run_dir))),
+        "session_ended": _session_ended(record, reader),
     }
 
 
-def _recent_run_row(record: RunRecord) -> dict[str, object]:
+def _recent_run_row(record: RunRecord, reader: SessionReader) -> dict[str, object]:
     return {
         "run_id": record.run_id,
         "plugin": record.plugin,
         "state": record.state,
         "started_at": record.started_at,
+        "session_ended": _session_ended(record, reader),
     }
 
 
@@ -558,7 +583,20 @@ def _run_provenance_row(record: RunRecord) -> dict[str, object]:
         "args_hash": record.args_hash,
         "source_sha256": record.source_sha256,
         "packages": _recorded_packages(record),
+        # P-1, P-20: the pack and its configuration digests, null for a plugin outside a pack
+        "pack": _recorded(record, "pack"),
+        "config": _recorded(record, "config"),
     }
+
+
+def _recorded(record: RunRecord, key: str) -> dict[str, object] | None:
+    try:
+        loaded = json.loads((evidence_dir(record.run_dir) / "spec.json").read_text("utf-8"))
+    except (OSError, ValueError):
+        return None
+    provenance = loaded.get("provenance") if isinstance(loaded, dict) else None
+    value = provenance.get(key) if isinstance(provenance, dict) else None
+    return value if isinstance(value, dict) else None
 
 
 def _recorded_packages(record: RunRecord) -> dict[str, str]:

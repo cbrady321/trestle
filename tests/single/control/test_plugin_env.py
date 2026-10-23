@@ -70,7 +70,7 @@ def test_pack_variables_reach_a_run_under_a_service_environment(
         ('[plugins.env]\n"1BAD" = "x"\n', "not an environment name"),
         ("[plugins.env]\nTRESTLE_DOCKER_PATH = 3\n", "must be a string"),
         ('[plugins.env]\nTRESTLE_HOME = "/elsewhere"\n', "may not set TRESTLE_HOME"),
-        ('[plugins.env]\nTRESTLE_RUN_SECRETS = "x"\n', "may not set TRESTLE_RUN_SECRETS"),
+        ('[plugins.env]\nTRESTLE_RUN_SECRETS_FD = "3"\n', "may not set TRESTLE_RUN_SECRETS_FD"),
     ],
 )
 def test_a_malformed_table_stops_the_load(tmp_path: Path, body: str, message: str) -> None:

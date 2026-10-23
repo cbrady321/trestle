@@ -74,6 +74,45 @@ def load_declared(snap: PluginSnapshot) -> DeclaredMetadata:
 
 DECLARATION_FILE = "declaration.json"
 
+# Change 3: where a snapshot's source came from, recorded in its manifest as `origin`. A source an
+# agent sent through `publish_plugin` is `agent` (it never receives a credential grant, decision
+# record (a)); every other source in a watched folder is the operator's. The agent path records
+# each source it writes (`record_agent_publication`), by plugin name and source digest, so a later
+# operator edit of the same file (a different digest) reads as the operator's again.
+ORIGIN_AGENT = "agent"
+ORIGIN_OPERATOR = "operator"
+AGENT_PUBLICATIONS_DIR = "publications"
+
+
+def _agent_record_path(home: Path, plugin_id: str) -> Path:
+    return home / AGENT_PUBLICATIONS_DIR / f"{plugin_id}.json"
+
+
+def record_agent_publication(home: Path, plugin_id: str, source_sha256: str) -> None:
+    path = _agent_record_path(home, plugin_id)
+    atomic_write(path, canonical_json({"plugin": plugin_id, "source_sha256": source_sha256}))
+
+
+def publication_origin(home: Path, plugin_id: str, source_sha256: str) -> str:
+    try:
+        loaded = json.loads(_agent_record_path(home, plugin_id).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ORIGIN_OPERATOR
+    if isinstance(loaded, dict) and loaded.get("source_sha256") == source_sha256:
+        return ORIGIN_AGENT
+    return ORIGIN_OPERATOR
+
+
+def load_origin(snap: PluginSnapshot) -> str:
+    """`agent` or `operator` (a manifest that predates the field: `operator`)."""
+    manifest_path = Path(snap.source_path).with_name("manifest.json")
+    try:
+        loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ORIGIN_OPERATOR
+    origin = loaded.get("origin") if isinstance(loaded, dict) else None
+    return ORIGIN_AGENT if origin == ORIGIN_AGENT else ORIGIN_OPERATOR
+
 
 def load_declared_tree(snap: PluginSnapshot) -> DeclaredTree | None:
     """The declared tree of a published workflow snapshot (MC-34): `declaration.json` beside the
@@ -129,6 +168,7 @@ def materialize_snapshot(
     version: str = "0.1.0",
     summary_budget: int = 4096,
     timeout_s: int = 300,
+    pack: dict[str, object] | None = None,
 ) -> PluginSnapshot:
     # One read: the bytes hashed into the snapshot id are the bytes the snapshot keeps, whatever
     # happens to the source file meanwhile. The text is decoded as `read_text` would.
@@ -194,9 +234,12 @@ def materialize_snapshot(
         "schema_sha256": schema_sha256,
         "declared": declared.declared_dict(),
         "entry": declared.entry,
+        "origin": publication_origin(home, plugin_id, source_sha256),
     }
     if tree is not None:
         manifest["declaration_digest"] = tree.digest
+    if pack is not None:
+        manifest["pack"] = pack  # P-1: the pack identity at publication, from packs.lock
     manifest_sha256 = hashlib.sha256(
         json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()

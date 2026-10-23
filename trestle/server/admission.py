@@ -19,7 +19,6 @@ from trestle.common.fsutil import atomic_write_json, fsync_dir
 from trestle.common.ids import generate_run_id
 from trestle.common.plan import carving, compiler
 from trestle.common.plan.compiler import AdmittedPlan
-from trestle.common.redact import redact_args, secret_values
 from trestle.common.types import (
     AdmitRequest,
     AdmitResult,
@@ -29,10 +28,15 @@ from trestle.common.types import (
     RequestOutcome,
     RunSpec,
 )
+from trestle.packs.provenance import pack_provenance
 from trestle.server import chain, lease
 from trestle.server import idempotency as keys
 from trestle.server import pool as pools
 from trestle.server.config import ProfileConfig, load_config
+from trestle.server.credentials import CredentialsConfig
+from trestle.server.credentials import refusal as credential_refusal
+from trestle.server.credentials import resolve as credential_resolve
+from trestle.server.credentials import service_log as credential_log
 from trestle.server.home import (
     ADMISSION_WAIT_S,
     ADMITTING_PREFIX,
@@ -44,7 +48,7 @@ from trestle.server.home import (
     write_marker,
 )
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, run_dir_for, work_dir
-from trestle.server.plugin_paths import CATALOG_HINT_PACKS_MISSING
+from trestle.server.plugin_paths import packs_missing_hint
 from trestle.server.plugin_schema import ArgsError, validate_args
 from trestle.server.plugin_validate import validate_plugin_imports
 from trestle.server.recovery import find_run_dir
@@ -136,6 +140,26 @@ def _home_busy(busy: HomeBusy) -> AdmitResultRefused:
     )
 
 
+def bundled_hint(home: Path, plugin: str) -> str:
+    """For a plugin an available bundled pack provides and no installed pack does: the pack and
+    the operator's command, so the agent's dead end is one answer (no list_plugins round trip).
+    The bundled tree is read from source; nothing is imported."""
+    from trestle.packs import PackError
+    from trestle.packs.bundled import bundled_plugin_index
+
+    pack = bundled_plugin_index().get(plugin)
+    if pack is None:
+        return ""
+    from trestle.packs.lock import read_lock
+
+    try:
+        if any(entry.name == pack for entry in read_lock(home)):
+            return ""  # installed: its plugin failed validation, which list_plugins reports
+    except PackError:
+        pass
+    return f"; bundled pack {pack} provides it, and the operator runs: trestle pack install {pack}"
+
+
 @dataclass
 class Admission:
     home: Path
@@ -144,6 +168,8 @@ class Admission:
     # the owner locks this server holds (v0.3.1 rule 1); its `server_id` is `created.owner`
     ownership: Ownership
     profile: ProfileConfig = ProfileConfig()
+    # change 3: the identity tables of credentials.toml, read once at start like the profile
+    credentials: CredentialsConfig = field(default_factory=CredentialsConfig)
 
     @property
     def server_id(self) -> str:
@@ -179,7 +205,7 @@ class Admission:
                 tag="refused",
                 outcome=RequestOutcome(
                     code=codes.PLUGIN_NOT_FOUND,
-                    message=f"plugin not found: {req.plugin}",
+                    message=f"plugin not found: {req.plugin}{bundled_hint(self.home, req.plugin)}",
                     retryable=False,
                     origin="admission",
                 ),
@@ -196,11 +222,26 @@ class Admission:
                 ),
             )
 
+        # change 3: every declared identity configured and granted to this plugin at its current
+        # source and package digests, before anything is minted (no run id, directory or process)
+        declared = load_declared(snap)
+        if declared.credentials:
+            not_granted = credential_refusal(
+                self.credentials,
+                snap.plugin,
+                declared.credentials,
+                snap.source_sha256,
+                declared.package_digests,
+            )
+            if not_granted is not None:
+                return AdmitResultRefused(tag="refused", outcome=not_granted)
+
         import_error = validate_plugin_imports(Path(snap.source_path))
         if import_error is not None:
             message = f"plugin import failed: {import_error}"
-            if "trestle_packs" in import_error:
-                message = f"{message}; {CATALOG_HINT_PACKS_MISSING}"
+            hint = packs_missing_hint(import_error)
+            if hint is not None:
+                message = f"{message}; {hint}"
             return AdmitResultRefused(
                 tag="refused",
                 outcome=RequestOutcome(
@@ -261,6 +302,16 @@ class Admission:
         planned = plan_for_admission(snap, req, deadline_s, deadline_ceiling_s=ceiling)
         if isinstance(planned, AdmitResultRefused):
             return planned
+        # change 3: the granted identities' values, read from the store now (so a rotated value
+        # applies to this run), in memory only, onto the run's work order
+        credential_values = credential_resolve(
+            self.credentials,
+            self.home,
+            declared.credentials,
+            log=lambda line: credential_log(self.home, line),
+        )
+        if isinstance(credential_values, RequestOutcome):
+            return AdmitResultRefused(tag="refused", outcome=credential_values)
         try:
             with admission_lock(self.home):
                 return self._admit_locked(
@@ -270,6 +321,7 @@ class Admission:
                     deadline_s,
                     planned,
                     after if isinstance(after, chain.After) else None,
+                    credential_values,
                 )
         except HomeBusy as busy:
             return _home_busy(busy)
@@ -282,6 +334,7 @@ class Admission:
         deadline_s: float,
         planned: AdmittedPlan,
         after: chain.After | None = None,
+        credential_values: dict[str, tuple[str, str]] | None = None,
     ) -> AdmitResult:
         """v0.3.1 rule 7: the admission's locked section, its steps in order. Everything slow
         (registry refresh, import validation, schema validation, compile and carve) ran before the
@@ -326,13 +379,14 @@ class Admission:
             ownership=self.ownership,
             retry_of=claim.retry_of,
             hold=hold,
+            credential_values=credential_values,
         )
         self.scheduler.mint(
             admitted.run_id, snap.snapshot_id, admitted.spec_hash, held=hold is not None
         )
         # (5) a new waiting run, (7) write home/sched.json. (6) The run's grant comes with its
         #     hand-off to this server's FIFO (`Scheduler.enqueue`), whose pass takes the lock again:
-        #     its work order (with the secrets) exists only after admission returns.
+        #     its work order (with the credentials) exists only after admission returns.
         #     A held run is in neither: it is not startable and `home/sched.json` lists no held run.
         if pool is not None and state is not None and hold is None:
             pools.add_waiting(
@@ -345,7 +399,9 @@ class Admission:
             )
             pool.write(state)
         # the real values travel in memory to the run's WorkOrder and no further
-        return AdmitResultAdmitted(tag="admitted", run_id=admitted.run_id, secrets=admitted.secrets)
+        return AdmitResultAdmitted(
+            tag="admitted", run_id=admitted.run_id, credentials=admitted.credentials
+        )
 
     def write_run(self, snap: PluginSnapshot, req: AdmitRequest, plan: AdmittedPlan) -> AdmittedRun:
         """`write_admitted_run` for a caller outside `admit` (the harness's `run_tree`, L.SV-5.7):
@@ -400,26 +456,44 @@ class Admission:
         run that fits."""
         if not plan.lease_set or state is None:
             return None
-        free_at = pools.busy_until(state, plan.lease_set[0])
-        if free_at is None:
+        holder = pools.busy_holder(state, plan.lease_set[0])
+        if holder is None:
             return None
+        held_by, free_at = holder
         worst_case = carving.worst_case_s(plan, clock.FINALIZATION_RESERVE_S)
-        if not lease.leaves_too_little(
-            free_at, time.time() + deadline_s, worst_case, plan.release_slice
-        ):
+        now = time.time()
+        if not lease.leaves_too_little(free_at, now + deadline_s, worst_case, plan.release_slice):
             return None
-        return AdmitResultRefused(
-            tag="refused",
-            outcome=RequestOutcome(
-                code=codes.ADMISSION_ENVIRONMENT_BUSY,
-                message=(
-                    "the environment is held by a run whose deadline leaves this request too "
-                    "little time; retry after it ends"
-                ),
-                retryable=True,
-                origin="admission",
-            ),
+        return _environment_busy_refusal(
+            held_by, free_at, worst_case + plan.release_slice - deadline_s, now
         )
+
+
+def _environment_busy_refusal(
+    held_by: str, free_at: float, need_s: float, now: float
+) -> AdmitResultRefused:
+    """Change 2b: `held_by` is the run whose recorded deadline frees the environment last,
+    `free_at` that deadline, and `retry_after_s` the inverse of `leaves_too_little`: the first
+    moment the same request's would-be deadline leaves room after `free_at` (at least 1 s).
+    `need_s` is the plan's worst case plus its release slice, less the request's deadline."""
+    retry_after = max(1, math.ceil(free_at + need_s - now))
+    at = datetime.fromtimestamp(free_at, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    message = (
+        f"the environment is held by {held_by} until at most {at}, too late for this "
+        f"request's deadline; wait for it (await_runs, or after=) or resend in {retry_after}s"
+    )
+    return AdmitResultRefused(
+        tag="refused",
+        outcome=RequestOutcome(
+            code=codes.ADMISSION_ENVIRONMENT_BUSY,
+            message=message[:200],
+            retryable=True,
+            origin="admission",
+            retry_after_s=retry_after,
+            held_by=held_by,
+            free_at=at,
+        ),
+    )
 
 
 def _refuse_deadline(
@@ -573,8 +647,8 @@ def key_window_s(deadline_s: float, idempotency_ttl_s: float) -> float:
 @dataclass(frozen=True)
 class AdmittedRun:
     """What `write_admitted_run` minted: the run id, the hash of its spec (the run's identity,
-    which the plan digest is part of), and the real values of its declared secrets (in memory
-    only, MC-CORE-13). `lease_key` is the environment key recorded in the `created` row (None when
+    which the plan digest is part of), and its granted credentials' values (in memory only,
+    MC-CORE-13). `lease_key` is the environment key recorded in the `created` row (None when
     the run holds no lease) and `deadline_epoch` its admitted deadline, wall clock."""
 
     run_id: str
@@ -584,7 +658,7 @@ class AdmittedRun:
     run_dir: Path = Path()
     arrival: float = 0.0  # created.at, epoch seconds: a key's waiters start in this order
     held: bool = False  # Feature 3: admitted into the held state, no slot until released
-    secrets: dict[str, object] = field(default_factory=dict, repr=False, compare=False)
+    credentials: dict[str, tuple[str, str]] = field(default_factory=dict, repr=False, compare=False)
 
 
 def _run_state(run_dir: Path) -> str:
@@ -610,6 +684,7 @@ def write_admitted_run(
     ownership: Ownership,
     retry_of: str | None = None,
     hold: HoldPlan | None = None,
+    credential_values: dict[str, tuple[str, str]] | None = None,
 ) -> AdmittedRun:
     """The post-refusal half of admission (MC-B2-08): mint the run id and build the run, lock
     before visible (v0.3.1 rule 1). Every refusal has already happened, and the caller holds the
@@ -662,8 +737,7 @@ def write_admitted_run(
             plugin=snap.plugin,
             version=snap.version,
             snapshot_id=snap.snapshot_id,
-            # declared secrets are redacted (MC-CORE-13); args_hash above is over the real intent
-            args=redact_args(req.args, declared.secrets),
+            args=req.args,
             args_hash=a_hash,
             source_sha256=snap.source_sha256,
             schema_sha256=snap.schema_sha256,
@@ -674,7 +748,12 @@ def write_admitted_run(
             timeout_s=math.ceil(deadline_s),
             deadline=deadline.isoformat(),
             # what publication recorded for the declared packages; the child checks it first
-            provenance={"packages": dict(declared.package_digests)},
+            provenance={
+                "packages": dict(declared.package_digests),
+                # P-1, P-20: the pack identity and its configuration files' digests, read by the
+                # host now (empty for a plugin outside a pack)
+                **pack_provenance(home, snap),
+            },
             plan=json.loads(plan.to_json()),
         )
         spec_dict = spec.to_dict()
@@ -685,7 +764,7 @@ def write_admitted_run(
         ).hexdigest()
         _admission_step("spec")
 
-        secrets = secret_values(req.args, declared.secrets)
+        credentials = dict(credential_values or {})
         ledger = RunLedger.open(ledger_path(building))
         created_fields: dict[str, object] = {
             "run_id": run_id,
@@ -694,7 +773,7 @@ def write_admitted_run(
             # service epoch), and whether any declared secret had a value in the call (a reaped
             # run without one has its outputs promoted, rule 3)
             "owner": ownership.server_id,
-            "has_secrets": bool(secrets),
+            "has_secrets": bool(credentials),
             "plugin": snap.plugin,
             "version": snap.version,
             "snapshot_id": snap.snapshot_id,
@@ -779,5 +858,5 @@ def write_admitted_run(
         run_dir=run_dir,
         arrival=pools.epoch(created["at"]),
         held=hold is not None,
-        secrets=secrets,
+        credentials=credentials,
     )

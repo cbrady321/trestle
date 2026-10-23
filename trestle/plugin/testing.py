@@ -1,7 +1,8 @@
 """Unit-test a plugin without a server (R3): `FakeContext`, `call_plugin` and a pytest fixture.
 
 `FakeContext` implements the plugin `Context` surface (`log`, `progress`, `event`, `artifact`,
-`attach`, `exec`, `remaining`, `tmp`, `outputs`, `deadline`, `cancelled`) and records what the
+`attach`, `exec`, `remaining`, `credential_env`, `credential_file`, `tmp`, `outputs`, `deadline`,
+`cancelled`) and records what the
 plugin did, with no run id, run directory or evidence. `call_plugin` calls a `@trestle` function
 the way the child process does: arguments hydrated from their JSON form by the parameter
 annotations, and the return value encoded to the JSON an agent would read.
@@ -32,6 +33,7 @@ from typing import Any
 from trestle.child import execproc
 from trestle.child.context import RESERVED_EVENT_KINDS
 from trestle.child.main import _bind_args, _declared_return
+from trestle.common import credentials as credentials_mod
 from trestle.plugin._codec import encode
 from trestle.plugin.surface import ExecResult, is_trestle_plugin
 
@@ -95,8 +97,19 @@ class FakeContext:
         *,
         deadline: datetime | timedelta | float = 300.0,
         exec_handler: ExecHandler | None = None,
+        credentials: Mapping[str, Mapping[str, str]] | None = None,
     ) -> None:
         self._work = Path(root) / "work"
+        # fake identities, name -> {ENV_NAME: value}: what the operator would grant at run time
+        self._credentials: dict[str, tuple[str, str]] = {}
+        for name, shape in (credentials or {}).items():
+            if not credentials_mod.valid_name(name) or len(shape) != 1:
+                raise ValueError(
+                    f"credentials[{name!r}]: an identity name mapped to one {{ENV_NAME: value}}"
+                )
+            ((env, value),) = shape.items()
+            self._credentials[name] = (env, value)
+        self.channel = Path(root) / credentials_mod.CHANNEL_DIR
         self.tmp = self._work / "tmp"
         self.outputs = self._work / "outputs"
         self.tmp.mkdir(parents=True, exist_ok=True)
@@ -158,6 +171,21 @@ class FakeContext:
         if Path(path).is_relative_to(self._work / "artifact-staging"):
             Path(path).unlink(missing_ok=True)
         return art_id
+
+    def credential_env(self, name: str) -> dict[str, str]:
+        """The fake identity `name` as `{ENV_NAME: value}`; an identity the test did not give
+        raises LookupError, as an undeclared one does at run time."""
+        found = self._credentials.get(name)
+        if found is None:
+            raise credentials_mod.not_declared(name, self._credentials)
+        return {found[0]: found[1]}
+
+    def credential_file(self, name: str) -> Path:
+        """The fake identity `name`'s value in a 0600 file under `root/channel/`."""
+        found = self._credentials.get(name)
+        if found is None:
+            raise credentials_mod.not_declared(name, self._credentials)
+        return credentials_mod.write_channel_file(self.channel, name, found[1])
 
     def remaining(self) -> float:
         deadline = self.deadline if self.deadline.tzinfo else self.deadline.replace(tzinfo=UTC)

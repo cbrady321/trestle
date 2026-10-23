@@ -36,8 +36,8 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - run: pip install -e ".[dev]"
-      - run: ruff check trestle tests packages/trestle-packs packages/trestle-env conftest.py scripts/*.py
-      - run: ruff format --check trestle tests packages/trestle-packs packages/trestle-env conftest.py scripts/*.py
+      - run: ruff check trestle tests packages/trestle-packs packages/trestle-env packages/trestle-pack-* conftest.py scripts/*.py
+      - run: ruff format --check trestle tests packages/trestle-packs packages/trestle-env packages/trestle-pack-* conftest.py scripts/*.py
 
   # K-14 (L.CK-14.1): mypy at zero errors. It needs `.[dev,packs]`: with `.[dev]` alone
   # trestle_packs is absent and its py.typed marker cannot fix `import-not-found`. The job
@@ -54,11 +54,13 @@ jobs:
           cache-dependency-path: |
             pyproject.toml
             packages/trestle-packs/pyproject.toml
+            packages/trestle-pack-*/pyproject.toml
       - run: pip install -e ".[dev,packs]"
       - run: mypy
 
   # The `test` job's work, split into path groups (tests/proof/ci_shards.py SHARDS; C1). Each
-  # node runs in exactly one shard; each package testpath is its own shard in the CSC-12 form (packs, env).
+  # node runs in exactly one shard; each package testpath is its own shard in the CSC-12 form (packs, env;
+  # the bundled packs packages/trestle-pack-* share `bundled`).
   # One runner per shard, so shards share no fixture dir, port or results file. Each
   # shard's proof records get a shard-unique file and artifact name: `proof-ledger` and
   # `ckpt` merge every `proof-results-*` artifact into one directory.
@@ -67,7 +69,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [baseline, planted, fence, proof, pins, core, single, tree-host, tree, misc, packs, env]
+        shard: [baseline, planted, fence, proof, pins, core, single, tree-host, tree, misc, packs, env, bundled]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -113,6 +115,7 @@ jobs:
             pyproject.toml
             packages/trestle-packs/pyproject.toml
             packages/trestle-env/pyproject.toml
+            packages/trestle-pack-*/pyproject.toml
       - run: pip install -e ".[dev,packs,env]"
       - run: python -m tests.proof.guards clean-path --github-env
       # The shards' union is exactly the unsharded collection, and the matrix names them all.
@@ -166,6 +169,7 @@ jobs:
             pyproject.toml
             packages/trestle-packs/pyproject.toml
             packages/trestle-env/pyproject.toml
+            packages/trestle-pack-*/pyproject.toml
       - run: pip install -e ".[dev,packs,env]"
       - run: python -m tests.proof.guards clean-path --github-env
       - run: pytest -q -m compat
@@ -189,6 +193,7 @@ jobs:
             pyproject.toml
             packages/trestle-packs/pyproject.toml
             packages/trestle-env/pyproject.toml
+            packages/trestle-pack-*/pyproject.toml
       - run: pip install -e ".[dev,packs,env]"
       - run: python -m tests.proof.guards clean-path --github-env
       - run: pytest -q tests/proof/selftest/test_guards.py tests/proof/selftest/test_session.py
@@ -215,6 +220,7 @@ jobs:
             pyproject.toml
             packages/trestle-packs/pyproject.toml
             packages/trestle-env/pyproject.toml
+            packages/trestle-pack-*/pyproject.toml
       - run: pip install -e ".[dev,packs,env]"
       - run: python -m tests.proof.guards clean-path --github-env
       # L.CZ.8: the junit rides with this job's results, so the `ckpt` job (J-ROOT's root.py) reads it
@@ -245,6 +251,7 @@ jobs:
             pyproject.toml
             packages/trestle-packs/pyproject.toml
             packages/trestle-env/pyproject.toml
+            packages/trestle-pack-*/pyproject.toml
       - run: pip install -e ".[dev,packs,env]"
       - run: python -m tests.proof.guards clean-path --github-env
       - run: pytest -q -m long tests/core/contract/test_cl_c1_deadline.py
@@ -465,6 +472,7 @@ jobs:
             pyproject.toml
             packages/trestle-packs/pyproject.toml
             packages/trestle-env/pyproject.toml
+            packages/trestle-pack-*/pyproject.toml
       - run: pip install -e ".[dev,packs,env]"
       - run: python -m tests.proof.guards clean-path --github-env
       - name: this part's decline drills
@@ -534,6 +542,7 @@ jobs:
             pyproject.toml
             packages/trestle-packs/pyproject.toml
             packages/trestle-env/pyproject.toml
+            packages/trestle-pack-*/pyproject.toml
       - run: pip install -e ".[dev,packs,env]"
       - run: python -m tests.proof.guards clean-path --github-env
       - run: pytest tests/core/tooling/test_ck_drill.py -q
@@ -594,6 +603,7 @@ jobs:
             pyproject.toml
             packages/trestle-packs/pyproject.toml
             packages/trestle-env/pyproject.toml
+            packages/trestle-pack-*/pyproject.toml
       - run: pip install -e ".[dev,packs,env]"
       - uses: actions/download-artifact@v4
         with:

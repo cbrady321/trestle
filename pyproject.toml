@@ -7,13 +7,15 @@ allow-direct-references = true
 
 [project]
 name = "trestle"
-version = "0.3.1"
+version = "0.6.0"
 description = "A durable local execution ledger with an MCP control surface"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastmcp==3.4.7",
     "starlette>=1.0.1",
+    # the encrypted_file credential store (Fernet); already in the graph through fastmcp/Authlib
+    "cryptography>=44.0",
 ]
 
 [project.optional-dependencies]
@@ -28,6 +30,11 @@ dev = [
 ]
 packs = [
     "trestle-packs[all] @ file:packages/trestle-packs",
+    # the bundled tool packs' libraries, for their tests; the service gets them from
+    # `trestle pack install stack`, which reinstalls each from its pack copy
+    "trestle-pack-docker @ file:packages/trestle-pack-docker",
+    "trestle-pack-pytest @ file:packages/trestle-pack-pytest",
+    "trestle-pack-migrate @ file:packages/trestle-pack-migrate",
 ]
 env = [
     "trestle-packs[all] @ file:packages/trestle-packs",
@@ -50,7 +57,16 @@ extend-exclude = ["tests/fixtures/fossils"]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "packages/trestle-packs/tests", "packages/trestle-env/tests"]
+testpaths = [
+    "tests",
+    "packages/trestle-packs/tests",
+    "packages/trestle-env/tests",
+    "packages/trestle-pack-docker/tests",
+    "packages/trestle-pack-pytest/tests",
+    "packages/trestle-pack-migrate/tests",
+    "packages/trestle-pack-stack/tests",
+    "packages/trestle-pack-github/tests",
+]
 filterwarnings = [
     "ignore:Using `httpx` with `starlette.testclient`:starlette.exceptions.StarletteDeprecationWarning",
 ]
@@ -58,6 +74,7 @@ addopts = "--strict-markers -m \"not long\""
 markers = [
     "spine: the unattended one-call acceptance of the core corrections (MC-29; CI job `spine`, gate ci-spine)",
     "long: a test that outlives the default 300 s deadline (MC-05; deselected from the default session, CI job `long-gate`, gate ci-long)",
+    "typed_records: needs K-3/K-4 typed records; skipped when `_codec.TYPED_RECORDS` is off (the CK-3/4 decline drill)",
 ]
 
 [tool.mypy]

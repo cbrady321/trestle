@@ -1,21 +1,22 @@
 """Subprocess driver for G-E3 (run as a script; prints one JSON line).
 
 Modes:
-  run_pytest_setup_error <dir>      run_pytest on a dir whose only test errors at setup
-  pipeline_fail | pipeline_ok <dir> integration_pipeline with the fake backend
+  run_pytest_setup_error <dir>      pytest_run on a dir whose only test errors at setup
+  pipeline_fail | pipeline_ok <dir> stack_pipeline over the fake docker CLI (never an engine)
 """
 
 from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
+from types import ModuleType
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 SETUP_ERROR_TEST = (
     "import pytest\n\n\n"
@@ -29,75 +30,57 @@ PASSING_TEST = "def test_ok():\n    pass\n"
 COMPOSE = "services:\n  web:\n    image: alpine:3.20\n"
 
 
-class _Ctx:
-    def __init__(self, work: Path) -> None:
-        self.outputs = work / "outputs"
-        self.outputs.mkdir(parents=True, exist_ok=True)
-        self.work = work
-        self.logs: list[str] = []
-
-    def log(self, message: str) -> None:
-        self.logs.append(message)
-
-    def progress(self, message: str, *, fraction: float | None = None) -> None:
-        self.logs.append(message)
-
-    def artifact(self, name: str) -> Path:
-        path = self.work / "artifact-staging" / f"{name}.partial"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return path
-
-    def attach(self, path: Path, *, name: str) -> str:
-        return f"art_{name}"
-
-
-def _run_pytest_setup_error(work: Path) -> dict:
-    from trestle_packs.pytest.runner import PytestSpec, run_pytest
-
-    tests = work / "tests"
-    tests.mkdir()
-    (tests / "test_setup_error.py").write_text(SETUP_ERROR_TEST)
-    result = run_pytest(PytestSpec(path=str(tests)), report_dir=work / "report")
-    return result.to_dict()
-
-
-def _pipeline(work: Path, *, fail_up: bool) -> dict:
-    import trestle_packs.docker.runner as runner_mod
-    from fake_backend import FakeComposeBackend
-
-    backends: list[FakeComposeBackend] = []
-
-    def factory() -> FakeComposeBackend:
-        backend = FakeComposeBackend(fail_up=fail_up)
-        backends.append(backend)
-        return backend
-
-    runner_mod.WhaleComposeBackend = factory  # type: ignore[assignment]
-
+def _wrapper(name: str) -> ModuleType:
     spec = importlib.util.spec_from_file_location(
-        "integration_pipeline_under_test", ROOT / "examples" / "packs" / "integration_pipeline.py"
+        f"{name}_under_test",
+        ROOT / "packages" / f"trestle-pack-{name.split('_')[0]}" / "plugins" / f"{name}.py",
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
+    return module
 
+
+def _run_pytest_setup_error(work: Path) -> dict:
+    from trestle.plugin.testing import FakeContext, call_plugin
+
+    tests = work / "tests"
+    tests.mkdir()
+    (tests / "test_setup_error.py").write_text(SETUP_ERROR_TEST)
+    args = {"path": str(tests), "workdir": str(work), "python": sys.executable}
+    result = call_plugin(_wrapper("pytest_run").pytest_run, args, ctx=FakeContext(work / "ctx"))
+    assert isinstance(result, dict)
+    return result
+
+
+def _pipeline(work: Path, *, fail_up: bool) -> dict:
+    from trestle_pack_docker.fake_cli import FakeDocker, write_fake_docker
+
+    from trestle.plugin.testing import FakeContext, call_plugin
+
+    fake = FakeDocker(work / "docker.json")
+    fake.set(fail=["web"] if fail_up else [])
+    os.environ["TRESTLE_DOCKER_PATH"] = str(write_fake_docker(work / "bin", fake.state_path))
     (work / "docker-compose.yml").write_text(COMPOSE)
     tests = work / "tests"
     tests.mkdir()
     (tests / "test_ok.py").write_text(PASSING_TEST)
-
-    stack = module.PipelineStack(
-        project="g-e3-fake",
-        waves=[module.PipelineWave(name="app", services=["web"], wait="started")],
+    args = {
+        "stack_spec": {
+            "project": "g-e3-fake",
+            "waves": [{"name": "app", "services": ["web"], "wait": "started"}],
+        },
+        "workdir": str(work),
+        "python": sys.executable,
+    }
+    result = call_plugin(
+        _wrapper("stack_pipeline").stack_pipeline, args, ctx=FakeContext(work / "ctx")
     )
-    raised = ""
-    try:
-        module.integration_pipeline(_Ctx(work), stack, workdir=str(work))
-    except Exception as exc:  # noqa: BLE001
-        raised = f"{type(exc).__name__}: {exc}"
-    calls = [c for b in backends for c in b.calls]
-    return {"raised": raised, "calls": calls, "down": calls.count("down")}
+    assert isinstance(result, dict)
+    calls = [c.split()[0] for c in fake.calls]
+    return {"ok": result["ok"], "failed_stage": result["failed_stage"], "calls": calls,
+            "down": calls.count("down")}  # fmt: skip
 
 
 def main() -> None:

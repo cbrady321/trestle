@@ -76,16 +76,14 @@ def run_reactor(
 ) -> dict[str, object]:
     """Capture the child's console into `console_dir` and write the wrapper report.
 
-    Every console write applies `scrubber` (MC-CORE-13): the run's declared secret values and the
-    host roots. When it is not given the wrapper builds one from its own environment, where the
-    conductor put the values for the child, and from the run directory `console_dir` sits in.
+    Every console write applies `scrubber` (MC-CORE-13): the run's credential values and the host
+    roots. The wrapper passes one built from the values the conductor handed it; when none is
+    given only the host roots of the run directory `console_dir` sits in are scrubbed.
     """
     global _flushing
     _flushing = False
     caps = limits or capture_limits()
-    scrub = scrubber or redact.Scrubber(
-        secrets=redact.env_strings(), roots=redact.run_roots(console_dir.parent.parent)
-    )
+    scrub = scrubber or redact.Scrubber(roots=redact.run_roots(console_dir.parent.parent))
     console_dir.mkdir(parents=True, exist_ok=True)
     stdout_path = console_dir / "stdout.log"
     stderr_path = console_dir / "stderr.log"

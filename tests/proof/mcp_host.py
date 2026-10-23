@@ -13,8 +13,10 @@ no response).
 Each request is its own HTTP exchange on a thread of its own, and answers land in a queue by "id",
 so requests can be pipelined: `hold()` sends one and returns its id without waiting, other calls
 can flow on the same session meanwhile, and `join()` collects the held response whenever it lands
-(Assumption 2: count, hold, sever, rejoin). `sever()` breaks the session three ways (a JSON-RPC
-cancellation notice, ending the MCP session with DELETE while the server stays up, or SIGKILL);
+(Assumption 2: count, hold, sever, rejoin). `sever()` breaks the session four ways (a JSON-RPC
+cancellation notice, ending the MCP session with DELETE while the server stays up, closing one
+request's socket with no DELETE and no notification, or SIGKILL); `peer()` is a second client of
+the same server, with a session of its own;
 `rejoin()` brings up a fresh server on the same `TRESTLE_HOME`; `kill_server()`/`restart()` take the
 whole server down and bring a new one up on that same home (recovery runs on start, same as any
 `trestle serve` boot).
@@ -27,6 +29,7 @@ import json
 import os
 import queue
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -66,6 +69,11 @@ class McpHost:
         (self.home / "plugins").mkdir(exist_ok=True)
         self._seed_fixture_plugins()
 
+        self._init_state(timeout_s)
+        self._start_process()
+        self._initialize()
+
+    def _init_state(self, timeout_s: float) -> None:
         self.timeout_s = timeout_s
         self._next_id = 1
         self._request_count = 0
@@ -73,9 +81,23 @@ class McpHost:
         self._delivered: set[int] = set()
         self._responses_lock = threading.Lock()
         self._closed = False
+        # a peer shares its parent's server process and never stops it
+        self._peer = False
+        # each in-flight request's connection, by request id (`sever("connection_drop")`)
+        self._conns: dict[int, socket.socket] = {}
 
-        self._start_process()
-        self._initialize()
+    def peer(self) -> McpHost:
+        """A second client of this same server process: the same `proc`, `port`, `token` and
+        `home`, with its own `initialize`, session id, request ids and queues. Its `close()` sends
+        DELETE for its session and never stops the process."""
+        other = McpHost.__new__(McpHost)
+        other.home = self.home
+        other._init_state(self.timeout_s)
+        other._peer = True
+        other.proc, other.port, other.token = self.proc, self.port, self.token
+        other.session_id = None
+        other._initialize()
+        return other
 
     def _seed_fixture_plugins(self) -> None:
         src = REPO / "tests" / "fixtures" / "plugins"
@@ -120,6 +142,10 @@ class McpHost:
         req_id = request.get("id")
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=None)
         try:
+            conn.connect()
+            if req_id is not None and conn.sock is not None:
+                with self._responses_lock:
+                    self._conns[req_id] = conn.sock
             conn.request(method, MCP_PATH, body=body, headers=self._headers())
             response = conn.getresponse()
             session = response.getheader("mcp-session-id")
@@ -145,6 +171,9 @@ class McpHost:
             if req_id is not None:
                 self._fail(req_id, f"connection lost: {exc!r}")
         finally:
+            if req_id is not None:
+                with self._responses_lock:
+                    self._conns.pop(req_id, None)
             conn.close()
 
     def _read_events(self, response: http.client.HTTPResponse) -> None:
@@ -306,6 +335,9 @@ class McpHost:
           either way).
         - "session_close": end the MCP session (HTTP DELETE with its id);
           the server stays up, as a service does when its client goes.
+        - "connection_drop": shut down and close the socket carrying `req_id`, with no DELETE
+          and no notification (what a killed host does); the held request is answered with this
+          host's "connection lost" error. The session stays open on the server.
         - "sigkill": kill the subprocess outright.
         """
         if mode == "cancel_notification":
@@ -320,6 +352,19 @@ class McpHost:
             )
         elif mode == "session_close":
             self._exchange("DELETE", None)
+        elif mode == "connection_drop":
+            if req_id is None:
+                raise ValueError("connection_drop requires req_id")
+            with self._responses_lock:
+                sock = self._conns.get(req_id)
+            if sock is None:
+                raise RuntimeError(f"request {req_id} has no open connection")
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            sock.close()
+            self._fail(req_id, "connection lost: dropped by the host")
         elif mode == "sigkill":
             self.proc.kill()
         else:
@@ -357,6 +402,10 @@ class McpHost:
         if self._closed:
             return
         self._closed = True
+        if self._peer:
+            if self.proc.poll() is None and self.session_id is not None:
+                self._exchange("DELETE", None)
+            return
         if self.proc.poll() is None:
             try:
                 # SIGINT is the server's graceful stop (SIGTERM would drain instead)

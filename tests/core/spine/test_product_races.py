@@ -279,9 +279,12 @@ class _LockWatch:
 def test_p3_older_refresh_never_overwrites_a_newer_publish(tmp_path: Path, monkeypatch) -> None:
     """Refresh R has made its snapshot of source A and not yet installed it; meanwhile a publish
     of source B runs (or, serialized, asks to). Whatever the order, once both are done the registry
-    serves B, and the publish reported B."""
-    source = _plugin(tmp_path)
-    reg = Registry(home=tmp_path / "home", plugin_dirs=[source.parent])
+    serves B, and the publish reported B. Source A is an earlier agent publish, in the runtime
+    folder publishes write to (an operator's file of that name is never replaced, P-10)."""
+    runtime = tmp_path / "home" / "plugins" / "runtime"
+    runtime.mkdir(parents=True)
+    _plugin(tmp_path).rename(runtime / "racer.py")
+    reg = Registry(home=tmp_path / "home", plugin_dirs=[tmp_path / "plugins"])
     real_materialize = registry_mod.materialize_snapshot
     r_holds, release = threading.Event(), threading.Event()
     first = [True]

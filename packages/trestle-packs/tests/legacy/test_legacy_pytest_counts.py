@@ -1,9 +1,9 @@
-"""BFD-46 (L.NW-1.5): `run_pytest` counts setup, teardown and collection errors and writes
+"""BFD-46 (L.NW-1.5): `pytest_run` counts setup, teardown and collection errors and writes
 `errors` to the report (WR-VERIFY-4:legacy-run_pytest-errors).
 
-Each fixture suite under `tests/fixtures/legacy-errors/` runs in a fresh interpreter (a nested
-pytest session never shares state with this one), by explicit path: its modules are named
-`suite_*.py`, outside every collection pattern."""
+Each fixture suite under `tests/fixtures/legacy-errors/` runs out of process, by explicit path, on
+this test interpreter (the wrapper's `python`): a nested pytest session never shares state with
+this one. Its modules are named `suite_*.py`, outside every collection pattern."""
 
 from __future__ import annotations
 
@@ -13,36 +13,26 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+from pack_wrappers import PYTHON, load_wrapper
 from tests.proof import tolerances
+from trestle.plugin.testing import FakeContext, call_plugin
+
+# K-3/K-4: these plugins take and return typed records (skipped if they are declined).
+pytestmark = pytest.mark.typed_records
 
 PACKS = Path(__file__).resolve().parents[2]
 ROOT = PACKS.parents[1]
 FIXTURES = PACKS / "tests" / "fixtures" / "legacy-errors"
 
-DRIVER = (
-    "import json, sys\n"
-    "from pathlib import Path\n"
-    "from trestle_packs.pytest.runner import PytestSpec, run_pytest\n"
-    "result = run_pytest(PytestSpec(path=sys.argv[1]), report_dir=Path(sys.argv[2]))\n"
-    "print('RESULT ' + json.dumps(result.to_dict()))\n"
-)
 
-
-def _run(target: Path, report_dir: Path) -> dict:
-    env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(ROOT), str(PACKS)])}
-    env.pop("TRESTLE_PROOF_GATE", None)
-    proc = subprocess.run(
-        [sys.executable, "-c", DRIVER, str(target), str(report_dir)],
-        cwd=report_dir.parent,
-        env=env,
-        capture_output=True,
-        text=True,
-        stdin=subprocess.DEVNULL,
-        timeout=tolerances.JOIN_WAIT_S,
-    )
-    lines = [ln for ln in proc.stdout.splitlines() if ln.startswith("RESULT ")]
-    assert lines, proc.stdout + proc.stderr
-    return json.loads(lines[-1][len("RESULT ") :])
+def _run(target: Path, work: Path) -> dict:
+    ctx = FakeContext(work)
+    args = {"path": str(target), "workdir": str(target.parent), "python": PYTHON}
+    result = call_plugin(load_wrapper("pytest_run").pytest_run, args, ctx=ctx)
+    assert isinstance(result, dict)
+    result["report"] = json.loads(ctx.artifacts["pytest-report.json"])
+    return result
 
 
 def test_setup_teardown_collection_errors_counted(tmp_path: Path) -> None:
@@ -74,7 +64,7 @@ def test_directory_with_a_collection_error_counts_it_and_exits_nonzero(tmp_path:
 
 def test_report_json_contains_errors(tmp_path: Path) -> None:
     result = _run(FIXTURES / "suite_runtime_errors.py", tmp_path / "report")
-    payload = json.loads(Path(result["report_path"]).read_text(encoding="utf-8"))
+    payload = result["report"]
     assert payload["errors"] == result["errors"] == 2
     assert payload["exit_code"] == result["exit_code"]
 
@@ -101,6 +91,7 @@ def test_fixture_suites_not_collected_by_packs_session() -> None:
                 **{k: v for k, v in os.environ.items() if k != "TRESTLE_PROOF_GATE"},
                 "PYTHONPATH": os.pathsep.join(
                     [str(ROOT), str(PACKS), str(ROOT / "packages" / "trestle-env")]
+                    + [str(pack) for pack in sorted((ROOT / "packages").glob("trestle-pack-*"))]
                 ),
             },
             capture_output=True,

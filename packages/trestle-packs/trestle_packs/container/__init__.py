@@ -4,8 +4,8 @@
 codes and is the one place `docker` is started (through the injected `ExecutionPort`); `reads` is
 `ResourceReads`; `effects` adds `ResourceCreate`, `ResourceOwned` and `ResourceSafeStart`.
 Adapters import only the standard library and `trestle.workflow` (BFD-47, N7, C.5 step 4): the
-types they return are the workflow package's own. The legacy `trestle_packs.docker` subpackage is
-untouched (BFD-49).
+types they return are the workflow package's own. The docker bundled pack's library
+(`trestle_pack_docker`) is separate (BFD-49).
 
 `bind(docker_path, endpoint, execution)` (MC-B-01) returns the port set the loop's facet binders
 take: one composite adapter serves `ResourceReads`, `ResourceCreate`, `ResourceOwned` and

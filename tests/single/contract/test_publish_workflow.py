@@ -24,8 +24,9 @@ ECHO = REPO / "examples" / "plugins" / "echo.py"
 # MC-18 slot is empty and nothing changes for plain plugins. The runtime version is an identity
 # ingredient (MC-18), so a version bump re-pins it; `wr-ckpt/core` (runtime 0.1.0) gave
 # snap_625a117d0a2b667b.
-ECHO_SNAPSHOT_ID = "snap_9517ada44aa54a04"  # runtime 0.3.0 gave snap_83cf30119b3b6f87
-ECHO_MANIFEST_SHA256 = "d14928d3a0aa984e4376fa4ce3fffd4552daaaa13cf3857586674a42cf9987d3"
+ECHO_SNAPSHOT_ID = "snap_84f7289369cab51f"  # 0.6.0; 0.5.2: snap_043516bb47a98822
+# change 3: no secrets slot, and the manifest records its publication origin
+ECHO_MANIFEST_SHA256 = "a76e1232dd09e252f1a8116a5eea14474d943ff6abbf676e1bd1af4ceb985f11"
 PLAIN_SNAPSHOT_FILES = ["manifest.json", "plugin.py", "return_schema.json", "schema.json"]
 
 WORKFLOW_SOURCE = """

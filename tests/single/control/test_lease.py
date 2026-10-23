@@ -158,7 +158,7 @@ def test_lease_counted_in_the_pool(tmp_path: Path) -> None:
     assert _key_runs(kernel, '"prod"', now=deadline - 1) == [(run_id, '"prod"')]
     assert _key_runs(kernel, '"prod"', now=entry["deadline"]) == []
     state = pools.load_sched(kernel.home)
-    assert pools.busy_until(state, '"prod"', now=entry["deadline"]) is None
+    assert pools.busy_holder(state, '"prod"', now=entry["deadline"]) is None
 
     # the run's completion ends it: its marker and its pool entry go in one locked step
     second = _admit(kernel, "envplain", {"env": "prod"})

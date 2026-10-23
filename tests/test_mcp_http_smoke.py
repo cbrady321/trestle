@@ -203,7 +203,10 @@ def test_http_empty_catalog_includes_bootstrap_fields() -> None:
 
                 catalog = (await client.call_tool("list_plugins", {})).data
                 assert catalog["items"] == []
-                assert catalog["plugin_search_paths"] == [str((home / "plugins").resolve())]
+                assert catalog["plugin_search_paths"] == [
+                    str((home / "plugins").resolve()),
+                    str(home / "plugins" / "runtime"),
+                ]
                 assert "catalog_hint" in catalog
                 assert "publish_plugin" in catalog["catalog_hint"]
         finally:

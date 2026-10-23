@@ -20,7 +20,8 @@ _VIEW_WHEN: dict[str, dict[str, str]] = {
     "run": {
         "use_when": (
             "Status and timing for one run (plugin, state, started_at, ended_at), and its latest "
-            "progress while it runs."
+            "progress while it runs. session_ended: true once the session that sent a live run "
+            "has ended (false while it is open; null for an ended run or one sent outside MCP)."
         ),
         "params": "run_id",
     },
@@ -52,7 +53,8 @@ _VIEW_WHEN: dict[str, dict[str, str]] = {
         "use_when": (
             "Browse recent runs, newest first. Follow next_cursor when it is set. "
             "truncated with next_cursor null: older runs lie past the window (reach past "
-            "it is out); a run_id view of one answers projection.outside_window."
+            "it is out); a run_id view of one answers projection.outside_window. A live run's "
+            "session_ended is true once the session that sent it has ended (null once it ends)."
         ),
         "params": "",
     },
@@ -61,7 +63,10 @@ _VIEW_WHEN: dict[str, dict[str, str]] = {
         "params": "",
     },
     "run_provenance": {
-        "use_when": "Snapshot id and hashes for one run.",
+        "use_when": (
+            "Snapshot id and hashes for one run; for a pack plugin also its pack and the "
+            "digests of the pack's configuration files."
+        ),
         "params": "run_id",
     },
     "run_artifacts": {
@@ -82,6 +87,14 @@ _VIEW_WHEN: dict[str, dict[str, str]] = {
             "unknown key. Not limited to the recent runs."
         ),
         "params": "idempotency_key",
+    },
+    "status": {
+        "use_when": (
+            "What this service allows and how busy it is: version, profile, limits (deadline "
+            "ceiling, longest key ttl), free slots, live runs, the environments in use and who "
+            "holds them. One row; no params."
+        ),
+        "params": "",
     },
 }
 

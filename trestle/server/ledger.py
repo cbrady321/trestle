@@ -133,6 +133,9 @@ def state_record(evidence: Path, records: list[dict[str, Any]]) -> dict[str, Any
         "plugin": created.get("plugin"),
         "version": created.get("version"),
         "owner": created.get("owner"),
+        # change 2a: the MCP session the run arrived on (on disk only, never on the wire), so
+        # listings tell whether that session has ended from this small file
+        "caller_session": created.get("caller_session"),
         "spec_hash": created.get("spec_hash"),
         "key": created.get("idempotency_key"),
         "retry_of": created.get("retry_of"),

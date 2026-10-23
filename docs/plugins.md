@@ -23,7 +23,7 @@ Worked example: [`examples/plugins/echo.py`](../examples/plugins/echo.py).
 
 <!-- K-5 -->
 The decorator has two forms with the same runtime effect: bare `@trestle`, and the call form
-`@trestle(deadline=..., summary_fields=..., packages=..., env_arg=..., secrets=..., repeatable=...)`. The call form
+`@trestle(deadline=..., summary_fields=..., packages=..., env_arg=..., credentials=..., repeatable=..., stop_grace=...)`. The call form
 is read statically from the source at publication, so every value must be a literal; an unknown
 keyword or a non-literal value is refused at publication (`publication.validation_failed`). The
 entry point must be a plain `def`: an `async def` entry is refused at publication with a message
@@ -43,7 +43,7 @@ before any run id exists. `describe_plugin` shows the deadline in force (`deadli
 to whole seconds.
 <!-- /K-9 -->
 
-`summary_fields`, `env_arg` and `secrets` are declared and recorded in the snapshot's
+`summary_fields`, `env_arg` and `credentials` are declared and recorded in the snapshot's
 `manifest.json` (`declared`) and count toward its identity.
 
 `summary_fields` names the result fields the run summary keeps first when the whole result does not
@@ -80,6 +80,16 @@ plugin's own deadline, never added to it. A run stopped this way still ends `can
 declared; a workflow declaring it is refused at publication (a root's release slice is the
 operator's). See [the decision](decisions/plain-plugin-stop-grace.md).
 
+`credentials` names the credential identities the plugin uses, by name
+(`credentials=["gh", "ci-reader"]`: lower case letters, digits, `-` and `_`). The operator
+configures each identity and grants it to plugins (`trestle credentials`, see
+[Credentials](#credentials) below); the agent never sees a value. `describe_plugin` lists the
+names and nothing else about them.
+
+There is no `secrets` keyword any more. It named arguments whose values were secret, which meant
+the agent sending the value already held it; a plugin that declares it is refused at publication
+with a message pointing at `credentials`.
+
 `packages` names the modules or packages the plugin imports from outside its own file, and is
 **recorded, not snapshotted** (R-J). Publication resolves each name on the import path the child
 process will use, without importing it, and records a digest of its `.py` files (a package's other files are not covered) in the manifest; the
@@ -101,7 +111,7 @@ their digests for each run.
 - Use `ctx.log` for structured events; wrapper stdout/`print` appears in `query(run_tail)`.
 - Use `ctx.event(kind, **fields)` to record an event of your own kind. It shares the limits of
   `ctx.log` and `ctx.progress` (per-event size, count, rate; over a limit the event is dropped and
-  the run's `limits_exceeded` names it) and the same secret scrubbing. A kind the runtime records
+  the run's `limits_exceeded` names it) and the same credential scrubbing. A kind the runtime records
   itself (`log`, `progress`, `artifact_available`, `error`) or uses for a run's lane record
   (`plan`, `issue`, `confirmation`, `result`, `released`, `step`, `node_end`) is refused with
   `ValueError`, as is an empty kind.
@@ -125,7 +135,7 @@ A run may hold at most 1 000 artifacts and 2 GiB of artifact bytes in all (10 an
 `limits_exceeded` names the limit once (`stream: "artifacts"`, `limit: "max_artifact_count"` or
 `"max_artifact_bytes"`, with the bytes left out): a refused promotion leaves the file where the plugin
 wrote it, and a refused `attach` returns the empty string, so a handle a plugin was given always
-fetches. Every promoted artifact is scrubbed of declared secret values first; a binary artifact that
+fetches. Every promoted artifact is scrubbed of credential values first; a binary artifact that
 holds one is refused with a `secret_in_binary` marker. Limit markers are one per (stream, limit) for
 the whole run, however many things were dropped: the marker's byte total counts them all.
 
@@ -209,13 +219,57 @@ state = json.loads(result.stdout)["state"]
   fetch. Pass another `output` name to keep a command's output apart, or `output=None` to keep
   none.
 - Each call logs one line (`exec gh: exit 0 in 0.4s`).
-- `credentials=` is reserved for credential grants
+- `credentials=` is reserved for injecting a granted identity into one command
   ([decision record](decisions/service-and-credentials.md), change 5) and is refused with
-  `NotImplementedError` until they exist.
+  `NotImplementedError` until then. Today pass `ctx.credential_env(name)` as `env=` (see
+  [Credentials](#credentials)).
 - `ctx.exec` and the rest of the context are safe to call from several threads at once.
 
 `ExecResult` is importable from `trestle.plugin` for type hints. `result.ok` is true only for a
 command that ran to its end and exited 0.
+
+### Credentials
+
+A plugin that needs a token names the identity, never a value:
+
+```python
+@trestle(credentials=["gh"])
+def open_pr(ctx: Context, repo: str) -> dict[str, str]:
+    env = ctx.credential_env("gh")  # {"GH_TOKEN": "..."}, from the operator's store
+    result = ctx.exec(["gh", "pr", "create", "--fill", "-R", repo], env=env)
+    ...
+```
+
+- **Admission checks first.** A run of a plugin whose declared identity no operator configured
+  is refused `admission.credential_unknown`; one whose identity is not granted to this plugin as
+  now published is refused `admission.credential_not_granted`; one whose value the store cannot
+  give is refused `admission.credential_unavailable`. All three happen before a run id, run
+  directory or process exists, and the message names the identity and the operator command that
+  fixes it. An agent reports it and stops: only the operator can grant.
+- **A grant is pinned to the code.** It records the plugin's `source_sha256` and its declared
+  packages' digests at the time of the grant. Republishing the plugin with a changed entry file
+  or a changed declared package leaves the grant stale until the operator grants it again, and a
+  plugin an agent published (`publish_plugin`) is granted only after the operator reviews it
+  (`--reviewed`, P-12).
+- **`ctx.credential_env(name)`** returns `{ENV_NAME: value}` (the variable name is the one the
+  operator gave the identity). It is not put into the plugin's environment: pass it to
+  `ctx.exec(env=...)` for the one command that needs it. A command's environment is readable by
+  any process of yours while it runs (`ps -E`), so prefer `credential_file` for a tool that can
+  read a file.
+- **`ctx.credential_file(name)`** writes the value to a file of its own (mode `0600`, in a `0700`
+  directory that belongs to the run) and returns its path, for a tool that reads a credentials
+  file. The directory is removed when the run ends.
+- A name the plugin did not declare raises `LookupError` from either.
+- **Every value is scrubbed.** Whichever shape a plugin uses, the value is in the run's scrub set:
+  a log line, a `print`, an event, an error message, a return value or an attached file that
+  holds it reads `<redacted>` on disk and in every answer.
+- `ctx.exec(credentials=...)`, which will inject an identity into one command without the plugin
+  holding the value, is the coming first choice (decision record change 5) and is refused until
+  then.
+- Tests give fake values: `FakeContext(tmp_path, credentials={"gh": {"GH_TOKEN": "fake"}})`.
+
+The store, its key and the operator commands are in [`install.md`](install.md#credentials); what
+the boundary is and is not is in [`security.md`](security.md#credentials).
 
 ### When a person must act: `Blocked`
 
@@ -236,8 +290,23 @@ answer's `primary` carries `code` as `plugin.<code>` (here `plugin.aws_login`: a
 never reads as one of Trestle's own `admission.*` or `execution.*` codes), the `human_action`,
 and `resend`: `"succeeds_after_action"` (the default: send the same request again once the action
 is done), `"will_not_succeed"` or `"unknown"`. The code is lower-case words joined by `_` or `.`;
-the human action is scrubbed of declared secrets like an error message. An agent reads the
+the human action is scrubbed of credential values like an error message. An agent reads the
 verdict from `answer.outcome`, reports the human action, and stops.
+
+### The exec plugin
+
+`exec` is a guide example (`trestle://guide/examples/exec`) that `trestle init` seeds into the
+home's plugins folder: `run(plugin="exec", args={"argv": [...], "cwd": "<absolute dir>"})` runs
+one command through `ctx.exec`, with no shell added. `cwd` must resolve (symlinks included) under
+one of the directories in `[plugins.env] TRESTLE_EXEC_ROOTS` (absolute paths joined by `:`); with
+none listed the run raises `Blocked("exec_roots_unset", ...)`. The run's deadline is the
+command's timeout (less 5 s to return the answer); each stream keeps its first 16 MiB. The answer
+is `ok`, `exit_code`, `timed_out`, `duration_s`, the last 1,500 bytes of each stream
+(`stdout_tail`, `stderr_tail`), `truncated`, `output` (the kept output's artifact handle) and
+`error` (`<code>: <detail>`, returned, never raised). `argv[0]` named `trestle` answers
+`operator_command`: that steers an agent towards the operator and is not a boundary, since
+`sh -c` gets past it. A credential declaration on a plugin named `exec` is refused at publication
+(`publication.validation_failed`), and the operator's grant refuses it too.
 
 ## Testing a plugin without a server
 
@@ -256,13 +325,16 @@ def test_check_pr(tmp_path):
     assert ctx.exec_calls[0].argv == ("gh", "pr", "view", "7")
 ```
 
-- **`FakeContext(root, deadline=300, exec_handler=None)`** implements the whole plugin context and
+- **`FakeContext(root, deadline=300, exec_handler=None, credentials=None)`** implements the whole
+  plugin context and
   records what the plugin did: `logs`, `progress_updates`, `events`, `attachments` (each with the
   id it replaced), `artifacts` (each name's current bytes) and `exec_calls`. It refuses what the
   runtime refuses (a reserved event kind, an attach from outside `work/`, a shell string, a
   `credentials=`). `exec` runs the command for real, bounded as at run time, unless an
   `exec_handler(argv, **kwargs)` returns a scripted result (`exec_result(...)`). Set
   `ctx.cancelled = True` to stop the run; `deadline` takes seconds, a `timedelta` or a datetime.
+  `credentials` maps each identity name to one `{ENV_NAME: fake value}`, for `credential_env` and
+  `credential_file` (a `0600` file under `root/channel/`); a name not given raises `LookupError`.
 - **`call_plugin(fn, args, ctx=...)`** calls a `@trestle` function as the child process does:
   `args` in their JSON form, hydrated by the parameter annotations, and the result returned as
   the JSON value the run would record.
@@ -589,11 +661,12 @@ and how an agent runs a tree and reads its answer is in
 
 ## Workflow packs
 
-A pack is a library plus a folder of thin `@trestle` wrapper files that call it, each declaring
-the library in `packages=`. Install the library into the service's own environment, add the
-wrapper folder to `[plugins] paths` in `config.toml`, and restart the service; Trestle publishes
-the wrappers like any other plugin file and never loads plugins from a package's entry points.
-The pre-built Docker / pytest / migration wrappers live under `examples/packs/`. Step by step:
+A pack is a folder with a `pack.toml`, thin `@trestle` wrapper files under `plugins/`, each
+declaring the pack's library in `packages=`, and optionally that library. The operator installs it
+with `trestle pack install` (a bundled pack by name, a folder, or a git repository at a tag); the
+service publishes the wrappers like any other plugin file, with no restart, and never loads
+plugins from a package's entry points. The Docker / pytest / migration plugins are the bundled
+packs `docker`, `pytest`, `migrate` and `stack` (`packages/trestle-pack-<name>/`). Step by step:
 [`packs.md`](packs.md#install).
 
 ## Related

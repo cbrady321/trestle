@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trestle-pack-pytest"
+# lockstep with Trestle (P-18)
+version = "0.6.0"
+description = "The pytest bundled pack's library: the mechanism behind its Trestle plugin"
+readme = "README.md"
+requires-python = ">=3.12"
+# The standard library and `trestle.plugin`, nothing else: `trestle pack install` installs a
+# bundled library with --no-deps into the service's Python, where Trestle already is. The plugin
+# runs pytest, on the project's interpreter, so the library needs no tool package.
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["trestle_pack_pytest"]

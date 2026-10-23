@@ -28,7 +28,7 @@ THREE_LEVEL = REPO / "tests" / "fixtures" / "trees" / "three_level.py"
 # The snapshot identities of the two bare plugins under runtime 0.3.1: one declares no tree (echo),
 # one a leaf-root tree (spine_leaf). The runtime version is an identity ingredient (MC-18), so a
 # version bump re-pins echo's id; `wr-ckpt/single` (runtime 0.1.0) gave snap_625a117d0a2b667b.
-ECHO_SNAPSHOT_ID = "snap_9517ada44aa54a04"  # runtime 0.3.0 gave snap_83cf30119b3b6f87
+ECHO_SNAPSHOT_ID = "snap_84f7289369cab51f"  # 0.6.0; 0.5.2: snap_043516bb47a98822
 SPINE_LEAF_DECLARATION_DIGEST = "df1c29c802b30eeb7a6869107b3f55690eb3192d19e937193c45279a2210efda"
 
 DB_BUDGET = 'leaf("db")'  # the descendant `three_level` declares at depth 3
