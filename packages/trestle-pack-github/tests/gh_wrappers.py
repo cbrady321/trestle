@@ -15,7 +15,7 @@ from types import ModuleType
 from typing import Any
 
 import pytest
-from trestle.plugin.testing import FakeContext, call_plugin
+from trestle.plugin.testing import FakeContext
 
 from trestle_pack_github.fakes.gh_cli import FakeGh, write_fake_gh
 
@@ -50,9 +50,8 @@ def policy_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: str) -> P
     return path
 
 
-def call(tmp_path: Path, name: str, args: dict[str, Any]) -> tuple[Any, FakeContext]:
-    ctx = FakeContext(tmp_path / "ctx")
-    return call_plugin(getattr(load_wrapper(name), name), args, ctx=ctx), ctx
+def context(tmp_path: Path) -> FakeContext:
+    return FakeContext(tmp_path / "ctx")
 
 
 def git(cwd: Path, *argv: str) -> str:

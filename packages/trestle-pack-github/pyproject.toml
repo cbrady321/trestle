@@ -8,8 +8,9 @@ version = "0.5.2"
 description = "The library behind Trestle's bundled github pack: PR status, checks, comments and opening PRs through gh"
 readme = "README.md"
 requires-python = ">=3.12"
-# Installed with --no-deps from the pack copy: the standard library and Trestle's plugin surface only.
-dependencies = ["trestle"]
+# The standard library and `trestle.plugin`, nothing else: `trestle pack install` installs a
+# bundled library with --no-deps into the service's Python, where Trestle already is.
+dependencies = []
 
 [tool.hatch.build.targets.wheel]
 packages = ["trestle_pack_github"]

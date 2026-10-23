@@ -4,9 +4,18 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
-from gh_wrappers import call, fake_gh, policy_file, pr
+from gh_wrappers import context, fake_gh, load_wrapper, policy_file, pr
+from trestle.plugin.testing import FakeContext, call_plugin
+
+
+def call(tmp_path: Path, name: str, args: dict[str, Any]) -> tuple[Any, FakeContext]:
+    """Call the wrapper `name` with `FakeContext`: its answer as an agent reads it, and the
+    context (commands run, artifacts attached)."""
+    ctx = context(tmp_path)
+    return call_plugin(getattr(load_wrapper(name), name), args, ctx=ctx), ctx
 
 
 def _who(login: str, bot: bool = False) -> dict[str, str]:
