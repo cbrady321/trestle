@@ -17,7 +17,7 @@ from trestle.common.types import Handle, RequestOutcome, RunView
 from trestle.query import views as view_defs
 from trestle.query.catalog import VIEW_CATALOG_URI
 from trestle.query.conformance import validate_envelope
-from trestle.server import idempotency
+from trestle.server import callbacks, idempotency
 from trestle.server.ledger import (
     TERMINAL_KINDS,
     RunLedger,
@@ -553,6 +553,8 @@ def _run_row(record: RunRecord, reader: SessionReader) -> dict[str, object]:
         # T1: the run's latest `ctx.progress` while it is in flight; null once it has ended
         "progress": (None if record.finalized else latest_progress(evidence_dir(record.run_dir))),
         "session_ended": _session_ended(record, reader),
+        # run callbacks: the callback's origin and delivery status, null without one
+        "callback": callbacks.view_of(record.run_dir),
     }
 
 

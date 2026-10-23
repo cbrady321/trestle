@@ -62,6 +62,9 @@ class AdmitRequest:
     idempotency_ttl_s: float | None = None
     # v0.3.1 Feature 3: hold the run until another ends: {run | key, when, match} (None: no hold)
     after: dict[str, Any] | None = None
+    # Run callbacks: the URL POSTed once the run has ended (None: no callback); not part of a
+    # key's identity
+    callback: str | None = None
 
 
 @dataclass
@@ -325,6 +328,9 @@ class RunView:
     # T1: the latest `ctx.progress` of a run still in flight, `{message, fraction, at}`; absent once
     # the run has ended, or while it has reported none
     progress: dict[str, Any] | None = None
+    # Run callbacks: `{origin, status, attempts, last_http_status, last_error, delivered_at}` for a
+    # run sent with a callback (the origin only, never the path); absent otherwise
+    callback: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -371,6 +377,8 @@ class RunView:
             out["after_run_id"] = self.after_run_id
         if self.progress is not None:
             out["progress"] = self.progress
+        if self.callback is not None:
+            out["callback"] = self.callback
         return out
 
 

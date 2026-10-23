@@ -88,6 +88,7 @@ you need. For people: [`docs/agents.md`](../../docs/agents.md) and
 | re-running a gate you already ran | `idempotency_key="gate:<name>:<commit>"` (and `idempotency_ttl_s` up to a week): the same key with the same args joins or returns the earlier answer |
 | reading the whole log to confirm a pass | the `summary` (`ok`, counts, one line per failure); fetch only the slice you need to fix something |
 | finding a run again later | `query(view="run_by_key", params={"idempotency_key": "..."})` |
+| holding a call open only to learn that a run ended, when your host offers a callback listener | `run(..., callback="http://127.0.0.1:<port>/<token>")`: one POST when the run ends (`trestle://guide/plugins/callbacks`); loopback only unless the operator allows more |
 
 **Chaining example** (plugin names illustrative: lint, then tests, then a Docker check, sent at once; each starts only if the
 previous one passed):

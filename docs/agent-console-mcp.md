@@ -147,6 +147,15 @@ is listed in [`agents.md`](agents.md) (Run states).
 - A finished run's `RunView` carries `outcome` (`class`, `code`, `identity`, `recovered`): one class from `passed | cancelled | timed_out | execution_error`, classified from how the plugin process ended. It never reads `failed` or `blocked` in this release; those appear only in `answer.outcome`. For a workflow plugin (one that calls `run_tree`) the verdict is `answer.outcome`: `state` and `outcome.class` read `succeeded` / `passed` whenever the plugin returned normally, even when `answer.outcome` is `failed` or `blocked`. See [`agents.md` § Large tasks: the tree](agents.md#large-tasks-the-tree).
 - A finished run's `RunView` (and so the `run` and `await_runs` terminal responses) also carries `answer`, the one terminal answer, beside `state` and `outcome`; a run that has not ended has none. Its decisive keys are always present (`null`, never omitted): `outcome`, `root_stop`, `recovered`, `primary` (the node that decided, with its `code`, `human_action` and `resend`), `incomplete`, `error`, `cleanup` (`clean`, counts per disposition, `group_confirmed_gone`, `helpers_disclosed`, `lease_ended_unconfirmed`), `test_counts` and `detail`, then `listed_count` and `unconfirmed_count` (the full lengths) and the `listed` and `unconfirmed` entries that fit the run's summary budget. What does not fit is behind `detail`, a handle (`<run_id>/answer`) that `fetch` resolves to the full answer. The answer is recomputed from the run's durable record, never stored as a second authority.
 
+### `run` honors `callback`
+
+`callback` (optional, a URL) asks for one HTTP `POST` when the run ends, however it ends, sent after its evidence is finalized and its terminal row is written. It does not change what the call waits for. The listener is not Trestle's; see [`agents.md` § Get a callback when a run ends](agents.md#get-a-callback-when-a-run-ends) for the version 1 body (`type: "trestle.run.ended"`, `version: 1`, `delivery_id`, `attempt`, `sent_at`, `run`).
+
+- Checked at admission, before any run id: an absolute `http(s)` URL of at most 2,048 bytes, no user/password, no `#fragment` (`admission.invalid_args`); a loopback host (`127.0.0.1`, `[::1]`, `localhost`, never looked up in DNS) or a match in the operator's `[callbacks] allow`, and not Trestle's own MCP or ops port (`admission.callback_not_allowed`, not retryable).
+- Not part of a key's identity: a join keeps the run's original callback.
+- Delivery is at-least-once: attempts at 0 s, 2 s, 10 s, 30 s and 2 min (5 s timeout each) on a refused connection, a timeout, `408`, `429` or `5xx`; any other non-`2xx` stops at once; redirects are never followed. A restart continues a pending callback; one still pending 24 h after the run ended is `abandoned`.
+- `RunView.callback` and the `run` view's `callback` column: `{origin, status, attempts, last_http_status, last_error, delivered_at}`, `status` one of `pending | delivered | failed | abandoned`; the origin only, never the path or query. Absent from `RunView` (`null` in the row) without a callback.
+
 ### Evidence finalization (R-QB-28) and live runs
 
 While a run is in flight it can be watched (T1–T3):
@@ -309,6 +318,7 @@ Wrong kind → `projection.invalid_args`. Path-shaped target → `projection.inv
 | `run` while draining | `admission.service_draining` (no `run_id`) | Stop or wait |
 | Plugin name as MCP tool | Protocol unknown-tool | `run(plugin=…)` |
 | Reused idempotency key, different args | `admission.idempotency_key_conflict` | New key or same args |
+| `callback` to a host neither loopback nor in `[callbacks] allow`, or to Trestle's own port | `admission.callback_not_allowed` (no `run_id`) | Loopback listener, or the operator allows it |
 
 ---
 

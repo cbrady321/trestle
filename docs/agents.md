@@ -663,6 +663,8 @@ See [`plugins.md`](plugins.md) for authoring, filesystem drop-in, and `publish_p
 | The plugin declares a credential identity the operator has not configured | `admission.credential_unknown` (no run id; names the identity) | Report it and stop: only the operator adds identities |
 | The identity is not granted to this plugin as now published (new, or republished since) | `admission.credential_not_granted` (no run id; names the operator's command) | Report it and stop: only the operator grants |
 | The operator's credential store could not give the value | `admission.credential_unavailable` (no run id) | Report it and stop |
+| `callback` not an absolute http(s) URL, over 2,048 bytes, or with a user/password or `#fragment` | `admission.invalid_args` (no run id) | See "Get a callback when a run ends" |
+| `callback` host neither loopback nor in `[callbacks] allow`, or one of Trestle's own ports | `admission.callback_not_allowed` (no run id, not retryable) | Use a loopback listener, or ask the operator to allow the URL |
 | A held run's `after` is not met | the held run ends `cancelled`, `error.code` `execution.after_unmet` (the message names the earlier run and why) | Read the earlier run; send a new run when it is fixed |
 
 ### Find a run by its key, wait on keys, keep an answer longer
@@ -680,6 +682,28 @@ See [`plugins.md`](plugins.md) for authoring, filesystem drop-in, and `publish_p
 - Chains work (C after B after A). `after` is part of a key's identity beside the arguments: re-sending a key with another `after` is `admission.idempotency_key_conflict`. Held runs count against the server's `[operator] max_held_runs` (256), not `queue_depth`.
 
 <!-- K-1 -->
+### Get a callback when a run ends
+
+`run(plugin="repo_tests", args={…}, callback="http://127.0.0.1:8765/trestle/abc123")` sends one HTTP `POST` to that URL once the run has ended, however it ended. Trestle does not provide the listener: whatever listens there (an agent host's callback endpoint, a script) is someone else's. `completion="terminal"` and `await_runs` work as before, and a run with a callback can still be waited on.
+
+- **Which URLs.** An absolute `http` or `https` URL of at most 2,048 bytes, with no user/password part and no `#fragment` (else `admission.invalid_args`). The host must be loopback (`127.0.0.1`, `[::1]` or `localhost`) or match a prefix in the operator's `[callbacks] allow` in `config.toml`, and the port must not be Trestle's own MCP or ops port; else `admission.callback_not_allowed` (not retryable). Both refusals come before anything exists: no run id. `localhost` is never looked up: Trestle connects to `127.0.0.1`, then `::1`.
+- **Fixed at admission.** The URL is recorded on the run and is not part of a key's identity: a re-send that joins an existing run keeps that run's original callback and ignores the new one.
+- **When.** After the run's evidence is finalized and its terminal row is written, so a listener that calls `query` or `fetch` on receipt finds the run finished. A run interrupted because the service died still gets its callback, sent by the next start.
+- **The request** (version 1): `Content-Type: application/json`, `Trestle-Event: run.ended`, `Trestle-Delivery: <delivery_id>`, and this body (at most 2 KiB; no args, result or paths):
+
+  ```json
+  {"type": "trestle.run.ended", "version": 1, "delivery_id": "r_7f3c…:ended", "attempt": 1,
+   "sent_at": "2026-10-23T10:00:03Z",
+   "run": {"run_id": "r_7f3c…", "plugin": "repo_tests", "idempotency_key": "tests:abc",
+           "state": "failed", "outcome_class": "execution_error", "answer_outcome": "failed",
+           "error": {"code": "execution.worker_exit", "message": "…"},
+           "started_at": "2026-10-23T09:20:00Z", "ended_at": "2026-10-23T10:00:02Z"}}
+  ```
+
+  `answer_outcome` is the verdict to act on. `error`, `idempotency_key` and `started_at` are `null` when absent (`started_at` for a run that never started, such as a held run whose `after` was unmet). Every field is always present; fields may be added within version 1, so ignore ones you do not know.
+- **Delivery is at-least-once.** Any `2xx` delivers. A refused connection, a timeout, `408`, `429` or `5xx` is retried: attempts at 0 s, 2 s, 10 s, 30 s and 2 min, each with a 5 s timeout. Any other answer stops at once; redirects are never followed. A listener may see the same event twice (a retry after a lost `2xx`, or a restart): `delivery_id` is the same on every attempt, so drop repeats by it. A callback still pending 24 hours after its run ended is `abandoned` unsent. The run itself is never affected by its callback.
+- **Its status** is on the run: `RunView` and `query(view="run")` carry `callback: {origin, status, attempts, last_http_status, last_error, delivered_at}` with `status` one of `pending`, `delivered`, `failed`, `abandoned` (absent from `RunView`, `null` in the row, for a run sent without one). Views show only the URL's origin, never its path or query, so a listener can put an unguessable token in its own path to know a request is genuine.
+
 ### The same idempotency key joins its run after a republish (K-1)
 
 Re-issuing a key with the same plugin and the same arguments returns the run that key named, even when the plugin was republished in between: no second run starts, and the answer is that run's own. The answer says which code ran: `outcome.identity.snapshot_id` is the snapshot the run was admitted against, not the plugin's current one, so a retry after a republish still shows the original id. A different plugin or different arguments under the same key is still `admission.idempotency_key_conflict`.

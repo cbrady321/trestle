@@ -1906,3 +1906,48 @@ items = [
   { path = "$.views.run_provenance.declared_fields", value = "config" },
 ]
 authorized_by = "docs/decisions/packs.md P-1 (run_provenance shows the pack) and P-20 (configuration digests in provenance)"
+
+# Run callbacks (docs/proposals/2026-10-23-run-callbacks-design.md): run(callback=...), the run
+# view's callback field and the run row's callback column (origin and delivery status, never the
+# path), and the new admission code. Additive.
+
+[[entry]]
+id = "ADD-tools-list-run-callback"
+facet = "tools_list"
+row_or_k = "MC-16"
+docs = []
+due_checkpoint = "run callbacks"
+direction = "additive"
+keys = ["$.tools[0].inputSchema.properties.callback"]
+authorized_by = "run callbacks design, The argument (run(callback=...))"
+
+[[entry]]
+id = "ADD-runview-callback"
+facet = "runview_shape"
+row_or_k = "MC-06"
+docs = []
+due_checkpoint = "run callbacks"
+direction = "additive"
+items = [{ path = "$.fields", value = ["callback", "dict[str, Any] | None"] }]
+authorized_by = "run callbacks design, Delivery (RunView gains callback)"
+
+[[entry]]
+id = "ADD-run-row-callback"
+facet = "query_row_shapes"
+row_or_k = "MC-06"
+docs = []
+due_checkpoint = "run callbacks"
+direction = "additive"
+keys = ["$.views.run.observed.*.row_shape.callback"]
+items = [{ path = "$.views.run.declared_fields", value = "callback" }]
+authorized_by = "run callbacks design, Delivery (query(view=\"run\") gains callback)"
+
+[[entry]]
+id = "ADD-code-admission-callback-not-allowed"
+facet = "refusal_codes"
+row_or_k = "V-11"
+codes = ["admission.callback_not_allowed"]
+docs = ["docs/agents.md", "docs/agent-console-mcp.md", "docs/security.md"]
+due_checkpoint = "run callbacks"
+direction = "additive"
+authorized_by = "run callbacks design, The argument (admission.callback_not_allowed, new, not retryable)"

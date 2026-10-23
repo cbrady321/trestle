@@ -9,6 +9,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from trestle.common import clock, credentials
+from trestle.server.callbacks import AllowEntry, parse_allow
 
 _GB = 1024**3
 
@@ -101,6 +102,9 @@ class TrestleConfig:
     # on every run's process over the server's own environment; only config.toml sets it, never
     # an agent's request.
     plugin_env: tuple[tuple[str, str], ...] = ()
+    # Run callbacks: `[callbacks] allow`, the URL prefixes a callback may name beside loopback
+    # (default none). The server reads it once at start; a malformed entry stops the load.
+    callback_allow: tuple[AllowEntry, ...] = ()
 
     @classmethod
     def defaults(cls) -> TrestleConfig:
@@ -139,6 +143,7 @@ class TrestleConfig:
             max_held_runs=self.max_held_runs,
             max_ttl_s=self.max_ttl_s,
             plugin_env=self.plugin_env,
+            callback_allow=self.callback_allow,
         )
 
 
@@ -177,6 +182,7 @@ def load_config(home: Path) -> TrestleConfig:
             )
         cfg = replace(cfg, profile=_load_profile(raw.get("profile")))
         cfg = replace(cfg, plugin_env=_load_plugin_env(raw.get("plugins")))
+        cfg = replace(cfg, callback_allow=parse_allow(raw.get("callbacks")))
         cfg = _load_pool_operator(cfg, raw.get("operator"))
         cfg = _load_deadline_ceiling(cfg, raw.get("operator"))
         executables = _load_release_executables(raw.get("operator"))

@@ -36,7 +36,7 @@ from trestle.child import plugin_api as plugin_api_child
 from trestle.child import validate
 from trestle.common import codes
 from trestle.query.catalog import VIEW_CATALOG_URI
-from trestle.server import authoring, plugin_schema
+from trestle.server import authoring, callbacks, plugin_schema
 
 REPO = Path(__file__).resolve().parents[1]
 TRESTLE = REPO / "trestle"
@@ -249,6 +249,9 @@ def test_no_resource_names_an_internal_module_or_repo_path() -> None:
     for restricted in (False, True):
         for uri, text in _texts(restricted).items():
             for dotted in re.findall(r"\btrestle(?:\.[a-z_]+)+", text):
+                # the run callback body's `type` value reads like a module name; it is not one
+                if dotted == callbacks.BODY_TYPE:
+                    continue
                 assert dotted in PUBLIC_MODULES, f"{uri} names {dotted}"
             bare = URI.sub("", text)  # a served resource's URI is a pointer, not a path
             for word in FORBIDDEN_WORDS:

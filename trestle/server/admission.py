@@ -9,6 +9,7 @@ import os
 import platform
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -29,7 +30,7 @@ from trestle.common.types import (
     RunSpec,
 )
 from trestle.packs.provenance import pack_provenance
-from trestle.server import chain, lease
+from trestle.server import callbacks, chain, lease
 from trestle.server import idempotency as keys
 from trestle.server import pool as pools
 from trestle.server.config import ProfileConfig, load_config
@@ -170,6 +171,10 @@ class Admission:
     profile: ProfileConfig = ProfileConfig()
     # change 3: the identity tables of credentials.toml, read once at start like the profile
     credentials: CredentialsConfig = field(default_factory=CredentialsConfig)
+    # run callbacks: `[callbacks] allow`, read once at start like the profile, and the ports a
+    # callback may not name (Trestle's own MCP and ops ports, every live server's included)
+    callback_allow: tuple[callbacks.AllowEntry, ...] = ()
+    own_ports: Callable[[], frozenset[int]] = field(default=lambda: frozenset())
 
     @property
     def server_id(self) -> str:
@@ -188,6 +193,14 @@ class Admission:
                     origin="admission",
                 ),
             )
+        # run callbacks: the URL is checked before anything exists, and nothing is looked up
+        if req.callback is not None:
+            try:
+                callbacks.check_url(req.callback, self.callback_allow, self.own_ports())
+            except callbacks.UrlError as exc:
+                return _refused(codes.INVALID_ARGS, str(exc)[:200])
+            except callbacks.NotAllowed as exc:
+                return _refused(codes.ADMISSION_CALLBACK_NOT_ALLOWED, str(exc)[:200])
         # v0.3.1 rule 11: the pool's settings come from config.toml at each admission, so a change
         # applies without a restart (TRESTLE_MAX_RUNNING_RUNS is ignored)
         config = load_config(self.home)
@@ -810,6 +823,9 @@ def write_admitted_run(
             )
         if retry_of is not None:
             created_fields["retry_of"] = retry_of
+        if req.callback is not None:
+            # fixed at admission like the args; a join never changes it (Q-2)
+            created_fields["callback"] = req.callback
         if hold is not None:
             created_fields["after"] = hold.after
             created_fields["after_run_id"] = hold.after_run_id
@@ -840,6 +856,10 @@ def write_admitted_run(
                 "arrival": created["at"],
             },
         )
+        if req.callback is not None:
+            # the run's callback.json (pending) and home/callbacks/pending/<run_id>, so a restart
+            # still sends it
+            callbacks.write_admitted(home, building, run_id, req.callback)
         _admission_step("marker")
 
         os.rename(building, run_dir)  # (d) the commit point

@@ -128,7 +128,7 @@ allowlist = ["echo"]       # plugin names an agent may run (restricted only)
 
 An unknown `mode` or a malformed `allowlist` stops the server from starting: a config that means to restrict never runs as `full`. A restricted profile with no allowlist admits nothing. The operator's CLI and console (`trestle ops`) are not agent sessions and are not scoped.
 
-Every value an agent can select is a closed set or is validated before it acts: `query` views and `fetch` window kinds are enumerations, `completion` and `await_runs` modes are refused outside their sets, plugin names and handles must resolve, and `args` must match the plugin's schema. No tool argument selects cleanup or removal of a resource it did not create. `unpin` is the one action that is not session-scoped under either profile: it deletes nothing, and garbage collection then applies the operator's retention policy to whatever it unpinned.
+Every value an agent can select is a closed set or is validated before it acts: `query` views and `fetch` window kinds are enumerations, `completion` and `await_runs` modes are refused outside their sets, plugin names and handles must resolve, and `args` must match the plugin's schema. The one URL an agent may choose, `run(callback=...)`, is validated against a loopback-or-allowlist rule (see [Run callbacks](#run-callbacks)). No tool argument selects cleanup or removal of a resource it did not create. `unpin` is the one action that is not session-scoped under either profile: it deletes nothing, and garbage collection then applies the operator's retention policy to whatever it unpinned.
 
 **Neither profile is a sandbox.** The restricted profile narrows what an agent may ask Trestle to do; an allowlisted plugin still runs as your user with everything that implies (see “What local-only does not mean” above).
 
@@ -176,6 +176,38 @@ one call away. To keep `exec` off, leave `TRESTLE_EXEC_ROOTS` unset: it then ans
 and runs nothing. Deleting the file is not an off switch, because `trestle init` puts a missing
 seed file back. `exec` never carries a credential: a declaration on a plugin named `exec` is
 refused at publication, and `trestle credentials grant` refuses it.
+
+## Run callbacks
+
+`run(callback="<url>")` makes the service send one HTTP `POST` when the run ends. This is the one
+place an agent chooses a URL, so it is narrow:
+
+- **This machine only, by default.** A callback's host must be `127.0.0.1`, `[::1]` or
+  `localhost`, unless the URL matches a prefix the operator lists in `config.toml`. Anything else
+  is refused `admission.callback_not_allowed` before a run exists. The server reads the list once
+  at start; no agent can widen it. The restricted profile applies the same rules.
+- **A blind, fixed POST.** The agent chooses only the URL. Method, headers and body (a small
+  versioned JSON document naming the run and how it ended, with no args, result or paths) are
+  Trestle's. The response body is never read back to anyone: only its status code and a short
+  error reach the run's `callback` status. A callback cannot read another local service, only
+  send it this one body. Redirects are never followed.
+- **Trestle's own ports are refused** (the MCP and ops ports, and every live server's), so a
+  callback cannot be aimed at Trestle itself.
+- **`localhost` is not looked up in DNS.** Trestle connects to `127.0.0.1`, then `::1`, and sends
+  `Host: localhost`, so a hosts-file or resolver trick cannot redirect it.
+- **Views show the origin only**, never the URL's path or query: a listener can put an
+  unguessable token in its own path to tell a genuine callback from a forged one. There is no
+  signature header in version 1 (`Trestle-Signature` is reserved).
+
+```toml
+[callbacks]
+allow = ["https://hooks.example.internal/trestle/"]   # default: [] (loopback only)
+```
+
+Each entry is a URL prefix: a callback matches when scheme, host and port are equal and its path
+starts with the entry's path at a `/` boundary (`/trestle/` allows `/trestle/x`, not
+`/trestlex`). Entries for hosts other than loopback must be `https`. A malformed entry stops the
+server from starting.
 
 ## Operator vs agent
 

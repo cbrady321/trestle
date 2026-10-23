@@ -18,6 +18,7 @@ from trestle.common.types import PublishView, RequestOutcome, RunView
 from trestle.query.catalog import VIEW_CATALOG_URI, view_catalog
 from trestle.server import authoring
 from trestle.server.admission import Admission
+from trestle.server.callbacks import CallbackSender
 from trestle.server.conductor import Conductor
 from trestle.server.config import ProfileConfig, load_config
 from trestle.server.control import ControlSurface
@@ -26,6 +27,7 @@ from trestle.server.home import (
     Ownership,
     ServerLock,
     check_home,
+    live_servers,
     raise_nofile_limit,
 )
 from trestle.server.mcp_schema import FetchWindowArg, QueryViewArg
@@ -57,6 +59,9 @@ class Kernel:
     server_lock: ServerLock | None = field(default=None, repr=False)
     # change 2a: a serving process's watch over the MCP sessions it opened (a CLI kernel has none)
     sessions: McpSessions | None = field(default=None, repr=False)
+    # run callbacks: the sender of this home's pending callbacks (a run of this kernel's is kicked
+    # when it completes; a serving process also goes through the pending folder)
+    callbacks: CallbackSender | None = field(default=None, repr=False)
 
     @property
     def server_id(self) -> str:
@@ -83,8 +88,16 @@ class Kernel:
             if self.sessions is not None:
                 self.reaper.on_pass = _chain(self.reaper.on_pass, self.sessions.sweep)
             self.control.project.on_owner_gone = self.reaper.wake
+            if self.callbacks is not None:
+                # each pass also sends the callbacks of runs that ended elsewhere (a dead owner's,
+                # finalized interrupted by a reaper)
+                self.reaper.on_pass = _chain(self.reaper.on_pass, self.callbacks.scan)
             self.reaper.start()
             self.reaper.wake()  # a first pass now: this server's seen_at (rule 5's reserve)
+        if self.callbacks is not None:
+            # at start: every pending callback whose run has ended, those the start pass just
+            # finalized interrupted included
+            self.callbacks.scan()
 
 
 def _chain(first: Callable[[], None] | None, then: Callable[[], None]) -> Callable[[], None]:
@@ -145,12 +158,19 @@ def create_kernel(
         profile=config.profile,
         # change 3: the identity tables, read once here like the profile; values at admission
         credentials=load_credentials(trestle_home),
+        callback_allow=config.callback_allow,
+        own_ports=lambda: own_ports(trestle_home),
     )
+    sender = CallbackSender(trestle_home)
 
     def complete(run_id: str) -> None:
         # the owner removes a finished run's marker, frees its slot (its home/sched.json entry)
         # and closes its owner lock, in one locked step (v0.3.1 rules 2 and 7)
-        ownership.release(run_id, locked=pool.settle)
+        try:
+            ownership.release(run_id, locked=pool.settle)
+        finally:
+            # the terminal row is written: the run's callback, if it has one, goes now
+            sender.kick(run_id)
 
     scheduler.on_complete = complete
     # each reaper pass (every 10 s) writes this server's seen_at, the reserve's liveness (rule 5)
@@ -180,7 +200,19 @@ def create_kernel(
         profile=config.profile,
         ownership=ownership,
         reaper=reaper,
+        callbacks=sender,
     )
+
+
+def own_ports(home: Path) -> frozenset[int]:
+    """The ports a run callback may not name: Trestle's default MCP and ops ports and the port of
+    every live server on the home."""
+    ports = {DEFAULT_PORT, DEFAULT_OPS_PORT}
+    for server in live_servers(home):
+        port = server.get("port")
+        if isinstance(port, int) and not isinstance(port, bool):
+            ports.add(port)
+    return frozenset(ports)
 
 
 def _wire_result(value: RequestOutcome | RunView | PublishView | dict[str, Any]) -> dict[str, Any]:
@@ -245,6 +277,7 @@ def attach_registry_version_mirror(mcp: Any, kernel: Kernel) -> None:
 
 LISTENING_PREFIX = "trestle: listening "
 DEFAULT_PORT = 18732
+DEFAULT_OPS_PORT = 18733  # `trestle ops serve`
 DRAIN_POLL_S = 0.2
 
 
@@ -435,6 +468,7 @@ def run_server(
         deadline_s: float | None = None,
         idempotency_ttl_s: float | None = None,
         after: dict[str, Any] | None = None,
+        callback: str | None = None,
     ) -> dict[str, Any]:
         """Start a plugin run and optionally wait for a status frame."""
         return _wire_result(
@@ -450,6 +484,7 @@ def run_server(
                 idempotency_ttl_s=idempotency_ttl_s,
                 after=after,
                 observe=_progress_relay(),
+                callback=callback,
             )
         )
 

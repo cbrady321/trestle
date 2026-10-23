@@ -321,6 +321,8 @@ POLICY: dict[tuple[str, str], str] = {
         "run",
         "after",
     ): "validated",  # one of run and key, when, match; an unknown run refused
+    # an http(s) URL to loopback or the operator's [callbacks] allow, never Trestle's own port
+    ("run", "callback"): "validated",
     ("await_runs", "run_ids"): "validated",  # handles that must resolve
     ("await_runs", "keys"): "validated",  # keys some run used
     ("await_runs", "mode"): "closed",  # all | any | first_failure
@@ -344,6 +346,11 @@ DESTRUCTIVE = re.compile(
 # Out-of-set values, and the code each earns from a full-profile server (None: a wire refusal).
 CLOSED_REFUSALS: list[tuple[str, dict[str, Any], str | None]] = [
     ("run", {"plugin": ALLOWED, "completion": "bogus"}, codes.INVALID_ARGS),
+    (
+        "run",
+        {"plugin": ALLOWED, "callback": "http://example.com/x"},
+        codes.ADMISSION_CALLBACK_NOT_ALLOWED,
+    ),
     ("await_runs", {"run_ids": ["r_none"], "mode": "bogus"}, codes.PROJECTION_INVALID_ARGS),
     ("query", {"view": "bogus"}, codes.INVALID_VIEW),
     (

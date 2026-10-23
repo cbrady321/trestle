@@ -138,6 +138,7 @@ class ControlSurface:
         deadline_s: float | None = None,
         idempotency_ttl_s: float | None = None,
         after: dict[str, Any] | None = None,
+        callback: str | None = None,
     ) -> RequestOutcome | RunView:
         refused = _refuse_completion(completion, wait_ms)
         if refused is not None:
@@ -152,6 +153,7 @@ class ControlSurface:
                 deadline_s=deadline_s,
                 idempotency_ttl_s=idempotency_ttl_s,
                 after=after,
+                callback=callback,
             )
         ).result()
         if result.tag == "refused":
@@ -204,6 +206,7 @@ class ControlSurface:
         idempotency_ttl_s: float | None = None,
         after: dict[str, Any] | None = None,
         observe: ViewObserver | None = None,
+        callback: str | None = None,
     ) -> RequestOutcome | RunView:
         refused = _refuse_completion(completion, wait_ms)
         if refused is not None:
@@ -220,6 +223,7 @@ class ControlSurface:
                 deadline_s=deadline_s,
                 idempotency_ttl_s=idempotency_ttl_s,
                 after=after,
+                callback=callback,
             )
         )
         try:

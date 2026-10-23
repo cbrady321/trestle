@@ -29,7 +29,7 @@ from trestle.common.types import (
 )
 from trestle.query.fs import FilesystemQueryBackend
 from trestle.server import answer as answer_mod
-from trestle.server import fold, idempotency
+from trestle.server import callbacks, fold, idempotency
 from trestle.server.home import is_locked, marked_run_dir, marker_path, owner_lock_path, read_marker
 from trestle.server.ledger import (
     NON_TERMINAL_STATES,
@@ -717,6 +717,7 @@ class Project:
                 if state in NON_TERMINAL_STATES and evidence is not None
                 else None
             ),
+            callback=callbacks.view_of(run_dir),
             **_deadline_fields(ledger.last_kind("created")),
         )
 
@@ -788,6 +789,7 @@ def _live_view(run_id: Handle, run_dir: Path, state: dict[str, Any]) -> RunView:
         retry_of=state.get("retry_of") if isinstance(state.get("retry_of"), str) else None,
         after_run_id=_after_run_id(state),
         progress=latest_progress(evidence),
+        callback=callbacks.view_of(run_dir),
         **_deadline_fields(state),
     )
 

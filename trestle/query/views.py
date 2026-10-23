@@ -39,6 +39,7 @@ VIEW_ROW_FIELDS: dict[str, frozenset[str]] = {
             "ended_at",
             "progress",
             "session_ended",
+            "callback",
         }
     ),
     "last_error": frozenset({"run_id", "event_seq", "kind", "message", "at"}),

@@ -26,5 +26,6 @@ Topics, `trestle://guide/plugins/{topic}`:
 - `refusals`: a publication code
 - `workflows`: several steps as a tree
 - `packs`: a library of plugins
+- `callbacks`: a POST when a run ends
 
 Names: `trestle://guide/api`. Examples: `trestle://guide/examples/{name}` ({examples}).

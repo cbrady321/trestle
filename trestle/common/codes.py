@@ -33,6 +33,9 @@ ADMISSION_CREDENTIAL_NOT_GRANTED = "admission.credential_not_granted"
 # ... a granted identity whose value the store cannot give (no stored value, the key or the store
 # unreadable); refused before any run id.
 ADMISSION_CREDENTIAL_UNAVAILABLE = "admission.credential_unavailable"
+# Run callbacks (2026-10-23 design): `callback` names a host that is neither loopback nor in
+# `[callbacks] allow`, or one of Trestle's own ports; refused before any run id, not retryable.
+ADMISSION_CALLBACK_NOT_ALLOWED = "admission.callback_not_allowed"
 NOT_IMPLEMENTED = "projection.not_implemented"
 INVALID_HANDLE = "projection.invalid_handle"
 NOT_OWNER = "projection.not_owner"
