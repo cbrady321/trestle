@@ -261,14 +261,82 @@ design doc's § "A generic project launcher":
 - *Revisit* once a durable-lifetime decision exists; it then needs the ownership rewrite, a
   profile format and a P-8 rebuild.
 
+**P-24. Loose operator files are protected from agent publishes too.** Decided by the owner,
+2026-10-23. An agent publish under the name of a loose file in `[plugins] paths` is refused like
+one under a pack plugin's name (P-10), not only pack names.
+
+**P-25. Earlier agent publishes move to the runtime folder.** Decided by the owner, 2026-10-23.
+An agent-published file still in the operator's folder from before the runtime folder existed,
+and unchanged since, is moved to `plugins/runtime/` on its next publish.
+
+**P-26. `replaces` and `--replace` differ.** Decided by the owner, 2026-10-23.
+
+- `replaces = "X"` (P-11) wins every name the two packs share, but leaves X installed.
+- `trestle pack install … --replace X` removes X from the lock. It is required to install a
+  pack of the same name from another source.
+
+**P-27. "Once reviewed" is a flag.** Decided by the owner, 2026-10-23. P-12's review is recorded
+by `trestle credentials grant <name> <plugin> --reviewed`; without the flag, a runtime publish
+cannot be granted.
+
+**P-28. `requires.tools` is checked on the CLI's PATH.** Decided by the owner, 2026-10-23.
+`trestle pack install` checks a pack's required tools on the PATH of the CLI command that
+installs it, not the service's.
+
+**P-29. An unreadable configuration file does not stop a run.** Decided by the owner,
+2026-10-23. A P-20 configuration variable that is unset, or names a file that cannot be read,
+records `sha256: null` in provenance, and the run still starts.
+
+**P-30. `github` acts as gh's own login.** Decided by the owner, 2026-10-23. The wrappers declare
+no credential and use the operator's `gh auth login`, until a `cli_passthrough` credential kind
+exists. A company wrapper can still pass `ctx.credential_env("gh")` by name.
+
+**P-31. `github` guard refusals are answers.** Decided by the owner, 2026-10-23. A guard refusal
+returns `ok: false`, `action: "refused"` and `refusal {code, message, resend:
+"will_not_succeed"}`, rather than ending the run as `Failed` (refines P-21's last paragraph).
+
+**P-32. No branch protection: every reported check counts.** Decided by the owner, 2026-10-23.
+When the base branch has no protection, every check reported on the PR is treated as required.
+
+**P-33. Grace applies only while waiting.** Decided by the owner, 2026-10-23. P-21's grace period
+applies only to a call that waits. A check added by policy that never reports fails once grace
+has passed.
+
+**P-34. The default branch comes from `gh repo view`.** Decided by the owner, 2026-10-23. If
+`gh repo view` fails, `github_pr_open` fails before it changes anything.
+
+**P-35. An edit without a body keeps the body.** Decided by the owner, 2026-10-23. Editing an
+existing PR (`update_existing: true`) with no new body leaves the PR's body alone.
+
+**P-36. Out of `github`'s first version.** Decided by the owner, 2026-10-23: reading CI logs,
+pre-push commands, and PRs from forks. A fork PR is refused.
+
+**P-37. Bundled pack libraries need nothing pip must fetch.** Decided in delivery step 6,
+2026-10-23. A bundled pack's library imports only the standard library, `trestle.plugin` and
+itself, and declares no dependencies, because bundled libraries install `--no-deps`. Small
+helpers are copied into each library rather than shared. A gate test
+(`tests/packs/test_bundled_bar.py`) holds every bundled pack to this, to lockstep (P-18) and to
+P-8.
+
+**P-38. Upgrades turn `examples/packs` into installed packs.** Decided in delivery step 6,
+2026-10-23. `trestle init --upgrade` (so `install.sh` and a service upgrade) installs `stack`,
+then drops the `examples/packs` entry from `[plugins] paths`. On failure it leaves `config.toml`
+alone and prints `trestle pack install stack`. A fresh install adds no packs and lists them (P-16).
+
 ## Delivery
 
 - **Shipped in 0.5.2:** this record and the pack proposals (owner, 2026-10-22).
-- **Next, right after 0.5.2, in its own session:** fix the tool plugins in place (`docker_stack`,
-  `pytest_run`, `migrate_apply`, `integration_pipeline` → `stack_pipeline`) to the P-8 and P-9 bar,
-  before any installer work (owner, 2026-10-22). The design's delivery order, step 2, has the
-  detail.
-- **Not yet built:** the decisions themselves; the design's delivery order applies.
+- **Shipped in 0.6.0:** the design's delivery steps 1 to 7 (owner, 2026-10-23):
+  1. the 0.5.2 release;
+  2. the tool plugins fixed in place to the P-8 and P-9 bar;
+  3. the 2a–2d work;
+  4. the agent-facing wording (P-6);
+  5. the core mechanism: install, the lock, the registry, the runtime publish folder, reviewed
+     grants and configuration digests (P-24 to P-29);
+  6. the bundled packs `docker`, `pytest`, `migrate` and `stack` (P-37, P-38);
+  7. the bundled `github` pack (P-30 to P-36).
+- **Not yet built:** step 8, the substrate move into core (P-15) with the `trestle-env` split
+  (P-22) and the `env` pack; and P-19's hooks.
 
 ## Consequences
 

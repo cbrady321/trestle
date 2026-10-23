@@ -11,6 +11,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import trestle
 from trestle.packs.manifest import load_manifest, read_library, wrapper_names
 from trestle.server.plugin_schema import schemas_from_source
 
@@ -101,7 +102,8 @@ def test_installs_by_name_as_a_bundled_pack(tmp_path: Path) -> None:
     home.mkdir()
     entry = Installer(home=home, runners=runners, out=io.StringIO(), bundled=REPO / "packages")
     locked = entry.install("github")
-    assert locked.name == "github" and locked.owner == "trestle" and locked.version == "0.5.2"
+    assert locked.name == "github" and locked.owner == "trestle"
+    assert locked.version == trestle.__version__
     copy = Path(locked.pack_dir)
     assert copy == home / "packs" / "trestle" / "github"
     assert (copy / "plugins" / "github_pr_open.py").is_file()
