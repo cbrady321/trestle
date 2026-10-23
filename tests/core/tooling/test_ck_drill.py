@@ -605,6 +605,27 @@ def test_switch_isolation_checks_product_call_sites_not_test_files(tmp_path: Pat
     assert not ck_drill.is_test_path("trestle/plugin/_codec.py")
 
 
+def test_a_file_a_later_merge_deleted_is_not_judged_for_isolation(tmp_path: Path) -> None:
+    """CM-7 (b) judges call sites that exist on the declined tree: a product file the CK merge
+    added with an un-gated call site, which a later merge then deleted, is left (a later commit
+    changed it) but has no call site at HEAD, so it is not a switch-isolation violation."""
+    repo, _ = _plant(tmp_path)
+    _git(repo, "checkout", "-q", "wr/x/ck-9")
+    wrapper = "from pkg.core import run\n\n\ndef wrap(x):\n    return run(x)\n"
+    _write(repo, "pkg/wrapper.py", wrapper)
+    _commit(repo, "L.CK-9.2: the CK leaf adds a wrapper")
+    _git(repo, "checkout", "-q", "master")
+    _merge_branch(repo, "wr/x/ck-9", "WR-Merge: CK-9")
+    _git(repo, "checkout", "-q", "-b", "wr/x/gone")
+    _git(repo, "rm", "-q", "pkg/wrapper.py")
+    _commit(repo, "L.GONE.1: a later merge deletes a file of the CK's landing diff")
+    _git(repo, "checkout", "-q", "master")
+    _merge_branch(repo, "wr/x/gone", "WR-Merge: GONE")
+    report = ck_drill.drill(repo, DECLINE, lane_globs=LANE_GLOBS)
+    assert "pkg/wrapper.py" in report.patch.left
+    assert report.problems == [], report.problems
+
+
 UNGATED_CORE = CK_CORE.replace("    if SWITCH:\n        stop(x)\n", "    stop(x)\n")
 LATER_HEADER = "# a later merge's header line\n"
 

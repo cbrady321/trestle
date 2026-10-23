@@ -16,6 +16,9 @@ from migrate_pack_testing import PYTHON, context, load_wrapper
 from trestle.plugin import Blocked
 from trestle.plugin.testing import call_plugin
 
+# K-3/K-4: these plugins take and return typed records (skipped if they are declined).
+pytestmark = pytest.mark.typed_records
+
 MIGRATIONS = Path(__file__).resolve().parent / "fixtures" / "yoyo-sqlite" / "migrations"
 REVISION = '''"""create pack_demo"""
 from alembic import op

@@ -74,6 +74,7 @@ addopts = "--strict-markers -m \"not long\""
 markers = [
     "spine: the unattended one-call acceptance of the core corrections (MC-29; CI job `spine`, gate ci-spine)",
     "long: a test that outlives the default 300 s deadline (MC-05; deselected from the default session, CI job `long-gate`, gate ci-long)",
+    "typed_records: needs K-3/K-4 typed records; skipped when `_codec.TYPED_RECORDS` is off (the CK-3/4 decline drill)",
 ]
 
 [tool.mypy]

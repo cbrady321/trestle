@@ -11,6 +11,7 @@ from tests.proof import tolerances
 from twin import k6_docs
 
 
+@pytest.mark.typed_records
 @pytest.mark.stub_proven("WR-OWN-4:docs-equal-observed-host@stub-twin")
 def test_documented_removal_sets_equal_observed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

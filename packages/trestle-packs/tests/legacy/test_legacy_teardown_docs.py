@@ -13,6 +13,9 @@ import pytest
 from pack_wrappers import WRAPPERS, compose, context, fake_docker, load_wrapper
 from trestle.plugin.testing import call_plugin
 
+# K-3/K-4: these plugins take and return typed records (skipped if they are declined).
+pytestmark = pytest.mark.typed_records
+
 DOCS = Path(__file__).resolve().parents[4] / "docs" / "packs.md"
 REMOVED = {"containers", "networks", "volumes"}
 COMPOSE = (

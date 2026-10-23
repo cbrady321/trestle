@@ -14,6 +14,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 # The bundled packs' libraries (`packages/trestle-pack-<name>/trestle_pack_<name>`) are imported
 # from this checkout, ahead of any installed copy, by this session and by the processes it starts
 # (plugin validation and runs inherit PYTHONPATH), so a session needs no install of them and never
@@ -33,3 +35,17 @@ os.environ["PYTHONPATH"] = os.pathsep.join(
 )
 
 pytest_plugins = ("tests.proof.plugin", "pytester")
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """`typed_records` nodes need K-3/K-4 (dataclass arguments and returns). On a tree where
+    typed records are off, the CK-3/4 decline drill's, they are skipped: the bundled packs'
+    wrappers take and return dataclasses, so they cannot run there."""
+    from trestle.plugin import _codec
+
+    if getattr(_codec, "TYPED_RECORDS", False):
+        return
+    skip = pytest.mark.skip(reason="typed records are off (K-3/K-4 declined)")
+    for item in items:
+        if item.get_closest_marker("typed_records") is not None:
+            item.add_marker(skip)

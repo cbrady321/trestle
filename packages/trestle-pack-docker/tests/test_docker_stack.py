@@ -15,6 +15,9 @@ from docker_pack_testing import PYTHON, STACK, compose, context, fake_docker, lo
 from trestle.plugin import Blocked
 from trestle.plugin.testing import call_plugin
 
+# K-3/K-4: these plugins take and return typed records (skipped if they are declined).
+pytestmark = pytest.mark.typed_records
+
 WAVES = {
     "project": "shop",
     "waves": [

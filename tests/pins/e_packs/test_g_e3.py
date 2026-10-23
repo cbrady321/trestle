@@ -21,6 +21,9 @@ from tests.proof.markers import target_check
 ROOT = Path(__file__).resolve().parents[3]
 DRIVER = Path(__file__).resolve().parent / "driver_g_e3.py"
 
+# K-3/K-4: the pack plugins take and return typed records (skipped if they are declined).
+pytestmark = pytest.mark.typed_records
+
 
 def _drive(mode: str) -> dict[str, Any]:
     env = {

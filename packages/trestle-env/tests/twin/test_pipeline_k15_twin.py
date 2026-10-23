@@ -15,6 +15,7 @@ import pytest
 from twin import k15
 
 
+@pytest.mark.typed_records
 @pytest.mark.stub_proven("WR-ENV-11:pipeline-one-teardown-host@stub-twin")
 @pytest.mark.stub_proven("WR-ENV-11:entry-points-callable-host@stub-twin")
 @pytest.mark.parametrize("variant", k15.VARIANTS)

@@ -705,7 +705,9 @@ def switch_isolation_violations(
     CK adds; a test file left in place adds no behaviour, and its nodes are judged by (a): a node
     carrying the CK's labels renders na and is deselected, and every other node must pass REG on
     the declined tree. So a later marker edit to a CK-changed test file (for example the A9.3
-    marker on test_cl_c2_strict.py) is not a switch-isolation failure."""
+    marker on test_cl_c2_strict.py) is not a switch-isolation failure. Nor is a file a later commit
+    deleted (for example examples/packs/integration_pipeline.py, gone with the bundled packs): its
+    call sites no longer exist on the declined tree."""
     switch = decline["switch"]
     name = switch.get("name")
     if name is None:
@@ -714,6 +716,8 @@ def switch_isolation_violations(
     for path in sorted(patch.left):
         if is_test_path(path):
             continue
+        if _read(repo, patch.edits, path) is None:
+            continue  # a later commit deleted it: nothing of M's is left at HEAD to gate
         source = _show(repo, span.head, path)  # the merge's own version: its line numbers
         if not path.endswith(".py") or source is None:
             continue

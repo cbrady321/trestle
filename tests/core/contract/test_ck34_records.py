@@ -24,6 +24,9 @@ from trestle.common.types import RunView
 from trestle.plugin import _codec
 from trestle.server.ledger import run_dir_for
 
+# K-3/K-4: these plugins take and return typed records (skipped if they are declined).
+pytestmark = pytest.mark.typed_records
+
 REPO = Path(__file__).resolve().parents[3]
 
 

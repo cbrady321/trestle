@@ -10,6 +10,9 @@ import pytest
 from gh_wrappers import context, fake_gh, load_wrapper, policy_file, pr
 from trestle.plugin.testing import FakeContext, call_plugin
 
+# K-3/K-4: these plugins take and return typed records (skipped if they are declined).
+pytestmark = pytest.mark.typed_records
+
 
 def call(tmp_path: Path, name: str, args: dict[str, Any]) -> tuple[Any, FakeContext]:
     """Call the wrapper `name` with `FakeContext`: its answer as an agent reads it, and the

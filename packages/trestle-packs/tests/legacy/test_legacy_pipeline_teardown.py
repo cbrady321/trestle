@@ -16,6 +16,9 @@ import pytest
 from pack_wrappers import PYTHON, compose, context, fake_docker, load_wrapper
 from trestle.plugin.testing import call_plugin
 
+# K-3/K-4: these plugins take and return typed records (skipped if they are declined).
+pytestmark = pytest.mark.typed_records
+
 COMPOSE = "services:\n  web:\n    image: alpine:3.20\n"
 PASSING = "def test_ok():\n    pass\n"
 FAILING = "def test_bad():\n    assert False\n"

@@ -11,6 +11,7 @@ import pytest
 from twin import fake_binding, harness, k6
 
 
+@pytest.mark.typed_records
 @pytest.mark.stub_proven("WR-OWN-4:registered-entry-points-host@stub-twin")
 @pytest.mark.parametrize("case", k6.CASES)
 def test_no_volume_deleted_by_any_registered_teardown(case: str, tmp_path: Path) -> None:

@@ -41,6 +41,7 @@ def _live_compose_ready() -> bool:
     not _live_compose_ready(),
     reason=f"docker compose live test needs daemon + local image {COMPOSE_IMAGE}",
 )
+@pytest.mark.typed_records
 def test_stack_runner_live_compose(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     compose = FIXTURE_DIR / "docker-compose.yml"
     workdir = tmp_path / "project"
