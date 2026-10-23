@@ -19,6 +19,10 @@ NODEIDS_PATH = ROOT / "tests" / "fixtures" / "golden" / "s0" / "nodeids.txt"
 # with the change that made it. The stdio transport was removed (decision record
 # docs/decisions/service-and-credentials.md, Decision 3, change 1a): its smoke tests run over
 # streamable HTTP now, the same assertions under the HTTP smoke.
+_PACKS = "packages/trestle-packs/tests/"
+# the wrapper tests then moved with their wrappers into the bundled packs (delivery step 6)
+_DOCKER = "packages/trestle-pack-docker/tests/"
+_MIGRATE = "packages/trestle-pack-migrate/tests/"
 MOVED: dict[str, str] = {
     "tests/test_mcp_stdio_smoke.py::test_stdio_serve_golden_path": (
         "tests/test_mcp_http_smoke.py::test_streamable_http_serve_golden_path"
@@ -28,6 +32,31 @@ MOVED: dict[str, str] = {
     ),
     "tests/test_mcp_stdio_smoke.py::test_stdio_empty_catalog_includes_bootstrap_fields": (
         "tests/test_mcp_http_smoke.py::test_http_empty_catalog_includes_bootstrap_fields"
+    ),
+    # The tool plugins were rebuilt to the bundled-pack bar (docs/proposals/
+    # 2026-10-22-trestle-pack-catalog-design.md, delivery step 2): the python-on-whales
+    # `StackRunner`, its spec and the in-process Yoyo runner are gone, and their assertions are
+    # made by calling the wrappers.
+    f"{_PACKS}test_docker_spec.py::test_stack_spec_from_dict": (
+        f"{_DOCKER}test_docker_stack.py::test_waves_run_in_order_with_their_wait_modes"
+    ),
+    f"{_PACKS}test_migrate_yoyo.py::test_run_yoyo_apply_creates_table": (
+        f"{_MIGRATE}test_migrate_apply.py::test_yoyo_applies_then_has_nothing_pending"
+    ),
+    f"{_PACKS}test_migrate_yoyo.py::test_run_yoyo_apply_idempotent_second_run": (
+        f"{_MIGRATE}test_migrate_apply.py::test_yoyo_applies_then_has_nothing_pending"
+    ),
+    f"{_PACKS}test_migrate_yoyo.py::test_run_yoyo_apply_missing_dir": (
+        f"{_MIGRATE}test_migrate_apply.py::test_yoyo_bad_input_is_an_answer"
+    ),
+    f"{_PACKS}test_stack_runner.py::test_stack_runner_teardown_on_failure": (
+        f"{_DOCKER}test_docker_stack.py::test_failed_wave_tears_down_once_and_keeps_volumes"
+    ),
+    f"{_PACKS}test_stack_runner.py::test_stack_runner_teardown_stop_policy": (
+        f"{_DOCKER}test_docker_stack.py::test_declared_teardown_stop_or_none[stop-exited]"
+    ),
+    f"{_PACKS}test_stack_runner.py::test_stack_runner_wave_sequencing": (
+        f"{_DOCKER}test_docker_stack.py::test_waves_run_in_order_with_their_wait_modes"
     ),
 }
 

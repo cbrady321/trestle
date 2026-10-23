@@ -1,9 +1,9 @@
 """HOST: no registered teardown deletes a seeded named volume on real Docker (L.RB-3.3; K-6,
 WR-OWN-4, the F-13(d) wider-reading fixture; DOCKER · HOST, run only by the host-docker gate).
 
-Every case of `twin.k6.CASES` is one call through `run` on the MC-12 MCP host: the legacy
-`docker_stack` and `integration_pipeline` plugins (examples/packs, published unedited, over their
-own `WhaleComposeBackend` and the operator's docker) under each teardown value, and the reference
+Every case of `twin.k6.CASES` is one call through `run` on the MC-12 MCP host: the
+`docker_stack` and `stack_pipeline` plugins (their bundled packs, published unedited, running the
+operator's docker CLI) under each teardown value, and the reference
 plugin's release on its real binding. After the answer the named volume is still there and still
 holds its seed, read with plain docker calls at the gate's endpoint (never through the code under
 test). The legacy stacks use the fixture's own Compose project, so what `stop`, `none` or a failed
@@ -85,7 +85,7 @@ def test_no_volume_deleted_by_any_registered_teardown(case: str, tmp_path: Path)
     work = k6.workdir(tmp_path, case)
     environ = {"DOCKER_HOST": os.environ["TRESTLE_DOCKER_ENDPOINT"]}
     try:
-        with k6.legacy_host(tmp_path / "home", plugin, twin=False, environ=environ) as host:
+        with k6.legacy_host(tmp_path / "home", plugin, environ=environ) as host:
             answer = k6.call(host, plugin, k6.legacy_args(plugin, teardown, project, work))
         k6.expect_state(plugin, answer)
         volume = k6.volume_name(project)

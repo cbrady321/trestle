@@ -7,6 +7,7 @@ import os
 import signal
 import socket
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,7 @@ from trestle.server.admission import Admission
 from trestle.server.conductor import Conductor
 from trestle.server.config import ProfileConfig, load_config
 from trestle.server.control import ControlSurface
+from trestle.server.credentials import load_credentials
 from trestle.server.home import (
     Ownership,
     ServerLock,
@@ -27,6 +29,7 @@ from trestle.server.home import (
     raise_nofile_limit,
 )
 from trestle.server.mcp_schema import FetchWindowArg, QueryViewArg
+from trestle.server.mcp_sessions import McpSessions, SessionWatch
 from trestle.server.plugin_paths import check_plugin_dirs, resolve_plugin_dirs
 from trestle.server.pool import Pool
 from trestle.server.progress_relay import ProgressRelay
@@ -52,6 +55,8 @@ class Kernel:
     ownership: Ownership | None = None
     reaper: Reaper | None = None
     server_lock: ServerLock | None = field(default=None, repr=False)
+    # change 2a: a serving process's watch over the MCP sessions it opened (a CLI kernel has none)
+    sessions: McpSessions | None = field(default=None, repr=False)
 
     @property
     def server_id(self) -> str:
@@ -70,10 +75,27 @@ class Kernel:
         self.server_lock = lock
         lock.update(snap.snapshot_id for snap in self.registry.snapshots.values())
         self.registry.on_change = lambda snaps: lock.update(s.snapshot_id for s in snaps.values())
+        self.control.version = version
+        if self.ownership is not None:
+            self.sessions = McpSessions(self.home, self.server_id, self.ownership)
         if self.reaper is not None:
+            # each 10 s pass also sweeps the sessions: idle expiry and the file's pruning
+            if self.sessions is not None:
+                self.reaper.on_pass = _chain(self.reaper.on_pass, self.sessions.sweep)
             self.control.project.on_owner_gone = self.reaper.wake
             self.reaper.start()
             self.reaper.wake()  # a first pass now: this server's seen_at (rule 5's reserve)
+
+
+def _chain(first: Callable[[], None] | None, then: Callable[[], None]) -> Callable[[], None]:
+    def both() -> None:
+        try:
+            if first is not None:
+                first()
+        finally:
+            then()
+
+    return both
 
 
 def create_kernel(
@@ -121,6 +143,8 @@ def create_kernel(
         scheduler=scheduler,
         ownership=ownership,
         profile=config.profile,
+        # change 3: the identity tables, read once here like the profile; values at admission
+        credentials=load_credentials(trestle_home),
     )
 
     def complete(run_id: str) -> None:
@@ -141,6 +165,7 @@ def create_kernel(
         registry=registry,
         run_registry=run_registry,
         session_scoped_cancel=config.profile.restricted,
+        allowlist=config.profile.allowlist if config.profile.restricted else None,
     )
     control = ControlSurface(
         admission=admission,
@@ -270,7 +295,11 @@ def _http_server(mcp: Any, token: str, sock: socket.socket, kernel: Kernel) -> A
 
     app = mcp.http_app(
         transport="streamable-http",
-        middleware=[Middleware(BearerTokenMiddleware, token=token), Middleware(_InFlight)],
+        middleware=[
+            Middleware(BearerTokenMiddleware, token=token),
+            Middleware(_InFlight),
+            Middleware(SessionWatch, sessions=kernel.sessions),
+        ],
         allowed_hosts=[*(fastmcp.settings.http_allowed_hosts or []), LOOPBACK_HOST],
     )
 

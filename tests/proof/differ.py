@@ -59,6 +59,7 @@ def load_divergence() -> list[dict[str, object]]:
 
 
 CODES_FACET = "refusal_codes"
+OUTCOME_FIELDS_PATH = "$.outcome_fields"
 
 
 def permitted_additive_codes() -> list[str]:
@@ -146,15 +147,26 @@ def _path_matches(pattern: str, path: str) -> bool:
 def entry_selectors(entry: dict[str, object]) -> list[Selector]:
     """The selectors one divergence entry carries, validated. Raises
     ValueError on a malformed selector, or on selectors in an entry that is
-    not `direction = "additive"` or that is a `refusal_codes` entry."""
+    not `direction = "additive"`, or in a `refusal_codes` entry anywhere but its outcome field
+    list."""
     if not any(k in entry for k in SELECTOR_FIELDS):
         return []
     eid, facet = str(entry.get("id")), str(entry.get("facet"))
     if entry.get("direction") != "additive":
         raise ValueError(f'{eid}: selectors need direction = "additive"')
-    if facet == CODES_FACET:
-        raise ValueError(f"{eid}: a refusal_codes entry names `codes`, not selectors")
     keys, items, grows = (entry.get(k, []) for k in SELECTOR_FIELDS)
+    if facet == CODES_FACET and (
+        "codes" in entry
+        or keys
+        or grows
+        or not isinstance(items, list)
+        or any(not isinstance(i, dict) or i.get("path") != OUTCOME_FIELDS_PATH for i in items)
+    ):
+        # a new code is named by `codes`; the one shape a selector may grow here is the outcome's
+        # field list (agent surface 2b: retry_after_s, held_by, free_at)
+        raise ValueError(
+            f"{eid}: a refusal_codes entry names `codes`, or items on {OUTCOME_FIELDS_PATH} only"
+        )
     if not (isinstance(keys, list) and isinstance(items, list) and isinstance(grows, list)):
         raise ValueError(f"{eid}: keys/items/grows must be arrays")
     out: list[Selector] = []

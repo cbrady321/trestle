@@ -18,10 +18,14 @@ from pathlib import Path
 from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
-PACKS_DIR = REPO / "examples" / "packs"
-PACK_TEST = REPO / "packages" / "trestle-packs" / "tests" / "test_dag.py"
+# the tool plugins of the bundled packs
+PACKS_DIRS = [
+    REPO / "packages" / f"trestle-pack-{name}" / "plugins"
+    for name in ("docker", "pytest", "migrate", "stack")
+]
+DEMO_TEST = "def test_explicit_waves():\n    assert True\n"
 YOYO_MIGRATIONS = (
-    REPO / "packages" / "trestle-packs" / "tests" / "fixtures" / "yoyo-sqlite" / "migrations"
+    REPO / "packages" / "trestle-pack-migrate" / "tests" / "fixtures" / "yoyo-sqlite" / "migrations"
 )
 COMPOSE_FIXTURE = REPO / "packages" / "trestle-packs" / "tests" / "fixtures" / "minimal-compose"
 COMPOSE_IMAGE = "alpine:3.20"
@@ -83,10 +87,17 @@ def _agent_retrieval(control: Any, run_id: str) -> dict[str, Any]:
     }
 
 
-def demo_pytest_run(control: Any) -> StepResult:
+def demo_pytest_run(control: Any, workdir: Path) -> StepResult:
+    # the plugins run pytest and Yoyo on the project's interpreter: here, this one
+    (workdir / "test_demo.py").write_text(DEMO_TEST, encoding="utf-8")
     run = control.run(
         plugin="pytest_run",
-        args={"path": str(PACK_TEST), "keyword": "test_explicit_waves"},
+        args={
+            "path": "test_demo.py",
+            "keyword": "test_explicit_waves",
+            "workdir": str(workdir),
+            "python": sys.executable,
+        },
         wait_ms=0,
     )
     view = _await_ok(control, run.run_id)
@@ -110,16 +121,15 @@ def demo_migrate_apply(control: Any, workdir: Path) -> StepResult:
             "backend": "yoyo",
             "database_url": f"sqlite:///{db_path}",
             "migrations_dir": str(mig_dir),
+            "python": sys.executable,
         },
         wait_ms=0,
     )
     view = _await_ok(control, run.run_id)
     evidence = _agent_retrieval(control, view.run_id)
-    applied = (
-        evidence["result"].get("applied_count") if isinstance(evidence["result"], dict) else None
-    )
+    applied = evidence["result"].get("applied") if isinstance(evidence["result"], dict) else None
     if applied != 1:
-        return StepResult("migrate_apply", "fail", f"expected applied_count=1, got {evidence}")
+        return StepResult("migrate_apply", "fail", f"expected applied=1, got {evidence}")
     return StepResult("migrate_apply", "ok", f"run_id={view.run_id} applied={applied}")
 
 
@@ -135,28 +145,20 @@ def demo_docker_stack(control: Any, workdir: Path) -> StepResult:
         compose_src.read_text(encoding="utf-8"), encoding="utf-8"
     )
 
-    run = control.run(
-        plugin="docker_stack",
-        args={
-            "spec": {
-                "compose_file": "docker-compose.yml",
-                "project": "trestle-pack-demo",
-                "teardown": "down",
-                "waves": [
-                    {
-                        "name": "app",
-                        "services": ["web"],
-                        "wait": "started",
-                        "timeout_s": 60,
-                    }
-                ],
-            },
-            "workdir": str(project_dir),
+    args = {
+        "spec": {
+            "compose_file": "docker-compose.yml",
+            "project": "trestle-pack-demo",
+            "teardown": "down",
+            "waves": [{"name": "app", "services": ["web"], "wait": "started", "timeout_s": 60}],
         },
-        wait_ms=0,
-    )
+        "workdir": str(project_dir),
+    }
+    run = control.run(plugin="docker_stack", args=args, wait_ms=0)
     view = _await_ok(control, run.run_id, timeout_ms=180_000)
     evidence = _agent_retrieval(control, view.run_id)
+    down = control.run(plugin="docker_stack", args={**args, "action": "down"}, wait_ms=0)
+    _await_ok(control, down.run_id, timeout_ms=180_000)
     waves = (
         evidence["result"].get("waves_completed") if isinstance(evidence["result"], dict) else None
     )
@@ -169,10 +171,10 @@ def demo_docker_stack(control: Any, workdir: Path) -> StepResult:
     )
 
 
-def demo_integration_pipeline(control: Any, workdir: Path) -> StepResult:
+def demo_stack_pipeline(control: Any, workdir: Path) -> StepResult:
     skip = _docker_compose_skip_reason()
     if skip:
-        return StepResult("integration_pipeline", "skip", skip)
+        return StepResult("stack_pipeline", "skip", skip)
 
     project_dir = workdir / "pipeline-project"
     project_dir.mkdir()
@@ -188,7 +190,7 @@ def demo_integration_pipeline(control: Any, workdir: Path) -> StepResult:
     )
 
     run = control.run(
-        plugin="integration_pipeline",
+        plugin="stack_pipeline",
         args={
             "stack_spec": {
                 "compose_file": "docker-compose.yml",
@@ -205,6 +207,7 @@ def demo_integration_pipeline(control: Any, workdir: Path) -> StepResult:
             },
             "pytest_path": "tests",
             "workdir": str(project_dir),
+            "python": sys.executable,
         },
         wait_ms=0,
     )
@@ -212,9 +215,9 @@ def demo_integration_pipeline(control: Any, workdir: Path) -> StepResult:
     evidence = _agent_retrieval(control, view.run_id)
     ok = evidence["result"].get("ok") if isinstance(evidence["result"], dict) else None
     if ok is not True:
-        return StepResult("integration_pipeline", "fail", f"unexpected result: {evidence}")
+        return StepResult("stack_pipeline", "fail", f"unexpected result: {evidence}")
     return StepResult(
-        "integration_pipeline",
+        "stack_pipeline",
         "ok",
         f"run_id={view.run_id} artifacts={evidence['artifacts']}",
     )
@@ -225,7 +228,7 @@ def main() -> int:
 
     home = Path(tempfile.mkdtemp(prefix="trestle-pack-demo-"))
     workdir = Path(tempfile.mkdtemp(prefix="trestle-pack-work-"))
-    kernel = create_kernel(home=home, plugin_dirs=[PACKS_DIR], skip_recovery=True)
+    kernel = create_kernel(home=home, plugin_dirs=PACKS_DIRS, skip_recovery=True)
     control = kernel.control
 
     catalog = control.list_plugins()
@@ -233,10 +236,10 @@ def main() -> int:
     print(f"catalog: {', '.join(names)}")
 
     steps = [
-        demo_pytest_run(control),
+        demo_pytest_run(control, workdir),
         demo_migrate_apply(control, workdir),
         demo_docker_stack(control, workdir),
-        demo_integration_pipeline(control, workdir),
+        demo_stack_pipeline(control, workdir),
     ]
 
     failed = False

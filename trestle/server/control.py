@@ -75,6 +75,9 @@ class ControlSurface:
     project: Project
     conductor: Conductor
     scheduler: Scheduler
+    # the build a serving process runs (`Kernel.start_service`), for the status view; None in a
+    # CLI kernel, which then reports `trestle.__version__`
+    version: str | None = None
     lane: AdmissionLane = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -175,7 +178,7 @@ class ControlSurface:
             run_id=result.run_id,
             snapshot_id=snap.snapshot_id if snap else "",
             spec_hash=spec_hash,
-            secrets=result.secrets,
+            credentials=result.credentials,
         )
         self._drive_background(order)
 
@@ -241,7 +244,7 @@ class ControlSurface:
         # Shielded: once admitted, the run is handed to the dispatcher even if the caller goes away
         # while the hand-off is under way.
         await asyncio.shield(
-            asyncio.to_thread(self._hand_off, result.run_id, plugin, result.secrets)
+            asyncio.to_thread(self._hand_off, result.run_id, plugin, result.credentials)
         )
 
         if wait_ms == 0:
@@ -250,9 +253,11 @@ class ControlSurface:
             return await self.project.await_terminal_async(result.run_id, observe=observe)
         return await self.project.await_one_async(result.run_id, wait_ms, observe=observe)
 
-    def _hand_off(self, run_id: str, plugin: str, secrets: dict[str, Any] | None = None) -> None:
+    def _hand_off(
+        self, run_id: str, plugin: str, credentials: dict[str, tuple[str, str]] | None = None
+    ) -> None:
         """Hand a just-admitted run to the dispatcher (its work order, then the FIFO)."""
-        self._drive_background(self._work_order(run_id, plugin, secrets))
+        self._drive_background(self._work_order(run_id, plugin, credentials))
 
     def _hand_off_admitted(self, admitted: Future[AdmitResult], plugin: str) -> None:
         """The hand-off of an admit whose caller went away mid-admission: a new run is driven; a
@@ -261,10 +266,10 @@ class ControlSurface:
             return
         result = admitted.result()
         if result.tag != "refused" and not result.existing:
-            self._hand_off(result.run_id, plugin, result.secrets)
+            self._hand_off(result.run_id, plugin, result.credentials)
 
     def _work_order(
-        self, run_id: str, plugin: str, secrets: dict[str, Any] | None = None
+        self, run_id: str, plugin: str, credentials: dict[str, tuple[str, str]] | None = None
     ) -> WorkOrder:
         from trestle.server.ledger import RunLedger, ledger_path, run_dir_for
 
@@ -276,7 +281,7 @@ class ControlSurface:
             run_id=run_id,
             snapshot_id=snap.snapshot_id if snap else "",
             spec_hash=spec_hash,
-            secrets=secrets or {},
+            credentials=credentials or {},
         )
 
     def await_runs(
@@ -342,10 +347,13 @@ class ControlSurface:
         params: dict[str, Any] | None = None,
         cursor: str | None = None,
     ) -> dict[str, Any] | RequestOutcome:
-        out = self.project.query(view, params or {}, cursor)
-        if isinstance(out, RequestOutcome):
-            return out
-        return out
+        if view == "status":
+            # change 2b: the row needs the scheduler, the registry and the build, which the
+            # filesystem backend does not have; params and cursor are ignored
+            from trestle.server.status_view import status_envelope
+
+            return status_envelope(self)
+        return self.project.query(view, params or {}, cursor)
 
     def fetch(self, target: str, window: dict[str, Any]) -> dict[str, Any] | RequestOutcome:
         out = self.project.fetch(target, window)

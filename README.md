@@ -102,6 +102,7 @@ trestle service status # the service: running, pid, endpoint, builds
 trestle doctor
 trestle ops serve      # http://127.0.0.1:18733 — sessions / telemetry UI
 trestle pin <run_id>
+trestle cancel <run_id> # any live run, whatever session sent it
 trestle recover
 ```
 
@@ -116,7 +117,7 @@ Playbook: [`docs/operator-sessions-telemetry.md`](docs/operator-sessions-telemet
 | [`docs/security.md`](docs/security.md) | Local-only lockdown |
 | [`docs/agents.md`](docs/agents.md) | Agent guide, including [large tasks as one tree run](docs/agents.md#large-tasks-the-tree) |
 | [`docs/plugins.md`](docs/plugins.md) | Write and publish plugins: `ctx.exec`, `Blocked`, `stop_grace`, testing without a server, composite (tree) workflows |
-| [`docs/packs.md`](docs/packs.md) | Install a pack: its library, its wrapper folder in `[plugins] paths`, `[plugins.env]` |
+| [`docs/packs.md`](docs/packs.md) | The bundled packs (`trestle pack install stack`), `[plugins.env]`, writing a pack |
 | [`docs/environment.md`](docs/environment.md) | The reference environment tree workflow |
 | [`docs/decisions/service-and-credentials.md`](docs/decisions/service-and-credentials.md) | Decision record: one per-user service, credentials by name, MCP only (service, token, MCP-only and `ctx.exec` implemented) |
 | [`docs/decisions/plain-plugin-stop-grace.md`](docs/decisions/plain-plugin-stop-grace.md) | Decision record: a clean-stop window for plain plugins |

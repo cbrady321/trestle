@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -92,6 +92,8 @@ class Context(Protocol):
         max_output_bytes: int = 1024 * 1024,
         credentials: Sequence[str] | None = None,
     ) -> ExecResult: ...
+    def credential_env(self, name: str) -> dict[str, str]: ...
+    def credential_file(self, name: str) -> Path: ...
 
 
 @overload
@@ -105,9 +107,10 @@ def trestle(
     summary_fields: Sequence[str] = (),
     packages: Sequence[str] = (),
     env_arg: str | None = None,
-    secrets: Collection[str] = (),
+    credentials: Sequence[str] = (),
     repeatable: bool = False,
     stop_grace: float | None = None,
+    adapted_from: str | None = None,
 ) -> Callable[[F], F]: ...
 
 
@@ -119,16 +122,22 @@ def trestle(  # noqa: UP047
     summary_fields: Sequence[str] = (),
     packages: Sequence[str] = (),
     env_arg: str | None = None,
-    secrets: Collection[str] = (),
+    credentials: Sequence[str] = (),
     repeatable: bool = False,
     stop_grace: float | None = None,
+    adapted_from: str | None = None,
 ) -> F | Callable[[F], F]:
     """Mark a callable as a Trestle plugin entry point.
 
     Bare (`@trestle`) or call form (`@trestle(deadline=..., summary_fields=..., packages=...,
-    env_arg=..., secrets=..., repeatable=..., stop_grace=...)`). The metadata is read statically
-    from the source at publication (literals only), never from this call; at run time the call
-    form marks the callable exactly as the bare form does.
+    env_arg=..., credentials=..., repeatable=..., stop_grace=..., adapted_from=...)`). The
+    metadata is
+    read statically from the source at publication (literals only), never from this call; at run
+    time the call form marks the callable exactly as the bare form does.
+
+    `credentials` names the identities the plugin uses (`ctx.credential_env`,
+    `ctx.credential_file`); the operator configures and grants each, and no value is ever an
+    argument. `adapted_from` names the plugin this one was adapted from (lineage only).
     """
 
     def mark(target: F) -> F:

@@ -1,9 +1,10 @@
 """A pack wrapper: a few lines over a library, with the library declared in `packages=`.
 
-A pack is a library installed in the service's own environment plus a folder of wrapper files
-like this one, listed in `[plugins] paths`. Declaring the library records a digest of its code at
-publication; a run that finds the library changed stops with `execution.provenance_mismatch`
-until the wrapper is published again. The library here is `trestle_packs`; use your own."""
+A pack is a `pack.toml`, wrapper files like this one under `plugins/`, and the library they call,
+installed by the operator with `trestle pack install`. Declaring the library records a digest of
+its code at publication; a run that finds the library changed stops with
+`execution.provenance_mismatch` until the wrapper is published again. The library here is
+`trestle_packs`; use your own."""
 
 from __future__ import annotations
 

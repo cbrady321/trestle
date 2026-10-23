@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from trestle.server.config import IGNORED_MAX_RUNNING_ENV, TrestleConfig, load_config
+from trestle.common.types import PluginSnapshot
+from trestle.server.config import (
+    IGNORED_MAX_RUNNING_ENV,
+    ProfileConfig,
+    TrestleConfig,
+    load_config,
+)
+from trestle.server.credential_store import StoreError
+from trestle.server.credentials import GRANT_CURRENT, grant_status, load_credentials
 from trestle.server.gc import GCReport, count_runs, run_gc
 from trestle.server.home import (
     admission_holder,
@@ -15,11 +24,15 @@ from trestle.server.home import (
     home_format,
     live_run_ids,
     live_servers,
+    marked_run_dir,
     read_marker,
 )
+from trestle.server.ledger import TERMINAL_KINDS, read_state
 from trestle.server.main import create_kernel, default_home
+from trestle.server.mcp_sessions import SERVER_GONE, SessionReader, owner_running
 from trestle.server.plugin_paths import resolve_plugin_dirs
 from trestle.server.reaper import reap_home
+from trestle.server.snapshots import load_declared
 
 
 @dataclass(frozen=True)
@@ -44,6 +57,12 @@ class DoctorReport:
     warnings: tuple[str, ...] = ()
     # watched folders that do not exist: shown as missing, not as holding 0 plugins
     missing_plugin_dirs: tuple[str, ...] = ()
+    # change 3: the credential identities (names, env, grant status, the store), never a value
+    credentials: tuple[str, ...] = ()
+    # change 2a: the live runs whose MCP session has ended, one line each (at most
+    # SESSION_ENDED_LISTED), and how many there are
+    session_ended_runs: tuple[str, ...] = ()
+    session_ended_count: int = 0
 
     def lines(self) -> list[str]:
         rows = [
@@ -84,8 +103,13 @@ class DoctorReport:
         rows.append(f"live_runs: {sum(self.live_runs.values())}")
         for owner in sorted(self.live_runs, key=lambda o: (o is None, o or "")):
             rows.append(f"  {owner or 'v0.3.0 (no owner)'}: {self.live_runs[owner]}")
+        rows.append(f"session_ended_runs: {self.session_ended_count}")
+        rows.extend(f"  - {line}" for line in self.session_ended_runs)
+        if self.session_ended_count > len(self.session_ended_runs):
+            rows.append(f"  … and {self.session_ended_count - len(self.session_ended_runs)} more")
         if self.admission_holder is not None:
             rows.append(f"admission_lock: held by {self.admission_holder}")
+        rows.extend(self.credentials)
         for warning in self.warnings:
             rows.append(f"warning: {warning}")
         if self.gc is not None:
@@ -139,6 +163,13 @@ def build_doctor_report(
     if missing_dirs and len(missing_dirs) == len(kernel.registry.plugin_dirs):
         health = "degraded"
 
+    ended_lines, ended_count = session_ended_report(trestle_home)
+    credential_rows, credential_warnings, store_ok = credentials_report(
+        trestle_home, kernel.registry.snapshots
+    )
+    if not store_ok:
+        health = "degraded"
+
     return DoctorReport(
         home=trestle_home,
         health=health,
@@ -157,8 +188,112 @@ def build_doctor_report(
         servers=tuple(live_servers(trestle_home)),
         live_runs=_live_runs_by_owner(trestle_home),
         admission_holder=admission_holder(trestle_home),
-        warnings=_warnings(),
+        warnings=_warnings() + credential_warnings + _exec_warning(trestle_home, config),
         missing_plugin_dirs=tuple(str(path) for path in missing_dirs),
+        credentials=credential_rows,
+        session_ended_runs=ended_lines,
+        session_ended_count=ended_count,
+    )
+
+
+SESSION_ENDED_LISTED = 20
+
+
+def session_ended_report(home: Path) -> tuple[tuple[str, ...], int]:
+    """Change 2a: the live runs (their markers, then each run's state.json) whose MCP session has
+    ended: at most `SESSION_ENDED_LISTED` lines and the count. Health is unchanged: such a run is a
+    live run, and live runs already degrade it."""
+    reader = SessionReader(home)
+    lines: list[str] = []
+    count = 0
+    for run_id in live_run_ids(home):
+        run_dir = marked_run_dir(home, run_id, read_marker(home, run_id))
+        state = read_state(run_dir) if run_dir is not None else None
+        if state is None or state.get("state") in TERMINAL_KINDS:
+            continue
+        alive = owner_running(run_dir)
+        end = reader.end(state.get("owner"), state.get("caller_session"), owner_alive=alive)
+        if end is None:
+            continue
+        count += 1
+        if len(lines) >= SESSION_ENDED_LISTED:
+            continue
+        why = (
+            "server gone"
+            if end.reason == SERVER_GONE
+            else f"session {end.reason} at {end.at or 'an unknown time'}"
+        )
+        lines.append(f"{run_id} {state.get('plugin')} {state.get('state')}: {why}")
+    return tuple(lines), count
+
+
+def credentials_report(
+    home: Path, snapshots: Mapping[str, PluginSnapshot]
+) -> tuple[tuple[str, ...], tuple[str, ...], bool]:
+    """The doctor's credentials section: (rows, warnings, store readable). Identities and their
+    grants' status against the plugins published now, and whether the store and its key read;
+    never a value. Nothing configured: no rows."""
+    config = load_credentials(home)
+    if not config.identities:
+        return ("credentials: 0 identities",), (), True
+    rows = [f"credentials: {len(config.identities)} identities"]
+    warnings: list[str] = []
+    for name in sorted(config.identities):
+        ident = config.identities[name]
+        rows.append(f"  - {name} (kind={ident.kind}, env={ident.env})")
+        for grant in sorted(ident.grants, key=lambda g: g.plugin):
+            snap = snapshots.get(grant.plugin)
+            current = (
+                (snap.source_sha256, dict(load_declared(snap).package_digests))
+                if snap is not None
+                else None
+            )
+            status = grant_status(grant, current)
+            rows.append(f"      grant {grant.plugin}: {status}")
+            if status != GRANT_CURRENT:
+                warnings.append(
+                    f"credential {name} grant to {grant.plugin} is {status}; "
+                    f"`trestle credentials grant {name} {grant.plugin}` re-pins it"
+                )
+    store = config.store(home)
+    try:
+        stored = store.read_all()
+    except StoreError as exc:
+        rows.append(f"  store: unreadable ({exc}); key: {store.provider.describe()}")
+        warnings.append(f"the credential store could not be read: {exc}")
+        return tuple(rows), tuple(warnings), False
+    rows.append(f"  store: readable; key: {store.provider.describe()}")
+    for name in sorted(set(config.identities) - set(stored)):
+        warnings.append(
+            f"credential {name} has no stored value: `trestle credentials add {name} --replace`"
+        )
+    return tuple(rows), tuple(warnings), True
+
+
+def exec_exposure_warning(home: Path, profile: ProfileConfig | None = None) -> str | None:
+    """Change 2c (owner decision 1): the warning when the restricted profile lists `exec` and the
+    home's credentials.toml defines an identity, else None. Warned, never refused: `exec` runs
+    commands as the user, and so can read every credential value (the store under either key
+    provider: the key file, or the Keychain item through `security`, which needs no prompt). Reads
+    the files as they are now."""
+    if profile is None:
+        try:
+            profile = load_config(home).profile
+        except ValueError:
+            return None
+    if not profile.restricted or "exec" not in profile.allowlist:
+        return None
+    try:
+        count = len(load_credentials(home).identities)
+    except ValueError:
+        return None
+    if not count:
+        return None
+    noun = "identity" if count == 1 else "identities"
+    return (
+        f"exec is allowlisted under the restricted profile and this home holds {count} "
+        f"credential {noun}: any agent on this service can run commands as you, and so read "
+        "every credential value (the store under either key provider)"
     )
 
 
@@ -169,6 +304,11 @@ def _live_runs_by_owner(home: Path) -> dict[str | None, int]:
         key = owner if isinstance(owner, str) else None
         counts[key] = counts.get(key, 0) + 1
     return counts
+
+
+def _exec_warning(home: Path, config: TrestleConfig) -> tuple[str, ...]:
+    warning = exec_exposure_warning(home, config.profile)
+    return () if warning is None else (warning,)
 
 
 def _warnings() -> tuple[str, ...]:

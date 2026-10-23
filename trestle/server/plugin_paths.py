@@ -3,18 +3,38 @@
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from pathlib import Path
 
 CATALOG_HINT_EMPTY = (
-    "No plugins published. Write a @trestle-decorated .py file into a "
-    "plugin_search_paths directory, call publish_plugin, then list_plugins again."
+    "No plugins published: the operator adds plugin files to the service's plugin folders; "
+    "under the full profile, publish_plugin adds one."
 )
 
 CATALOG_HINT_PACKS_MISSING = (
-    "Pack plugins require trestle-packs. Install with: "
-    'pip install -e "packages/trestle-packs[all]" or pip install -e ".[packs]"'
+    "Pack plugins need trestle-packs, which is missing from the service's Python; from the "
+    'Trestle checkout, the operator runs: ~/.trestle-venv/bin/pip install -e ".[packs]"'
 )
+
+
+_BUNDLED_LIBRARY_MISSING = re.compile(r"No module named '(trestle_pack_([a-z][a-z0-9_]*))'")
+
+
+def packs_missing_hint(import_error: str) -> str | None:
+    """The operator's line for a plugin whose pack library is missing from the service's Python:
+    a bundled pack's library comes back with `trestle pack install <pack>` (which reinstalls an
+    installed one); `trestle_packs` with the pip line."""
+    found = _BUNDLED_LIBRARY_MISSING.search(import_error)
+    if found is not None:
+        module, pack = found.groups()
+        return (
+            f"The {pack} pack's library ({module}) is missing from the service's Python; "
+            f"the operator runs: trestle pack install {pack}"
+        )
+    if "trestle_packs" in import_error:
+        return CATALOG_HINT_PACKS_MISSING
+    return None
 
 
 def expand_plugin_path(raw: str, home: Path) -> Path:

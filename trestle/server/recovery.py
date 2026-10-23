@@ -7,7 +7,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from trestle.common import codes
+from trestle.common import codes, credentials
 from trestle.common.fsutil import atomic_write_json, fsync_dir
 from trestle.common.plan.compiler import AdmittedPlan
 from trestle.common.plan.formats import PlanInvalid, UnknownPlanFormat
@@ -49,6 +49,8 @@ def recover_run_dir(
     caller passing neither (the reaper, the d2 driver) gets the configured limits and real
     commands. `promote`: the run had no secret values, so its outputs are promoted as the owner
     would have (rule 3), after the process stop and before the staged files are swept."""
+    # change 3: a reaped run's credential channel is removed first, whatever state it is in
+    shutil.rmtree(credentials.channel_dir(run_dir), ignore_errors=True)
     path = ledger_path(run_dir)
     if not path.exists():
         sweep_run_dir(run_dir)

@@ -24,6 +24,15 @@ ADMISSION_TTL_OUT_OF_RANGE = "admission.ttl_out_of_range"
 # v0.3.1 (Feature 3): `after` names a run (or a key whose runs) that does not exist; refused before
 # any run id.
 ADMISSION_AFTER_UNKNOWN = "admission.after_unknown"
+# Decision record change 3: the plugin declares an identity (`@trestle(credentials=[...])`) that
+# no `credentials.toml` table defines; refused before any run id.
+ADMISSION_CREDENTIAL_UNKNOWN = "admission.credential_unknown"
+# ... an identity whose grants do not cover this plugin at its current `source_sha256` and
+# `package_digests` (a republish that changed either loses the grant); refused before any run id.
+ADMISSION_CREDENTIAL_NOT_GRANTED = "admission.credential_not_granted"
+# ... a granted identity whose value the store cannot give (no stored value, the key or the store
+# unreadable); refused before any run id.
+ADMISSION_CREDENTIAL_UNAVAILABLE = "admission.credential_unavailable"
 NOT_IMPLEMENTED = "projection.not_implemented"
 INVALID_HANDLE = "projection.invalid_handle"
 NOT_OWNER = "projection.not_owner"
@@ -52,6 +61,9 @@ PUBLICATION_DECLARATION_INVALID = "publication.declaration_invalid"
 PUBLICATION_ENV_ARG_MISSING = "publication.env_arg_missing"
 # v0.3.1 (Problem A): another server published the same plugin name at once and its source won.
 PUBLICATION_REGISTRY_CONFLICT = "publication.registry_conflict"
+# P-10: a publish under a name a pack plugin (or the operator's own file) serves: one agent's file
+# must not replace a vetted plugin for every agent. The message names the source and a new name.
+PUBLICATION_NAME_TAKEN = "publication.name_taken"
 
 # MC-CORE-04: the execution-code vocabulary, additive only (DM-16). A run that started and ended
 # without an answer carries exactly one of these in its `error_record` (MC-15).
@@ -167,3 +179,21 @@ EXECUTION_CODES: frozenset[str] = frozenset(
         VERTEX_UNENDED,
     }
 )
+
+
+# Change 2b: how long, in whole seconds, to wait before resending a request refused with a
+# retryable code. `RequestOutcome.to_dict` fills `retry_after_s` from this table on every
+# retryable outcome that does not carry its own value, so no refusal site can forget it. A resend
+# sooner is likely refused the same way; one at or after it can still be refused, with its own
+# value. `admission.environment_busy` computes its own (the moment the same request would be
+# queued); its entry here is the floor used if a site does not.
+RETRY_AFTER_S: dict[str, int] = {
+    ADMISSION_ENVIRONMENT_BUSY: 1,
+    QUEUE_FULL: 5,
+    ADMISSION_HOME_BUSY: 2,
+    SERVICE_DRAINING: 10,
+    NOT_FINALIZED: 1,
+    CURSOR_EXPIRED: 0,
+    PUBLICATION_REGISTRY_CONFLICT: 0,
+}
+DEFAULT_RETRY_AFTER_S = 5

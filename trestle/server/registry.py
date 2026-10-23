@@ -22,11 +22,23 @@ from trestle.common.types import (
     PublishView,
     RequestOutcome,
 )
+from trestle.packs import PackError
+from trestle.packs.lock import LockedPack, lock_path, read_lock
+from trestle.packs.sources import (
+    TIER_PACK,
+    TIER_RUNTIME,
+    PluginSource,
+    SourcePlan,
+    plan_sources,
+    plugin_files,
+    runtime_dir,
+    shadowed_pack,
+)
 from trestle.server.config import load_config
 from trestle.server.plugin_paths import (
     CATALOG_HINT_EMPTY,
-    CATALOG_HINT_PACKS_MISSING,
     log_plugin_warning,
+    packs_missing_hint,
 )
 from trestle.server.plugin_schema import (
     EntryError,
@@ -41,6 +53,7 @@ from trestle.server.plugin_validate import (
     validate_plugin_imports,
 )
 from trestle.server.snapshots import (
+    ORIGIN_AGENT,
     deadline_of,
     discover_plugin_name,
     discover_plugin_name_from_source,
@@ -49,6 +62,8 @@ from trestle.server.snapshots import (
     load_snapshot_return_schema,
     load_snapshot_schema,
     materialize_snapshot,
+    publication_origin,
+    record_agent_publication,
 )
 
 MAX_PUBLISH_SOURCE_BYTES = 512 * 1024
@@ -126,8 +141,13 @@ class Registry:
     registry_version: int = 1
     promotion_budget: PromotionBudget = field(default_factory=default_promotion_budget)
     _scan_signature: tuple[tuple[str, int, int], ...] | None = field(default=None, init=False)
-    # why the last refresh refused each plugin that has its own publication code
+    # why the last refresh refused each plugin file that has its own publication code, by path
     _refusals: dict[str, PublicationRefused] = field(default_factory=dict, init=False)
+    # the file each published plugin is served from, with its owner and pack (P-1, P-7)
+    sources: dict[str, PluginSource] = field(default_factory=dict, init=False)
+    # plugin -> the pack plugin it overrides, as `name@version (owner)` (P-11)
+    overrides: dict[str, str] = field(default_factory=dict, init=False)
+    _lock_error: str | None = field(default=None, init=False, repr=False)
     # every plugin the last refresh could not publish: name -> (source path, reason), which
     # `list_plugins` reports so a caller need not read `service.log` to learn why one is missing
     _failures: dict[str, tuple[str, str]] = field(default_factory=dict, init=False)
@@ -148,19 +168,51 @@ class Registry:
         if self.on_change is not None:
             self.on_change(seen)
 
+    def _packs(self) -> list[LockedPack]:
+        """The installed packs (packs.lock). An unreadable lock serves no pack and is logged once
+        per distinct error, never guessed at."""
+        try:
+            packs = read_lock(self.home)
+        except PackError as exc:
+            if str(exc) != self._lock_error:
+                log_plugin_warning(self.home, f"packs.lock ignored: {exc}")
+            self._lock_error = str(exc)
+            return []
+        self._lock_error = None
+        return packs
+
+    def _plan(self, name_of: Callable[[Path], str | None]) -> SourcePlan:
+        """Every file that may serve each plugin name, in folder order: `[plugins] paths`, the
+        installed packs, then the runtime publish folder."""
+        return plan_sources(
+            self.plugin_dirs, self._packs(), runtime_dir(self.home), name_of=name_of
+        )
+
     def _scan_signature_now(self) -> tuple[tuple[str, int, int], ...]:
         entries: list[tuple[str, int, int]] = []
-        for plugin_dir in self.plugin_dirs:
-            if not plugin_dir.is_dir():
-                continue
-            for path in sorted(plugin_dir.glob("*.py")):
-                if path.name.startswith("_"):
-                    continue
+        try:
+            stat = lock_path(self.home).stat()
+            # the lock's mtime: an install or removal republishes with no restart
+            entries.append((str(lock_path(self.home)), stat.st_mtime_ns, stat.st_ino))
+        except FileNotFoundError:
+            pass
+        packs = self._packs()
+        folders = [
+            *self.plugin_dirs,
+            *(Path(pack.plugins_dir) for pack in packs),
+            runtime_dir(self.home),
+        ]
+        for folder in folders:
+            for path in plugin_files(folder):
                 try:
                     stat = path.stat()
                 except FileNotFoundError:
                     continue  # removed since the listing: it is not there to publish
                 entries.append((str(path), stat.st_mtime_ns, stat.st_size))
+        for pack in packs:
+            if pack.live and pack.library_dir is not None:
+                # P-13: a path install's library edit republishes its wrappers, no restart
+                entries.extend(library_times(Path(pack.library_dir)))
         return tuple(entries)
 
     def maybe_refresh(self) -> None:
@@ -179,95 +231,137 @@ class Registry:
         # The directory as this refresh found it: a file that changes while the refresh runs leaves
         # the recorded signature behind, so the next `maybe_refresh` takes the change up.
         signature = self._scan_signature_now()
-        paths: list[tuple[Path, str]] = []
-        claimed: set[str] = set()
         failures: dict[str, tuple[str, str]] = {}
-        for plugin_dir in self.plugin_dirs:
-            if not plugin_dir.is_dir():
-                continue
-            for path in sorted(plugin_dir.glob("*.py")):
-                if path.name.startswith("_"):
-                    continue
-                try:
-                    plugin_id = discover_plugin_name(path)
-                except FileNotFoundError:
-                    continue  # removed since the listing: it is not there to publish
-                except SyntaxError as exc:
-                    log_plugin_warning(
-                        self.home,
-                        f"plugin {path.name!r} failed validation: {exc}",
-                    )
-                    failures[path.stem] = (str(path), f"syntax error: {exc}")
-                    continue
-                if plugin_id is None:
-                    plugin_id = path.stem
-                if plugin_id in claimed:
-                    log_plugin_warning(
-                        self.home,
-                        f"duplicate plugin name {plugin_id!r} in {path}; first path wins",
-                    )
-                    continue
-                claimed.add(plugin_id)
-                paths.append((path, plugin_id))
+
+        def name_of(path: Path) -> str | None:
+            try:
+                plugin_id = discover_plugin_name(path)
+            except FileNotFoundError:
+                return None  # removed since the listing: it is not there to publish
+            except SyntaxError as exc:
+                log_plugin_warning(self.home, f"plugin {path.name!r} failed validation: {exc}")
+                failures.setdefault(path.stem, (str(path), f"syntax error: {exc}"))
+                return None
+            return plugin_id if plugin_id is not None else path.stem
+
+        plan = self._plan(name_of)
+        for name, (served, refused) in plan.collisions.items():
+            message = (
+                f"plugin {name!r} of pack {refused.pack_label} is not served: pack "
+                f"{served.pack_label} provides it too, and neither declares it (P-11)"
+            )
+            log_plugin_warning(self.home, message)
+            failures.setdefault(name, (str(refused.path), message))
+        entries = [(source, name) for name, cands in plan.candidates.items() for source in cands]
 
         seen: dict[str, PluginSnapshot] = {}
+        sources: dict[str, PluginSource] = {}
+        overrides: dict[str, str] = {}
         refusals: dict[str, PublicationRefused] = {}
-        if not paths:
-            changed = seen != self.snapshots
-            self.snapshots = seen
-            if changed:
-                self._changed(seen)
-            self._refusals = refusals
-            self._failures = failures
-            self._scan_signature = signature
-            return
+        results: dict[Path, PluginSnapshot | None] = {}
+        vanished: set[Path] = set()
+        errors: dict[Path, str] = {}
 
-        vanished: set[str] = set()
-
-        def promote(entry: tuple[Path, str]) -> tuple[str, PluginSnapshot | None]:
-            path, plugin_id = entry
+        def promote(entry: tuple[PluginSource, str]) -> tuple[Path, PluginSnapshot | None]:
+            source, plugin_id = entry
+            path = source.path
             self.promotion_budget.acquire()
             try:
                 try:
-                    snap = materialize_snapshot(path, plugin_id, home=self.home)
+                    snap = materialize_snapshot(
+                        path, plugin_id, home=self.home, pack=_pack_stamp(source)
+                    )
                 except FileNotFoundError:
-                    vanished.add(plugin_id)  # removed since the listing: not published
-                    return plugin_id, None
+                    vanished.add(path)  # removed since the listing: not published
+                    return path, None
                 except (SchemaError, PluginValidationError) as exc:
                     if isinstance(exc, PublicationRefused):
-                        refusals[plugin_id] = exc
+                        refusals[str(path)] = exc
                     log_plugin_warning(
                         self.home,
                         f"plugin {plugin_id!r} failed validation: {exc}",
                     )
-                    failures[plugin_id] = (str(path), str(exc))
-                    return plugin_id, None
-                return plugin_id, snap
+                    errors[path] = str(exc)
+                    return path, None
+                return path, snap
             finally:
                 self.promotion_budget.release()
 
-        workers = min(len(paths), self.promotion_budget.max_concurrent)
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            for plugin_id, snap in pool.map(promote, paths):
-                if snap is None:
-                    previous = self.snapshots.get(plugin_id)
-                    if previous is not None and plugin_id not in vanished:
-                        seen[plugin_id] = previous
-                    continue
-                seen[plugin_id] = snap
-                previous = self.snapshots.get(plugin_id)
-                if previous is None or previous.snapshot_id != snap.snapshot_id:
-                    warning = import_warning(snap)
-                    if warning is not None:  # R6a: once per newly published snapshot
-                        log_plugin_warning(self.home, f"plugin {plugin_id!r} {warning}")
+        if entries:
+            workers = min(len(entries), self.promotion_budget.max_concurrent)
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                for path, snap in pool.map(promote, entries):
+                    results[path] = snap
 
-        changed = seen != self.snapshots
+        for plugin_id, candidates in plan.candidates.items():
+            failed = next((c for c in candidates if c.path in errors), None)
+            if failed is not None:
+                failures.setdefault(plugin_id, (str(failed.path), errors[failed.path]))
+            # the winner of a name is the first *valid* candidate in folder order, so a broken
+            # file never hides a valid one
+            winner = next((c for c in candidates if results.get(c.path) is not None), None)
+            if winner is None:
+                previous = self.snapshots.get(plugin_id)
+                if previous is not None and any(c.path not in vanished for c in candidates):
+                    seen[plugin_id] = previous
+                    if plugin_id in self.sources:
+                        sources[plugin_id] = self.sources[plugin_id]
+                    if plugin_id in self.overrides:
+                        overrides[plugin_id] = self.overrides[plugin_id]
+                continue
+            snap = results[winner.path]
+            assert snap is not None
+            for other in candidates:
+                if other is not winner and other.tier != TIER_PACK:
+                    log_plugin_warning(
+                        self.home,
+                        f"duplicate plugin name {plugin_id!r} in {other.path}; {winner.path} "
+                        "serves it (the first valid file in folder order wins)",
+                    )
+            seen[plugin_id] = snap
+            sources[plugin_id] = winner
+            shadow = shadowed_pack(candidates, winner)
+            if shadow is not None and shadow.pack_label is not None:
+                overrides[plugin_id] = shadow.pack_label
+            previous = self.snapshots.get(plugin_id)
+            if previous is None or previous.snapshot_id != snap.snapshot_id:
+                warning = import_warning(snap)
+                if warning is not None:  # R6a: once per newly published snapshot
+                    log_plugin_warning(self.home, f"plugin {plugin_id!r} {warning}")
+        self._flag_restricted_overrides(overrides, sources)
+
+        changed = seen != self.snapshots or sources != self.sources
         self.snapshots = seen
+        self.sources = sources
+        self.overrides = overrides
         if changed:
             self._changed(seen)
         self._refusals = refusals
         self._failures = failures
         self._scan_signature = signature
+
+    def _flag_restricted_overrides(
+        self, overrides: dict[str, str], sources: dict[str, PluginSource]
+    ) -> None:
+        """P-14: under the restricted profile, an allowlisted name now served by an override is
+        logged (and flagged on its `list_plugins` row), once per change."""
+        profile = load_config(self.home).profile
+        if not profile.restricted:
+            return
+        for name, over in sorted(overrides.items()):
+            if name not in profile.allowlist or self.overrides.get(name) == over:
+                continue
+            source = sources[name]
+            by = source.pack_label or f"local file {source.path}"
+            log_plugin_warning(
+                self.home,
+                f"restricted profile: allowlisted plugin {name!r} is served by an override "
+                f"({by}) over {over}",
+            )
+
+    def failure_count(self) -> int:
+        """How many plugin files the last refresh could not publish (no import validation)."""
+        return len(self._failures)
 
     def get(self, plugin_id: str) -> PluginSnapshot | None:
         return self.snapshots.get(plugin_id)
@@ -275,12 +369,13 @@ class Registry:
     def catalog(self) -> CatalogView:
         self.maybe_refresh()
         items: list[PluginCatalogRow] = []
-        packs_missing = False
+        packs_missing: str | None = None
         for snap in sorted(self.snapshots.values(), key=lambda s: s.plugin):
             import_error = validate_plugin_imports(Path(snap.source_path))
             valid = import_error is None
-            if import_error is not None and "trestle_packs" in import_error:
-                packs_missing = True
+            if import_error is not None and packs_missing is None:
+                packs_missing = packs_missing_hint(import_error)
+            source = self.sources.get(snap.plugin)
             items.append(
                 PluginCatalogRow(
                     name=snap.plugin,
@@ -288,9 +383,12 @@ class Registry:
                     description=f"Plugin {snap.plugin}",
                     valid=valid,
                     capability_class=None,
+                    owner=None if source is None else source.owner,
+                    pack=None if source is None else source.pack_label,
+                    overrides=self.overrides.get(snap.plugin),
                 )
             )
-        search_paths = [str(path) for path in self.plugin_dirs]
+        search_paths = [str(path) for path in self.search_folders()]
         hint: str | None = None
         failed = [
             FailedPluginRow(
@@ -303,8 +401,8 @@ class Registry:
         ]
         if not items:
             hint = CATALOG_HINT_EMPTY
-        elif packs_missing:
-            hint = CATALOG_HINT_PACKS_MISSING
+        elif packs_missing is not None:
+            hint = packs_missing
         return CatalogView(
             registry_version=self.registry_version,
             items=items,
@@ -314,26 +412,21 @@ class Registry:
             failed=failed,
         )
 
+    def search_folders(self) -> list[Path]:
+        """Every watched folder in order: `[plugins] paths`, the installed packs' wrapper
+        folders, the runtime publish folder."""
+        return [
+            *self.plugin_dirs,
+            *(Path(pack.plugins_dir) for pack in self._packs()),
+            runtime_dir(self.home),
+        ]
+
     def plugin_counts_by_dir(self) -> dict[Path, int]:
+        """How many published plugins each `[plugins] paths` folder serves."""
         counts = {plugin_dir: 0 for plugin_dir in self.plugin_dirs}
-        claimed: set[str] = set()
-        for plugin_dir in self.plugin_dirs:
-            if not plugin_dir.is_dir():
-                continue
-            for path in sorted(plugin_dir.glob("*.py")):
-                if path.name.startswith("_"):
-                    continue
-                try:
-                    plugin_id = discover_plugin_name(path)
-                except FileNotFoundError:
-                    continue
-                if plugin_id is None:
-                    plugin_id = path.stem
-                if plugin_id in claimed:
-                    continue
-                if plugin_id in self.snapshots:
-                    counts[plugin_dir] += 1
-                    claimed.add(plugin_id)
+        for source in self.sources.values():
+            if source.path.parent in counts:
+                counts[source.path.parent] += 1
         return counts
 
     def describe(self, plugin_id: str) -> dict[str, object] | None:
@@ -364,6 +457,21 @@ class Registry:
             "input_schema": load_snapshot_schema(snap),
             "return_schema": load_snapshot_return_schema(snap),
         }
+        source = self.sources.get(plugin_id)
+        if source is not None:
+            # P-7: where the wrapper is, read with the agent's own file tools; P-1, P-5: whose
+            view["source_path"] = str(source.path)
+            view["owner"] = source.owner
+            if source.pack_label is not None:
+                view["pack"] = source.pack_label
+        if plugin_id in self.overrides:
+            view["overrides"] = self.overrides[plugin_id]
+        declared = load_declared(snap)
+        if declared.adapted_from is not None:
+            view["adapted_from"] = declared.adapted_from  # P-10: the lineage the plugin declares
+        if declared.credentials:
+            # change 3: the identities the plugin uses, by name and nothing else about them
+            view["credentials"] = list(declared.credentials)
         warning = import_warning(snap)
         if warning is not None:  # R6a: shown, never refused
             view["warnings"] = [warning]
@@ -377,9 +485,47 @@ class Registry:
         return view
 
     def writable_plugin_dir(self) -> Path:
-        if self.plugin_dirs:
-            return self.plugin_dirs[0]
-        return self.home / "plugins"
+        """Where `publish_plugin` writes: the runtime folder, the agents' own, never a pack copy
+        or the operator's folder."""
+        return runtime_dir(self.home)
+
+    def _name_taken(self, plugin_name: str) -> RequestOutcome | Path | None:
+        """P-10: a publish under a name served from outside the runtime folder is refused, naming
+        the served source and a new name to adapt it under. None: free. A Path: the name is
+        served by an agent's own unchanged file in the operator's folder (a publish from before
+        the runtime folder existed), which this publish moves to the runtime folder."""
+        source = self.sources.get(plugin_name)
+        if source is None or source.tier == TIER_RUNTIME:
+            return None
+        if source.tier != TIER_PACK:
+            try:
+                digest = sha256_file(source.path)
+            except OSError:
+                digest = ""
+            if publication_origin(self.home, plugin_name, digest) == ORIGIN_AGENT:
+                return source.path
+        served_by = (
+            f"pack {source.pack_label}" if source.pack_label is not None else "the operator's file"
+        )
+        suggestion = self._free_name(f"{plugin_name}_adapted")
+        return RequestOutcome(
+            code=codes.PUBLICATION_NAME_TAKEN,
+            message=(
+                f"{plugin_name} is served by {served_by} and an agent publish cannot replace it. "
+                f"Read its source at {source.path} and publish your version as {suggestion}, "
+                f'with @trestle(adapted_from="{plugin_name}")'
+            )[:600],
+            retryable=False,
+            origin="publication",
+        )
+
+    def _free_name(self, base: str) -> str:
+        if base not in self.snapshots:
+            return base
+        n = 2
+        while f"{base}{n}" in self.snapshots:
+            n += 1
+        return f"{base}{n}"
 
     def publish_source(
         self,
@@ -439,16 +585,28 @@ class Registry:
         # The write, its refresh and the read-back are one step: no other refresh lands between
         # them, so the outcome reported is this source's.
         with self._lock:
-            return self._write_and_publish(discovered, encoded)
+            self.maybe_refresh()
+            taken = self._name_taken(discovered)
+            if isinstance(taken, RequestOutcome):
+                return taken
+            return self._write_and_publish(discovered, encoded, legacy=taken)
 
-    def _write_and_publish(self, plugin_name: str, encoded: bytes) -> PublishView | RequestOutcome:
+    def _write_and_publish(
+        self, plugin_name: str, encoded: bytes, *, legacy: Path | None = None
+    ) -> PublishView | RequestOutcome:
         plugin_dir = self.writable_plugin_dir()
         plugin_dir.mkdir(parents=True, exist_ok=True)
         path = plugin_dir / f"{plugin_name}.py"
         created = not path.exists()
         previous = self.snapshots.get(plugin_name)
         source_sha256 = sha256_bytes(encoded)
+        # change 3: this source came from an agent; its snapshot's manifest says so
+        record_agent_publication(self.home, plugin_name, source_sha256)
         atomic_write(path, encoded)
+        if legacy is not None:
+            # the agent's own earlier publish, unchanged since, moves to the runtime folder
+            legacy.unlink(missing_ok=True)
+            log_plugin_warning(self.home, f"moved agent publish {legacy} to {path}")
         self.refresh()
         snap = self.get(plugin_name)
         if snap is None or snap.source_sha256 != source_sha256:
@@ -462,7 +620,7 @@ class Registry:
                     retryable=True,
                     origin="publication",
                 )
-            refused = self._refusals.get(plugin_name)
+            refused = self._refusals.get(str(path))
             if refused is not None:
                 return RequestOutcome(
                     code=refused.code,
@@ -512,3 +670,42 @@ def _concurrent_winner(path: Path, ours: str, snap: PluginSnapshot | None) -> st
     if snap is not None and snap.source_sha256 == on_disk:
         return f"snapshot {snap.snapshot_id}"
     return f"source sha256 {on_disk[:16]}"
+
+
+LIBRARY_SKIP_DIRS = frozenset(
+    {"__pycache__", "build", "dist", "node_modules", "venv", "tests", "test"}
+)
+
+
+def library_times(root: Path) -> list[tuple[str, int, int]]:
+    """P-13: a path install's library files, as (path, mtime, size): the `.py` sources and
+    `pyproject.toml`, skipping hidden, build and test folders."""
+    out: list[tuple[str, int, int]] = []
+    for folder, dirs, files in os.walk(root):
+        dirs[:] = sorted(
+            d
+            for d in dirs
+            if not d.startswith(".") and d not in LIBRARY_SKIP_DIRS and not d.endswith(".egg-info")
+        )
+        for name in sorted(files):
+            if not (name.endswith(".py") or name == "pyproject.toml"):
+                continue
+            path = Path(folder) / name
+            try:
+                stat = path.stat()
+            except FileNotFoundError:
+                continue
+            out.append((str(path), stat.st_mtime_ns, stat.st_size))
+    return out
+
+
+def _pack_stamp(source: PluginSource) -> dict[str, object] | None:
+    """P-1: the pack identity a snapshot's manifest records, with the variables naming the
+    pack's configuration files (P-20), whose digests admission records."""
+    if source.tier != TIER_PACK or source.pack is None:
+        return None
+    pack = source.pack
+    stamp: dict[str, object] = {"name": pack.name, "version": pack.version, "owner": pack.owner}
+    if pack.config_files:
+        stamp["config_files"] = list(pack.config_files)
+    return stamp

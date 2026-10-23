@@ -62,8 +62,9 @@ SECRET_STAGED_SOURCE = """\
 from trestle.plugin.surface import Context, trestle
 
 
-@trestle(secrets=["token"])
-def secret_staged(ctx: Context, token: str) -> dict[str, str]:
+@trestle(credentials=["demo-token"])
+def secret_staged(ctx: Context) -> dict[str, str]:
+    token = ctx.credential_env("demo-token")["DEMO_TOKEN"]
     text = ctx.artifact("report.txt")
     text.write_text(f"report {token}", encoding="utf-8")
     blob = ctx.artifact("blob.bin")
@@ -160,9 +161,8 @@ def test_artifact_caps_marked_and_staged_promoted_or_refused(tmp_path: Path) -> 
 
 
 def test_a_pass_that_fits_marks_nothing(tmp_path: Path) -> None:
-    kernel = _kernel(tmp_path)
-    assert isinstance(kernel.control.publish_plugin(SECRET_STAGED_SOURCE), PublishView)
-    view = run_ok(kernel, "secret_staged", {"token": SENTINEL})
+    kernel = kernel_with(tmp_path, SECRET_STAGED_SOURCE, "secret_staged")
+    view = run_ok(kernel, "secret_staged", {})
     assert view.state == "succeeded"
     # no cap was reached: the only marker is the refused binary, none of the artifact caps
     assert [m["limit"] for m in _artifact_markers(view)] == [redact.BINARY_LIMIT]
@@ -236,7 +236,7 @@ def test_drop_storm_marker_volume_bounded(tmp_path: Path) -> None:
 
 def test_staged_artifacts_are_scrubbed_and_the_sentinel_stays_out(tmp_path: Path) -> None:
     kernel = kernel_with(tmp_path, SECRET_STAGED_SOURCE, "secret_staged")
-    view = run_ok(kernel, "secret_staged", {"token": SENTINEL})
+    view = run_ok(kernel, "secret_staged", {})
     assert view.state == "succeeded", view
     run_dir = run_dir_for(kernel.home, view.run_id)
 

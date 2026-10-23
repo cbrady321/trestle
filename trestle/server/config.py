@@ -8,7 +8,7 @@ import tomllib
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from trestle.common import clock, redact
+from trestle.common import clock, credentials
 
 _GB = 1024**3
 
@@ -204,9 +204,9 @@ def _load_profile(raw: object) -> ProfileConfig:
     return ProfileConfig(mode=mode, allowlist=tuple(allowlist))
 
 
-# Names `[plugins.env]` may not set: the run's home, and the variable that carries a run's own
-# declared secret values (MC-CORE-13), which only the conductor writes.
-_RESERVED_PLUGIN_ENV = frozenset({"TRESTLE_HOME", redact.SECRETS_ENV})
+# Names `[plugins.env]` may not set: the run's home, and the variable that names the pipe a run's
+# credential values arrive on (MC-CORE-13), which only the conductor and the wrapper write.
+_RESERVED_PLUGIN_ENV = frozenset({"TRESTLE_HOME", credentials.SECRETS_FD_ENV})
 _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 

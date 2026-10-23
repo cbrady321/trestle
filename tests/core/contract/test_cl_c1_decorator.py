@@ -28,7 +28,6 @@ from trestle.plugin.surface import Context, trestle
     summary_fields=["total", "rows"],
     packages=("trestle_packs", "json.tool"),
     env_arg="target.env",
-    secrets={"token", "auth.password"},
 )
 def declared_plugin(ctx: Context, target: dict[str, str], token: str = "") -> dict[str, int]:
     return {"total": len(target)}
@@ -74,7 +73,6 @@ def test_call_form_publishes_and_runs_with_declared_metadata(tmp_path: Path) -> 
         "summary_fields": ["total", "rows"],
         "packages": ["trestle_packs", "json.tool"],
         "env_arg": "target.env",
-        "secrets": ["auth.password", "token"],
         # recorded at publication from the import path (L.CL-C1.4), not read from the source
         "package_digests": {
             "json.tool": package_digest("json.tool"),
@@ -89,7 +87,6 @@ def test_call_form_publishes_and_runs_with_declared_metadata(tmp_path: Path) -> 
         summary_fields=("total", "rows"),
         packages=("trestle_packs", "json.tool"),
         env_arg="target.env",
-        secrets=frozenset({"token", "auth.password"}),
         package_digests={
             "json.tool": package_digest("json.tool"),
             "trestle_packs": package_digest("trestle_packs"),
@@ -114,7 +111,6 @@ def test_bare_form_carries_defaults(tmp_path: Path) -> None:
         "summary_fields": [],
         "packages": [],
         "env_arg": None,
-        "secrets": [],
         "package_digests": {},
     }
     snap = kernel.registry.get("bare_plugin")
@@ -158,7 +154,8 @@ REFUSED_DECLARATIONS = {
     "bad dotted name": 'packages=["not a name"]',
     "duplicate keyword": "env_arg='a', env_arg='b'",
     "env_arg not a string": "env_arg=3",
-    "duplicate secret": 'secrets=["a", "a"]',
+    "duplicate credential": 'credentials=["a", "a"]',
+    "removed secrets keyword": 'secrets=["a"]',
 }
 
 
@@ -211,7 +208,7 @@ def test_bare_decorator_and_call_form_mark_identically() -> None:
     def called() -> None: ...
 
     assert trestle(bare) is bare
-    assert trestle(deadline=5, secrets=["x"])(called) is called
+    assert trestle(deadline=5, credentials=["x"])(called) is called
     assert is_trestle_plugin(bare) and is_trestle_plugin(called)
     with pytest.raises(TypeError):
         trestle(deadline=5, bogus=1)  # type: ignore[call-overload]

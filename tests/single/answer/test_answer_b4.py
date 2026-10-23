@@ -522,7 +522,7 @@ def test_codes_reexport_additive() -> None:
     }  # fmt: skip
     assert core <= codes.EXECUTION_CODES  # every core member still present
     for name in vocab.SINGLE_LEVEL_CODES:
-        assert name in {getattr(codes, n) for n in dir(codes) if n.isupper()}, name
+        assert name in {v for v in vars(codes).values() if isinstance(v, str)}, name
     assert {
         c for c in vocab.SINGLE_LEVEL_CODES if c.startswith("execution.")
     } <= codes.EXECUTION_CODES

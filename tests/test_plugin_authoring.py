@@ -4,7 +4,8 @@ Everything lives under `trestle://guide`: its root lists the view catalog
 (`trestle://guide/views`), `trestle://guide/plugins` (an index), `trestle://guide/plugins/{topic}`,
 `trestle://guide/api` (an index), `trestle://guide/api/{name}` and
 `trestle://guide/examples/{name}`. They are how an agent learns to write plugins without reading
-Trestle's source or its home (decision record service-and-credentials, Decision 3), one small read
+Trestle's own source or its home (decision record service-and-credentials, Decision 3, as P-6 of
+the packs record amends it: a pack's source is open), one small read
 at a time. These checks hold them to that and
 to the code: a byte budget per resource, the index smallest; every topic reachable from the index;
 the API lists exactly the public exports; no resource names an internal module or repository
@@ -50,6 +51,7 @@ EXAMPLE_BYTES = 6144
 
 EXAMPLE_NAMES = {
     "echo",
+    "exec",
     "exec_with_blocked",
     "artifact_status",
     "composite_workflow",

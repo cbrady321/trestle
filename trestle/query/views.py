@@ -17,6 +17,9 @@ ViewName = Literal[
     "run_artifacts",
     "artifact_refs",
     "run_by_key",
+    # change 2b: what this service allows and how busy it is (one row, no params); appended last
+    # so the enum's existing positions do not move
+    "status",
 ]
 
 VIEW_NAME_VALUES: tuple[str, ...] = get_args(ViewName)
@@ -27,15 +30,33 @@ FETCH_WINDOW_KINDS: tuple[str, ...] = get_args(FetchWindowKind)
 
 VIEW_ROW_FIELDS: dict[str, frozenset[str]] = {
     "run": frozenset(
-        {"run_id", "plugin", "version", "state", "started_at", "ended_at", "progress"}
+        {
+            "run_id",
+            "plugin",
+            "version",
+            "state",
+            "started_at",
+            "ended_at",
+            "progress",
+            "session_ended",
+        }
     ),
     "last_error": frozenset({"run_id", "event_seq", "kind", "message", "at"}),
     "run_tail": frozenset({"run_id", "line_no", "text"}),
     "run_events": frozenset({"run_id", "event_seq", "kind", "payload"}),
-    "recent_runs": frozenset({"run_id", "plugin", "state", "started_at"}),
+    "recent_runs": frozenset({"run_id", "plugin", "state", "started_at", "session_ended"}),
     "recent_failures": frozenset({"run_id", "plugin", "state", "failed_at"}),
     "run_provenance": frozenset(
-        {"run_id", "snapshot_id", "spec_hash", "args_hash", "source_sha256", "packages"}
+        {
+            "run_id",
+            "snapshot_id",
+            "spec_hash",
+            "args_hash",
+            "source_sha256",
+            "packages",
+            "pack",
+            "config",
+        }
     ),
     "run_artifacts": frozenset({"run_id", "artifact_id", "name", "retention_class", "state"}),
     "artifact_refs": frozenset({"artifact_id", "producer_run_id", "referrer_run_id"}),
@@ -57,6 +78,22 @@ VIEW_ROW_FIELDS: dict[str, frozenset[str]] = {
             "summary_truncated",
             "artifact_count",
             "artifacts_available",
+        }
+    ),
+    "status": frozenset(
+        {
+            "version",
+            "profile",
+            "draining",
+            "home_format",
+            "servers",
+            "limits",
+            "slots",
+            "runs",
+            "environments",
+            "environments_truncated",
+            "plugins",
+            "plugin_dirs_missing",
         }
     ),
 }

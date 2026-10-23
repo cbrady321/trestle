@@ -231,7 +231,6 @@ def _identity(**changes: Any) -> str:
             "summary_fields": [],
             "packages": ["pkg_a", "pkg_b"],
             "env_arg": None,
-            "secrets": [],
         },
         "summary_budget": 4096,
         "runtime_version": "0.1.0",
@@ -259,7 +258,9 @@ def _variants(rng: random.Random) -> dict[str, dict[str, Any]]:
             "declared": {**_identity_declared(), "summary_fields": [f"f{rng.randint(0, 99)}"]},
         },
         "env arg": {"declared": {**_identity_declared(), "env_arg": f"e{rng.randint(0, 99)}"}},
-        "secrets": {"declared": {**_identity_declared(), "secrets": [f"s{rng.randint(0, 99)}"]}},
+        "credentials": {
+            "declared": {**_identity_declared(), "credentials": [f"c{rng.randint(0, 99)}"]}
+        },
         "summary budget": {"summary_budget": rng.randint(1, 4095)},
         "declared tree": {"declared_tree": digest},
         "runtime version": {"runtime_version": f"9.{rng.randint(0, 99)}.0"},
@@ -272,7 +273,6 @@ def _identity_declared() -> dict[str, Any]:
         "summary_fields": [],
         "packages": ["pkg_a", "pkg_b"],
         "env_arg": None,
-        "secrets": [],
     }
 
 

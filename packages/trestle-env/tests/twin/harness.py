@@ -43,6 +43,8 @@ def plugin_pythonpath() -> str:
         REPO,
         REPO / "packages" / "trestle-packs",
         REPO / "packages" / "trestle-env",
+        # the bundled packs' libraries (docker_stack, stack_pipeline and the rest import them)
+        *sorted((REPO / "packages").glob("trestle-pack-*")),
         ENV_TESTS,
     ]
     inherited = os.environ.get("PYTHONPATH", "")

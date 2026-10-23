@@ -14,6 +14,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Literal, NoReturn, cast
 
+from trestle.common import credentials as credential_names
 from trestle.common.canonical import canonical_json
 from trestle.common.fsutil import sha256_bytes
 from trestle.common.types import DeclaredMetadata
@@ -348,9 +349,10 @@ DECLARED_KEYWORDS = (
     "summary_fields",
     "packages",
     "env_arg",
-    "secrets",
+    "credentials",
     "repeatable",
     "stop_grace",
+    "adapted_from",
 )
 _TIMEDELTA_UNITS = {
     "weeks": 604800.0,
@@ -392,6 +394,12 @@ def declared_from_function(fn: _FnDef) -> DeclaredMetadata:
     for kw in call.keywords:
         if kw.arg is None:
             raise DeclarationError("@trestle(**...) is not statically readable")
+        if kw.arg == "secrets":
+            # change 3: secret arguments are gone; the agent that sent one held the value
+            raise DeclarationError(
+                "@trestle: secrets= was removed; declare credentials=[...] identities the "
+                f"operator grants, and read them with ctx.credential_env; see {SHAPE_POINTER}"
+            )
         if kw.arg not in DECLARED_KEYWORDS:
             raise DeclarationError(
                 f"@trestle: unknown keyword {kw.arg!r}; allowed: {', '.join(DECLARED_KEYWORDS)}"
@@ -399,18 +407,58 @@ def declared_from_function(fn: _FnDef) -> DeclaredMetadata:
         if kw.arg in values:
             raise DeclarationError(f"@trestle: keyword {kw.arg!r} given twice")
         values[kw.arg] = kw.value
+    credentials = _declared_credentials(values.get("credentials"))
+    if credentials and fn.name in credential_names.NEVER_GRANTED:
+        raise DeclarationError(
+            f"@trestle: the {fn.name} plugin never carries a credential; remove credentials="
+        )
     return DeclaredMetadata(
         entry=fn.name,
         deadline_s=_declared_deadline(values["deadline"]) if "deadline" in values else None,
         summary_fields=_declared_names(values.get("summary_fields"), "summary_fields"),
         packages=_declared_names(values.get("packages"), "packages"),
         env_arg=_declared_env_arg(values["env_arg"]) if "env_arg" in values else None,
-        secrets=frozenset(_declared_names(values.get("secrets"), "secrets", allow_set=True)),
+        credentials=credentials,
         repeatable=_declared_bool(values["repeatable"], "repeatable")
         if "repeatable" in values
         else False,
         stop_grace_s=_declared_stop_grace(values["stop_grace"]) if "stop_grace" in values else None,
+        adapted_from=_declared_adapted_from(values["adapted_from"])
+        if "adapted_from" in values
+        else None,
     )
+
+
+def _declared_adapted_from(node: ast.expr) -> str:
+    """P-10: `adapted_from`, the name of the plugin this one adapts (a string literal naming a
+    plugin), recorded as lineage and shown by describe_plugin."""
+    if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
+        raise DeclarationError("@trestle: adapted_from must be a plugin-name string literal")
+    if not node.value.isidentifier():
+        raise DeclarationError(f"@trestle: adapted_from {node.value!r} is not a plugin name")
+    return node.value
+
+
+def _declared_credentials(node: ast.expr | None) -> tuple[str, ...]:
+    """Decision record change 3: `credentials`, a list (or tuple) of identity-name literals, each
+    lower case, digits, '-' and '_' (`"ci-reader"`), none twice. Recorded sorted."""
+    if node is None:
+        return ()
+    if not isinstance(node, (ast.List, ast.Tuple)):
+        raise DeclarationError("@trestle: credentials must be a list of identity-name literals")
+    names: list[str] = []
+    for item in node.elts:
+        if not (isinstance(item, ast.Constant) and isinstance(item.value, str)):
+            raise DeclarationError("@trestle: credentials entries must be string literals")
+        if not credential_names.valid_name(item.value):
+            raise DeclarationError(
+                f"@trestle: credentials entry {item.value!r} is not an identity name "
+                "(lower case letters, digits, '-' and '_')"
+            )
+        names.append(item.value)
+    if len(set(names)) != len(names):
+        raise DeclarationError("@trestle: credentials lists an identity twice")
+    return tuple(sorted(names))
 
 
 def _declared_stop_grace(node: ast.expr) -> float | None:

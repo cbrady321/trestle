@@ -26,9 +26,15 @@ MCP and nothing else. **Nothing you do as an agent runs `trestle` itself**: not 
 operator's job.
 
 **If the Trestle tools are missing, or the service does not answer** (connection refused, HTTP 401,
-every call failing the same way): say so plainly, name what you saw, and stop. Do not fall back to
-running the command in your own shell, and do not try to start the service. The operator fixes it
-with `trestle service status` / `start` ([`install.md`](install.md#troubleshooting)).
+every call failing the same way): say so plainly, name what you saw, and stop. Do not run the
+command in your own shell instead, and do not try to start the service. The operator fixes it
+([`install.md`](install.md#troubleshooting)).
+
+A refusal or hint that says what "the operator runs" is for the operator: relay it, do not run
+it, in your shell, through `exec` or any other way.
+
+`query(view="status")` answers what this service allows: version, profile, limits, slots, live
+runs and the environments in use.
 
 An empty catalog means every `run` returns `admission.plugin_not_found`; `list_plugins` then
 carries a `catalog_hint`. Report it to the operator rather than working around it.
@@ -57,6 +63,7 @@ also add a plugin at runtime with `publish_plugin`.
 ### 3. Verify
 
 - Host shows **ten** tools (see table below).
+- `query(view="status")` answers, with `draining: false`.
 - `list_plugins` returns at least `echo`.
 
 ---
@@ -111,12 +118,12 @@ also add a plugin at runtime with `publish_plugin`.
 
 ## Restricted profile
 
-An operator may run Trestle with `[profile] mode = "restricted"` ([`security.md`](security.md)). Then the host lists **nine** tools (no `publish_plugin`), `run` accepts only the allowlisted plugins, and `cancel` works only on runs this MCP session started.
+An operator may run Trestle with `[profile] mode = "restricted"` ([`security.md`](security.md)). Then the host lists **nine** tools (no `publish_plugin`), `run` accepts only the allowlisted plugins, and cancel works on runs this MCP session started, and on any run whose session has ended (session_ended: true in recent_runs and run). list_plugins marks each plugin allowlisted: true or false.
 
 | Refusal | Meaning | Fix |
 |---------|---------|-----|
 | `admission.not_allowlisted` | Plugin is not on the operator's allowlist (no `run_id`, nothing spawned) | Run an allowlisted plugin (ask the operator which); arguments cannot widen the list |
-| `projection.not_owner` | `cancel` for a run another session started | Cancel only your own runs; the run continues |
+| `projection.not_owner` | cancel for a run another session started while that session is still open | Leave it; the run continues. Once its session has ended you may cancel it if it blocks you. |
 
 The full profile (default) is unchanged: ten tools, any published plugin, any run cancellable.
 
@@ -131,6 +138,7 @@ The full profile (default) is unchanged: ten tools, any published plugin, any ru
 5. **Check `limits_exceeded`.** When output exceeds caps, `RunView` marks suppressed streams — evidence is honestly incomplete. There is one marker per (stream, limit), however many events or artifacts it dropped; its `bytes_suppressed` is the total. Artifact caps (`stream: "artifacts"`, `max_artifact_count`, `max_artifact_bytes`) mark artifacts that were not stored.
 6. **Fetch truncation is success.** `truncated: true` with `scan_bytes` means narrow the window and continue — not an error. On `query`, `truncated: true` with `next_cursor` set means follow the cursor. With `next_cursor` null the recency window (500 runs) or the scan budget left runs out: reaching past it is not offered, and a run-scoped view of such a run by id answers `projection.outside_window` (an id with no run stays `projection.invalid_handle`).
 7. **Small MCP surface.** Plugin JSON schemas are **not** on `tools/list`. Pull one schema via `describe_plugin` when needed. When-to-pick for `query`/`fetch` lives on MCP resource `trestle://views` (not a second schema dump).
+8. **Pack source is open; Trestle's core is closed** (packs decision record, P-6). Read a pack's wrappers and library with your own file tools and adapt them when a pack does not fit, rather than falling back to the shell. Do not read or modify Trestle's own source or `$TRESTLE_HOME` beyond its packs. Running still goes through Trestle.
 
 ---
 
@@ -151,6 +159,7 @@ Live catalog: MCP resource **`trestle://views`** (when to pick each named view v
 | Artifact bytes? | `query` → `fetch` | `run_artifacts` → `art_…` + `head` / `tail` / `grep` |
 | Recent failures? | `query` | `recent_failures` |
 | Browse runs? | `query` | `recent_runs` (+ `cursor` if `next_cursor`) |
+| What does this service allow / how busy is it? | `query` | `status` (no params) |
 
 ### `run_tail` vs `fetch`
 
@@ -165,7 +174,7 @@ Plugins that only use `ctx.log()` may produce **empty** `run_tail` — use `run_
 
 ### Named views (`query`)
 
-`run`, `last_error`, `run_tail`, `run_events`, `recent_runs`, `recent_failures`, `run_provenance`, `run_artifacts`, `artifact_refs`, `run_by_key`
+`run`, `last_error`, `run_tail`, `run_events`, `recent_runs`, `recent_failures`, `run_provenance`, `run_artifacts`, `artifact_refs`, `run_by_key`, `status`
 
 Every `BoundedView` includes `backend`, `as_of`, `items`, `truncated`, `next_cursor`.
 
@@ -242,7 +251,7 @@ This is a knowing change (K-8): before it, a process a plugin forgot outlived a 
 <!-- K-2 -->
 A plugin's snapshot id (`snap_` plus 16 hex digits) no longer hashes `plugin.py` alone. It covers the
 source, the digests of the packages the plugin declares (`@trestle(packages=[...])`), the input and
-return schemas, the declared metadata (deadline, summary fields, packages, env arg, secrets and the
+return schemas, the declared metadata (deadline, summary fields, packages, env arg, credential names and the
 summary budget) and the Trestle runtime version. Two publications with equal ids share source, declared-package digests, schemas and
 declarations (not undeclared imports, non-`.py` package content or the environment); an edit to a declared package or a declared value gives a new id. Anyone who
 compared snapshot ids to detect a change in `plugin.py` bytes should compare `source_sha256`, which
@@ -311,9 +320,22 @@ Several servers may share one `TRESTLE_HOME` (v0.3.1). Each run is owned by the 
 it, through a lock the kernel drops when that server exits, even on SIGKILL; only runs whose owner
 is gone are recovered, by the reaper every running server runs (at start, then every 10 s, and at
 once when an `await_runs` or `completion="terminal"` waiter sees its run's owner gone). Starting a
-server never touches another live server's runs. A reaped run whose call gave no declared secret a
+server never touches another live server's runs. A reaped run that was given no credential value a
 value keeps what it left in `work/outputs/` (and staged artifacts) as artifacts:
-`query(view="run_artifacts")` lists them; a run with a secret value keeps none.
+`query(view="run_artifacts")` lists them; a run with a credential value keeps none.
+
+---
+
+## When your session ends
+
+Runs belong to the service, not to your session. Closing the chat, a reconnect or a host
+restart never stops one. A session ends when your host deletes it, or after 30 minutes with no
+request in flight (the host has gone). A dropped connection is not an end. Find a run again by
+its key (`query(view="run_by_key")`, or `await_runs(run_ids=[], keys=[...])`). A live run whose
+session has ended shows `session_ended: true` in `query(view="recent_runs")` and
+`query(view="run")` (false while its session is open, null once the run has ended or for a run
+sent outside MCP). Cancel a run you did not send only when it blocks you (it is the `held_by` of
+your refusal) and its `session_ended` is true. Never cancel one as cleanup.
 
 ---
 
@@ -330,9 +352,10 @@ server's slots (unset by default). Runs that name one environment start one at a
 servers, in admission order. A stopped server's turn passes on within about 1.5 s; a dead
 server's running runs keep their slots until another server's reaper ends them. `max_running_runs`
 and `max_share` are read from `config.toml` at each admission and grant (no restart needed;
-`TRESTLE_MAX_RUNNING_RUNS` is ignored and `trestle doctor` warns when it is set); `queue_depth`
+`TRESTLE_MAX_RUNNING_RUNS` is ignored and the operator's trestle doctor warns when it is set); `queue_depth`
 (`TRESTLE_QUEUE_DEPTH` still overrides it) and `[operator] max_held_runs` (256) are per server, read
 at start; held runs (`run(after=...)`) are outside `queue_depth`, and a server holding `max_held_runs` of them refuses another with `admission.queue_full`. The shared state is `home/sched.json`, rebuilt from `home/live/` when missing.
+`query(view="status")` shows slots in use and free, home wide.
 
 <!-- capacity -->
 Defaults: `max_running_runs` = 31 (measured), `queue_depth` = 256 (not measured); ratio bound = 2.0.
@@ -349,6 +372,48 @@ was not measured: it keeps its provisional value, now final, because a queued ru
 its deadline (it is finalized `timed_out` if still waiting when it passes), not by the depth. The
 number is for the recorded machine; a service on other hardware should re-run
 `python -m tests.tree.capacity measure` or set its own value.
+
+---
+
+## One-off commands: exec
+
+When no plugin owns the work and you need one command (a `git status`, a version check), run it
+through the `exec` plugin, never your shell:
+
+```
+run(plugin="exec", args={"argv": ["git", "status", "--short"], "cwd": "<absolute dir>"},
+    wait_ms=1000, completion="terminal")
+```
+
+- `argv` is a list and no shell is added: no pipes, globs or `&&`.
+- `cwd` must be under a directory the operator lists; outside it, `error` says
+  `cwd_outside_roots` and names them. Until the operator lists one, the run answers `blocked`
+  with `plugin.exec_roots_unset`: report it and stop.
+- Read `summary.ok`, `exit_code`, `stderr_tail` and `stdout_tail` (the last 1,500 bytes of
+  each). `output` is the whole kept output: `fetch` it with `tail` or `grep`.
+- Give it a deadline that fits: `run(..., deadline_s=600)`. The run's deadline is the command's
+  timeout; a command that outlives it answers `timed_out: true`.
+- If `exec` is not in `list_plugins`, or is `allowlisted: false`, Trestle does not run one-off
+  commands on this service. Say so. Whether you may run it yourself is your host's rule, not
+  Trestle's.
+- A command you run again and again should be a plugin: propose one.
+
+exec is seeded by the operator's trestle init; under the restricted profile it runs only if the
+operator lists it.
+
+| Field | Value |
+|---|---|
+| `ok` | the command exited 0 and there is no `error` |
+| `exit_code` | its exit status (null on a timeout, a stop or an error) |
+| `timed_out` | it outlived the run's deadline less a 5 s margin, and was killed |
+| `duration_s` | how long it ran |
+| `stdout_tail`, `stderr_tail` | the last 1,500 bytes of what was kept of each stream, cut on a UTF-8 boundary and at a line start |
+| `truncated` | a stream passed 16 MiB: the tail is the end of what was kept, not of the stream |
+| `output` | the `art_…` handle of the kept output, or `""` |
+| `error` | null, or `<code>: <detail>`: `cwd_not_absolute`, `cwd_not_a_directory`, `cwd_outside_roots`, `program_not_found` (the service's `PATH` is not your shell's), `not_executable`, `argv_invalid`, `no_time_left`, `operator_command` (`argv[0]` is the operator's CLI) |
+
+An `error` is returned, not raised: the run ends `succeeded` and `answer.outcome` reads `passed`;
+read `summary.ok`.
 
 ---
 
@@ -559,7 +624,7 @@ started run's answer: every `execution.*` code, and `admission.budget_does_not_f
 | `admission.bound_exceeded` | The selected part of the tree has more than 1024 nodes | Select fewer nodes with the selector arguments |
 | `admission.budget_does_not_fit` | The tree's budgets do not fit: a child's budget is over its parent's less the 10 s reserve, a composite's budget is under its longest `needs` chain or under ceil(children / `concurrency`) × its largest child, or the root's budget plus the release slice is over the deadline (the message names the node). On a started tree, a `blocked` stop when time spent queued left it less than its worst case | Ask the plugin's author to fix the budgets or the deadline; for the started-tree stop, run again when the environment is free |
 | `admission.route_unsupported` | A `ChoiceNode` has no eligible alternative, or a node that needs a choice cannot reach the alternative it would get | Change the selection argument; otherwise ask the author |
-| `admission.environment_busy` | Another run holds the environment and its deadline leaves this request too little time (retryable, no run id) | Run again after that run ends |
+| `admission.environment_busy` | Another run holds the environment and its deadline leaves this request too little time (retryable, no run id; `held_by`, `free_at`, `retry_after_s`) | Send with after={"run": held_by, "when": "ended"}, or resend after retry_after_s |
 | `execution.carve_exceeded` | A carved node's time slice ended before it reached its condition; class `timed_out`, and the nodes below a timed-out composite only release. Never the root's: the root's slice ends at the release point, a whole-run stop (`root_stop` `release_point`) | Ask the author for a larger budget, or find why the node is slow |
 | `execution.unit_raised` | A unit raised an exception, or broke its contract (for example `Acted` with no effect issued); class `execution_error`, and the whole tree stops | A plugin defect: report it to the author |
 | `execution.postcondition_timeout` | A node acted but its postcondition did not hold within its wait; class `exhausted`, reported as `blocked` | Find from the node's evidence why it did not become ready |
@@ -587,14 +652,17 @@ See [`plugins.md`](plugins.md) for authoring, filesystem drop-in, and `publish_p
 | `await_runs(keys=[…])` for a key no run used | `projection.unknown_key` (names the key) | `query(view="run_by_key")` shows what a key has; send the run first |
 | `idempotency_ttl_s` negative, not whole seconds or above `[keys] max_ttl_s` | `admission.ttl_out_of_range` (no run id) | Send 0 to the maximum |
 | Unknown view name | `projection.invalid_view` | Read `trestle://views`; do not invent names or send SQL |
-| Empty catalog | `admission.plugin_not_found` | `trestle init` or `publish_plugin` |
+| Empty catalog | `admission.plugin_not_found` | Report it to the operator, or publish_plugin (full profile) |
 | Bad plugin args (including a naive or malformed date/datetime) | `admission.invalid_args` | `describe_plugin` then retry `run` |
-| Pack plugin `valid: false` | `admission.import_failed` | `pip install -e ".[packs]"`; check `catalog_hint` |
+| Pack plugin `valid: false` | `admission.import_failed` | Report it: the operator installs the packs; catalog_hint says how |
 | Reused idempotency key, different args | `admission.idempotency_key_conflict` | New key or same args |
-| Admission while another process holds the home's admission lock over 2 s | `admission.home_busy` (retryable, no run id) | Retry; `trestle doctor` names the holder |
+| Admission while another process holds the home's admission lock over 2 s | `admission.home_busy` (retryable, no run id) | Retry after retry_after_s (2 s) |
 | Two servers publish the same plugin name at once | `publication.registry_conflict` (names the winner) | `describe_plugin`, then republish if needed |
 | `after` malformed (not exactly one of `run` and `key`, bad `when`, `match` with `when: "ended"`) | `admission.invalid_args` | See "Run after another run" |
 | `after` names a run or key no run used | `admission.after_unknown` (no run id) | Send the earlier run first |
+| The plugin declares a credential identity the operator has not configured | `admission.credential_unknown` (no run id; names the identity) | Report it and stop: only the operator adds identities |
+| The identity is not granted to this plugin as now published (new, or republished since) | `admission.credential_not_granted` (no run id; names the operator's command) | Report it and stop: only the operator grants |
+| The operator's credential store could not give the value | `admission.credential_unavailable` (no run id) | Report it and stop |
 | A held run's `after` is not met | the held run ends `cancelled`, `error.code` `execution.after_unmet` (the message names the earlier run and why) | Read the earlier run; send a new run when it is fixed |
 
 ### Find a run by its key, wait on keys, keep an answer longer
@@ -630,7 +698,7 @@ Since v0.3.1 a key's expiry is fixed once, at admission, and recorded with the r
 | Role | Surface | Notes |
 |------|---------|-------|
 | **Agent** | MCP ten tools (the service's endpoint) | Retrieval-first; bounded slices |
-| **Operator (CLI)** | `trestle doctor`, `pin`, `unpin`, `recover` | Retention and diagnostics |
+| **Operator (CLI)** | `trestle doctor`, `pin`, `unpin`, `recover`, `cancel` | Retention, diagnostics and the unscoped cancel |
 | **Operator (HTTP)** | `trestle ops serve` + console UI | Read-only sessions/telemetry — [`operator-sessions-telemetry.md`](operator-sessions-telemetry.md) |
 
 Agents reach evidence **only** through MCP. Operator HTTP does not expose `run`.

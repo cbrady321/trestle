@@ -268,18 +268,29 @@ def drop_unmarked(home: Path, state: State) -> None:
                 forget_waiting(state, str(item.get("run_id")))
 
 
-def busy_until(state: State, key: str, *, now: float | None = None) -> float | None:
-    """Rule 6's busy pre-check: the latest deadline among the key's queued and running runs (held
-    runs are not listed), or None when none is still within its deadline."""
+def busy_holder(state: State, key: str, *, now: float | None = None) -> tuple[str, float] | None:
+    """The `(run_id, deadline)` of the key's queued or running run (held runs are not listed)
+    whose recorded deadline is the latest, among those still within it; ties go to the latest
+    arrival. None when no such run. Rule 6's busy pre-check reads its deadline as `free_at`, and
+    the `environment_busy` refusal and the status view name its run as `held_by`."""
     at = time.time() if now is None else now
-    deadlines = [
-        float(entry.get("deadline") or 0.0)
-        for entry in state["running"].values()
+    entries: list[tuple[float, tuple[float, int, str]]] = [
+        (float(entry.get("deadline") or 0.0), arrival_order(None, str(run_id)))
+        for run_id, entry in state["running"].items()
         if entry.get("key") == key
     ]
-    deadlines += [float(item.get("deadline") or 0.0) for item in state["waiting_keys"].get(key, [])]
-    live = [deadline for deadline in deadlines if deadline > at]
-    return max(live) if live else None
+    entries += [
+        (
+            float(item.get("deadline") or 0.0),
+            arrival_order(item.get("arrival"), str(item.get("run_id"))),
+        )
+        for item in state["waiting_keys"].get(key, [])
+    ]
+    live = [entry for entry in entries if entry[0] > at]
+    if not live:
+        return None
+    deadline, order = max(live)
+    return order[2], deadline
 
 
 def key_runs(

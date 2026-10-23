@@ -1,14 +1,16 @@
-"""CL-B2 (WR-EVID-8): a declared secret is never persisted (MC-CORE-13).
+"""CL-B2 (WR-EVID-8): a credential value is never persisted (MC-CORE-13).
 
-L.CL-B2.1: admission writes `spec.json` with the declared arguments redacted and delivers the real
-values to the plugin in memory; the sentinel is absent from the spec, the ledger and the
-idempotency store. L.CL-B2.2: the write-path scrub keeps the sentinel out of every file the run
-writes (events, console, result, child_error, artifacts, the work directory) and out of the MCP
-answer. L.CL-B2.3 adds the host-path scan: the same scrub replaces TRESTLE_HOME, the run directory,
-the work directory and $HOME by fixed tokens in what a plugin writes, so no answer, view row or
-fetch carries a host path.
+L.CL-B2.1: admission resolves a granted identity's value in memory and hands it to the run over an
+inherited pipe, never in an environment, argv or file; the sentinel is absent from the spec, the
+ledger and the idempotency store. L.CL-B2.2: the write-path scrub keeps the sentinel out of every
+file the run writes (events, console, result, child_error, artifacts, the work directory) and out
+of the MCP answer. L.CL-B2.3 adds the host-path scan: the same scrub replaces TRESTLE_HOME, the run
+directory, the work directory and $HOME by fixed tokens in what a plugin writes, so no answer,
+view row or fetch carries a host path.
 
-Every timing bound comes from `tests.proof.tolerances` (SA-05); no timing literal appears here.
+(Until change 3 the secret came in as a `secrets=` argument; that path is removed, and the same
+proofs now run over a credential identity.) Every value is a fake stand-in (D-9), its store key in
+a key file. Every timing bound comes from `tests.proof.tolerances` (SA-05).
 """
 
 from __future__ import annotations
@@ -22,17 +24,18 @@ from typing import Any
 import pytest
 
 from tests.proof import harness, mcp_host, tolerances
-from trestle.common import codes, redact
-from trestle.common.canonical import args_hash
-from trestle.common.types import PublishView, RequestOutcome, RunView
+from trestle.common import credentials, redact
+from trestle.common.types import RunView
 from trestle.server.ledger import run_dir_for
 from trestle.server.main import Kernel
 
 SENTINEL = "SENTINEL-clb2-tok-7f3a91c2d4"
-NESTED_SENTINEL = "SENTINEL-clb2-pw-52e8b0a6"
+IDENTITY = "demo-token"
+ENV = "DEMO_TOKEN"
 
-# A plugin that declares two secrets (one a dotted path into a dict argument), and reports what it
-# received as digests, so the test can prove the real values arrived without printing them.
+# A plugin that reads its identity and reports what it received as a digest, so the test can
+# prove the real value arrived without printing it, and whether the hand-over left anything in
+# the plugin's environment or a subprocess's.
 ECHO_SOURCE = """\
 import hashlib
 import os
@@ -42,22 +45,24 @@ import sys
 from trestle.plugin.surface import Context, trestle
 
 
+FD = "TRESTLE_RUN_SECRETS_FD"
+
+
 def _digest(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-@trestle(secrets=["token", "auth.password"])
-def echo_secret(ctx: Context, token: str, auth: dict[str, str], note: str = "") -> dict[str, str]:
+@trestle(credentials=["demo-token"])
+def echo_secret(ctx: Context, note: str = "") -> dict[str, str]:
+    token = ctx.credential_env("demo-token")["DEMO_TOKEN"]
     child = subprocess.run(
-        [sys.executable, "-c", "import os; print(os.environ.get('TRESTLE_RUN_SECRETS', 'absent'))"],
+        [sys.executable, "-c", f"import os; print(os.environ.get({FD!r}, 'absent'))"],
         capture_output=True, text=True, check=True,
     )
     return {
         "token_digest": _digest(token),
-        "password_digest": _digest(auth["password"]),
-        "user": auth["user"],
         "note": note,
-        "env_after_call": os.environ.get("TRESTLE_RUN_SECRETS", "absent"),
+        "env_after_call": os.environ.get(FD, "absent"),
         "env_in_subprocess": child.stdout.strip(),
     }
 """
@@ -68,13 +73,15 @@ def digest(value: str) -> str:
 
 
 def kernel_with(tmp_path: Path, source: str, name: str) -> Kernel:
+    """A server whose watched folder holds `source`, granted the fake identity."""
     plugin_dir = tmp_path / "plugins"
     plugin_dir.mkdir(exist_ok=True)
-    kernel = harness.fresh_kernel([plugin_dir], home=tmp_path / "home")
-    published = kernel.control.publish_plugin(source)
-    assert isinstance(published, PublishView), published
-    assert published.name == name
-    return kernel
+    (plugin_dir / f"{name}.py").write_text(source, encoding="utf-8")
+    home = tmp_path / "home"
+    harness.grant_fake_credential(
+        home, [plugin_dir], name=IDENTITY, env=ENV, value=SENTINEL, plugins=[name]
+    )
+    return harness.fresh_kernel([plugin_dir], home=home)
 
 
 def run_ok(kernel: Kernel, plugin: str, args: dict[str, Any], **kw: Any) -> RunView:
@@ -93,13 +100,6 @@ def occurrences(root: Path, needle: str) -> list[str]:
     )
 
 
-REAL_ARGS = {
-    "token": SENTINEL,
-    "auth": {"user": "alice", "password": NESTED_SENTINEL},
-    "note": "visible",
-}
-
-
 @pytest.mark.proves(
     "WR-EVID-8",
     "WR-EVID-8:secret-absent-spec-ledger-store",
@@ -110,90 +110,55 @@ REAL_ARGS = {
 )
 def test_declared_secret_not_in_spec_ledger_or_store(tmp_path: Path) -> None:
     kernel = kernel_with(tmp_path, ECHO_SOURCE, "echo_secret")
-    view = run_ok(kernel, "echo_secret", REAL_ARGS, idempotency_key="clb2-store-key")
+    view = run_ok(kernel, "echo_secret", {"note": "visible"}, idempotency_key="clb2-store-key")
     assert view.state == "succeeded", view
     run_dir = run_dir_for(kernel.home, view.run_id)
 
-    # the plugin received the real values (only their digests are echoed) ...
+    # the plugin received the real value (only its digest is echoed) ...
     result = json.loads((run_dir / "evidence" / "result.json").read_text(encoding="utf-8"))
     assert result["token_digest"] == digest(SENTINEL)
-    assert result["password_digest"] == digest(NESTED_SENTINEL)
-    assert result["user"] == "alice" and result["note"] == "visible"
-    # ... and the environment that carried them is gone before the call, and from its children
+    assert result["note"] == "visible"
+    # ... and the hand-over's variable is gone before the call, and from its children
     assert result["env_after_call"] == "absent"
     assert result["env_in_subprocess"] == "absent"
 
-    # spec.json carries the redacted arguments, every other argument untouched
     spec = json.loads((run_dir / "evidence" / "spec.json").read_text(encoding="utf-8"))
-    assert spec["args"] == {
-        "token": redact.REDACTED,
-        "auth": {"user": "alice", "password": redact.REDACTED},
-        "note": "visible",
-    }
-    for needle in (SENTINEL, NESTED_SENTINEL):
-        assert (run_dir / "evidence" / "spec.json").read_bytes().count(needle.encode()) == 0
-        assert (run_dir / "evidence" / "ledger.ndjson").read_bytes().count(needle.encode()) == 0
-        (store,) = (kernel.home / "keys").glob("*.json")  # the key's file (v0.3.1 Problem B)
-        assert store.read_bytes().count(needle.encode()) == 0
-        # the whole run directory and the home's index files, the result's digests aside
-        assert occurrences(run_dir, needle) == []
-        assert occurrences(kernel.home, needle) == []
+    assert spec["args"] == {"note": "visible"}
+    raw = SENTINEL.encode()
+    assert (run_dir / "evidence" / "spec.json").read_bytes().count(raw) == 0
+    assert (run_dir / "evidence" / "ledger.ndjson").read_bytes().count(raw) == 0
+    (store,) = (kernel.home / "keys").glob("*.json")  # the key's file (v0.3.1 Problem B)
+    assert store.read_bytes().count(raw) == 0
+    # the whole run directory and the home (its encrypted store included)
+    assert occurrences(run_dir, SENTINEL) == []
+    assert occurrences(kernel.home, SENTINEL) == []
 
 
-def test_args_hash_is_over_the_real_intent(tmp_path: Path) -> None:
-    """Join semantics survive redaction: the hash is of what the caller asked for, so the same
-    key with the same secret joins the run and a different secret is a conflict."""
-    kernel = kernel_with(tmp_path, ECHO_SOURCE, "echo_secret")
-    first = run_ok(kernel, "echo_secret", REAL_ARGS, idempotency_key="clb2-join-key")
-    run_dir = run_dir_for(kernel.home, first.run_id)
-    created = [
-        json.loads(line)
-        for line in (run_dir / "evidence" / "ledger.ndjson")
-        .read_text(encoding="utf-8")
-        .splitlines()
-        if '"created"' in line
-    ][0]
-    assert created["args_hash"] == args_hash(REAL_ARGS)
-    spec = json.loads((run_dir / "evidence" / "spec.json").read_text(encoding="utf-8"))
-    assert spec["args_hash"] == args_hash(REAL_ARGS) != args_hash(spec["args"])
-
-    joined = run_ok(kernel, "echo_secret", REAL_ARGS, idempotency_key="clb2-join-key")
-    assert joined.run_id == first.run_id
-
-    other = {**REAL_ARGS, "token": SENTINEL + "-other"}
-    refused = kernel.control.run(
-        plugin="echo_secret",
-        args=other,
-        wait_ms=tolerances.HARNESS_WAIT_MS,
-        idempotency_key="clb2-join-key",
-    )
-    assert isinstance(refused, RequestOutcome)
-    assert refused.code == codes.IDEMPOTENCY_KEY_CONFLICT
-    assert SENTINEL not in refused.message
-
-
-def test_redact_args_and_values_shapes() -> None:
-    args = {"a": "x", "b": {"c": ["p", "q"], "d": 1}, "e.f": "dotted-key"}
-    declared = ["b.c", "e.f", "missing", "a"]
-    assert redact.redact_args(args, declared) == {
-        "a": redact.REDACTED,
-        "b": {"c": redact.REDACTED, "d": 1},
-        "e.f": redact.REDACTED,
-    }
-    assert args["a"] == "x"  # the input is never modified
-    values = redact.secret_values(args, declared)
-    assert values == {"a": "x", "b.c": ["p", "q"], "e.f": "dotted-key"}
-    assert redact.restore_args(redact.redact_args(args, declared), values) == args
-    assert redact.secret_strings(values) == {"x", "p", "q", "dotted-key"}
-    # no declaration: the arguments come back equal
-    assert redact.redact_args(args, []) == args
+def test_handover_round_trip_and_scrub_set() -> None:
+    delivered = {"gh": ("GH_TOKEN", "v1"), "ci-reader": ("CI", "v2"), "empty": ("E", "")}
+    env: dict[str, str] = {credentials.SECRETS_FD_ENV: "999"}
+    handover = credentials.Handover(delivered)
+    pass_fds = handover.prepare(env)
+    assert env[credentials.SECRETS_FD_ENV] == str(pass_fds[0])  # a number, never a value
+    assert not any("v1" in v or "v2" in v for v in env.values())
+    # the receiver end, as the spawned process would see it (this process keeps it open here)
+    receiver = {credentials.SECRETS_FD_ENV: str(os.dup(pass_fds[0]))}
+    handover.started()
+    assert credentials.receive(receiver) == delivered
+    assert credentials.SECRETS_FD_ENV not in receiver
+    assert credentials.scrub_set(delivered) == {"v1", "v2"}
+    # nothing to hand over: no pipe, and an inherited number is dropped
+    env = {credentials.SECRETS_FD_ENV: "7"}
+    assert credentials.Handover({}).prepare(env) == ()
+    assert credentials.SECRETS_FD_ENV not in env
+    assert credentials.receive({}) == {}
 
 
 # --- L.CL-B2.2: the write-path scrub ----------------------------------------------------------
 
-# A plugin that puts its secret on every path a plugin can write: its log and progress events, its
-# stdout and stderr (and a child process's), a scratch file, an attachment (text, and with `mode`
-# a binary), an outputs file, an exception message and its return (a leaf and a key).
+# A plugin that puts its credential value on every path a plugin can write: its log and progress
+# events, its stdout and stderr (and a child process's), a scratch file, an attachment (text, and
+# with `mode` a binary), an outputs file, an exception message and its return (a leaf and a key).
 LEAKER_SOURCE = """\
 import hashlib
 import subprocess
@@ -202,8 +167,9 @@ import sys
 from trestle.plugin.surface import Context, trestle
 
 
-@trestle(secrets=["token"])
-def leaker(ctx: Context, token: str, mode: str = "ok") -> dict[str, list[str]]:
+@trestle(credentials=["demo-token"])
+def leaker(ctx: Context, mode: str = "ok") -> dict[str, list[str]]:
+    token = ctx.credential_env("demo-token")["DEMO_TOKEN"]
     ctx.log(f"log {token}")
     ctx.progress(f"progress {token}")
     print(f"stdout {token}", flush=True)
@@ -246,7 +212,7 @@ def _ledger_rows(run_dir: Path, kind: str) -> list[dict[str, Any]]:
 
 
 def _run_leaker(kernel: Kernel, mode: str) -> tuple[RunView, Path]:
-    view = run_ok(kernel, "leaker", {"token": SENTINEL, "mode": mode})
+    view = run_ok(kernel, "leaker", {"mode": mode})
     return view, run_dir_for(kernel.home, view.run_id)
 
 
@@ -318,12 +284,15 @@ def test_sentinel_absent_everywhere(tmp_path: Path) -> None:
     plugins = tmp_path / "mcp-home" / "plugins"
     plugins.mkdir(parents=True)
     (plugins / "leaker.py").write_text(LEAKER_SOURCE, encoding="utf-8")
+    harness.grant_fake_credential(
+        tmp_path / "mcp-home", [plugins], name=IDENTITY, env=ENV, value=SENTINEL, plugins=["leaker"]
+    )
     with mcp_host.McpHost(home=tmp_path / "mcp-home") as host:
         answer = host.call(
             "run",
             {
                 "plugin": "leaker",
-                "args": {"token": SENTINEL, "mode": "raise"},
+                "args": {"mode": "raise"},
                 "completion": "terminal",
                 "wait_ms": tolerances.HARNESS_WAIT_MS,
             },
