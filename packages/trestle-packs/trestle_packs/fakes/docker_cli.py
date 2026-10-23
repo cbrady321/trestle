@@ -14,11 +14,9 @@ It answers the commands those wrappers run (`info`, `compose version`, `compose 
 containers and removes nothing. The compose file is read line by line (top-level `services:` and
 `volumes:` keys, and a service's `profiles: [..]`), enough for test fixtures.
 
-Two ways in:
-
-- in process, as a `FakeContext` exec handler: `FakeDocker(state_path).handler`;
-- as an executable, for a plugin published on a real host: `write_fake_docker(folder, state)`
-  writes `folder/docker`, a script that runs this module with the state path.
+`write_fake_docker(folder, state)` writes `folder/docker`, an executable that runs this module
+over the state file; point the wrapper at it with `TRESTLE_DOCKER_PATH`, then call it with
+`FakeContext` (or publish it on a real host) and its commands run for real against the fake.
 
 Standard library only, like the other fakes here.
 """
@@ -110,24 +108,6 @@ class FakeDocker:
     def _save(self, state: dict[str, Any]) -> None:
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
         self.state_path.write_text(json.dumps(state, indent=1, sort_keys=True), encoding="utf-8")
-
-    def handler(self, argv: list[str], **kwargs: Any) -> Any:
-        """A `FakeContext` exec handler: runs `argv` on the fake and returns an `ExecResult`."""
-        from trestle.plugin.surface import ExecResult
-
-        code, out, err = self.run(argv, cwd=kwargs.get("cwd"))
-        return ExecResult(
-            argv=tuple(argv),
-            returncode=code,
-            timed_out=False,
-            cancelled=False,
-            duration_s=0.0,
-            stdout=out,
-            stderr=err,
-            output_bytes=len(out.encode()) + len(err.encode()),
-            truncated=False,
-            artifact="",
-        )
 
     def run(self, argv: list[str], *, cwd: Any = None) -> tuple[int, str, str]:
         args = list(argv[1:])
