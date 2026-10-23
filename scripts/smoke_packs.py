@@ -8,10 +8,14 @@ import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-PACKS_DIR = REPO / "examples" / "packs"
+# the tool plugins of the bundled packs
+PACKS_DIRS = [
+    REPO / "packages" / f"trestle-pack-{name}" / "plugins"
+    for name in ("docker", "pytest", "migrate", "stack")
+]
 SMOKE_TEST = "def test_explicit_waves():\n    assert True\n\n\ndef test_other():\n    pass\n"
 YOYO_MIGRATIONS = (
-    REPO / "packages" / "trestle-packs" / "tests" / "fixtures" / "yoyo-sqlite" / "migrations"
+    REPO / "packages" / "trestle-pack-migrate" / "tests" / "fixtures" / "yoyo-sqlite" / "migrations"
 )
 
 
@@ -36,7 +40,7 @@ def main() -> int:
 
     from trestle.server.main import create_kernel
 
-    kernel = create_kernel(home=home, plugin_dirs=[PACKS_DIR], skip_recovery=True)
+    kernel = create_kernel(home=home, plugin_dirs=PACKS_DIRS, skip_recovery=True)
     control = kernel.control
 
     catalog = control.list_plugins()

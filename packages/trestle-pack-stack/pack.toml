@@ -1,0 +1,7 @@
+[pack]
+name = "stack"
+summary = "Compose up, optional Alembic migrations, pytest, then one teardown, in one run"
+
+[requires]
+# installed first, from the same release (P-16); stack_pipeline imports their libraries
+packs = ["docker", "pytest", "migrate"]

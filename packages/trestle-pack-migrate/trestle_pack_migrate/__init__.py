@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from trestle_packs.core.interpreter import VENV_PYTHONS, find_project_python
-from trestle_packs.core.paths import resolve_under
-from trestle_packs.core.text import tail
+from trestle_pack_migrate.interpreter import VENV_PYTHONS, find_project_python
+from trestle_pack_migrate.paths import resolve_under
+from trestle_pack_migrate.text import tail
 
 
 @dataclass

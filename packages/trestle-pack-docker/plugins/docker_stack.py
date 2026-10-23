@@ -10,7 +10,7 @@ The recipe, top to bottom (adapt it by copying this file and publishing it under
 4. `stop`: `docker compose ... stop [services]`; `down`: `docker compose ... down`.
 
 No teardown removes a volume: `down` never passes `--volumes`. Every command goes through
-`ctx.exec`; finding docker, planning waves and waiting are `trestle_packs.docker`.
+`ctx.exec`; finding docker, planning waves and waiting are `trestle_pack_docker`.
 
 Minimal form: `{"workdir": "/abs/project"}` starts every service of its `docker-compose.yml`.
 """
@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from trestle_packs.docker import (
+from trestle_pack_docker import (
     CycleError,
     locate_docker,
     plan_waves,
@@ -29,7 +29,7 @@ from trestle_packs.docker import (
     tail,
     wait_until,
 )
-from trestle_packs.docker.results import StackResult  # where it is defined: the schema reads it
+from trestle_pack_docker.results import StackResult  # where it is defined: the schema reads it
 
 from trestle.plugin import Blocked, Context, trestle
 
@@ -205,7 +205,7 @@ def up(
     return result
 
 
-@trestle(packages=["trestle_packs"], summary_fields=["ok", "failed_step", "error"])
+@trestle(packages=["trestle_pack_docker"], summary_fields=["ok", "failed_step", "error"])
 def docker_stack(
     ctx: Context,
     spec: DockerSpec | None = None,

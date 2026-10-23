@@ -4,7 +4,7 @@
 #   scripts/install.sh                 # the newest release tag (v*), installed or upgraded
 #   scripts/install.sh v0.4.0          # a given release
 #   scripts/install.sh --drain         # upgrade: wait for live runs to end instead of refusing
-#   scripts/install.sh --no-packs      # without the Docker / pytest / migration packs
+#   scripts/install.sh --no-packs      # without the workflow foundation (trestle-packs)
 #   scripts/install.sh --venv DIR      # the service's virtualenv (default ~/.trestle-venv)
 #   scripts/install.sh --bin-dir DIR   # where the `trestle` command is linked (default ~/.local/bin)
 #   scripts/install.sh --no-link       # leave `trestle` off PATH (call it by its venv path)
@@ -19,6 +19,9 @@
 # venv's, so later upgrades keep it current; it never replaces a file it did not link), then ends
 # with `trestle service status`. The checkout is left at the release's commit
 # (detached); `git checkout master` returns to the branch.
+# Bundled packs: a first install adds none (`trestle pack install stack` adds the Docker, pytest
+# and migration plugins); an upgrade turns an `examples/packs` entry of `[plugins] paths` into the
+# installed packs (`trestle init --upgrade`, which `trestle service upgrade` runs).
 set -euo pipefail
 
 usage() { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }

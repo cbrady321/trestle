@@ -7,33 +7,31 @@
 
 ## Install
 
-A pack is two things: a **library** (here the `trestle_packs` package) and a **folder of
-`@trestle` wrappers** that use it (here `examples/packs/`). Trestle never loads plugins from a
-package's entry points: the service publishes the wrapper files it finds in the folders listed
-under `[plugins] paths`, the same way as any other plugin. From a running service
+The tool plugins are **bundled packs**: they ship in this repository under
+`packages/trestle-pack-<name>/`, carry Trestle's version, and have owner `trestle`.
+
+| Pack | Plugin | Library |
+|------|--------|---------|
+| `docker` | `docker_stack` | `trestle_pack_docker` |
+| `pytest` | `pytest_run` | `trestle_pack_pytest` |
+| `migrate` | `migrate_apply` | `trestle_pack_migrate` |
+| `stack` | `stack_pipeline` | none: it requires the three above |
+
+A fresh install adds none of them. The operator chooses, from a running service
 ([`install.md`](install.md)):
 
-1. **Install the library into the service's environment**, the one whose `trestle` binary the
-   service unit runs (the `pip` beside that binary), not another virtualenv:
+1. **Install:** `trestle pack install stack` installs `docker`, `pytest`, `migrate` and `stack`;
+   `trestle pack install docker` installs one. Each pack is copied to
+   `$TRESTLE_HOME/packs/trestle/<pack>/`, and its library is installed into the service's own
+   Python from that copy. The service picks the packs up without a restart. `trestle pack list`
+   shows what is installed and what else is available.
 
-   ```bash
-   pip install -e "packages/trestle-packs"    # or: pip install -e ".[packs]"
-   ```
-
-   The library needs no Docker, pytest, Alembic or Yoyo package. The plugins run the `docker`
+   The libraries need no Docker, pytest, Alembic or Yoyo package. The plugins run the `docker`
    CLI, and run pytest and migrations on **the project's own interpreter**, so those tools belong
    in the project's environment, not the service's.
 
-2. **List the wrapper folder** in `$TRESTLE_HOME/config.toml`, by absolute path, keeping the
-   folders already there (the default is `$TRESTLE_HOME/plugins`):
-
-   ```toml
-   [plugins]
-   paths = ["~/.trestle/plugins", "/ABS/PATH/TO/trestle/examples/packs"]
-   ```
-
-3. **Give plugins the operator settings they read** in the same file. The service passes nothing
-   from your shell:
+2. **Give plugins the operator settings they read** in `$TRESTLE_HOME/config.toml`. The service
+   passes nothing from your shell:
 
    ```toml
    [plugins.env]
@@ -42,23 +40,31 @@ under `[plugins] paths`, the same way as any other plugin. From a running servic
    ```
 
    The env pack reads more (`TRESTLE_IMAGE_*`, `TRESTLE_ENV_COMPOSE_FILE`; see
-   [`environment.md`](environment.md)).
+   [`environment.md`](environment.md)). `[plugins.env]` is read at start:
+   `trestle service restart` after changing it.
+3. **Check:** `list_plugins` lists `docker_stack`, `pytest_run`, `migrate_apply` and
+   `stack_pipeline` as valid, each with `pack: "<pack>@<version> (trestle)"`.
 
-4. **Restart:** `trestle service restart` (`[plugins] paths` is read at start).
-5. **Check:** `list_plugins` lists `docker_stack`, `pytest_run`, `migrate_apply` and
-   `stack_pipeline` as valid.
+**Upgrading from 0.5.2 or earlier.** The tool plugins used to be loose files in the checkout's
+`examples/packs/`, listed in `[plugins] paths`. `scripts/install.sh` (through
+`trestle service upgrade`, which runs `trestle init --upgrade`) installs `stack` and removes that
+entry, so the plugins keep their names with no manual edit. If it cannot (the build has no bundled
+packs, or `[plugins] paths` is not a plain array under `[plugins]`), it leaves `config.toml` as it
+was and prints the command: `trestle pack install stack`.
 
-If `trestle_packs` is missing from the service's environment, `list_plugins` returns `valid: false`
-on pack plugins, a `catalog_hint` with install instructions, and `run` returns
-`admission.import_failed` (no `run_id`).
+If a pack's library is missing from the service's Python, `list_plugins` returns
+`valid: false` on its plugins and a `catalog_hint` naming the operator's command
+(`trestle pack install <pack>`), and `run` returns `admission.import_failed` (no `run_id`).
 
-**Writing your own pack:** ship the library as a normal Python distribution and a folder of
-wrapper files that import it and declare it with `@trestle(packages=["your_pack"])`, so its code
-is recorded at publication and checked at each run start (an undeclared import is published with
-a warning). Unit-test the wrappers with `trestle.plugin.testing`
-([`plugins.md`](plugins.md#testing-a-plugin-without-a-server)). After upgrading the library, the
-next run of a wrapper stops with `execution.provenance_mismatch` until the wrapper is published
-again (`trestle service restart` republishes every watched file).
+**Writing your own pack:** a folder with a `pack.toml`, wrapper files under `plugins/` that declare
+the library with `@trestle(packages=["your_pack"])`, and the library as a normal Python
+distribution (`library = "."` and a `pyproject.toml`). The operator installs it with
+`trestle pack install <path>` (served in place; a library edit republishes with no restart) or
+`trestle pack install <git-url>@<tag>`. A loose wrapper file in a `[plugins] paths` folder still
+works too, with its library installed by hand. Declaring the library records its code at
+publication and checks it at each run start (an undeclared import is published with a warning).
+Unit-test the wrappers with `trestle.plugin.testing`
+([`plugins.md`](plugins.md#testing-a-plugin-without-a-server)).
 
 ---
 
@@ -94,11 +100,12 @@ repository root. Tools run with `PYTHONPATH` unset, so nothing of the service le
 **Adapting a plugin.** Each wrapper is the whole recipe, top to bottom: every command as a visible
 `ctx.exec` argv, the step order and the verdict. The library holds only the mechanism (finding
 docker and the interpreter, wave planning, waits within the run's budget, reading JUnit XML,
-result shapes), behind each module's `__all__`: `trestle_packs.docker`, `trestle_packs.pytest`,
-`trestle_packs.migrate`. To change a flag, add a step or judge differently, copy the wrapper,
-edit it and publish it under a new name. Its tests (`packages/trestle-packs/tests/test_<plugin>.py`)
-copy along: they call the wrapper with `FakeContext`, over the fake docker CLI
-(`trestle_packs.fakes.docker_cli`).
+result shapes), behind each library's `__all__`: `trestle_pack_docker`, `trestle_pack_pytest`,
+`trestle_pack_migrate`. Read the installed copy under `$TRESTLE_HOME/packs/trestle/<pack>/`
+(`describe_plugin` gives the wrapper's `source_path`). To change a flag, add a step or judge
+differently, copy the wrapper, edit it and publish it under a new name (a publish under the
+bundled name is refused). Its tests (`tests/test_<plugin>.py` in the pack) copy along: they call
+the wrapper with `FakeContext`, over the fake docker CLI (`trestle_pack_docker.fake_cli`).
 
 ---
 
@@ -292,7 +299,8 @@ Long Docker waves: use short `wait_ms` for `run_id`, then `await_runs`.
 ```bash
 python scripts/smoke_packs.py           # expect PACKS SMOKE OK (pytest + migrate)
 python scripts/demo_pack_workflows.py   # all four plugins; docker steps skip if daemon down
-pytest packages/trestle-packs/tests/ -q
+python -m pytest -q packages/trestle-pack-docker/tests packages/trestle-pack-pytest/tests \
+  packages/trestle-pack-migrate/tests packages/trestle-pack-stack/tests
 ```
 
 Docker must be installed on the host for `docker_stack` and `stack_pipeline`. Live compose demos use `alpine:3.20` from the pack test fixture — pre-pull when offline:

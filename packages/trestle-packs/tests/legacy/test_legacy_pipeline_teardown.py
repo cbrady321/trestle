@@ -2,9 +2,10 @@
 once on every path, success included (WR-ENV-11:pipeline-one-teardown@fake,
 entry-points-callable).
 
-The pipeline is loaded from `examples/packs/` and called with `FakeContext`; its docker is the
-fake CLI (`trestle_packs.fakes.docker_cli`), and its pytest stage runs a one-test suite out of
-process on this test interpreter, so nothing here starts an engine."""
+The pipeline is loaded from the stack pack (`packages/trestle-pack-stack/plugins/`) and called
+with `FakeContext`; its docker is the fake CLI (`trestle_pack_docker.fake_cli`), and its pytest
+stage runs a one-test suite out of process on this test interpreter, so nothing here starts an
+engine."""
 
 from __future__ import annotations
 

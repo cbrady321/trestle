@@ -18,7 +18,7 @@ containers and removes nothing. The compose file is read line by line (top-level
 over the state file; point the wrapper at it with `TRESTLE_DOCKER_PATH`, then call it with
 `FakeContext` (or publish it on a real host) and its commands run for real against the fake.
 
-Standard library only, like the other fakes here.
+Standard library only, so it runs on any interpreter, from the pack's copy or a checkout.
 """
 
 from __future__ import annotations
@@ -216,12 +216,12 @@ class FakeDocker:
 def write_fake_docker(folder: Path, state_path: Path) -> Path:
     """Write `folder/docker`: an executable that runs this fake over `state_path`."""
     folder.mkdir(parents=True, exist_ok=True)
-    packs_root = Path(__file__).resolve().parents[2]
+    # run as a script by its own path: standard library only, so it needs no PYTHONPATH
     script = folder / "docker"
     script.write_text(
         "#!/bin/sh\n"
-        f"{STATE_ENV}='{state_path}' PYTHONPATH='{packs_root}' "
-        f"exec '{sys.executable}' -m trestle_packs.fakes.docker_cli \"$@\"\n",
+        f"{STATE_ENV}='{state_path}' "
+        f"exec '{sys.executable}' '{Path(__file__).resolve()}' \"$@\"\n",
         encoding="utf-8",
     )
     script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)

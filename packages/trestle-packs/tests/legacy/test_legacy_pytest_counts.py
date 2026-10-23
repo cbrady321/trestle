@@ -87,6 +87,7 @@ def test_fixture_suites_not_collected_by_packs_session() -> None:
                 **{k: v for k, v in os.environ.items() if k != "TRESTLE_PROOF_GATE"},
                 "PYTHONPATH": os.pathsep.join(
                     [str(ROOT), str(PACKS), str(ROOT / "packages" / "trestle-env")]
+                    + [str(pack) for pack in sorted((ROOT / "packages").glob("trestle-pack-*"))]
                 ),
             },
             capture_output=True,

@@ -2,7 +2,7 @@
 WR-OWN-4, the F-13(d) wider-reading fixture; DOCKER · HOST, run only by the host-docker gate).
 
 Every case of `twin.k6.CASES` is one call through `run` on the MC-12 MCP host: the
-`docker_stack` and `stack_pipeline` plugins (examples/packs, published unedited, running the
+`docker_stack` and `stack_pipeline` plugins (their bundled packs, published unedited, running the
 operator's docker CLI) under each teardown value, and the reference
 plugin's release on its real binding. After the answer the named volume is still there and still
 holds its seed, read with plain docker calls at the gate's endpoint (never through the code under

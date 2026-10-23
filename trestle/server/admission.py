@@ -48,7 +48,7 @@ from trestle.server.home import (
     write_marker,
 )
 from trestle.server.ledger import RunLedger, evidence_dir, ledger_path, run_dir_for, work_dir
-from trestle.server.plugin_paths import CATALOG_HINT_PACKS_MISSING
+from trestle.server.plugin_paths import packs_missing_hint
 from trestle.server.plugin_schema import ArgsError, validate_args
 from trestle.server.plugin_validate import validate_plugin_imports
 from trestle.server.recovery import find_run_dir
@@ -239,8 +239,9 @@ class Admission:
         import_error = validate_plugin_imports(Path(snap.source_path))
         if import_error is not None:
             message = f"plugin import failed: {import_error}"
-            if "trestle_packs" in import_error:
-                message = f"{message}; {CATALOG_HINT_PACKS_MISSING}"
+            hint = packs_missing_hint(import_error)
+            if hint is not None:
+                message = f"{message}; {hint}"
             return AdmitResultRefused(
                 tag="refused",
                 outcome=RequestOutcome(

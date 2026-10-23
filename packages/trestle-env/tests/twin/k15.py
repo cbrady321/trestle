@@ -1,10 +1,10 @@
 """K-15 through `run` (L.RB-11.1; WR-ENV-11, MC-12, MC-B-11): the `stack_pipeline` plugin (was
-`integration_pipeline`), published unedited from `examples/packs/`, called once per variant
-through the MC-12 MCP host, and its stack's teardown counted from the run's own events.
+`integration_pipeline`), published unedited from the stack pack's `plugins/`, called once per
+variant through the MC-12 MCP host, and its stack's teardown counted from the run's own events.
 
 Shared by the HOST node (`host/test_pipeline_k15.py`: the operator's docker CLI) and its twin
 (`twin/test_pipeline_k15_twin.py`: the same plugin over the fake docker CLI,
-`trestle_packs.fakes.docker_cli`, found through `TRESTLE_DOCKER_PATH`, whose commands persist to a
+`trestle_pack_docker.fake_cli`, found through `TRESTLE_DOCKER_PATH`, whose commands persist to a
 JSON state file the test reads).
 
 The three variants: `success` (the stage's tests pass), `pytest_failure` (a test fails), and
@@ -27,12 +27,12 @@ from pathlib import Path
 from typing import Any
 
 from tests.proof import mcp_host, tolerances
-from trestle_packs.fakes.docker_cli import read_state, write_fake_docker
+from trestle_pack_docker.fake_cli import read_state, write_fake_docker
 
 from twin import harness
 
 REPO = Path(__file__).resolve().parents[4]
-PIPELINE = REPO / "examples" / "packs" / "stack_pipeline.py"
+PIPELINE = REPO / "packages" / "trestle-pack-stack" / "plugins" / "stack_pipeline.py"
 COMPOSE = Path(__file__).resolve().parents[1] / "fixtures" / "k15-compose" / "compose.yaml"
 PLUGIN_NAME = "stack_pipeline"
 TEARDOWN_EVENT = "teardown: compose down complete"

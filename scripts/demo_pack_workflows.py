@@ -18,10 +18,14 @@ from pathlib import Path
 from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
-PACKS_DIR = REPO / "examples" / "packs"
+# the tool plugins of the bundled packs
+PACKS_DIRS = [
+    REPO / "packages" / f"trestle-pack-{name}" / "plugins"
+    for name in ("docker", "pytest", "migrate", "stack")
+]
 DEMO_TEST = "def test_explicit_waves():\n    assert True\n"
 YOYO_MIGRATIONS = (
-    REPO / "packages" / "trestle-packs" / "tests" / "fixtures" / "yoyo-sqlite" / "migrations"
+    REPO / "packages" / "trestle-pack-migrate" / "tests" / "fixtures" / "yoyo-sqlite" / "migrations"
 )
 COMPOSE_FIXTURE = REPO / "packages" / "trestle-packs" / "tests" / "fixtures" / "minimal-compose"
 COMPOSE_IMAGE = "alpine:3.20"
@@ -224,7 +228,7 @@ def main() -> int:
 
     home = Path(tempfile.mkdtemp(prefix="trestle-pack-demo-"))
     workdir = Path(tempfile.mkdtemp(prefix="trestle-pack-work-"))
-    kernel = create_kernel(home=home, plugin_dirs=[PACKS_DIR], skip_recovery=True)
+    kernel = create_kernel(home=home, plugin_dirs=PACKS_DIRS, skip_recovery=True)
     control = kernel.control
 
     catalog = control.list_plugins()

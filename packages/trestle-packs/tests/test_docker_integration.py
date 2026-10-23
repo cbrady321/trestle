@@ -1,6 +1,6 @@
 """Optional live Docker integration test — skipped when docker daemon unavailable.
 
-`docker_stack` (examples/packs) drives the operator's real `docker compose` through
+`docker_stack` (the docker pack) drives the operator's real `docker compose` through
 `FakeContext.exec`: the stack comes up, its log is attached, and `action: down` takes it down."""
 
 from __future__ import annotations

@@ -15,6 +15,8 @@ from trestle.common.plan.vocabulary import SINGLE_LEVEL_CODES, TREE_PUBLICATION_
 from trestle.common.pyenv import build_child_env, python_argv
 
 PACK_IMPORT_PREFIX = "trestle_packs"
+# a bundled pack's library, `trestle_pack_<pack>` (packages/trestle-pack-<pack>/)
+BUNDLED_LIBRARY_PREFIX = "trestle_pack_"
 VALIDATE_TIMEOUT_S = 10.0
 
 
@@ -58,28 +60,37 @@ class ValidationOutcome:
     declaration: DeclaredTree | None = None
 
 
-def _imports_packs_module(name: str) -> bool:
-    return name == PACK_IMPORT_PREFIX or name.startswith(f"{PACK_IMPORT_PREFIX}.")
+def _packs_module(name: str) -> str | None:
+    """The top-level pack library `name` imports from, if any: `trestle_packs` or a bundled
+    pack's `trestle_pack_<pack>`."""
+    top = name.split(".", 1)[0]
+    return top if top == PACK_IMPORT_PREFIX or top.startswith(BUNDLED_LIBRARY_PREFIX) else None
+
+
+def plugin_pack_modules(source_path: Path) -> list[str]:
+    """The pack libraries the plugin source imports, sorted."""
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        names: list[str] = []
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            names = [node.module]
+        found.update(m for m in map(_packs_module, names) if m is not None)
+    return sorted(found)
 
 
 def plugin_imports_packs(source_path: Path) -> bool:
-    tree = ast.parse(source_path.read_text(encoding="utf-8"))
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if _imports_packs_module(alias.name):
-                    return True
-        if isinstance(node, ast.ImportFrom) and node.module:
-            if _imports_packs_module(node.module):
-                return True
-    return False
+    return bool(plugin_pack_modules(source_path))
 
 
-def packs_import_error() -> str | None:
-    """Probe trestle_packs in a throwaway interpreter (not the MCP process)."""
+def packs_import_error(modules: tuple[str, ...] = (PACK_IMPORT_PREFIX,)) -> str | None:
+    """Probe the pack libraries in a throwaway interpreter (not the MCP process)."""
+    statement = "import " + ", ".join(modules)
     try:
         proc = subprocess.run(
-            python_argv("-c", "import trestle_packs"),
+            python_argv("-c", statement),
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
@@ -89,7 +100,7 @@ def packs_import_error() -> str | None:
             check=False,
         )
     except subprocess.TimeoutExpired:
-        return "import trestle_packs timed out"
+        return f"{statement} timed out"
     if proc.returncode == 0:
         return None
     err = (proc.stderr or proc.stdout or "import failed").strip()
@@ -198,6 +209,7 @@ def _parse_child_payload(stdout: str) -> dict[str, object]:
 
 def validate_plugin_imports(source_path: Path) -> str | None:
     """Catalog/admit probe: packs missing after a successful snapshot."""
-    if not plugin_imports_packs(source_path):
+    modules = plugin_pack_modules(source_path)
+    if not modules:
         return None
-    return packs_import_error()
+    return packs_import_error(tuple(modules))

@@ -1,4 +1,4 @@
-"""`docker_stack` (examples/packs), called with `FakeContext` over the fake docker CLI.
+"""`docker_stack` (the docker pack), called with `FakeContext` over the fake docker CLI.
 
 Copy this file beside an adapted wrapper to test it the same way: the fake answers `docker
 compose` with Compose's semantics and records every command it was given."""
@@ -9,11 +9,11 @@ import json
 from pathlib import Path
 
 import pytest
-from pack_wrappers import PYTHON, STACK, compose, context, fake_docker, load_wrapper
+import trestle_pack_docker.cli as docker_cli
+from docker_pack_testing import PYTHON, STACK, compose, context, fake_docker, load_wrapper
+
 from trestle.plugin import Blocked
 from trestle.plugin.testing import call_plugin
-
-import trestle_packs.docker.cli as docker_cli
 
 WAVES = {
     "project": "shop",

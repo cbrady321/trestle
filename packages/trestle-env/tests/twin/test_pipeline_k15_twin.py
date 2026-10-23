@@ -2,7 +2,7 @@
 
 The same published pipeline, the same parametrization and the same one call per variant as
 `host/test_pipeline_k15.py`; the stack runs on the fake docker CLI
-(`trestle_packs.fakes.docker_cli`) instead of the operator's docker. Registers only `@stub-twin`
+(`trestle_pack_docker.fake_cli`) instead of the operator's docker. Registers only `@stub-twin`
 labels.
 """
 

@@ -200,12 +200,12 @@ The service runs with no `--plugin-dir`. Its watched folders come from `$TRESTLE
 
 ```toml
 [plugins]
-paths = ["~/.trestle/plugins", "/ABS/PATH/TO/trestle/examples/packs", "/ABS/PATH/TO/project/tools"]
+paths = ["~/.trestle/plugins", "/ABS/PATH/TO/project/tools"]
 ```
 
 `config.toml` is read once at start: `trestle service restart` after changing it (the
-`[plugins.env]` table alone is read again at each run's start). A pack's wrappers are installed
-this way too: see [`packs.md`](packs.md#install).
+`[plugins.env]` table alone is read again at each run's start). Packs are not listed here:
+`trestle pack install <name>` installs one, with no restart (see [`packs.md`](packs.md#install)).
 
 **The `exec` plugin.** `trestle init` seeds `exec.py` beside `echo.py`: agents run one-off
 commands through it (`run(plugin="exec", args={"argv": [...], "cwd": "<abs>"})`) instead of their

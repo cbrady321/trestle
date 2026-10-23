@@ -9,8 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from trestle.plugin import Blocked
-
-from trestle_packs.core.readiness import PollCancelled, PollConfig, poll_until
+from trestle_pack_docker.readiness import PollCancelled, PollConfig, poll_until
 
 DOCKER_PATH_ENV = "TRESTLE_DOCKER_PATH"
 # Where Docker Desktop, Homebrew, Colima and the distribution packages put the CLI: a launchd or

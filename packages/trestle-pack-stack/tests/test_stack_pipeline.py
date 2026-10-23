@@ -1,4 +1,4 @@
-"""`stack_pipeline` (examples/packs), called with `FakeContext` over the fake docker CLI, with
+"""`stack_pipeline` (the stack pack), called with `FakeContext` over the fake docker CLI, with
 its migrate and pytest stages run out of process on this test interpreter.
 
 Copy this file beside an adapted wrapper to test it the same way. The teardown-once rule on
@@ -10,7 +10,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from pack_wrappers import PYTHON, STACK, compose, context, fake_docker, load_wrapper
+from stack_pack_testing import PYTHON, STACK, compose, context, fake_docker, load_wrapper
+
 from trestle.plugin import Blocked
 from trestle.plugin.testing import call_plugin
 

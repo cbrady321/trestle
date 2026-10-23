@@ -23,7 +23,7 @@ import os
 from pathlib import Path
 from typing import Literal
 
-from trestle_packs.migrate import (
+from trestle_pack_migrate import (
     MigrateResult,
     alembic_revision,
     find_project_python,
@@ -56,7 +56,9 @@ def missing_tool(stderr: str, tool: str, package: str, interpreter: str) -> None
         )
 
 
-@trestle(packages=["trestle_packs"], summary_fields=["ok", "before", "after", "applied", "error"])
+@trestle(
+    packages=["trestle_pack_migrate"], summary_fields=["ok", "before", "after", "applied", "error"]
+)
 def migrate_apply(
     ctx: Context,
     backend: Literal["alembic", "yoyo"] = "alembic",

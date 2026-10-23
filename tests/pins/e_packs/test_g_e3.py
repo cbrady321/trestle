@@ -25,7 +25,10 @@ DRIVER = Path(__file__).resolve().parent / "driver_g_e3.py"
 def _drive(mode: str) -> dict[str, Any]:
     env = {
         **os.environ,
-        "PYTHONPATH": os.pathsep.join([str(ROOT), str(ROOT / "packages" / "trestle-packs")]),
+        "PYTHONPATH": os.pathsep.join(
+            [str(ROOT), str(ROOT / "packages" / "trestle-packs")]
+            + [str(pack) for pack in sorted((ROOT / "packages").glob("trestle-pack-*"))]
+        ),
     }
     env.pop("TRESTLE_PROOF_GATE", None)
     proc = subprocess.run(
