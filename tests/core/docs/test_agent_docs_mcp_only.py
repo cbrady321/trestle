@@ -16,7 +16,7 @@ from trestle.server import authoring
 ROOT = Path(__file__).resolve().parents[3]
 AGENT_FILES = (
     "skills/trestle/SKILL.md",
-    ".cursor/skills/trestle/SKILL.md",
+    "skills/trestle-pack/SKILL.md",
     "docs/agents.md",
     "docs/agent-console-mcp.md",
 )
@@ -90,8 +90,3 @@ def test_the_skill_names_the_new_surface() -> None:
     for needle in ('view="status"', "retry_after_s", "held_by", 'plugin="exec"', "session_ended"):
         assert needle in skill, needle
     assert "Never run it yourself, through `exec` or any other way." in skill
-
-
-def test_the_cursor_skill_says_never_run_it() -> None:
-    text = _flat(ROOT / ".cursor" / "skills" / "trestle" / "SKILL.md")
-    assert "Never run it yourself, through `exec` or any other way." in text

@@ -59,7 +59,8 @@ def server_instructions(restricted: bool) -> str:
     publishing = (
         "Runtime publishing is unavailable on this server (restricted profile). "
         if restricted
-        else ""
+        else "For a job of several steps, write one plugin that chains them "
+        f"({PLUGIN_EXAMPLES_PREFIX}chain) and run it once. "
     )
     return (
         f"Guidance is under {GUIDE_URI}: start there and read only what you need. "

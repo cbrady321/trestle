@@ -10,12 +10,14 @@ Rules:
 3. Raise `Blocked` when a person must act.
 4. Loop on `ctx.cancelled`; re-attach one status artifact.
 5. Declare non-stdlib imports in `packages=`; test with `trestle.plugin.testing`.
+6. Several steps are one plugin; raise `Failed` when the check fails.
 
 Topics, `trestle://guide/plugins/{topic}`:
 - `shape-and-keywords`: writing a plugin
 - `context`: logs, progress, events
 - `exec`: running a command
 - `credentials`: tokens by name
+- `failed`: when the check fails
 - `blocked`: a person must act
 - `artifacts`: files and status
 - `stopping`: cancel and deadlines
@@ -24,7 +26,7 @@ Topics, `trestle://guide/plugins/{topic}`:
 - `types`: a type was refused
 - `publishing`: getting it to run
 - `refusals`: a publication code
-- `workflows`: several steps as a tree
+- `workflows`: several steps in one plugin
 - `packs`: a library of plugins
 - `callbacks`: a POST when a run ends
 

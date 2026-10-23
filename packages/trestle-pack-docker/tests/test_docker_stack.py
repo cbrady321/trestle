@@ -6,13 +6,15 @@ compose` with Compose's semantics and records every command it was given."""
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
 import trestle_pack_docker.cli as docker_cli
 from docker_pack_testing import PYTHON, STACK, compose, context, fake_docker, load_wrapper
+from trestle_pack_docker.results import StackResult
 
-from trestle.plugin import Blocked
+from trestle.plugin import Blocked, Failed
 from trestle.plugin.testing import call_plugin
 
 # K-3/K-4: these plugins take and return typed records (skipped if they are declined).
@@ -37,6 +39,21 @@ def _run(tmp_path: Path, args: dict, **state: object) -> tuple[dict, list[str], 
         answer = call_plugin(load_wrapper("docker_stack").docker_stack, args, ctx=ctx)
         assert isinstance(answer, dict)
         return answer, fake.calls, fake.state
+    finally:
+        monkeypatch.undo()
+
+
+def _fails(tmp_path: Path, args: dict, **state: object) -> tuple[Failed, dict, list[str], dict]:
+    """Like `_run` for a stack that must fail: the `Failed` raised, its result as a dict, the
+    docker commands the fake saw and its final state."""
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        fake = fake_docker(tmp_path, monkeypatch, **state)
+        with pytest.raises(Failed) as raised:
+            call_plugin(load_wrapper("docker_stack").docker_stack, args, ctx=context(tmp_path))
+        result = raised.value.result
+        assert isinstance(result, StackResult)
+        return raised.value, asdict(result), fake.calls, fake.state
     finally:
         monkeypatch.undo()
 
@@ -106,7 +123,11 @@ def test_compose_variations_reach_the_command_line(tmp_path: Path) -> None:
 def test_failed_wave_tears_down_once_and_keeps_volumes(tmp_path: Path) -> None:
     work = tmp_path / "work"
     compose(work, STACK)
-    answer, calls, state = _run(tmp_path, {"spec": WAVES, "workdir": str(work)}, fail=["api"])
+    failed, answer, calls, state = _fails(
+        tmp_path, {"spec": WAVES, "workdir": str(work)}, fail=["api"]
+    )
+    assert failed.code == "stack_failed" and "up failed at app" in failed.detail
+    assert "no such image for service api" in failed.detail
     assert answer["ok"] is False
     assert (answer["failed_step"], answer["teardown"]) == ("app", "down")
     assert "no such image for service api" in answer["error"]
@@ -120,7 +141,7 @@ def test_declared_teardown_stop_or_none(tmp_path: Path, policy: str, after: str)
     work = tmp_path / "work"
     compose(work, STACK)
     spec = {**WAVES, "teardown": policy}
-    answer, calls, state = _run(tmp_path, {"spec": spec, "workdir": str(work)}, fail=["api"])
+    _, answer, calls, state = _fails(tmp_path, {"spec": spec, "workdir": str(work)}, fail=["api"])
     assert answer["ok"] is False and answer["teardown"] == policy
     assert "down" not in calls
     assert state["containers"]["shop-postgres-1"] == after
@@ -139,8 +160,9 @@ def test_stop_single_services_and_down(tmp_path: Path) -> None:
     down, calls, state = _run(tmp_path, {**args, "action": "down"})
     assert down["ok"] is True and calls[-1] == "down"
     assert state["containers"] == {} and state["volumes"] == {"shop_data": "seeded"}
-    refused, _, _ = _run(tmp_path, {**args, "action": "down", "services": ["api"]})
-    assert refused["ok"] is False and "stop" in refused["error"]
+    refused, answer, _, _ = _fails(tmp_path, {**args, "action": "down", "services": ["api"]})
+    assert refused.code == "stack_failed" and "stop" in refused.detail
+    assert answer["ok"] is False and "stop" in answer["error"]
 
 
 def test_custom_wait_polls_the_probe(tmp_path: Path) -> None:
@@ -159,22 +181,22 @@ def test_custom_wait_polls_the_probe(tmp_path: Path) -> None:
     assert "up --detach postgres" in calls  # no --wait: the probe decides
     never = {**spec, "probes": {"postgres": {"command": ["false"]}}}
     never["waves"] = [{**spec["waves"][0], "timeout_s": 1}]
-    answer, _, _ = _run(tmp_path / "never", {"spec": never, "workdir": str(work)})
+    _, answer, _, _ = _fails(tmp_path / "never", {"spec": never, "workdir": str(work)})
     assert answer["ok"] is False and "probe for postgres" in answer["error"]
     unprobed = {**spec, "probes": {}}
-    answer, _, _ = _run(tmp_path / "none", {"spec": unprobed, "workdir": str(work)})
+    _, answer, _, _ = _fails(tmp_path / "none", {"spec": unprobed, "workdir": str(work)})
     assert answer["ok"] is False and "needs probes" in answer["error"]
 
 
-def test_bad_input_is_an_answer_not_a_crash(tmp_path: Path) -> None:
+def test_bad_input_raises_failed_at_the_config_step(tmp_path: Path) -> None:
     work = tmp_path / "work"
     compose(work, STACK)
-    missing, _, _ = _run(tmp_path, {"workdir": str(work), "compose_file": "nope.yml"})
-    assert missing["ok"] is False and "compose file not found" in missing["error"]
-    unknown, _, _ = _run(tmp_path, {"workdir": str(work), "services": ["ghost"]})
-    assert unknown["ok"] is False and "ghost" in unknown["error"]
+    _, missing, _, _ = _fails(tmp_path, {"workdir": str(work), "compose_file": "nope.yml"})
+    assert missing["failed_step"] == "config" and "compose file not found" in missing["error"]
+    _, unknown, _, _ = _fails(tmp_path, {"workdir": str(work), "services": ["ghost"]})
+    assert unknown["failed_step"] == "config" and "ghost" in unknown["error"]
     cycle = {"depends_on": {"api": ["redis"], "redis": ["api"]}}
-    looped, _, _ = _run(tmp_path, {"workdir": str(work), "spec": cycle})
+    _, looped, _, _ = _fails(tmp_path, {"workdir": str(work), "spec": cycle})
     assert looped["ok"] is False and "cycle" in looped["error"]
 
 

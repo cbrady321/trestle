@@ -6,8 +6,11 @@ The recipe, top to bottom (adapt it by copying this file and publishing it under
 2. `docker compose <project, files, profiles, env files> config --services` lists the services;
 3. `up`: each wave runs `docker compose ... up --detach [--build] [--no-deps] [--wait] <services>`,
    waits on its custom probes, and saves each service's `docker compose logs` as an artifact.
-   A failed wave runs the declared teardown once and the answer is `ok: false`;
+   A failed wave runs the declared teardown once, then the run raises `Failed`;
 4. `stop`: `docker compose ... stop [services]`; `down`: `docker compose ... down`.
+
+A step that fails (config, a wave, `stop`, `down`) raises `Failed("stack_failed", ...)` with the
+`StackResult` (`ok: false`, `failed_step`, `error`, logs) as its result.
 
 No teardown removes a volume: `down` never passes `--volumes`. Every command goes through
 `ctx.exec`; finding docker, planning waves and waiting are `trestle_pack_docker`.
@@ -31,7 +34,7 @@ from trestle_pack_docker import (
 )
 from trestle_pack_docker.results import StackResult  # where it is defined: the schema reads it
 
-from trestle.plugin import Blocked, Context, trestle
+from trestle.plugin import Blocked, Context, Failed, trestle
 
 
 @dataclass
@@ -70,6 +73,16 @@ class DockerSpec:
     probes: dict[str, DockerProbe] = field(default_factory=dict)
     wait: Literal["healthy", "started", "custom"] = "healthy"
     timeout_s: float = 120.0
+
+
+def stack_failed(result: StackResult) -> Failed:
+    """The `Failed` for a stack that did not do what was asked: the failed step and docker's
+    error tail as the detail, the whole result kept."""
+    return Failed(
+        "stack_failed",
+        f"{result.action} failed at {result.failed_step}: {tail(result.error or '', 300)}",
+        result,
+    )
 
 
 def compose_command(docker: str, stack: DockerSpec, workdir: Path) -> list[str]:
@@ -120,7 +133,7 @@ def up(
     listed = ctx.exec([*compose, "config", "--services"], cwd=workdir, timeout=60, output=None)
     if not listed.ok:
         result.failed_step, result.error = "config", tail(listed.stderr or listed.stdout)
-        return result
+        raise stack_failed(result)
     known = listed.stdout.split()
     wanted = only or [s for wave in stack.waves for s in wave.services] or known
     unknown = [s for s in wanted if s not in known]
@@ -135,7 +148,7 @@ def up(
             if unknown
             else f"wait 'custom' needs probes for: {', '.join(unprobed)}"
         )
-        return result
+        raise stack_failed(result)
     explicit = [[s for s in w.services if s in wanted] for w in stack.waves]
     depends = {k: [d for d in v if d in wanted] for k, v in stack.depends_on.items() if k in wanted}
     try:
@@ -144,7 +157,7 @@ def up(
         )
     except (CycleError, ValueError) as exc:
         result.failed_step, result.error = "config", str(exc)
-        return result
+        raise stack_failed(result) from exc
     result.services = list(plan.flat())
 
     for index, names in enumerate(plan.waves):
@@ -198,7 +211,7 @@ def up(
             result.failed_step, result.error = wave.name, error
             ctx.log(f"[docker] wave failed: {wave.name}: {error}")
             result.teardown = teardown(ctx, compose, stack.teardown, workdir)
-            return result
+            raise stack_failed(result)
         result.waves_completed.append(wave.name)
         ctx.log(f"[docker] wave ready: {wave.name}")
     result.ok = True
@@ -220,7 +233,8 @@ def docker_stack(
 
     Pass a full `spec`, or just `workdir` (plus `compose_file`, `project`) to start every service
     of the compose file. `services` limits `up` and `stop` to those services. A stack that does
-    not come up is `ok: false` with the failed step, docker's error and the per-service logs.
+    not come up raises `Failed` (`stack_failed`; the detail names the failed step and docker's
+    error) with the result `ok: false`, the failed step, docker's error and the per-service logs.
     """
     stack = spec or DockerSpec(project=project, compose_file=compose_file)
     stack.project = stack.project or project
@@ -231,23 +245,26 @@ def docker_stack(
         if not resolve_under(cwd, f).is_file()
     ]
     if absent:
-        return StackResult(
+        raise stack_failed(StackResult(
             ok=False, action=action, project=stack.project, failed_step="config",
             error=f"compose file not found: {resolve_under(cwd, absent[0])} (workdir {cwd})",
-        )  # fmt: skip
+        ))  # fmt: skip
     docker = locate_docker()
     check_engine(ctx, docker)
     compose = compose_command(docker, stack, cwd)
     if action == "up":
         return up(ctx, compose, stack, services or [], cwd)
     if action == "down" and services:
-        return StackResult(
+        raise stack_failed(StackResult(
             ok=False, action=action, project=stack.project, failed_step="down",
             error="down takes the whole stack; use action 'stop' with services",
-        )  # fmt: skip
+        ))  # fmt: skip
     argv = [*compose, action, *(services or [])]
     done = ctx.exec(argv, cwd=cwd, timeout=180, output=f"docker-{action}.log")
-    return StackResult(
+    result = StackResult(
         ok=done.ok, action=action, project=stack.project, services=services or [],
         failed_step=None if done.ok else action, error=None if done.ok else tail(done.stderr),
     )  # fmt: skip
+    if not done.ok:
+        raise stack_failed(result)
+    return result

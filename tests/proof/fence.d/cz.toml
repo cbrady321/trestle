@@ -38,7 +38,7 @@ globs         = ["tests/proof/meta.py", "tests/proof/ckpt/root.py", "tests/proof
                  # departure, L.CZ.rv-fix7). Their lanes (tree, p0-spine, sv-runtime, bundles) landed before CZ.
                  "tests/tree/test_tr3_slices.py", "tests/tree/test_tr4_depth.py", "tests/tree/host/test_trl_rollup.py",
                  "tests/proof/spine/test_stop_offset.py", "tests/proof/selftest/test_landing_loop.py",
-                 "docs/*.md", ".github/workflows/ci.yml", ".cursor/skills/trestle/SKILL.md"]
+                 "docs/*.md", ".github/workflows/ci.yml", "skills/*/SKILL.md"]
 
 [[lane]]                     # the root checkpoint merge; diff limited to CM-5's checkpoint paths
 name          = "j-root"

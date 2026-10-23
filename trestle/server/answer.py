@@ -26,7 +26,7 @@ from typing import Any
 
 from trestle.common import codes
 from trestle.common.fsutil import atomic_write_json
-from trestle.common.outcome import OutcomeClass
+from trestle.common.outcome import OUTCOME_CLASSES, OutcomeClass, classify
 from trestle.common.plan import bounds
 from trestle.common.plan import precedence as prec
 from trestle.common.plan import vocabulary as vocab
@@ -380,11 +380,21 @@ class PluginBlocked:
     resend: str
 
 
+@dataclass(frozen=True, slots=True)
+class PluginFailed:
+    """What a plain plugin's raised `Failed` recorded (`evidence/failed.json`). The answer carries
+    the code; the detail stays in the record."""
+
+    code: str
+    detail: str
+
+
 def _planless(
     run: _Run,
     error: ExecutionErrorAnswer | None,
     terminal_kind: str | None,
     blocked: PluginBlocked | None = None,
+    failed: PluginFailed | None = None,
 ) -> tuple[OutcomeClass, NodeAnswer, ExecutionErrorAnswer | None]:
     """B4-T4 (rule (5)): the terminal kind follows from `error.code`; stops and a restart are
     decided by rules (1) and (2) before this, so what reaches here ended by itself: a normal
@@ -395,6 +405,11 @@ def _planless(
         return OutcomeClass.CANCELLED, _stopped_root(), None
     if error is None and terminal_kind == "timed_out":
         return OutcomeClass.TIMED_OUT, _stopped_root(), None
+    if error is None and failed is not None:  # the plugin raised `Failed` (ranks over `Blocked`)
+        primary = NodeAnswer(
+            ROOT, Listing.CANDIDATE, NodeClass.FAILED, None, failed.code, None, None, None
+        )
+        return OutcomeClass.FAILED, primary, None
     if error is None and blocked is not None:  # R4a: the plugin raised `Blocked`
         primary = NodeAnswer(
             ROOT,
@@ -441,6 +456,7 @@ def project(
     terminal_kind: str | None = None,
     leased: bool | None = None,
     blocked: PluginBlocked | None = None,
+    failed: PluginFailed | None = None,
 ) -> TerminalAnswer:
     """B4-C1. `plan` is None only for a plan-less root (B2-C1). `summary_budget` is the run's own
     (the snapshot's `summary_budget`, CL-B1); it decides only whether `detail` is set for an
@@ -484,7 +500,7 @@ def project(
         )
         primary = own_account()
     elif plan is None:  # rule (5): B4-T4
-        outcome, primary, result_error = _planless(run, error, terminal_kind, blocked)
+        outcome, primary, result_error = _planless(run, error, terminal_kind, blocked, failed)
         if outcome is OutcomeClass.CANCELLED:
             root_stop = RootStop.CANCEL
         elif outcome is OutcomeClass.TIMED_OUT:
@@ -833,6 +849,7 @@ def answer_for_run(
         else bounds.SUMMARY_BUDGET_DEFAULT,
         leased=admitted is not None and bool(admitted.lease_set),
         blocked=read_plugin_blocked(run_dir) if answer_plan is None else None,
+        failed=read_plugin_failed(run_dir) if answer_plan is None else None,
     )
 
 
@@ -852,6 +869,53 @@ def read_plugin_blocked(run_dir: FsPath) -> PluginBlocked | None:
         return None
     code, human_action, resend = fields
     return PluginBlocked(str(code), str(human_action), str(resend))
+
+
+FAILED_FILE = "failed.json"
+
+
+def read_plugin_failed(run_dir: FsPath) -> PluginFailed | None:
+    """The `Failed` a plain plugin raised, or None: no record, or one that is not whole."""
+    try:
+        raw = json.loads((run_dir / "evidence" / FAILED_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    code, detail = raw.get("code"), raw.get("detail")
+    if not (isinstance(code, str) and code and isinstance(detail, str)):
+        return None
+    return PluginFailed(code, detail)
+
+
+def verdict_of(run_dir: FsPath, state: str) -> str:
+    """A finished run's verdict, `answer.outcome`, for the readers that order, wait on or list
+    runs by success: the `outcome` of the answer persisted at finalization (written before the
+    terminal row, by the conductor and by recovery). A run without one (finalized before B4)
+    answers the class its terminal kind gives, as those readers did before."""
+    persisted = persisted_verdict(run_dir)
+    if persisted is not None:
+        return persisted[0]
+    try:
+        return classify(state, None).outcome_class.value
+    except ValueError:  # not a terminal kind: no verdict to read, so never a pass
+        return OutcomeClass.EXECUTION_ERROR.value
+
+
+def persisted_verdict(run_dir: FsPath) -> tuple[str, str | None] | None:
+    """(`outcome`, `primary.code`) of the answer persisted at finalization, or None."""
+    try:
+        raw = json.loads((run_dir / "evidence" / ANSWER_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    outcome = raw.get("outcome")
+    if not (isinstance(outcome, str) and outcome in OUTCOME_CLASSES):
+        return None
+    primary = raw.get("primary")
+    code = primary.get("code") if isinstance(primary, dict) else None
+    return outcome, code if isinstance(code, str) else None
 
 
 def summary_budget_of(spec: Mapping[str, Any]) -> int:
@@ -879,6 +943,7 @@ __all__ = [
     "ExecutionErrorAnswer",
     "NodeAnswer",
     "PluginBlocked",
+    "PluginFailed",
     "TerminalAnswer",
     "UnconfirmedEffect",
     "account_of",
@@ -891,11 +956,14 @@ __all__ = [
     "node_wire",
     "project",
     "read_plugin_blocked",
+    "read_plugin_failed",
     "read_child_views",
     "root_run_id_of",
     "to_wire",
     "summary_budget_of",
     "to_wire_full",
     "write_child_views",
+    "persisted_verdict",
+    "verdict_of",
     "write_finalized",
 ]

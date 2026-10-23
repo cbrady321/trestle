@@ -10,12 +10,14 @@ from __future__ import annotations
 import importlib.util
 import subprocess
 import sys
+from dataclasses import asdict
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
 import pytest
-from trestle.plugin.testing import FakeContext
+from trestle.plugin import Failed
+from trestle.plugin.testing import FakeContext, call_plugin
 
 from trestle_pack_github.fakes.gh_cli import FakeGh, write_fake_gh
 
@@ -52,6 +54,18 @@ def policy_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: str) -> P
 
 def context(tmp_path: Path) -> FakeContext:
     return FakeContext(tmp_path / "ctx")
+
+
+def call_failed(
+    tmp_path: Path, name: str, args: dict[str, Any]
+) -> tuple[Failed, dict, FakeContext]:
+    """Call the wrapper `name` where it must raise `Failed`: the exception, its result as a dict
+    (the shape an answer would have had) and the context (artifacts attached)."""
+    ctx = context(tmp_path)
+    with pytest.raises(Failed) as raised:
+        call_plugin(getattr(load_wrapper(name), name), args, ctx=ctx)
+    assert raised.value.result is not None
+    return raised.value, asdict(raised.value.result), ctx  # type: ignore[call-overload]
 
 
 def git(cwd: Path, *argv: str) -> str:

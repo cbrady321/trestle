@@ -9,7 +9,7 @@ phase        = "single"
 [[lane]]
 name          = "sv-docs"
 branch_prefix = "wr/sv-docs/"
-globs         = ["docs/agent-console-mcp.md", "docs/agents.md", ".cursor/skills/trestle/SKILL.md", "tests/single/docs/**",
+globs         = ["docs/agent-console-mcp.md", "docs/agents.md", "skills/*/SKILL.md", "tests/single/docs/**",
                  "tests/proof/fence.d/single.toml", "tests/proof/labels.d/single.toml", "tests/proof/temporary.d/single.toml"]
 
 [[lane]]
@@ -90,7 +90,7 @@ globs         = ["trestle/server/lease.py", "trestle/server/answer.py", "tests/s
 [[lane]]
 name          = "single-bundle"
 branch_prefix = "wr/single-bundle/"
-globs         = ["docs/agent-console-mcp.md", "docs/agents.md", ".cursor/skills/trestle/SKILL.md",
+globs         = ["docs/agent-console-mcp.md", "docs/agents.md", "skills/*/SKILL.md",
                  "tests/single/docs/**", "tests/proof/fence.d/single.toml", "tests/proof/labels.d/single.toml",
                  "tests/proof/temporary.d/single.toml", "trestle/common/lane_format.py", "trestle/common/plan/bounds.py",
                  "trestle/child/attempt_lane.py", "trestle/server/fold.py", "trestle/server/conductor.py",

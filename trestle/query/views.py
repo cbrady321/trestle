@@ -46,7 +46,7 @@ VIEW_ROW_FIELDS: dict[str, frozenset[str]] = {
     "run_tail": frozenset({"run_id", "line_no", "text"}),
     "run_events": frozenset({"run_id", "event_seq", "kind", "payload"}),
     "recent_runs": frozenset({"run_id", "plugin", "state", "started_at", "session_ended"}),
-    "recent_failures": frozenset({"run_id", "plugin", "state", "failed_at"}),
+    "recent_failures": frozenset({"run_id", "plugin", "state", "outcome", "failed_at"}),
     "run_provenance": frozenset(
         {
             "run_id",

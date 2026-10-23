@@ -11,6 +11,8 @@ The recipe, top to bottom (adapt it by copying this file and publishing it under
    step for each (`PolicyTriage`, from `[triage]`): `code_change`, `clarify`, `reply_only` or
    `not_actionable`;
 5. answer the first `max_items` per PR (code changes first) and the counts; attach everything.
+   When any PR's comments could not be read, raise `Failed("comments_unread")` carrying that
+   report (the PRs that were read are in it).
 
 Read-only: nothing is posted, resolved or changed on GitHub.
 """
@@ -21,7 +23,7 @@ import json
 from collections import Counter
 from dataclasses import asdict
 
-from trestle.plugin import Context, trestle
+from trestle.plugin import Context, Failed, trestle
 
 from trestle_pack_github import (
     CtxGh,
@@ -50,7 +52,9 @@ def github_pr_comments(
     """Unresolved review threads, PR comments and review bodies for each pull request in
     `targets` (URLs, or `owner/repo#number`), each with a suggested `action`, the author and
     whether it is a bot. Each PR keeps its first `max_items` (code changes first); `omitted`
-    counts the rest, which are in the attached `github-pr-comments.json`.
+    counts the rest, which are in the attached `github-pr-comments.json`. A PR whose comments
+    could not be read (bad target, unknown PR, gh error) raises `Failed` (`comments_unread`)
+    with the report as its result, each unread PR carrying its `error`.
     Example: {"targets": ["octo/app#12"]}
     """
     loaded = load_policy()
@@ -91,4 +95,10 @@ def github_pr_comments(
     staged.write_text(json.dumps(everything, indent=2), encoding="utf-8")
     ctx.attach(staged, name="github-pr-comments.json")
     ctx.log(f"github_pr_comments: {report.summary}")
+    if errors:
+        raise Failed(
+            "comments_unread",
+            f"comments could not be read for {errors} of {len(prs)} PRs",
+            report,
+        )
     return report

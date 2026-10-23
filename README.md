@@ -7,7 +7,8 @@ tool call**, chains dependent jobs without polling, and reads a short answer ins
 Plugins get safe building blocks for unattended work: `ctx.exec` (commands with a time limit,
 process-tree kill and bounded output), `Blocked` (end a run with the one action a person must
 take), a clean-stop window (`stop_grace`), live progress, and `trestle.plugin.testing` to test a
-plugin without a server. Agent skill: [`skills/trestle/SKILL.md`](skills/trestle/SKILL.md).
+plugin without a server. Agent skills: [`skills/trestle/SKILL.md`](skills/trestle/SKILL.md) (use
+Trestle) and [`skills/trestle-pack/SKILL.md`](skills/trestle-pack/SKILL.md) (write plugins and packs).
 
 ## Install
 
@@ -65,10 +66,11 @@ Other hosts take the same `url` and `headers` in their MCP config:
 | Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | Claude Code | `claude mcp add` above, or `.mcp.json` (expands `${VAR}`) |
 
-This repo's [`.cursor/mcp.json`](.cursor/mcp.json) is a project override. **Agent skill:** copy
-[`skills/trestle/`](skills/trestle/) to your host's skills folder (`~/.claude/skills/trestle/` for
-Claude Code, `~/.cursor/skills/trestle/` for Cursor) so agents use Trestle well in every workspace:
-one call per objective, chained runs, bounded retrieval, unattended plugins.
+This repo's [`.cursor/mcp.json`](.cursor/mcp.json) is a project override. **Agent skills:** copy
+both [`skills/trestle/`](skills/trestle/) and [`skills/trestle-pack/`](skills/trestle-pack/) into
+your host's skills folder (`~/.claude/skills/` for Claude Code, `~/.cursor/skills/` for Cursor) so
+agents use Trestle well in every workspace: one call per objective, a multi-step job written as one
+plugin and run once, bounded retrieval.
 
 Enable the server in the host UI. Confirm **ten** tools appear.
 
@@ -92,8 +94,8 @@ and stops.
 | [`docs/agent-console-mcp.md`](docs/agent-console-mcp.md) | Full playbook — retrieval, refusals, smoke |
 | [`docs/plugins.md`](docs/plugins.md) | Write and publish plugins |
 | [`docs/packs.md`](docs/packs.md) | Docker / pytest / migration packs |
-| [`skills/trestle/SKILL.md`](skills/trestle/SKILL.md) | Agent skill: one call per objective, chaining, `blocked` runs, plugins that run unattended |
-| [`.cursor/skills/trestle/SKILL.md`](.cursor/skills/trestle/SKILL.md) | Compact Cursor skill |
+| [`skills/trestle/SKILL.md`](skills/trestle/SKILL.md) | Agent skill: one call per objective, reading the answer, waiting, fallbacks |
+| [`skills/trestle-pack/SKILL.md`](skills/trestle-pack/SKILL.md) | Agent skill: write, test and publish a plugin that chains the steps, or a pack |
 
 ## Operators (CLI + HTTP)
 

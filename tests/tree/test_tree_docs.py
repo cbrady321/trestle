@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -177,19 +178,32 @@ EXAMPLE_RUNS: dict[str, list[tuple[dict[str, Any], str]]] = {
         ({"services": ["api", "db"], "depends_on": {"api": ["db"]}}, "succeeded"),
         ({"services": ["a", "b"], "depends_on": {"a": ["b"], "b": ["a"]}}, "blocked"),
     ],
+    # needs a repo and real tools: `test_chain_example_runs_on_a_repo` below
+    "chain": [],
 }
+
+
+TYPED_EXAMPLES = frozenset({"chain"})
 
 
 def test_every_served_example_has_a_run() -> None:
     assert set(EXAMPLE_RUNS) == set(authoring.example_names())
 
 
-@pytest.mark.parametrize("name", sorted(EXAMPLE_RUNS))
+@pytest.mark.parametrize(
+    "name",
+    [
+        # `chain` returns dataclass records (K-3/K-4): skipped when they are declined
+        pytest.param(n, marks=pytest.mark.typed_records) if n in TYPED_EXAMPLES else n
+        for n in sorted(EXAMPLE_RUNS)
+    ],
+)
 def test_served_example_publishes_through_the_validator_and_runs(
     tree_kernel: Kernel, name: str
 ) -> None:
     """Each served example publishes as it stands, with no warning, and each of its requests
-    reaches a terminal answer: `succeeded`, or a `blocked` outcome with a human action."""
+    reaches a terminal answer: `succeeded`, a `blocked` outcome with a human action, or a `failed`
+    outcome (`failed:<code>`, the answer's code)."""
     published = hostpath.publish_tree_via_host(tree_kernel, authoring.plugin_example(name))
     assert isinstance(published, PublishView), published
     assert published.name == name
@@ -200,6 +214,50 @@ def test_served_example_publishes_through_the_validator_and_runs(
         assert isinstance(view, RunView), view
         assert view.state == "succeeded", view
         answer = view.answer or {}
-        assert (answer.get("outcome") == "blocked") is (expected == "blocked"), answer
-        if expected == "blocked":
-            assert answer["primary"]["human_action"], answer
+        _assert_answer(answer, expected)
+
+
+def _assert_answer(answer: dict[str, Any], expected: str) -> None:
+    outcome, _, code = expected.partition(":")
+    assert answer.get("outcome") == ("passed" if outcome == "succeeded" else outcome), answer
+    if outcome == "blocked":
+        assert answer["primary"]["human_action"], answer
+    if code:
+        assert answer["primary"]["code"] == code, answer
+
+
+CHAIN_TOOLS = ("ruff", "mypy", "pytest")
+
+
+def _chain_repo(root: Path, *, lint_clean: bool) -> Path:
+    """A repo every step of `chain` can run on: one typed module and one passing test (mypy needs
+    a file, pytest needs a test); an unused import makes the lint step fail."""
+    root.mkdir()
+    head = "" if lint_clean else "import os\n\n\n"
+    (root / "mod.py").write_text(f"{head}def add(a: int, b: int) -> int:\n    return a + b\n")
+    (root / "test_mod.py").write_text(
+        "from mod import add\n\n\ndef test_add() -> None:\n    assert add(1, 2) == 3\n"
+    )
+    return root
+
+
+@pytest.mark.typed_records
+def test_chain_example_runs_on_a_repo(tree_kernel: Kernel, tmp_path: Path) -> None:
+    """`chain` on a repo where every step passes answers `passed` with three steps; with a lint
+    finding it answers `failed`, `plugin.lint_failed`, and the tests never run."""
+    missing = [tool for tool in CHAIN_TOOLS if shutil.which(tool) is None]
+    if missing:
+        pytest.skip(f"chain's tools are not on PATH: {missing}")
+    published = hostpath.publish_tree_via_host(tree_kernel, authoring.plugin_example("chain"))
+    assert isinstance(published, PublishView), published
+    clean = _chain_repo(tmp_path / "clean", lint_clean=True)
+    view = hostpath.run_tree_via_host(tree_kernel, "chain", {"repo": str(clean)})
+    assert isinstance(view, RunView) and view.state == "succeeded", view
+    _assert_answer(view.answer or {}, "succeeded")
+    assert view.summary is not None and len(view.summary["steps"]) == 3, view.summary
+    dirty = _chain_repo(tmp_path / "dirty", lint_clean=False)
+    view = hostpath.run_tree_via_host(tree_kernel, "chain", {"repo": str(dirty)})
+    assert isinstance(view, RunView) and view.state == "succeeded", view
+    _assert_answer(view.answer or {}, "failed:plugin.lint_failed")
+    assert view.summary is not None
+    assert [s["name"] for s in view.summary["steps"]] == ["lint", "types"], view.summary

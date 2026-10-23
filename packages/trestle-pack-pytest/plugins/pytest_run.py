@@ -10,7 +10,8 @@ The recipe, top to bottom (adapt it by copying this file and publishing it under
 3. read the counts and failures from the JUnit file, never from console text;
 4. attach the JUnit file and the JSON report; answer the report.
 
-A failing test is a result (`ok: false`, the test in `failures`), never a raised error.
+A failing check raises `Failed` (see `fail_for`), carrying the report as its result, so the run
+answers `outcome: failed` and the summary still shows `ok: false` and each test in `failures`.
 """
 
 from __future__ import annotations
@@ -22,7 +23,25 @@ from pathlib import Path
 from trestle_pack_pytest import find_project_python, read_junit_report
 from trestle_pack_pytest.junit import PytestReport  # where it is defined: the schema reads it
 
-from trestle.plugin import Blocked, Context, trestle
+from trestle.plugin import Blocked, Context, Failed, trestle
+
+
+def fail_for(report: PytestReport) -> Failed:
+    """The `Failed` that carries a not-ok report: `tests_failed` for failing or erroring tests,
+    `tests_incomplete` when pytest gave no result (timed out, stopped, no JUnit report) and
+    `no_tests_collected` when it found nothing to run."""
+    if report.error:
+        return Failed("tests_incomplete", f"pytest gave no result: {report.error[:300]}", report)
+    if report.exit_code == 5:
+        return Failed("no_tests_collected", "pytest collected no tests", report)
+    bad = report.failed + report.errors
+    detail = (
+        f"{report.failed} of {report.collected} tests failed"
+        + (f", {report.errors} errored" if report.errors else "")
+        if bad
+        else f"pytest exited {report.exit_code}: {report.summary}"
+    )
+    return Failed("tests_failed", detail, report)
 
 
 @trestle(packages=["trestle_pack_pytest"], summary_fields=["ok", "summary", "failures"])
@@ -41,8 +60,10 @@ def pytest_run(
 
     `path` is a test path or node id, relative to `workdir` (the project root; default the
     current directory). `python` names the interpreter when the project has no `.venv` or
-    `venv`. `pytest_args` are passed through. Failing tests are `ok: false` with each failure's
-    node id, message and traceback tail; the JUnit XML and a JSON report are attached.
+    `venv`. `pytest_args` are passed through. Failing tests raise `Failed` (`tests_failed`; also
+    `tests_incomplete` and `no_tests_collected`) with the report as the result: `ok: false` and
+    each failure's node id, message and traceback tail. The JUnit XML and a JSON report are
+    attached.
     """
     root = Path(workdir) if workdir else Path.cwd()
     interpreter = find_project_python(root, python)
@@ -88,4 +109,6 @@ def pytest_run(
     staged.write_text(json.dumps(asdict(report), indent=2), encoding="utf-8")
     ctx.attach(staged, name="pytest-report.json")
     ctx.log(f"pytest: {report.summary}")
+    if not report.ok:
+        raise fail_for(report)
     return report

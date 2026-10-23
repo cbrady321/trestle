@@ -29,10 +29,11 @@ from trestle.common.plan import formats
 from trestle.common.plan.compiler import AdmittedPlan
 from trestle.common.types import DeclaredMetadata, RunSpec
 from trestle.plugin._codec import hydrate
-from trestle.plugin.surface import Blocked
+from trestle.plugin.surface import Blocked, Failed
 
 CHILD_ERROR = "child_error.json"
 BLOCKED_FILE = "blocked.json"
+FAILED_FILE = "failed.json"
 PLUGIN_CODE_PREFIX = "plugin."
 _EXC_TYPE_MAX = 128
 
@@ -154,6 +155,15 @@ def _call_plugin(
     except Blocked as blocked:
         _write_blocked(evidence, blocked, roots, secrets)
         return 0
+    except Failed as failed:
+        _write_failed(evidence, failed, roots, secrets)
+        if failed.result is not None:
+            try:
+                _write_result(fn, failed.result, limits, evidence, roots, secrets)
+            except Exception:
+                # the verdict stands: no result, and the run view shows why one is missing
+                ctx._record_limit("result", "unencodable", 0, 0)
+        return 0
     except SystemExit as exc:
         code = exc.code if isinstance(exc.code, int) else 1
         return code if code is not None else 1
@@ -161,24 +171,37 @@ def _call_plugin(
         return _fail(evidence, "call", codes.EXECUTION_PLUGIN_RAISED, exc, roots, secrets)
 
     if result is not None:
-        declared_return = _declared_return(fn)
         try:
-            idx = write_result(
-                evidence / "result.json",
-                result,
-                max_bytes=limits.max_result_bytes,
-                declared_return=declared_return,
-                scrubber=redact.Scrubber(secrets=secrets, roots=roots),
-            )
-        except ResultTooLarge:
-            atomic_write(evidence / "result.state", b"too_large")
-            return 0
+            _write_result(fn, result, limits, evidence, roots, secrets)
         except Exception as exc:
             return _fail(
                 evidence, "encode", codes.EXECUTION_RESULT_UNENCODABLE, exc, roots, secrets
             )
-        atomic_write(evidence / "result.index", idx.to_json())
     return 0
+
+
+def _write_result(
+    fn: Callable[..., object],
+    result: object,
+    limits: CaptureLimits,
+    evidence: Path,
+    roots: dict[str, Path],
+    secrets: frozenset[str],
+) -> None:
+    """`result.json` and `result.index`, or `result.state` when it is too large to keep; an
+    encoding failure propagates."""
+    try:
+        idx = write_result(
+            evidence / "result.json",
+            result,
+            max_bytes=limits.max_result_bytes,
+            declared_return=_declared_return(fn),
+            scrubber=redact.Scrubber(secrets=secrets, roots=roots),
+        )
+    except ResultTooLarge:
+        atomic_write(evidence / "result.state", b"too_large")
+        return
+    atomic_write(evidence / "result.index", idx.to_json())
 
 
 def _write_blocked(
@@ -194,6 +217,20 @@ def _write_blocked(
         "resend": blocked.resend,
     }
     atomic_write_json(evidence / BLOCKED_FILE, record)
+
+
+def _write_failed(
+    evidence: Path, failed: Failed, roots: dict[str, Path], secrets: frozenset[str]
+) -> None:
+    """A plain plugin raised `Failed`. Its record is `evidence/failed.json` {code, detail}, the
+    code namespaced `plugin.<code>` and the detail through the same sanitizer and scrub as an
+    error message. It is written before the result, so a result that cannot be recorded never
+    loses the verdict; the run ended normally, and its answer reads `failed`."""
+    record = {
+        "code": f"{PLUGIN_CODE_PREFIX}{failed.code}",
+        "detail": sanitize(redact.scrub(failed.detail, secrets), roots),
+    }
+    atomic_write_json(evidence / FAILED_FILE, record)
 
 
 def _fail(

@@ -6,13 +6,15 @@ every path is `legacy/test_legacy_pipeline_teardown.py`."""
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
 import pytest
 from stack_pack_testing import PYTHON, STACK, compose, context, fake_docker, load_wrapper
 
-from trestle.plugin import Blocked
+from trestle.plugin import Blocked, Failed
+from trestle.plugin._codec import encode
 from trestle.plugin.testing import call_plugin
 
 # K-3/K-4: these plugins take and return typed records (skipped if they are declined).
@@ -102,8 +104,10 @@ def test_failed_migration_skips_pytest_and_still_tears_down(
         "workdir": str(root),
         "python": PYTHON,
     }
-    answer = call_plugin(load_wrapper("stack_pipeline").stack_pipeline, args, ctx=context(tmp_path))
-    assert isinstance(answer, dict)
+    with pytest.raises(Failed) as failed:
+        call_plugin(load_wrapper("stack_pipeline").stack_pipeline, args, ctx=context(tmp_path))
+    assert failed.value.code == "migrate_failed" and "syntax error" in failed.value.detail
+    answer = json.loads(encode(failed.value.result))
     assert (answer["ok"], answer["failed_stage"]) == (False, "migrate")
     assert answer["pytest"] is None and "syntax error" in answer["migrate"]["error"]
     assert answer["teardown"] == "down"

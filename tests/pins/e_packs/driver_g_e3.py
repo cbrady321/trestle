@@ -14,6 +14,7 @@ import sys
 import tempfile
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
@@ -43,21 +44,19 @@ def _wrapper(name: str) -> ModuleType:
 
 
 def _run_pytest_setup_error(work: Path) -> dict:
-    from trestle.plugin.testing import FakeContext, call_plugin
+    from trestle.plugin.testing import FakeContext
 
     tests = work / "tests"
     tests.mkdir()
     (tests / "test_setup_error.py").write_text(SETUP_ERROR_TEST)
     args = {"path": str(tests), "workdir": str(work), "python": sys.executable}
-    result = call_plugin(_wrapper("pytest_run").pytest_run, args, ctx=FakeContext(work / "ctx"))
-    assert isinstance(result, dict)
-    return result
+    return _answer(_wrapper("pytest_run").pytest_run, args, FakeContext(work / "ctx"))
 
 
 def _pipeline(work: Path, *, fail_up: bool) -> dict:
     from trestle_pack_docker.fake_cli import FakeDocker, write_fake_docker
 
-    from trestle.plugin.testing import FakeContext, call_plugin
+    from trestle.plugin.testing import FakeContext
 
     fake = FakeDocker(work / "docker.json")
     fake.set(fail=["web"] if fail_up else [])
@@ -74,13 +73,24 @@ def _pipeline(work: Path, *, fail_up: bool) -> dict:
         "workdir": str(work),
         "python": sys.executable,
     }
-    result = call_plugin(
-        _wrapper("stack_pipeline").stack_pipeline, args, ctx=FakeContext(work / "ctx")
-    )
-    assert isinstance(result, dict)
+    result = _answer(_wrapper("stack_pipeline").stack_pipeline, args, FakeContext(work / "ctx"))
     calls = [c.split()[0] for c in fake.calls]
     return {"ok": result["ok"], "failed_stage": result["failed_stage"], "calls": calls,
             "down": calls.count("down")}  # fmt: skip
+
+
+def _answer(fn: Any, args: dict, ctx: Any) -> dict:
+    """The plugin's result as its run records it: returned, or carried by a raised `Failed`."""
+    from trestle.plugin import Failed
+    from trestle.plugin._codec import encode
+    from trestle.plugin.testing import call_plugin
+
+    try:
+        result = call_plugin(fn, args, ctx=ctx)
+    except Failed as failed:
+        result = json.loads(encode(failed.result))
+    assert isinstance(result, dict)
+    return result
 
 
 def main() -> None:

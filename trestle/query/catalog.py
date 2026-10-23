@@ -59,7 +59,10 @@ _VIEW_WHEN: dict[str, dict[str, str]] = {
         "params": "",
     },
     "recent_failures": {
-        "use_when": "Browse recent failed runs, newest first.",
+        "use_when": (
+            "Browse recent runs whose verdict (answer.outcome) is not passed, newest first: "
+            "failed, blocked, cancelled, timed out or an execution error."
+        ),
         "params": "",
     },
     "run_provenance": {

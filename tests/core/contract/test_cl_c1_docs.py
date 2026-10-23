@@ -79,6 +79,6 @@ def test_kdocs_and_rj_disclosure_present() -> None:
     assert "recorded, not snapshotted" in rj[:400]
     assert "execution.provenance_mismatch" in rj[:1500]
 
-    # the Cursor skill carries the same facts in short form
-    skill = _read(".cursor/skills/trestle/SKILL.md")
+    # the trestle-pack skill carries the same facts in short form
+    skill = _read("skills/trestle-pack/SKILL.md")
     assert "admission.budget_does_not_fit" in skill and "recorded, not snapshotted" in skill

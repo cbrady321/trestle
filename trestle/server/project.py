@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from trestle.common import clock, codes
-from trestle.common.outcome import classify
+from trestle.common.outcome import OUTCOME_CLASSES, classify
 from trestle.common.plan.compiler import REFUSAL_TEXT_MAX
 from trestle.common.types import (
     CatalogView,
@@ -33,7 +33,6 @@ from trestle.server import callbacks, fold, idempotency
 from trestle.server.home import is_locked, marked_run_dir, marker_path, owner_lock_path, read_marker
 from trestle.server.ledger import (
     NON_TERMINAL_STATES,
-    TERMINAL_KINDS,
     RunLedger,
     evidence_dir,
     ledger_path,
@@ -694,6 +693,7 @@ class Project:
                 result_bytes = None
                 truncated = True
 
+        answer_view = _answer_view(ledger, state, run_dir)
         return RunView(
             run_id=run_id,
             state=state,
@@ -708,8 +708,8 @@ class Project:
             limits_exceeded=limits_exceeded if isinstance(limits_exceeded, list) else None,
             cleanup=_cleanup_view(ledger, state),
             error=_error_view(ledger, state),
-            outcome=_outcome_view(ledger, state, evidence),
-            answer=_answer_view(ledger, state, run_dir),
+            outcome=_outcome_view(ledger, state, evidence, answer_view),
+            answer=answer_view,
             retry_of=_retry_of(ledger),
             after_run_id=_after_run_id(ledger.last_kind("created")),
             progress=(
@@ -862,16 +862,34 @@ def _error_view(ledger: RunLedger, state: str) -> dict[str, Any] | None:
     return {key: row.get(key) for key in ("code", "phase", "message")}
 
 
-def _outcome_view(ledger: RunLedger, state: str, evidence: Path | None) -> dict[str, Any] | None:
+def _outcome_view(
+    ledger: RunLedger,
+    state: str,
+    evidence: Path | None,
+    answer_view: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     """The run's answer class (MC-17, B4-T4), beside `state`: classified from the terminal kind,
     the `error_record` row and whether recovery wrote the terminal row. Only `interrupted` is
     written by recovery. A run that has not ended has none. Identity is the snapshot the run's
-    spec fixed at admission."""
+    spec fixed at admission. A `succeeded` run takes its class from its answer (one verdict per
+    run): a plugin that raised `Failed` or `Blocked`, or whose tree answered so, reads `failed`
+    or `blocked`, with the answer's code."""
     if state in NON_TERMINAL_STATES:
         return None
     row = ledger.last_kind("error_record")
     outcome = classify(state, row, recovered=state == "interrupted")
-    return outcome.to_dict(_spec_snapshot_id(evidence))
+    wire = outcome.to_dict(_spec_snapshot_id(evidence))
+    verdict = answer_view.get("outcome") if answer_view is not None else None
+    if state == "succeeded" and isinstance(verdict, str) and verdict in OUTCOME_CLASSES:
+        primary = answer_view.get("primary") if answer_view is not None else None
+        code = primary.get("code") if isinstance(primary, dict) else None
+        wire["class"] = verdict
+        wire["code"] = code if verdict in _VERDICT_CODED and isinstance(code, str) else None
+    return wire
+
+
+# the classes whose `code` a `succeeded` run takes from its answer's primary
+_VERDICT_CODED = frozenset({"failed", "blocked", "execution_error"})
 
 
 def _spec_snapshot_id(evidence: Path | None) -> str | None:
@@ -913,7 +931,6 @@ def _cleanup_view(ledger: RunLedger, state: str) -> CleanupView | None:
 
 # how often a waiter probes its runs' owner locks (v0.3.1 rule 3's wake-up)
 OWNER_PROBE_S = 1.0
-_FAILURE_TERMINAL_STATES = TERMINAL_KINDS - frozenset({"succeeded"})
 
 
 # B4 `Listing` values a child view reports as its `disposition` (MC-B3-08)
@@ -924,13 +941,24 @@ def _is_non_terminal(state: str) -> bool:
     return state in NON_TERMINAL_STATES
 
 
+def _did_not_pass(view: RunView) -> bool:
+    """`first_failure`'s test: the run ended and its verdict (`answer.outcome`) is not `passed`.
+    A run without an answer is judged by its state, as before."""
+    if _is_non_terminal(view.state):
+        return False
+    verdict = view.answer.get("outcome") if view.answer is not None else None
+    if isinstance(verdict, str):
+        return verdict != "passed"
+    return view.state != "succeeded"
+
+
 def _join_satisfied(views: list[RunView], mode: JoinMode) -> bool:
     if mode == "all":
         return all(not _is_non_terminal(view.state) for view in views)
     if mode == "any":
         return any(not _is_non_terminal(view.state) for view in views)
     if mode == "first_failure":
-        if any(view.state in _FAILURE_TERMINAL_STATES for view in views):
+        if any(_did_not_pass(view) for view in views):
             return True
         return all(not _is_non_terminal(view.state) for view in views)
     return False

@@ -7,7 +7,16 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from gh_wrappers import checkout, context, fake_gh, git, load_wrapper, policy_file, pr
+from gh_wrappers import (
+    call_failed,
+    checkout,
+    context,
+    fake_gh,
+    git,
+    load_wrapper,
+    policy_file,
+    pr,
+)
 from trestle.plugin import Blocked
 from trestle.plugin.testing import FakeContext, call_plugin
 
@@ -37,6 +46,14 @@ def _open(tmp_path: Path, work: Path, **args: object) -> dict:
     answer, _ = call(tmp_path, "github_pr_open", {"workdir": str(work), "title": "Add x", **args})
     assert isinstance(answer, dict)
     return answer
+
+
+def _refused(tmp_path: Path, work: Path, **args: object) -> Blocked:
+    """Open where a guard must refuse: the `Blocked` raised (its code is the refusal's)."""
+    with pytest.raises(Blocked) as raised:
+        _open(tmp_path, work, **args)
+    assert raised.value.resend == "will_not_succeed"
+    return raised.value
 
 
 def test_commits_only_the_paths_pushes_and_creates(
@@ -85,10 +102,9 @@ def test_a_guard_refuses_before_anything_changes(
         git(work, "switch", "-q", "--detach")
     _change(work)
     before = git(work, "rev-parse", "HEAD")
-    answer = _open(tmp_path, work, **args)
-    assert answer["ok"] is False and answer["action"] == "refused", answer
-    assert answer["refusal"]["code"] == code and answer["refusal"]["resend"] == "will_not_succeed"
-    assert answer["pushed"] is False and git(work, "rev-parse", "HEAD") == before
+    refusal = _refused(tmp_path, work, **args)
+    assert refusal.code == code and refusal.human_action
+    assert git(work, "rev-parse", "HEAD") == before
     assert _remote_heads(origin) == {"main"}
     assert not any(c.startswith("pr create") for c in fake.calls)
 
@@ -99,12 +115,12 @@ def test_policy_patterns_refuse_a_branch_or_title(
     fake_gh(tmp_path, monkeypatch, repo="octo/app")
     work, _ = checkout(tmp_path, "wip")
     policy_file(tmp_path, monkeypatch, '[open]\nbranch_pattern = "(feat|fix)/.+"\n')
-    answer = _open(tmp_path, work)
-    assert answer["refusal"]["code"] == "github.branch_pattern"
-    assert "git branch -m" in answer["refusal"]["message"]
+    refusal = _refused(tmp_path, work)
+    assert refusal.code == "github.branch_pattern"
+    assert "git branch -m" in refusal.human_action
     git(work, "branch", "-m", "fix/y")
     policy_file(tmp_path, monkeypatch, '[open]\ntitle_pattern = "[A-Z]+-[0-9]+: .+"\n')
-    assert _open(tmp_path, work)["refusal"]["code"] == "github.title_pattern"
+    assert _refused(tmp_path, work).code == "github.title_pattern"
 
 
 def test_something_staged_outside_the_paths_is_refused(
@@ -115,9 +131,9 @@ def test_something_staged_outside_the_paths_is_refused(
     _change(work)
     _change(work, "secret.env", "TOKEN=x\n")
     git(work, "add", "secret.env")
-    answer = _open(tmp_path, work, paths=["src/a.py"], commit_message="m")
-    assert answer["refusal"]["code"] == "github.index_not_clean"
-    assert "secret.env" in answer["refusal"]["message"]
+    refusal = _refused(tmp_path, work, paths=["src/a.py"], commit_message="m")
+    assert refusal.code == "github.index_not_clean"
+    assert "secret.env" in refusal.human_action
     assert git(work, "diff", "--cached", "--name-only") == "secret.env"  # untouched
 
 
@@ -127,7 +143,7 @@ def test_an_open_pr_is_edited_only_when_asked_and_only_if_ours(
     mine = pr(author="octo", body="kept")
     fake = fake_gh(tmp_path, monkeypatch, repo="octo/app", prs={"octo/app#7": mine})
     work, origin = checkout(tmp_path)
-    assert _open(tmp_path, work)["refusal"]["code"] == "github.pr_exists"
+    assert _refused(tmp_path, work).code == "github.pr_exists"
     assert _remote_heads(origin) == {"main"}
 
     answer = _open(tmp_path, work, update_existing=True, title="Add x, v2")
@@ -144,28 +160,33 @@ def test_someone_elses_pr_is_not_edited_unless_the_policy_allows(
 ) -> None:
     fake_gh(tmp_path, monkeypatch, repo="octo/app", prs={"octo/app#7": pr(author="ana")})
     work, origin = checkout(tmp_path)
-    answer = _open(tmp_path, work, update_existing=True)
-    assert answer["refusal"]["code"] == "github.pr_not_yours" and "ana" in answer["summary"]
+    refusal = _refused(tmp_path, work, update_existing=True)
+    assert refusal.code == "github.pr_not_yours" and "ana" in refusal.human_action
     assert _remote_heads(origin) == {"main"}
     policy_file(tmp_path, monkeypatch, "[open]\nedit_any_pr = true\n")
     assert _open(tmp_path, work, update_existing=True)["action"] == "updated"
 
 
-def test_a_failed_push_is_a_failed_answer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_failed_push_raises_failed_carrying_the_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     fake = fake_gh(tmp_path, monkeypatch, repo="octo/app")
     policy_file(tmp_path, monkeypatch, '[open]\nremote = "nowhere"\n')
     work, _ = checkout(tmp_path)
-    answer = _open(tmp_path, work)
+    failed, answer, _ = call_failed(
+        tmp_path, "github_pr_open", {"workdir": str(work), "title": "Add x"}
+    )
+    assert failed.code == "open_failed" and failed.detail.startswith("git push: exit")
     assert answer["ok"] is False and answer["action"] == "failed" and answer["pushed"] is False
-    assert answer["error"].startswith("git push: exit")
+    assert answer["error"] == failed.detail
     assert not any(c.startswith("pr create") for c in fake.calls)
 
 
 def test_not_a_checkout_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     fake_gh(tmp_path, monkeypatch)
     (tmp_path / "plain").mkdir()
-    answer = _open(tmp_path, tmp_path / "plain")
-    assert answer["refusal"]["code"] == "github.not_a_checkout"
+    refusal = _refused(tmp_path, tmp_path / "plain")
+    assert refusal.code == "github.not_a_checkout"
 
 
 def test_no_login_is_blocked_before_any_git_command(

@@ -115,7 +115,9 @@ must_appear_by = "CS-3"
 [[k]]
 id = "K-11"
 rows = ["WR-TERM-1"]
-docs = ["docs/agents.md", ".cursor/skills/trestle/SKILL.md", "docs/agent-console-mcp.md"]
+# The requirement's verbatim list named `.cursor/skills/trestle/SKILL.md`; that file was retired
+# (one-call chains design, Change 3) and its long-job guidance moved to `skills/trestle/SKILL.md`.
+docs = ["docs/agents.md", "skills/trestle/SKILL.md", "docs/agent-console-mcp.md"]
 docs_source = "requirements-workflow-runtime.md:542 (verbatim doc list)"
 confirm = "no"
 recorded_default = "n/a (not confirm-gated)"

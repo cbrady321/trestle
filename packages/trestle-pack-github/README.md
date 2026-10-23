@@ -90,7 +90,7 @@ edit_any_pr = false                 # true: update_existing may edit a PR someon
 - **Which checks count:** the branch's required checks (`gh pr checks --required`). When branch
   protection requires none, every reported check counts, so an unprotected branch is never
   passed by default. A skipped check passes and a cancelled one fails, as in branch protection.
-- **No checks:** `no_checks`, with `ok: false`. A waiting run first gives checks `grace_s` to
+- **No checks:** `no_checks`, which raises `Failed` (`checks_not_passed`). A waiting run first gives checks `grace_s` to
   appear.
 - **Push:** never the default branch, the base or a detached HEAD. Only the listed `paths` are
   committed, with the request's `commit_message`; there is no built-in message. Never a force
@@ -100,15 +100,21 @@ edit_any_pr = false                 # true: update_existing may edit a PR someon
 
 ## Answers and codes
 
-Every answer has a top-level `ok`, counts, one line per PR, and the full data attached.
+A successful answer has a top-level `ok: true`, counts, one line per PR, and the full data
+attached. A check that did not pass raises, so the run's outcome is `failed` or `blocked` and the
+recorded result (`ok: false`, the same shape) is in its summary. `github_pr_status` answers PRs
+that are only still `pending` (the wait ran out) as `failed` with `plugin.checks_pending`.
 
 | Code | Kind | Meaning |
 |---|---|---|
 | `plugin.github.gh_missing`, `plugin.github.git_missing` | `Blocked` | The tool is not on the service's PATH or in the usual places |
 | `plugin.github.gh_auth` | `Blocked` | gh has no login for the host, or it expired mid-run |
 | `plugin.github.policy_invalid` | `Blocked` | The policy file is missing, unreadable or invalid |
-| `refusal.code` in `github_pr_open`'s answer | `ok: false`, `action: "refused"`, `resend: "will_not_succeed"` | A guard said no before anything changed. The agent fixes the request: `github.default_branch`, `github.detached_head`, `github.head_is_base`, `github.branch_pattern`, `github.title_missing`, `github.title_pattern`, `github.commit_message_missing`, `github.paths_missing`, `github.path_outside_repo`, `github.index_not_clean`, `github.pr_exists`, `github.pr_not_yours`, `github.pr_from_fork`, `github.not_a_checkout` |
-| `action: "failed"` | `ok: false` | A command failed; `error` says which, and `pushed` says whether the push happened |
+| `plugin.<refusal code>` from `github_pr_open` | `Blocked`, `resend: "will_not_succeed"` | A guard said no before anything changed; `human_action` says what to change. The agent fixes the request: `github.default_branch`, `github.detached_head`, `github.head_is_base`, `github.branch_pattern`, `github.title_missing`, `github.title_pattern`, `github.commit_message_missing`, `github.paths_missing`, `github.path_outside_repo`, `github.index_not_clean`, `github.pr_exists`, `github.pr_not_yours`, `github.pr_from_fork`, `github.not_a_checkout` |
+| `plugin.open_failed` | `Failed` | A command in `github_pr_open` failed; the detail and the result's `error` say which, and `pushed` says whether the push happened |
+| `plugin.checks_not_passed` | `Failed` | `github_pr_status`: a PR's checks failed, there were none, or its status could not be read |
+| `plugin.checks_pending` | `Failed` | `github_pr_status`: checks were still pending when the wait ran out |
+| `plugin.comments_unread` | `Failed` | `github_pr_comments`: a PR's comments could not be read; the result has each PR's `error` |
 
 A bad target or an unreadable PR is a line with `verdict: "error"` (or `error`), never a
 crash.

@@ -17,7 +17,7 @@ TERMINAL = 'completion="terminal"'
 # doc -> (heading that opens its long-job section, regex of the next heading that closes it)
 DOCS = {
     "docs/agents.md": ("## Wait and long jobs", r"^(?:## |---$)"),
-    ".cursor/skills/trestle/SKILL.md": ("## Golden workflow", r"^## "),
+    "skills/trestle/SKILL.md": ("## The one move", r"^## "),
     "docs/agent-console-mcp.md": ("## 3. Wait, blocking, and honesty", r"^(?:## |---$)"),
 }
 

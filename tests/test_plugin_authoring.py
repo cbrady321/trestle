@@ -26,6 +26,7 @@ import shutil
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastmcp import Client
@@ -56,6 +57,7 @@ EXAMPLE_NAMES = {
     "artifact_status",
     "composite_workflow",
     "pack_wrapper",
+    "chain",
 }
 
 # What a plugin may import from Trestle, plus the test module its tests may import.
@@ -410,3 +412,73 @@ def test_served_under_the_restricted_profile(serve_home: Path) -> None:
     _check_common(served, restricted=True)
     for text in (served["index"], served["publishing"]):
         assert isinstance(text, str) and "runtime publishing is unavailable" in text
+
+
+# ---- `examples/chain`, scripted: each path the example promises, with no real tools
+
+
+def _chain() -> Any:
+    namespace: dict[str, Any] = {}
+    exec(compile(authoring.plugin_example("chain"), "chain.py", "exec"), namespace)  # noqa: S102
+    return namespace["chain"]
+
+
+def _chain_ctx(tmp_path: Path, failing: str | None = None, missing: str | None = None) -> Any:
+    from trestle.plugin.testing import FakeContext, exec_result
+
+    def handler(argv: list[str], **_: Any) -> Any:
+        if argv[0] == missing:
+            raise FileNotFoundError(argv[0])
+        if argv[0] == failing:
+            return exec_result(argv, returncode=1, stdout=f"{argv[0]}: 1 finding")
+        return exec_result(argv)
+
+    return FakeContext(tmp_path, exec_handler=handler)
+
+
+@pytest.mark.typed_records  # `chain` returns dataclass records (K-3/K-4)
+def test_chain_example_passes_with_three_steps(tmp_path: Path) -> None:
+    from trestle.plugin.testing import call_plugin
+
+    ctx = _chain_ctx(tmp_path)
+    verdict = call_plugin(_chain(), {"repo": str(tmp_path)}, ctx=ctx)
+    assert isinstance(verdict, dict) and verdict["ok"] is True
+    assert [s["name"] for s in verdict["steps"]] == ["lint", "types", "tests"]
+
+
+@pytest.mark.typed_records  # `chain` returns dataclass records (K-3/K-4)
+def test_chain_example_fails_on_lint_and_never_runs_the_tests(tmp_path: Path) -> None:
+    from trestle.plugin import Failed
+    from trestle.plugin.testing import call_plugin
+
+    ctx = _chain_ctx(tmp_path, failing="ruff")
+    with pytest.raises(Failed) as raised:
+        call_plugin(_chain(), {"repo": str(tmp_path)}, ctx=ctx)
+    assert raised.value.code == "lint_failed" and "1 finding" in raised.value.detail
+    assert [s.name for s in raised.value.result.steps] == ["lint", "types"]  # type: ignore[attr-defined]
+    assert all(call.argv[0] != "pytest" for call in ctx.exec_calls)
+
+
+@pytest.mark.typed_records  # `chain` returns dataclass records (K-3/K-4)
+def test_chain_example_is_blocked_on_a_missing_tool(tmp_path: Path) -> None:
+    from trestle.plugin import Blocked
+    from trestle.plugin.testing import call_plugin
+
+    with pytest.raises(Blocked) as raised:
+        call_plugin(_chain(), {"repo": str(tmp_path)}, ctx=_chain_ctx(tmp_path, missing="mypy"))
+    assert raised.value.code == "tool_missing" and "mypy" in raised.value.human_action
+
+
+@pytest.mark.typed_records  # `chain` returns dataclass records (K-3/K-4)
+def test_chain_example_stopped_before_the_tests_does_not_pass(tmp_path: Path) -> None:
+    from trestle.plugin.testing import call_plugin
+
+    ctx = _chain_ctx(tmp_path)
+    ctx.cancelled = True
+    verdict = call_plugin(_chain(), {"repo": str(tmp_path)}, ctx=ctx)
+    assert isinstance(verdict, dict) and verdict["ok"] is False and len(verdict["steps"]) == 2
+
+
+def test_server_instructions_name_the_chain_only_where_publishing_is_on() -> None:
+    assert "examples/chain" in authoring.server_instructions(restricted=False)
+    assert "examples/chain" not in authoring.server_instructions(restricted=True)

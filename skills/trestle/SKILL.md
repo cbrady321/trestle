@@ -1,213 +1,89 @@
 ---
 name: trestle
 description: >-
-  Get the most out of the Trestle service: run whole local jobs (tests, builds, Docker stacks,
-  migrations, pipelines) in one MCP call, chain dependent steps without polling, read bounded
-  answers instead of raw logs, and write plugins that run unattended. Use before running pytest
-  or any multi-step local job when the trestle tools (run, query, fetch, await_runs) are present;
-  triggers: run tests, test step, repo_tests, pipeline, trestle, plugin. Guidance: the
-  trestle://guide MCP resource.
+  Do local work through Trestle in one MCP call per objective. Use whenever the trestle MCP tools
+  (run, query, fetch, await_runs) are present and you are about to run tests, build, run a
+  pipeline, or do any multi-step local job: for several steps, write one plugin that chains them
+  (skill trestle-pack), publish it, and run it once. Triggers: run tests, build, pipeline, exec.
 ---
 
 # Trestle
 
-## Why Trestle exists
+## Why
 
-An agent that does local work through a shell pays three costs that grow with the job:
+Every tool call re-sends the whole conversation, so each extra call costs more than the last.
+A Trestle run carries the whole objective (every step, retry and check) under a deadline the
+service enforces. The answer is one verdict, not a log to read.
 
-- **Context.** Every tool call re-sends the whole conversation. A test run driven by hand (start
-  it, poll it, read the log, grep the failure, re-run) is five or ten calls, each carrying
-  everything before it, and the log itself floods the context with output nobody needed.
-- **Supervision.** A command started from a shell has no deadline, no clean stop and no record.
-  If it hangs, the agent waits; if the agent's session ends, the command is orphaned or lost;
-  if two agents start the same database, they collide.
-- **Judgment.** Raw output has to be read and interpreted every time, by the most expensive
-  reader there is, and the interpretation is lost when the conversation ends.
+## The one move
 
-Trestle moves that work out of the conversation. A **plugin** is a Python function that carries a
-whole objective (bring up the stack, migrate, run the tests, judge the result). The per-user
-**service** runs it with a deadline it enforces, kills everything the run started when it ends,
-serializes runs that share an environment, keeps the full evidence on disk, and answers with a
-short verdict. The agent makes one call and reads one answer.
+1. Name the objective, not the command: "the tests for these files pass", not `pytest a.py`.
+2. Is there a plugin for it? `list_plugins`, then `describe_plugin(plugin_id=...)` for its
+   arguments. If so, run it once: `run(plugin="<name>", args={...}, wait_ms=1000, completion="terminal")`.
+3. None, and the job has more than one step? Write one plugin that chains the steps (skill
+   `trestle-pack`, example `trestle://guide/examples/chain`), publish it with `publish_plugin`,
+   and run it once: two calls the first time, one after that. A chain of calls you repeat should
+   be a plugin.
 
-## How to think about using it
+**Long jobs:** one call with `completion="terminal"`; `await_runs` is only for bounded mode (see Waiting).
 
-Before any local work, ask four questions in order:
+**Where publishing is off** (no `publish_plugin` tool; the restricted profile): run the
+allowlisted plugins and order them with `after={"key": "<earlier key>", "when": "succeeded"}`.
+The held run starts only if the earlier one ended with a passing verdict (`answer.outcome` is
+`passed`); otherwise it ends `cancelled` with `execution.after_unmet`.
 
-1. **What is the objective, not the command?** "The tests touching these files pass" is an
-   objective; `pytest tests/a.py` is a step toward it. Find (`list_plugins`) or propose a plugin
-   that owns the whole objective, so the steps, retries and judgment happen inside one run.
-2. **Can it be one call?** Prefer `completion="terminal"` (the call returns the finished run).
-   Steps that depend on each other become one tree plugin, or runs chained with `after=`, sent
-   together, not calls you sequence while you wait.
-3. **What is the smallest thing I need back?** Usually the verdict (`answer.outcome`) and the
-   summary. Fetch a log slice only to fix a specific failure, never to confirm a pass.
-4. **Has it already been done?** Name the work with an `idempotency_key`; the same key and
-   arguments return the earlier answer instead of running again.
+## Finding things
 
-Then let the answer decide the next move: `passed` means move on; `failed` means read the named
-failure and fix it; `blocked` means a person must act, so report the action and stop; a refusal
-means the request was wrong and nothing ran. Never do the plugin's work in your own shell
-instead: if Trestle cannot do it, say so.
+The trestle tools being present means Trestle is present. If they are missing, or every call
+fails the same way (connection refused, HTTP 401), say what you saw and stop. Plugins and packs:
+`list_plugins`, then `describe_plugin`; names vary by service, so `repo_tests` and `exec` here are
+examples only. Limits and load (deadline ceiling, key ttl, free slots): `query(view="status")`.
+Everything else: the MCP resource `trestle://guide` (server `trestle`), one topic at a time.
 
-**Guide: `trestle://guide`.** An MCP resource on the Trestle server (read it with your host's
-resource reader, server `trestle`). It lists every guide resource, one line each: which query
-view to use, writing plugins and packs, the public API and complete examples. Read only the one
-you need. For people: [`docs/agents.md`](../../docs/agents.md) and
-[`docs/packs.md`](../../docs/packs.md).
+## Reading the answer
+
+Read `answer.outcome`, never `state` (`state` says only that the plugin process finished).
+
+- `passed`: move on. `failed`: read the named step (`answer.primary.code`, the summary) and fix it.
+- `blocked`: report `answer.primary.human_action` word for word and stop. Resend only after the
+  action is done and `resend` is `succeeds_after_action`.
+- `cancelled`, `timed_out`, `execution_error`: the check did not finish; report it.
+- A refusal (`admission.*`, `publication.*`) has no `run_id`: nothing ran, and its message says
+  what to fix. `retryable: true`: wait `retry_after_s`, then resend. `admission.environment_busy`
+  names the run holding the environment (`held_by`): send yours with
+  `after={"run": "<held_by>", "when": "ended"}`. All codes: `trestle://guide/plugins/refusals`.
+
+Smallest read first: the summary, then `query(view="last_error")`, then a log slice (`fetch` with
+a `tail` or `grep` window). Never read a log to confirm a pass.
+
+## Not doing it twice
+
+Give anything you might send again an `idempotency_key` (`"gate:<repo>:<commit>"`): the same key
+and arguments join the live run or return its answer. `query(view="run_by_key")` finds it again.
+
+## Waiting
+
+`completion="terminal"` holds the call until the run ends (at most `max_call_duration_s`). If your
+host cuts calls off sooner (some drop a silent call after 300 s), send with `wait_ms=1000`
+(bounded mode) and loop on `await_runs(run_ids=[...], timeout_ms=285000)`, or by key with
+`await_runs(run_ids=[], keys=[...])`. Never `await_runs` a run you already waited on terminally.
+
+Runs belong to the service: closing the chat never stops one. Cancel a run you did not send only
+when it is the `held_by` of your refusal and `query(view="run")` shows `session_ended: true`.
+
+## Fallbacks, last
+
+- `after=` orders your run against one you did not send or one already running:
+  `after={"run": "<run_id>", "when": "ended"}`. `when: "succeeded"` waits for a passing verdict.
+- `exec` runs one command no plugin owns:
+  `run(plugin="exec", args={"argv": ["git", "status"], "cwd": "<absolute dir>"}, wait_ms=1000, completion="terminal")`.
+  No shell is added (no pipes, globs or `&&`). Read `summary.ok`, `exit_code`, `stderr_tail`. If
+  `exec` is missing or not allowlisted, say so. A command you send again and again is a plugin.
 
 ## Ground rules
 
-1. **MCP only.** Use the ten Trestle tools. Never run `trestle`, or the work a plugin does, in
-   your own shell. If the tools are missing or the service does not answer (connection
-   refused, HTTP 401, every call failing the same way), say what you saw and stop: starting,
-   stopping and configuring the service is the operator's job. A message that says what "the
-   operator runs" is for the operator: report it word for word and stop. Never run it yourself,
-   through `exec` or any other way.
-2. **Plugins are not tools.** Run them with `run(plugin="name", args={...})`. `list_plugins`
-   names them; `describe_plugin(plugin_id=...)` gives the input schema and `deadline_s`.
-3. **Refusals are not runs.** An `admission.*` or `publication.*` answer has no `run_id`.
-   `retryable: false`: fix the request (the message says how) or report it. `retryable: true`:
-   wait `retry_after_s` seconds, then resend. `admission.environment_busy` also names the run
-   holding the environment (`held_by`, free by `free_at`): send yours with
-   `after={"run": "<held_by>", "when": "ended"}` instead of retrying.
-4. **Verdict from the answer.** Read `answer.outcome` (`passed`, `failed`, `blocked`, `cancelled`,
-   `timed_out`, `execution_error`), not `state`: `state` reads `succeeded` whenever the plugin
-   returned.
-5. **Ask the service.** `query(view="status")` (no params) says what this service allows and
-   how busy it is: version, profile, deadline ceiling, longest key ttl, free slots, live runs,
-   and the environments in use with who holds them.
-
-## Maximize impact: one call per objective
-
-| Instead of | Do |
-|---|---|
-| run, poll, read a log, re-run | `run(..., wait_ms=1000, completion="terminal")`: one call returns the finished run |
-| several commands you sequence by hand | one plugin that carries the objective (steps, branching, retries, final check), or a **tree plugin** whose parts declare `needs` and run in parallel |
-| waiting for step A, then calling step B | send B now with `after={"key": "<A's key>", "when": "succeeded", "match": {"ok": true}}`: it is held (no slot, no deadline spent) and starts only if A ends that way |
-| re-running a gate you already ran | `idempotency_key="gate:<name>:<commit>"` (and `idempotency_ttl_s` up to a week): the same key with the same args joins or returns the earlier answer |
-| reading the whole log to confirm a pass | the `summary` (`ok`, counts, one line per failure); fetch only the slice you need to fix something |
-| finding a run again later | `query(view="run_by_key", params={"idempotency_key": "..."})` |
-| holding a call open only to learn that a run ended, when your host offers a callback listener | `run(..., callback="http://127.0.0.1:<port>/<token>")`: one POST when the run ends (`trestle://guide/plugins/callbacks`); loopback only unless the operator allows more |
-
-**Chaining example** (plugin names illustrative: lint, then tests, then a Docker check, sent at once; each starts only if the
-previous one passed):
-
-```
-run(plugin="repo_lint",  args={...}, idempotency_key="pr42:lint:abc123")
-run(plugin="repo_tests", args={...}, idempotency_key="pr42:tests:abc123",
-    after={"key": "pr42:lint:abc123", "when": "succeeded", "match": {"ok": true}})
-run(plugin="docker_stack", args={...}, idempotency_key="pr42:stack:abc123",
-    after={"key": "pr42:tests:abc123", "when": "succeeded", "match": {"ok": true}},
-    wait_ms=1000, completion="terminal")
-```
-
-An unmet condition ends the held run `cancelled` with `execution.after_unmet`. If you find
-yourself repeating a chain of calls, propose a plugin (or a tree) for it instead.
-
-**Waiting.** `completion="terminal"` holds the call until the run ends (the run's deadline plus
-the finalization margin, `max_call_duration_s` on `describe_plugin`). If your host cuts tool calls
-off sooner (some drop a silent call after 300 s), send the run bounded (`wait_ms=1000`) and wait
-with `await_runs(run_ids=[...], timeout_ms=285000)` in a loop, or by key with
-`await_runs(run_ids=[], keys=[...])`. Never `await_runs` a run you already waited on terminally.
-
-## Running tests: `repo_tests`
-
-```
-run(plugin="repo_tests",
-    args={"repo": "<absolute repo root>",
-          "changed": ["<source files you changed>"],
-          "files": ["<extra test files or node ids>"]},
-    wait_ms=1000, completion="terminal")
-```
-
-- `changed` runs every test file that names a changed module, plus the repo's always-files.
-- Options: `since="HEAD~1"`, `frozen_at="<commit>"`, `keyword`, `pytest_args`, `max_failures`.
-- `suite=true` runs everything: for a gate, not an edit loop.
-- A test failure is a result (`ok: false`); a run state of `failed` or `worker_exit` means setup
-  broke: report it, do not retry in a loop. `exit_code` 5: nothing matched.
-- In reports give the `summary` line and `files_run`, never the raw output.
-
-## One-off commands: `exec`
-
-When no plugin owns the work and you need one command (a `git status`, a version check), run it
-through the `exec` plugin, never your shell:
-
-```
-run(plugin="exec", args={"argv": ["git", "status", "--short"], "cwd": "<absolute dir>"},
-    wait_ms=1000, completion="terminal")
-```
-
-- `argv` is a list and no shell is added: no pipes, globs or `&&`.
-- `cwd` must be under a directory the operator lists; outside it, `error` says
-  `cwd_outside_roots` and names them.
-- Read `summary.ok`, `exit_code`, `stderr_tail` and `stdout_tail` (the last 1,500 bytes of
-  each). `output` is the whole kept output: `fetch` it with `tail` or `grep`.
-- Give it a deadline that fits: `run(..., deadline_s=600)`.
-- If `exec` is not in `list_plugins`, or is `allowlisted: false`, Trestle does not run one-off
-  commands on this service. Say so. Whether you may run it yourself is your host's rule, not
-  Trestle's.
-- A command you run again and again should be a plugin: propose one.
-
-## When a run ends `blocked`
-
-A plugin that needs a person (an expired `aws sso login`, a missing tool) ends `blocked`:
-`answer.primary` carries `code` (a plugin's own codes read `plugin.<code>`), `human_action` and
-`resend`. Report the human action word for word and stop; resend the same request only after the
-action is done and `resend` is `succeeds_after_action`.
-
-## When your session ends
-
-Runs belong to the service, not to your session. Closing the chat, a reconnect or a host
-restart never stops one. Find it again by its key (`query(view="run_by_key")`, or
-`await_runs(run_ids=[], keys=[...])`). A live run whose session has ended shows
-`session_ended: true` in `query(view="recent_runs")` and `query(view="run")`. Cancel a run you
-did not send only when it blocks you (it is the `held_by` of your refusal) and its
-`session_ended` is true. Never cancel one as cleanup.
-
-## Retrieval, smallest first
-
-`fetch("<run_id>/result")` for the return value · `query(view="last_error")` for a failure ·
-`query(view="run_tail")` for stdout · `query(view="run_events")` for structured events ·
-`query(view="run_artifacts")` then `fetch` an artifact handle with a window (`head`, `tail`,
-`grep`, `range`). Handles are opaque (`r_…`, `art_…`), never filesystem paths. The view catalog is
-the MCP resource `trestle://views`.
-
-## Writing plugins that run unattended
-
-Learn the surface from the server, one small read at a time, never from Trestle's own source or
-`~/.trestle`; all of it is under `trestle://guide`. A pack's source (its wrappers and library) is
-the exception: read it with your file tools and adapt it when a pack does not fit, rather than
-falling back to the shell. Start at `trestle://guide/plugins`, a short
-index, and read only the topic you need (`trestle://guide/plugins/{topic}`).
-`trestle://guide/api` lists the public names, and `trestle://guide/api/{module}.{name}` gives
-one name's signature. `trestle://guide/examples/{name}` is a complete plugin that publishes
-as-is. Extend Trestle by writing or adapting a plugin or a pack, never by
-changing Trestle itself.
-
-- **`ctx.exec(argv, ...)`**, never `subprocess`; **`raise Blocked(code, human_action)`** when a
-  person must act, never a failure.
-- Loop on `ctx.cancelled` and `ctx.remaining()`; declare **`stop_grace=`** to write a last status.
-- Report progress by **re-attaching one artifact** (`status.md`), not many.
-- **Declare `packages=`** for every non-stdlib import; give every parameter and the return a
-  parameterized hint (`dict[str, str]`, not `dict`).
-- **Test without a server** (`trestle.plugin.testing`) before `publish_plugin`.
-- Settings come from the operator's `[plugins.env]`, never your shell.
-
-## When stuck
-
-| Symptom | Next step |
-|---|---|
-| `admission.plugin_not_found` | `list_plugins`; check `catalog_hint` |
-| `admission.invalid_args` | `describe_plugin`, then resend with matching args |
-| `admission.import_failed` | the plugin's package is missing from the service: report it |
-| `admission.environment_busy` | send yours with `after={"run": held_by, "when": "ended"}`; or, if `query(view="run", params={"run_id": held_by})` shows `session_ended: true` and it blocks you, `cancel(held_by)` |
-| `admission.queue_full`, `admission.home_busy` | wait `retry_after_s`, resend; again and again: report it |
-| `admission.service_draining` | the service is stopping or restarting: wait `retry_after_s`; if it then does not answer, report it and stop |
-| `admission.not_allowlisted` | `list_plugins` marks `allowlisted`; use one that is, or report it |
-| `admission.budget_does_not_fit`, `admission.ttl_out_of_range` | `query(view="status")` has `deadline_ceiling_s` and `max_ttl_s`; resend inside them |
-| `admission.credential_*` | the operator must act: report the message and stop |
-| `projection.not_finalized` | the run is still going: wait, then read |
-| `projection.not_owner` | another session's run, and that session is still open: leave it |
-| `execution.provenance_mismatch` | a declared package changed since publication: the operator republishes |
-| service down / tools missing | report it and stop |
+MCP only: never run `trestle`, or the work a plugin does, in your own shell. Plugins are not
+tools: run them with `run(plugin="<name>", ...)`. Starting, stopping and configuring the service
+is the operator's job. A message that says what "the operator runs" is for the operator: report
+it word for word and stop. Never run it yourself, through `exec` or any other way. Extend Trestle
+by writing plugins and packs (skill `trestle-pack`), never by changing it or reading its source.

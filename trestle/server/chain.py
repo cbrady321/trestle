@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from trestle.common import clock
+from trestle.common.outcome import OutcomeClass
+from trestle.server import answer
 from trestle.server.idempotency import read_entries
 from trestle.server.ledger import NON_TERMINAL_STATES, RunLedger, evidence_dir, ledger_path
 from trestle.server.recovery import find_run_dir
@@ -32,6 +34,7 @@ HOLD_SLACK_S = 20.0
 
 # why a held run ended unmet (the `reason` of `execution.after_unmet`; the message names the run)
 REASON_EARLIER_NOT_SUCCEEDED = "earlier_not_succeeded"
+REASON_EARLIER_NOT_PASSED = "earlier_not_passed"
 REASON_MATCH_MISMATCH = "match_mismatch"
 REASON_RESULT_ABSENT = "result_absent"
 REASON_RESULT_TOO_LARGE = "result_too_large"
@@ -193,6 +196,16 @@ def evaluate(home: Path, held_dir: Path, *, now: float | None = None) -> HeldVer
     if after.when == WHEN_SUCCEEDED:
         if state != "succeeded":
             return _unmet(REASON_EARLIER_NOT_SUCCEEDED, f"run {earlier} ended {state}")
+        # the verdict, not only the process: a run that raised `Failed` or `Blocked`, or whose
+        # tree answered so, ended `succeeded` but did not pass
+        verdict = answer.verdict_of(earlier_dir, state)
+        if verdict != OutcomeClass.PASSED.value:
+            persisted = answer.persisted_verdict(earlier_dir)
+            code = f" ({persisted[1]})" if persisted is not None and persisted[1] else ""
+            return _unmet(
+                REASON_EARLIER_NOT_PASSED,
+                f"run {earlier} ended succeeded, answer {verdict}{code}",
+            )
         if after.match is not None:
             return _match(earlier, earlier_dir, after.match)
     return RELEASE

@@ -16,6 +16,8 @@ from pathlib import Path
 import pytest
 from pack_wrappers import PYTHON, load_wrapper
 from tests.proof import tolerances
+from trestle.plugin import Failed
+from trestle.plugin._codec import encode
 from trestle.plugin.testing import FakeContext, call_plugin
 
 # K-3/K-4: these plugins take and return typed records (skipped if they are declined).
@@ -29,7 +31,10 @@ FIXTURES = PACKS / "tests" / "fixtures" / "legacy-errors"
 def _run(target: Path, work: Path) -> dict:
     ctx = FakeContext(work)
     args = {"path": str(target), "workdir": str(target.parent), "python": PYTHON}
-    result = call_plugin(load_wrapper("pytest_run").pytest_run, args, ctx=ctx)
+    try:
+        result = call_plugin(load_wrapper("pytest_run").pytest_run, args, ctx=ctx)
+    except Failed as failed:  # a failing or erroring suite: the same report, raised
+        result = json.loads(encode(failed.result))
     assert isinstance(result, dict)
     result["report"] = json.loads(ctx.artifacts["pytest-report.json"])
     return result

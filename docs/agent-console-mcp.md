@@ -1,7 +1,7 @@
 # Agent console MCP playbook
 
 **Audience:** coding agents (Cursor, Claude Desktop, other MCP hosts) reaching Trestle through the service's MCP endpoint.  
-**Quick start:** [`docs/agents.md`](agents.md) — scannable agent guide. **Cursor skill:** [`.cursor/skills/trestle/SKILL.md`](../.cursor/skills/trestle/SKILL.md).  
+**Quick start:** [`docs/agents.md`](agents.md) — scannable agent guide. **Agent skills:** [`skills/trestle/SKILL.md`](../skills/trestle/SKILL.md), [`skills/trestle-pack/SKILL.md`](../skills/trestle-pack/SKILL.md).  
 **Install / lockdown:** [`install.md`](install.md) · [`security.md`](security.md).  
 **SSOT for:** ten-tool workflow, console evidence retrieval, host wiring. Do not invent tools or views.
 
@@ -126,7 +126,7 @@ Long jobs: call `run(..., wait_ms=<above zero>, completion="terminal")`; one cal
 
 - `all`: when every run is terminal;
 - `any`: when at least one run is terminal;
-- `first_failure`: when any run's `state` is terminal and not `succeeded`, or when all are terminal. It reads `state`, not `answer`, so it does not wake on a workflow's `failed` or `blocked` answer; join workflow runs with `all` and read each `answer.outcome`.
+- `first_failure`: when any run has ended with a verdict (`answer.outcome`) other than `passed`, or when all are terminal. A plugin that raised `Failed` or `Blocked`, and a workflow that answered `failed` or `blocked`, wake it.
 
 When `timeout_ms` passes first, the views come back as they are, some still `queued`, `held` or `running`; call again. Any other `mode` is refused `projection.invalid_args`.
 
@@ -144,7 +144,7 @@ is listed in [`agents.md`](agents.md) (Run states).
 - The bound is the run's admitted deadline plus `clock.finalization_margin` (which covers the stop's grace and kill), not `wait_ms`; `wait_ms` above zero is accepted and ignored, `wait_ms<=0` is refused `admission.invalid_args`, and so is an unknown `completion` value. Nothing is admitted on a refusal.
 - Past that bound the call answers `projection.terminal_wait_exceeded` (`origin: projection`, not retryable); the run continues and `await_runs` joins it.
 - The wait runs off the server's event loop, so `cancel`, `query` and `fetch` on other runs (or the same one) are answered while a `terminal` call is held.
-- A finished run's `RunView` carries `outcome` (`class`, `code`, `identity`, `recovered`): one class from `passed | cancelled | timed_out | execution_error`, classified from how the plugin process ended. It never reads `failed` or `blocked` in this release; those appear only in `answer.outcome`. For a workflow plugin (one that calls `run_tree`) the verdict is `answer.outcome`: `state` and `outcome.class` read `succeeded` / `passed` whenever the plugin returned normally, even when `answer.outcome` is `failed` or `blocked`. See [`agents.md` § Large tasks: the tree](agents.md#large-tasks-the-tree).
+- A finished run's `RunView` carries `outcome` (`class`, `code`, `identity`, `recovered`): its `class` is the run's verdict, equal to `answer.outcome` (`passed | failed | blocked | cancelled | timed_out | execution_error`). For a run whose `state` is `succeeded` it is taken from the answer, with the answer's code; for any other state it is classified from how the plugin process ended. `state` reads `succeeded` whenever the plugin returned normally, even when the verdict is `failed` (the plugin raised `Failed`, or its tree answered so) or `blocked`. See [`agents.md` § Large tasks: the tree](agents.md#large-tasks-the-tree).
 - A finished run's `RunView` (and so the `run` and `await_runs` terminal responses) also carries `answer`, the one terminal answer, beside `state` and `outcome`; a run that has not ended has none. Its decisive keys are always present (`null`, never omitted): `outcome`, `root_stop`, `recovered`, `primary` (the node that decided, with its `code`, `human_action` and `resend`), `incomplete`, `error`, `cleanup` (`clean`, counts per disposition, `group_confirmed_gone`, `helpers_disclosed`, `lease_ended_unconfirmed`), `test_counts` and `detail`, then `listed_count` and `unconfirmed_count` (the full lengths) and the `listed` and `unconfirmed` entries that fit the run's summary budget. What does not fit is behind `detail`, a handle (`<run_id>/answer`) that `fetch` resolves to the full answer. The answer is recomputed from the run's durable record, never stored as a second authority.
 
 ### `run` honors `callback`
@@ -266,7 +266,7 @@ When to pick each view vs `fetch`: MCP resource **`trestle://views`**. That cata
 | `run_tail` | `run_id` | Wrapper stdout lines, oldest first |
 | `run_events` | `run_id` | Structured events; answers while running (`live: true`) |
 | `recent_runs` | — | Recent runs (paginated), each with `session_ended` |
-| `recent_failures` | — | Recent failed runs |
+| `recent_failures` | — | Recent runs whose verdict is not `passed` (rows carry `outcome`) |
 | `run_provenance` | `run_id` | Snapshot, hashes |
 | `run_artifacts` | `run_id` | The run's current artifact per name (attached and promoted); answers while running (`live: true`) |
 | `artifact_refs` | `artifact_id` | Producer / referrers |

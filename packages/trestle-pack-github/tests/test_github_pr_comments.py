@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from gh_wrappers import context, fake_gh, load_wrapper, policy_file, pr
+from gh_wrappers import call_failed, context, fake_gh, load_wrapper, policy_file, pr
 from trestle.plugin.testing import FakeContext, call_plugin
 
 # K-3/K-4: these plugins take and return typed records (skipped if they are declined).
@@ -94,8 +94,12 @@ def test_policy_names_company_bots_and_their_treatment(
     assert found["omitted"] == 4 and found["actions"]["code_change"] == 3
 
 
-def test_an_unknown_pr_is_an_error_line(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_an_unknown_pr_raises_failed_with_an_error_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     fake_gh(tmp_path, monkeypatch, prs={})
-    answer, _ = call(tmp_path, "github_pr_comments", {"targets": ["octo/app#5"]})
+    failed, answer, ctx = call_failed(tmp_path, "github_pr_comments", {"targets": ["octo/app#5"]})
+    assert failed.code == "comments_unread" and "1 of 1 PRs" in failed.detail
+    assert "github-pr-comments.json" in ctx.artifacts
     assert answer["ok"] is False and answer["counts"]["error"] == 1
     assert "Could not resolve" in answer["prs"][0]["error"]

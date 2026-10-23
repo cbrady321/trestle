@@ -9,19 +9,21 @@ The recipe, top to bottom (adapt it by copying this file and publishing it under
    <branch> --state open --json ...`, with `update_existing` `gh api user --jq .login`, and with
    `paths` `git diff --cached --name-only`;
 4. the guards (`branch_refusal`, `path_refusal`, `existing_pr_refusal`, `staged_outside`): any
-   refusal answers `ok: false`, `action: refused`, before anything changed;
+   refusal raises `Blocked(<refusal code>, <what to change>, resend="will_not_succeed")`,
+   before anything changed;
 5. with `paths`: `git add -A -- <paths>` and `git commit -q -m <commit_message>`;
 6. `git push --porcelain -u <remote> HEAD:refs/heads/<branch>` (never a force push);
 7. `gh pr create -R <repo> --head <branch> --base <base> --title .. --body-file .. [--draft]
    [--label ..] [--reviewer ..]`, or for the PR already open, `gh pr edit <n> ...`;
-8. answer what was done; a command that fails answers `action: failed` with its error.
+8. answer what was done; a command that fails raises `Failed("open_failed")` carrying the result
+   (`ok: false`, `action: failed`, its `error`, and `pushed`).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from trestle.plugin import Context, trestle
+from trestle.plugin import Blocked, Context, Failed, trestle
 
 from trestle_pack_github import (
     EXISTING_FIELDS,
@@ -70,8 +72,10 @@ def github_pr_open(
     `paths` (relative to the repository root) are committed first with `commit_message`; nothing
     else is. `body` defaults to the repository's PR template. `draft`, `labels` and `reviewers`
     add to the policy's. An open PR for the branch is pushed to and edited only with
-    `update_existing: true`, and only if the acting gh login opened it. A guard's refusal is
-    `ok: false`, `action: "refused"`, with `refusal.code` and what to change.
+    `update_existing: true`, and only if the acting gh login opened it. A guard's refusal
+    raises `Blocked` (its code, like `github.default_branch`; `human_action` says what to change;
+    `resend: will_not_succeed`) before anything changed. A command that fails raises `Failed`
+    (`open_failed`) with the result (`action: "failed"`, `error`, `pushed`).
     Example: {"workdir": "/abs/repo", "title": "Fix the parser", "paths": ["src/parse.py"],
     "commit_message": "Fix the parser on empty input"}
     """
@@ -82,18 +86,17 @@ def github_pr_open(
     require_login(gh)
     answer = OpenResult(ok=False, action="refused", summary="", policy=loaded.echo)
 
-    def refused(refusal: Refusal) -> OpenResult:
-        answer.refusal, answer.summary = refusal, f"refused ({refusal.code}): {refusal.message}"
-        return answer
+    def refused(refusal: Refusal) -> Blocked:
+        return Blocked(refusal.code, refusal.message, resend=refusal.resend)
 
-    def failed(error: str) -> OpenResult:
+    def failed(error: str) -> Failed:
         answer.action, answer.error, answer.summary = "failed", error, f"failed: {error}"
-        return answer
+        return Failed("open_failed", error, answer)
 
     git = CtxGit(ctx, workdir)
     top = git.run(["rev-parse", "--show-toplevel"])
     if not top.ok:
-        return refused(Refusal("github.not_a_checkout", f"{workdir} is not a git checkout"))
+        raise refused(Refusal("github.not_a_checkout", f"{workdir} is not a git checkout"))
     root = Path(top.stdout.strip())
     git = CtxGit(ctx, root, path=git.path)
     head = git.run(["symbolic-ref", "--quiet", "--short", "HEAD"])
@@ -106,13 +109,13 @@ def github_pr_open(
         slug = f"{gh.host}/{repo['nameWithOwner']}"
         default = str(repo["defaultBranchRef"]["name"])
     except (GhError, KeyError, TypeError) as exc:
-        return failed(str(exc))
+        raise failed(str(exc)) from exc
     answer.branch, answer.base = branch or "", base or default
     refusal = branch_refusal(
         branch, default=default, base=answer.base, title=title, policy=policy
     ) or path_refusal(paths, commit_message)
     if refusal is not None or branch is None:
-        return refused(refusal or Refusal("github.detached_head", "HEAD is detached"))
+        raise refused(refusal or Refusal("github.detached_head", "HEAD is detached"))
 
     try:
         listed = json_of(gh.run(["pr", "list", "-R", slug, "--head", branch, "--state", "open",
@@ -122,17 +125,17 @@ def github_pr_open(
             me = gh.run(["api", "user", "--hostname", gh.host, "--jq", ".login"])
             login = me.stdout.strip() if me.ok else None
     except GhError as exc:
-        return failed(str(exc))
+        raise failed(str(exc)) from exc
     refusal, existing = existing_pr_refusal(
         listed, update_existing=update_existing, login=login, policy=policy
     )
     if refusal is not None:
-        return refused(refusal)
+        raise refused(refusal)
     if paths:
         staged = git.run(["diff", "--cached", "--name-only"]).stdout.splitlines()
         outside = staged_outside(staged, paths)
         if outside:
-            return refused(Refusal(
+            raise refused(Refusal(
                 "github.index_not_clean",
                 f"already staged and not in `paths`: {', '.join(outside[:10])}. Unstage them "
                 "(`git restore --staged <file>`) or list them in `paths`, then resend.",
@@ -142,18 +145,18 @@ def github_pr_open(
     if paths:
         added = git.run(["add", "-A", "--", *paths])
         if not added.ok:
-            return failed(failure(added, "git add"))
+            raise failed(failure(added, "git add"))
         answer.committed = git.run(["diff", "--cached", "--name-only"]).stdout.splitlines()
         if answer.committed:
             done = git.run(["commit", "-q", "-m", commit_message or ""])
             if not done.ok:
-                return failed(failure(done, "git commit"))
+                raise failed(failure(done, "git commit"))
     answer.commit = git.run(["rev-parse", "HEAD"]).stdout.strip()
 
     backend = GhOpenBackend(gh, git)
     pushed = backend.push(policy.remote, branch)
     if not pushed.ok:
-        return failed(failure(pushed, "git push"))
+        raise failed(failure(pushed, "git push"))
     answer.pushed = True
 
     body_file = None
@@ -173,7 +176,7 @@ def github_pr_open(
         done = backend.create(spec)
         answer.action, answer.url = "created", created_url(done)
     if not done.ok:
-        return failed(failure(done, f"gh pr {'edit' if existing else 'create'}"))
+        raise failed(failure(done, f"gh pr {'edit' if existing else 'create'}"))
     number = answer.url.rstrip("/").rsplit("/", 1)[-1]
     answer.number = int(number) if number.isdigit() else None
     answer.ok = True

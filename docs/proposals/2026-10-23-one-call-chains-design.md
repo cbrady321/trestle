@@ -51,7 +51,7 @@ as the fallback where publishing is turned off.
 | Need | Already there |
 |---|---|
 | Order and conditions | Python: `r = ctx.exec(lint)`, then `if r.ok: ...` |
-| Steps side by side | `concurrent.futures` around `ctx.exec`. The context is thread-safe (`guide/plugins/context`), and every process belongs to the run's stop scope |
+| Steps side by side | `concurrent.futures` around `ctx.exec`. The context is thread-safe (`guide/plugins/context`), and a cancel or the deadline stops the processes the run started, within the containment boundaries in `docs/security.md` |
 | Deadline and clean stop | `@trestle(deadline=)`, `ctx.remaining()`, `ctx.cancelled`, `stop_grace` |
 | A person must act | `raise Blocked(code, human_action)` gives `outcome: "blocked"` |
 | A record for each step | the result, plus `ctx.event("chain_step", ...)` for live progress (`step` is a reserved kind) |
@@ -178,9 +178,10 @@ and passes it as `result=`.
 | `trestle-pack-pytest/plugins/pytest_run.py` | `Failed` for failing or erroring tests | `tests_failed` |
 | `trestle-pack-docker/plugins/docker_stack.py` | `Failed` when a wave or the config step fails | `stack_failed` |
 | `trestle-pack-migrate/plugins/migrate_apply.py` | `Failed` when the upgrade fails | `migration_failed` |
-| `trestle-pack-github/plugins/github_pr_status.py` | `Failed` when a PR's checks did not pass | `checks_not_passed` |
+| `trestle-pack-github/plugins/github_pr_status.py` | `Failed` when a PR's checks did not pass, or are still pending when the wait runs out | `checks_not_passed`, `checks_pending` |
 | `trestle-pack-github/plugins/github_pr_comments.py` | `Failed` when a PR's comments could not be read | `comments_unread` |
 | `trestle-pack-github/plugins/github_pr_open.py` | `Blocked` for a policy refusal (`resend: "will_not_succeed"`, the human action is what to change); `Failed` when a push or the PR call fails after the checks | `plugin.<refusal code>` / `open_failed` |
+| `trestle-pack-stack/plugins/stack_pipeline.py` (found while building) | `Failed` for the stage that failed | `docker_failed`, `migrate_failed`, `pytest_failed` |
 
 The codes are provisional: each is settled against the plugin's docstring and tests when it is
 switched, and the docstrings that say "never a raised error" are rewritten. Ariadne's

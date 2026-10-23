@@ -2,7 +2,7 @@
 
 **Audience:** coding agents (Cursor, Claude Desktop, other MCP hosts)  
 **Install:** [`docs/install.md`](install.md) · **Overview:** [`docs/overview.md`](overview.md) · **Security:** [`docs/security.md`](security.md)  
-**Agent skill:** [`skills/trestle/SKILL.md`](../skills/trestle/SKILL.md) (one call per objective, chaining, `blocked` runs) · **Cursor skill:** [`.cursor/skills/trestle/SKILL.md`](../.cursor/skills/trestle/SKILL.md)  
+**Agent skills:** [`skills/trestle/SKILL.md`](../skills/trestle/SKILL.md) (one call per objective) · [`skills/trestle-pack/SKILL.md`](../skills/trestle-pack/SKILL.md) (write the plugin that chains the steps)  
 **Full reference:** [`docs/agent-console-mcp.md`](agent-console-mcp.md)  
 **Plugins:** [`docs/plugins.md`](plugins.md) · **Packs:** [`docs/packs.md`](packs.md)
 
@@ -232,7 +232,7 @@ abnormally is `worker_exit`; a run whose server died is `interrupted`.
 
 **`completion` (optional, default `"bounded"`, which is everything above unchanged).** Pass `completion="terminal"` to make one `run` call return only a finished run: the response follows the run's finalized terminal row (evidence finalized, then `succeeded`, `failed`, `cancelled`, `timed_out` or `interrupted`), never a `running` frame. The call is bounded by the run's own deadline plus a published finalization margin, not by `wait_ms`: a `wait_ms` above zero is accepted and ignored, and `wait_ms=0` (or below) is refused `admission.invalid_args` because a terminal call has to wait; so is any `completion` value other than `bounded` or `terminal`. If the run is somehow not terminal by that bound, the call answers `projection.terminal_wait_exceeded` (a refusal, not a run state; the run itself is unaffected and `await_runs` still joins it). While a `terminal` call is held, other calls (`cancel`, `query`, `await_runs`) are still answered.
 
-**One class per finished run.** A finished run carries one `answer` (the terminal answer: outcome, the deciding node as `primary`, `cleanup`, and the rest of the nodes in `listed`, bounded by the run's summary budget with the remainder behind `answer.detail`); see `docs/agent-console-mcp.md`. `answer.outcome` is the run's class, one of `passed`, `failed`, `blocked`, `cancelled`, `timed_out`, `execution_error`. A finished `RunView` also carries `outcome: {class, code, identity, recovered}`. Its `class` is classified from how the plugin process ended, so it is one of `passed`, `cancelled`, `timed_out`, `execution_error` and never reads `failed` or `blocked` in this release. `code` is the `execution.*` code for an `execution_error` and `null` for the others; `state` keeps its meaning underneath. For a plain plugin they agree, except that a plain plugin which raises `Blocked` reads `answer.outcome: "blocked"` with `answer.primary.human_action` (its code `plugin.<code>`) while `outcome.class` reads `passed`. For a workflow plugin (one that calls `run_tree`) they can disagree too. Always read `answer.outcome` (see [Large tasks: the tree](#large-tasks-the-tree)); for `blocked`, report the human action and stop.
+**One class per finished run.** A finished run carries one `answer` (the terminal answer: outcome, the deciding node as `primary`, `cleanup`, and the rest of the nodes in `listed`, bounded by the run's summary budget with the remainder behind `answer.detail`); see `docs/agent-console-mcp.md`. `answer.outcome` is the run's class, one of `passed`, `failed`, `blocked`, `cancelled`, `timed_out`, `execution_error`. A finished `RunView` also carries `outcome: {class, code, identity, recovered}`. Its `class` is the run's verdict, the same as `answer.outcome`: for a run whose `state` is `succeeded` it is taken from the answer, so a plugin that raised `Failed` or `Blocked`, or whose tree answered `failed` or `blocked`, reads `failed` or `blocked` there too, with the answer's code (`plugin.<code>`, or the tree node's). For every other state it is classified from how the plugin process ended (`cancelled`, `timed_out`, `execution_error`), and `code` is the `execution.*` code for an `execution_error` and `null` for the others. `state` keeps its meaning underneath: how the plugin process ended. A plain plugin raises `Failed(code, detail, result=...)` when the thing it checked is wrong (tests failed, a step found problems) and `Blocked(code, human_action)` when a person must act; both end `succeeded` with that verdict (`plugins.md`). Always read `answer.outcome` (see [Large tasks: the tree](#large-tasks-the-tree)); for `blocked`, report the human action and stop.
 
 <!-- K-8 -->
 ### A succeeded run leaves no attributable process or run-created container behind (K-8)
@@ -455,11 +455,11 @@ choice and that one realization, never the one not chosen.
 3. **Read `answer`, not `state`.**
 
    > For any plugin that calls `run_tree` (a single leaf or a tree), the verdict is `answer.outcome`.
-   > `state` and `outcome.class` describe the plugin process: they read `succeeded` / `passed`
-   > whenever the plugin returned normally, even when `answer.outcome` is `failed` or `blocked`.
-   > `outcome.class` never reads `failed` or `blocked` in this release. `await_runs(mode="first_failure")`
-   > keys on `state`, so it does not wake on a workflow's `failed` or `blocked` answer; join such
-   > runs with `mode="all"` and read each `answer.outcome`.
+   > `state` describes the plugin process: it reads `succeeded` whenever the plugin returned
+   > normally, even when `answer.outcome` is `failed` or `blocked`. `outcome.class` follows
+   > `answer.outcome`. Everything in Trestle that orders, waits on or lists runs by success reads
+   > the verdict: `after` with `when: "succeeded"`, `await_runs(mode="first_failure")` and
+   > `query(view="recent_failures")`.
 
    `answer.outcome` is one of `passed`, `failed`, `blocked`, `timed_out`, `cancelled`,
    `execution_error`. `answer.primary` is the node that decided it: `path` lists the node names
@@ -505,7 +505,7 @@ run → {"run_id": "r_…", "state": "succeeded",
            {"path": ["package"], "listing": "not_started", "node_class": null, …}], …}}
 ```
 
-`state` and `outcome.class` say the plugin returned normally; `answer.outcome` says the tree
+`state` says the plugin returned normally; `answer.outcome` (and `outcome.class` with it) says the tree
 failed. `lint` decided it, `build` passed and what it created was released, and `package` never
 started because it needs `lint`. Had `lint` returned `Blocked(code, human_action, resend)`, the
 answer would read `blocked`, with that `human_action` and `resend` on `primary`. Had `lint` raised
@@ -550,9 +550,9 @@ independent runs with `run(plugin="…", args={…}, wait_ms=0)` (each returns i
 `queued` or `running`) and join them with `await_runs(run_ids=[…], mode=…, timeout_ms=…)`:
 - `mode="all"` returns when every run is terminal;
 - `mode="any"` returns when at least one is;
-- `mode="first_failure"` returns when any run's `state` is terminal and not `succeeded`, or when
-  all are terminal. It reads `state`, not `answer`, so it misses a workflow's `failed` or
-  `blocked`; use `all` for workflow runs and read each `answer.outcome`.
+- `mode="first_failure"` returns when any run has ended with a verdict (`answer.outcome`) other
+  than `passed`, or when all are terminal. A plugin that raised `Failed` or `Blocked`, and a
+  workflow that answered `failed` or `blocked`, wake it.
 
 When `timeout_ms` passes first, the call returns the views as they are (some still running): call
 it again. An unknown id fails the whole call. Cancel runs one `run_id` at a time. The service runs
@@ -677,7 +677,7 @@ See [`plugins.md`](plugins.md) for authoring, filesystem drop-in, and `publish_p
 
 `run(..., after={"key": "gate:M5:4c091dca", "when": "succeeded", "match": {"ok": true}})` admits the run at once into the state `held`: it takes no slot and spends none of its deadline. When the earlier run ends, the held run joins its server's queue if the condition holds, or ends `cancelled` with `error.code` `execution.after_unmet` (its message names the earlier run and the reason) if not.
 
-- `after` takes exactly one of `run` (a run id) or `key` (an idempotency key, resolved to its newest run; no such run is `admission.after_unknown`), `when` (`succeeded`, the default, or `ended`: any terminal state) and `match` (equality on top-level fields of the earlier run's `result.json`; refused `admission.invalid_args` with `when: "ended"`). A `result.json` that is absent, too large or not an object is unmet, each with its own reason.
+- `after` takes exactly one of `run` (a run id) or `key` (an idempotency key, resolved to its newest run; no such run is `admission.after_unknown`), `when` (`succeeded`, the default: the earlier run ended `succeeded` **and** its verdict `answer.outcome` is `passed`, so a run that raised `Failed` or `Blocked` does not release it; or `ended`: any terminal state) and `match` (equality on top-level fields of the earlier run's `result.json`; refused `admission.invalid_args` with `when: "ended"`). A `result.json` that is absent, too large or not an object is unmet, each with its own reason.
 - A held run shows `state: "held"` and `after_run_id`; `cancel` accepts it. `run(completion="terminal")` waits through the hold and the run. A hold never outlives the earlier run's deadline plus its margin and 20 s (`hold_expired`). If the earlier run's server dies it ends `interrupted`, so `when: "succeeded"` is unmet; a re-sent repeatable key starts a new run and does not revive the held one.
 - Chains work (C after B after A). `after` is part of a key's identity beside the arguments: re-sending a key with another `after` is `admission.idempotency_key_conflict`. Held runs count against the server's `[operator] max_held_runs` (256), not `queue_depth`.
 
@@ -695,8 +695,8 @@ See [`plugins.md`](plugins.md) for authoring, filesystem drop-in, and `publish_p
   {"type": "trestle.run.ended", "version": 1, "delivery_id": "r_7f3c…:ended", "attempt": 1,
    "sent_at": "2026-10-23T10:00:03Z",
    "run": {"run_id": "r_7f3c…", "plugin": "repo_tests", "idempotency_key": "tests:abc",
-           "state": "failed", "outcome_class": "execution_error", "answer_outcome": "failed",
-           "error": {"code": "execution.worker_exit", "message": "…"},
+           "state": "succeeded", "outcome_class": "failed", "answer_outcome": "failed",
+           "error": null,
            "started_at": "2026-10-23T09:20:00Z", "ended_at": "2026-10-23T10:00:02Z"}}
   ```
 
@@ -762,6 +762,6 @@ boundaries are outside that guarantee (full statement in
 | [`security.md`](security.md) | Local-only lockdown |
 | [`plugins.md`](plugins.md) | Write and publish plugins |
 | [`agent-console-mcp.md`](agent-console-mcp.md) | Full playbook — mis-invocation table, smoke checks |
-| [`.cursor/skills/trestle/SKILL.md`](../.cursor/skills/trestle/SKILL.md) | Cursor project skill — compact rules |
+| [`skills/trestle/SKILL.md`](../skills/trestle/SKILL.md), [`skills/trestle-pack/SKILL.md`](../skills/trestle-pack/SKILL.md) | Agent skills: using Trestle in one call; writing plugins and packs |
 | [`packs.md`](packs.md) | Workflow packs |
 | [`overview.md`](overview.md) | Product overview |

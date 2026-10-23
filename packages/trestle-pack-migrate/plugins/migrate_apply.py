@@ -12,8 +12,10 @@ The recipe, top to bottom (adapt it by copying this file and publishing it under
    variable, never on the command line: name an operator variable with `database_url_env` (set
    under `[plugins.env]`) for a URL that holds a password.
 
-Each command runs with `ctx.exec`, in `workdir`, with PYTHONPATH unset. A failed migration is
-`ok: false` with the end of the tool's output.
+Each command runs with `ctx.exec`, in `workdir`, with PYTHONPATH unset. A failed migration raises
+`Failed("migration_failed", ...)` carrying the `MigrateResult` (`ok: false`, the end of the tool's
+output in `error`); a request that cannot run at all (no config, no migrations folder, no
+database URL) raises `Failed("migration_not_run", ...)`.
 """
 
 from __future__ import annotations
@@ -31,7 +33,7 @@ from trestle_pack_migrate import (
     tail,
 )
 
-from trestle.plugin import Blocked, Context, trestle
+from trestle.plugin import Blocked, Context, Failed, trestle
 
 YOYO_APPLY = """\
 import json, os, sys
@@ -56,6 +58,12 @@ def missing_tool(stderr: str, tool: str, package: str, interpreter: str) -> None
         )
 
 
+def not_run(result: MigrateResult, error: str) -> Failed:
+    """The `Failed` for a request that cannot run: nothing was applied."""
+    result.error = error
+    return Failed("migration_not_run", error, result)
+
+
 @trestle(
     packages=["trestle_pack_migrate"], summary_fields=["ok", "before", "after", "applied", "error"]
 )
@@ -76,7 +84,9 @@ def migrate_apply(
     `target`. Yoyo needs `migrations_dir` and the database URL: `database_url_env` names an
     environment variable that holds it (use this for any URL with a password), or
     `database_url` gives it directly. `workdir` is the project root (default: the config's
-    folder for an absolute `config`, else the current directory).
+    folder for an absolute `config`, else the current directory). A failed upgrade raises
+    `Failed` (`migration_failed`) with the result (`ok: false`, `error`); a request missing
+    its config, migrations folder or URL raises `Failed` (`migration_not_run`).
     """
     if config and Path(config).is_absolute() and not workdir:
         root = Path(config).parent
@@ -89,8 +99,9 @@ def migrate_apply(
     if backend == "alembic":
         result.target = target
         if not config or not resolve_under(root, config).is_file():
-            result.error = f"alembic needs config=<path to alembic.ini>; not found: {config!r}"
-            return result
+            raise not_run(
+                result, f"alembic needs config=<path to alembic.ini>; not found: {config!r}"
+            )
         alembic = [interpreter, "-m", "alembic", "-c", str(resolve_under(root, config))]
         before = ctx.exec([*alembic, "current"], cwd=root, timeout=120, env=NO_ENV, output=None)
         missing_tool(before.stderr, "alembic", "alembic", interpreter)
@@ -104,8 +115,9 @@ def migrate_apply(
         result.error = None if upgrade.ok else tail(upgrade.stderr or upgrade.stdout)
     else:
         if not migrations_dir or not resolve_under(root, migrations_dir).is_dir():
-            result.error = f"yoyo needs migrations_dir=<folder>; not found: {migrations_dir!r}"
-            return result
+            raise not_run(
+                result, f"yoyo needs migrations_dir=<folder>; not found: {migrations_dir!r}"
+            )
         if database_url_env:
             if not os.environ.get(database_url_env):
                 raise Blocked(
@@ -117,8 +129,7 @@ def migrate_apply(
         elif database_url:
             variable, env = URL_VARIABLE, {**NO_ENV, URL_VARIABLE: database_url}
         else:
-            result.error = "yoyo needs database_url_env (or database_url)"
-            return result
+            raise not_run(result, "yoyo needs database_url_env (or database_url)")
         argv = [interpreter, "-c", YOYO_APPLY, variable, str(resolve_under(root, migrations_dir))]
         done = ctx.exec(argv, cwd=root, env=env, output="yoyo-apply.log")
         missing_tool(done.stderr, "yoyo", "yoyo-migrations", interpreter)
@@ -129,4 +140,10 @@ def migrate_apply(
             result.error = tail(done.stderr or done.stdout)
 
     ctx.log(f"migrate: {'complete' if result.ok else 'failed'} ({backend})")
+    if not result.ok:
+        raise Failed(
+            "migration_failed",
+            f"{backend} upgrade failed: {tail(result.error or 'no output', 300)}",
+            result,
+        )
     return result

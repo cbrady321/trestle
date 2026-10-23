@@ -40,6 +40,26 @@ class Blocked(Exception):  # noqa: N818 - the outcome's name, as the workflow `B
         self.resend = resend
 
 
+class Failed(Exception):  # noqa: N818 - the outcome's name, as the workflow `Failed` step is
+    """Raise from a plain plugin when the thing it checked is wrong: tests failed, a lint step
+    found problems, a stack did not come up. The run ends with outcome `failed`, and its answer
+    carries `code` (recorded as `plugin.<code>`, like `Blocked`'s). `detail` says what failed; it
+    is kept in the run's record, not in the answer. `result` (optional) is recorded exactly as a
+    return value would be, so the run's summary still shows it (for example a table of steps)."""
+
+    def __init__(self, code: str, detail: str, result: object = None) -> None:
+        if not isinstance(code, str) or not _BLOCKED_CODE.fullmatch(code):
+            raise ValueError(
+                f"Failed code {code!r}: lower-case words joined by '_' or '.', like 'tests_failed'"
+            )
+        if not isinstance(detail, str) or not detail.strip():
+            raise ValueError("Failed needs a detail saying what failed")
+        super().__init__(f"{code}: {detail}")
+        self.code = code
+        self.detail = detail
+        self.result = result
+
+
 @dataclass(frozen=True)
 class ExecResult:
     """What `Context.exec` returns for one command.

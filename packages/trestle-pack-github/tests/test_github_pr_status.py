@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from gh_wrappers import context, fake_gh, load_wrapper, policy_file, pr
+from gh_wrappers import call_failed, context, fake_gh, load_wrapper, policy_file, pr
 from trestle.plugin import Blocked
 from trestle.plugin.testing import FakeContext, call_plugin
 
@@ -52,7 +52,8 @@ def test_with_no_required_checks_every_check_counts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake_gh(tmp_path, monkeypatch, prs={"octo/app#12": pr(checks=[[PASS, LINT_FAIL]])})
-    answer, _ = call(tmp_path, "github_pr_status", {"targets": ["octo/app#12"]})
+    failed, answer, _ = call_failed(tmp_path, "github_pr_status", {"targets": ["octo/app#12"]})
+    assert failed.code == "checks_not_passed" and "1 of 1 PRs" in failed.detail
     status = answer["prs"][0]
     assert answer["ok"] is False and status["verdict"] == "failed" and status["counted"] == "all"
     assert status["failing"] == [{"name": "lint", "bucket": "fail", "link": "https://ci/2"}]
@@ -63,7 +64,8 @@ def test_no_checks_is_its_own_verdict_unless_the_policy_passes_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake_gh(tmp_path, monkeypatch, prs={"octo/app#12": pr(checks=[[]])})
-    answer, _ = call(tmp_path, "github_pr_status", {"targets": ["octo/app#12"]})
+    failed, answer, _ = call_failed(tmp_path, "github_pr_status", {"targets": ["octo/app#12"]})
+    assert failed.code == "checks_not_passed" and "1 no_checks" in failed.detail
     assert answer["ok"] is False and answer["counts"] == {"no_checks": 1}
     policy_file(tmp_path, monkeypatch, '[checks]\nno_checks = "pass"\n')
     answer, _ = call(tmp_path, "github_pr_status", {"targets": ["octo/app#12"]})
@@ -77,7 +79,7 @@ def test_policy_add_and_drop_change_what_counts(
         "octo/app#12": pr(checks=[[PASS, LINT_FAIL]], required=["build", "lint"]),
     })  # fmt: skip
     policy_file(tmp_path, monkeypatch, '[checks]\ndrop = ["lint"]\nadd = ["e2e"]\n')
-    answer, _ = call(tmp_path, "github_pr_status", {"targets": ["octo/app#12"]})
+    _, answer, _ = call_failed(tmp_path, "github_pr_status", {"targets": ["octo/app#12"]})
     status = answer["prs"][0]
     assert status["verdict"] == "failed" and status["missing"] == ["e2e"]  # never reported
 
@@ -103,22 +105,24 @@ def test_wait_gives_checks_their_grace_before_no_checks(
     assert answer["ok"] is True and answer["waited_s"] == 30.0
 
 
-def test_wait_stops_at_timeout_with_the_pr_pending(
+def test_wait_stops_at_timeout_with_the_pr_pending_which_does_not_pass(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake_gh(tmp_path, monkeypatch, prs={"octo/app#12": pr(checks=[[PENDING]])})
     args = {"targets": ["octo/app#12"], "wait": True, "timeout_s": 40}
-    answer, _ = call(tmp_path, "github_pr_status", args)
+    failed, answer, _ = call_failed(tmp_path, "github_pr_status", args)
+    assert failed.code == "checks_pending" and "1 of 1 PRs" in failed.detail
     assert answer["ok"] is False and answer["counts"] == {"pending": 1}
     assert answer["waited_s"] == 30.0
 
 
-def test_bad_and_missing_targets_are_lines_not_crashes(
+def test_bad_and_missing_targets_are_lines_in_a_failed_report(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake_gh(tmp_path, monkeypatch, prs={"octo/app#12": pr(checks=[[PASS]])})
     targets = ["octo/app#12", "octo/app#99", "not a pr", "https://gitlab.com/a/b/pull/1"]
-    answer, ctx = call(tmp_path, "github_pr_status", {"targets": targets})
+    failed, answer, ctx = call_failed(tmp_path, "github_pr_status", {"targets": targets})
+    assert failed.code == "checks_not_passed" and "3 of 4 PRs" in failed.detail
     assert answer["counts"] == {"passed": 1, "error": 3} and answer["ok"] is False
     errors = [p["error"] for p in answer["prs"][1:]]
     assert "gh pr view: exit 1" in errors[0]

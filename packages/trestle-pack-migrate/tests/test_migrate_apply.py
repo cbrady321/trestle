@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import sqlite3
 import subprocess
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
 from migrate_pack_testing import PYTHON, context, load_wrapper
+from trestle_pack_migrate import MigrateResult
 
-from trestle.plugin import Blocked
+from trestle.plugin import Blocked, Failed
 from trestle.plugin.testing import call_plugin
 
 # K-3/K-4: these plugins take and return typed records (skipped if they are declined).
@@ -44,6 +46,15 @@ def _migrate(tmp_path: Path, args: dict) -> dict:
     )
     assert isinstance(answer, dict)
     return answer
+
+
+def _fails(tmp_path: Path, args: dict) -> tuple[Failed, dict]:
+    """Apply a migration that must fail: the `Failed` raised and its result as a dict."""
+    with pytest.raises(Failed) as raised:
+        _migrate(tmp_path, args)
+    result = raised.value.result
+    assert isinstance(result, MigrateResult)
+    return raised.value, asdict(result)
 
 
 def _tables(db: Path) -> list[str]:
@@ -86,14 +97,15 @@ def test_yoyo_url_from_an_operator_variable(
 
 
 def test_yoyo_bad_input_is_an_answer(tmp_path: Path) -> None:
-    missing = _migrate(tmp_path, {"backend": "yoyo", "database_url": "sqlite:///x.db"})
+    gone, missing = _fails(tmp_path, {"backend": "yoyo", "database_url": "sqlite:///x.db"})
+    assert gone.code == "migration_not_run" and "migrations_dir" in gone.detail
     assert missing["ok"] is False and "migrations_dir" in missing["error"]
-    no_url = _migrate(tmp_path, {"backend": "yoyo", "migrations_dir": str(MIGRATIONS)})
+    _, no_url = _fails(tmp_path, {"backend": "yoyo", "migrations_dir": str(MIGRATIONS)})
     assert no_url["ok"] is False and "database_url_env" in no_url["error"]
     broken = tmp_path / "broken"
     broken.mkdir()
     (broken / "0001_bad.sql").write_text("CREATE TABLE (;\n", encoding="utf-8")
-    failed = _migrate(
+    raised, failed = _fails(
         tmp_path,
         {
             "backend": "yoyo",
@@ -101,6 +113,7 @@ def test_yoyo_bad_input_is_an_answer(tmp_path: Path) -> None:
             "migrations_dir": str(broken),
         },
     )
+    assert raised.code == "migration_failed" and "syntax error" in raised.detail
     assert failed["ok"] is False and "syntax error" in failed["error"]
 
 
@@ -133,9 +146,13 @@ def test_alembic_upgrade_reports_revisions(tmp_path: Path) -> None:
 def test_alembic_failure_and_missing_config(tmp_path: Path) -> None:
     root = tmp_path / "proj"
     _alembic_project(root)
-    bad = _migrate(tmp_path, {"config": "alembic.ini", "workdir": str(root), "target": "9999"})
+    failed, bad = _fails(
+        tmp_path, {"config": "alembic.ini", "workdir": str(root), "target": "9999"}
+    )
+    assert failed.code == "migration_failed" and "9999" in failed.detail
     assert bad["ok"] is False and "9999" in bad["error"]
-    missing = _migrate(tmp_path, {"workdir": str(root)})
+    gone, missing = _fails(tmp_path, {"workdir": str(root)})
+    assert gone.code == "migration_not_run" and "alembic.ini" in gone.detail
     assert missing["ok"] is False and "alembic.ini" in missing["error"]
 
 

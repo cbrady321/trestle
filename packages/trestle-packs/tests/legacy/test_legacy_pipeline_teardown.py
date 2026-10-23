@@ -10,10 +10,13 @@ engine."""
 from __future__ import annotations
 
 import inspect
+import json
 from pathlib import Path
 
 import pytest
 from pack_wrappers import PYTHON, compose, context, fake_docker, load_wrapper
+from trestle.plugin import Failed
+from trestle.plugin._codec import encode
 from trestle.plugin.testing import call_plugin
 
 # K-3/K-4: these plugins take and return typed records (skipped if they are declined).
@@ -42,7 +45,12 @@ def _drive(
         "workdir": str(work),
         "python": PYTHON,
     }
-    answer = call_plugin(load_wrapper("stack_pipeline").stack_pipeline, args, ctx=context(tmp_path))
+    try:
+        answer = call_plugin(
+            load_wrapper("stack_pipeline").stack_pipeline, args, ctx=context(tmp_path)
+        )
+    except Failed as failed:  # a failed stage: the same result, raised
+        answer = json.loads(encode(failed.result))
     assert isinstance(answer, dict)
     return answer, [c for c in fake.calls if c.split()[0] in ("down", "stop")]
 

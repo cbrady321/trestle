@@ -7,12 +7,16 @@ The recipe, top to bottom (adapt it by copying this file and publishing it under
    when any is missing, before anything starts);
 2. docker stage: each wave runs `docker compose ... up --detach [--build] [--no-deps] [--wait]
    <services>` and saves each service's logs; a failed wave runs the declared teardown itself
-   (once) and the pipeline answers `ok: false` with `failed_stage: docker`;
-3. migrate stage (with `alembic_config`): `<python> -m alembic -c <config> upgrade head`;
+   (once) and the pipeline raises `Failed("docker_failed")` with `failed_stage: docker`;
+3. migrate stage (with `alembic_config`): `<python> -m alembic -c <config> upgrade head`; a
+   failed upgrade raises `Failed("migrate_failed")`;
 4. pytest stage: `<python> -m pytest <pytest_path> ... --junitxml=<file>`, read from the JUnit
-   file; a failing test is `ok: false` with `failed_stage: pytest`, never a raise;
+   file; a failing test raises `Failed("pytest_failed")` with `failed_stage: pytest`;
 5. teardown, once, on every path after a successful `up`: `docker compose ... down` (volumes
    kept), `stop` or nothing, as `stack_spec.teardown` declares.
+
+A failed stage's `Failed` carries the whole result (`ok: false`, `failed_stage`, each stage's
+answer and the teardown), so the run answers `failed` and its summary still shows the stages.
 
 The docker commands are the same as `docker_stack`'s; every command goes through `ctx.exec`.
 """
@@ -29,7 +33,7 @@ from trestle_pack_migrate import MigrateResult  # reads the result types from th
 from trestle_pack_pytest import find_project_python, read_junit_report
 from trestle_pack_pytest.junit import PytestReport
 
-from trestle.plugin import Blocked, Context, trestle
+from trestle.plugin import Blocked, Context, Failed, trestle
 
 
 @dataclass
@@ -170,8 +174,9 @@ def stack_pipeline(
     (`pytest_path`), then tear the stack down once per `stack_spec.teardown` (volumes are kept).
 
     Paths are relative to `workdir`, the project root. Migrations and tests run on the project's
-    interpreter (`python`, else its `.venv` or `venv`). A failed stage is `ok: false` with
-    `failed_stage`; each stage that ran has its own answer.
+    interpreter (`python`, else its `.venv` or `venv`). A failed stage raises `Failed`
+    (`<stage>_failed`) with the result (`ok: false`, `failed_stage`); each stage that ran has its
+    own answer.
     """
     cwd = Path(workdir) if workdir else Path.cwd()
     stack = stack_spec
@@ -192,7 +197,7 @@ def stack_pipeline(
     result = PipelineResult(ok=False, docker=stack_up)
     if not stack_up.ok:
         result.failed_stage, result.teardown = "docker", stack_up.teardown
-        return result
+        raise _failed(result, stack_up.error or "the stack did not come up")
 
     try:
         if alembic_config:
@@ -206,7 +211,7 @@ def stack_pipeline(
             )  # fmt: skip
             if not done.ok:
                 result.failed_stage = "migrate"
-                return result
+                raise _failed(result, result.migrate.error or "alembic upgrade failed")
 
         ctx.log("stage: pytest")
         junit = ctx.tmp / "pytest-junit.xml"
@@ -225,6 +230,12 @@ def stack_pipeline(
             ctx.attach(junit, name="pytest-junit.xml")
         result.ok = result.pytest.ok
         result.failed_stage = None if result.ok else "pytest"
+        if not result.ok:
+            raise _failed(result, result.pytest.summary or "pytest failed")
         return result
-    finally:
+    finally:  # runs before a `Failed` leaves, so its result carries the teardown
         result.teardown = teardown(ctx, compose, stack.teardown, cwd)
+
+
+def _failed(result: PipelineResult, detail: str) -> Failed:
+    return Failed(f"{result.failed_stage}_failed", detail, result=result)

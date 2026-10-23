@@ -13,11 +13,11 @@ The body (version 1, at most 2 KiB), with `Trestle-Event: run.ended`:
 ```json
 {"type": "trestle.run.ended", "version": 1, "delivery_id": "r_…:ended", "attempt": 1,
  "sent_at": "…Z", "run": {"run_id": "r_…", "plugin": "…", "idempotency_key": null,
- "state": "failed", "outcome_class": "execution_error", "answer_outcome": "failed",
- "error": {"code": "…", "message": "…"}, "started_at": "…Z", "ended_at": "…Z"}}
+ "state": "succeeded", "outcome_class": "failed", "answer_outcome": "failed",
+ "error": null, "started_at": "…Z", "ended_at": "…Z"}}
 ```
 
-Act on `answer_outcome`. Ignore fields you do not know; ask Trestle with `run_id` for more.
+Act on `answer_outcome` (here a plugin raised `Failed`). Ignore fields you do not know; ask Trestle with `run_id` for more.
 
 Delivery is at-least-once: a `2xx` delivers; no answer, `408`, `429` or `5xx` retries at 2 s,
 10 s, 30 s and 2 min; anything else stops; redirects are not followed. Drop repeats by

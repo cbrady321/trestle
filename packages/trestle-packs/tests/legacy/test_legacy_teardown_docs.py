@@ -7,10 +7,13 @@ fails, and the declared teardown runs; a kind is removed when every object of it
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 from pack_wrappers import WRAPPERS, compose, context, fake_docker, load_wrapper
+from trestle.plugin import Failed
+from trestle.plugin._codec import encode
 from trestle.plugin.testing import call_plugin
 
 # K-3/K-4: these plugins take and return typed records (skipped if they are declined).
@@ -52,11 +55,13 @@ def _observed_removal_set(tmp_path: Path, teardown: str) -> set[str]:
                 {"name": "broken", "services": ["broken"], "wait": "started"},
             ],
         }
-        answer = call_plugin(
-            load_wrapper("docker_stack").docker_stack,
-            {"spec": spec, "workdir": str(work)},
-            ctx=context(tmp_path),
-        )
+        with pytest.raises(Failed) as failed:  # the `broken` wave fails: the stack is torn down
+            call_plugin(
+                load_wrapper("docker_stack").docker_stack,
+                {"spec": spec, "workdir": str(work)},
+                ctx=context(tmp_path),
+            )
+        answer = json.loads(encode(failed.value.result))
         assert isinstance(answer, dict) and answer["teardown"] == teardown, answer
         state = fake.state
     finally:

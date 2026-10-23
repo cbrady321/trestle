@@ -11,7 +11,11 @@ The recipe, top to bottom (adapt it by copying this file and publishing it under
 6. with `wait`, repeat 4-5 every `[checks] poll_s` until no PR is pending, `timeout_s` passes,
    or the run is stopped or nearly out of time; checks get `[checks] grace_s` to appear before
    a PR with none is `no_checks`;
-7. answer `ok` (every PR `passed`), the counts and one line per PR; attach the full report.
+7. answer `ok` (every PR `passed`), the counts and one line per PR; attach the full report. When
+   a PR's checks failed, there were none, or its status could not be read, raise
+   `Failed("checks_not_passed")` carrying that report; when PRs are only still `pending` (the
+   wait ran out), raise `Failed("checks_pending")`, so nothing ordered after this run starts on
+   checks that have not finished.
 
 Read-only: nothing is pushed, commented or changed on GitHub.
 """
@@ -22,7 +26,7 @@ import json
 from collections import Counter
 from dataclasses import asdict
 
-from trestle.plugin import Context, trestle
+from trestle.plugin import Context, Failed, trestle
 
 from trestle_pack_github import (
     CHECK_FIELDS,
@@ -55,7 +59,9 @@ def github_pr_status(
 
     Without `wait`, one read. With `wait`, polls until no PR is pending, for at most `timeout_s`
     (default: the run's own time). A PR's `verdict` is `passed`, `failed`, `pending`,
-    `no_checks` or `error`; `ok` is true only when every PR passed.
+    `no_checks` or `error`; `ok` is true only when every PR passed. A PR that is `failed`,
+    `no_checks` or `error` raises `Failed` (`checks_not_passed`) with the report as its result;
+    PRs that are only still `pending` raise `Failed` (`checks_pending`).
     Example: {"targets": ["octo/app#12", "https://github.com/octo/app/pull/13"], "wait": true}
     """
     loaded = load_policy()
@@ -118,4 +124,18 @@ def github_pr_status(
     staged.write_text(json.dumps(asdict(report), indent=2), encoding="utf-8")
     ctx.attach(staged, name="github-pr-status.json")
     ctx.log(f"github_pr_status: {report.summary}")
+    not_passed = [p for p in prs if p.verdict in ("failed", "no_checks", "error")]
+    if not_passed:
+        raise Failed(
+            "checks_not_passed",
+            f"checks did not pass for {len(not_passed)} of {len(prs)} PRs ({report.summary})",
+            report,
+        )
+    pending = [p for p in prs if p.verdict == "pending"]
+    if pending:
+        raise Failed(
+            "checks_pending",
+            f"checks still pending for {len(pending)} of {len(prs)} PRs ({report.summary})",
+            report,
+        )
     return report

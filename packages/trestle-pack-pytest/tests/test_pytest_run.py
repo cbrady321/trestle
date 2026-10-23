@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
 from pytest_pack_testing import PYTHON, context, load_wrapper
+from trestle_pack_pytest.junit import PytestReport
 
-from trestle.plugin import Blocked
+from trestle.plugin import Blocked, Failed
 from trestle.plugin.testing import call_plugin
 
 # K-3/K-4: these plugins take and return typed records (skipped if they are declined).
@@ -46,6 +48,15 @@ def _run(tmp_path: Path, args: dict) -> tuple[dict, object]:
     return answer, ctx
 
 
+def _fails(tmp_path: Path, args: dict) -> tuple[Failed, dict]:
+    """Run a suite that must fail: the `Failed` it raised and its result as a dict."""
+    with pytest.raises(Failed) as raised:
+        _run(tmp_path, args)
+    result = raised.value.result
+    assert isinstance(result, PytestReport)
+    return raised.value, asdict(result)
+
+
 def test_passing_suite(tmp_path: Path) -> None:
     root = _suite(tmp_path / "proj", test_tiny=PASSING)
     answer, ctx = _run(tmp_path, {"path": "tests", "workdir": str(root), "python": PYTHON})
@@ -58,9 +69,10 @@ def test_passing_suite(tmp_path: Path) -> None:
     assert report["passed"] == 2
 
 
-def test_failing_test_is_a_result_not_a_raise(tmp_path: Path) -> None:
+def test_failing_test_raises_failed_carrying_the_report(tmp_path: Path) -> None:
     root = _suite(tmp_path / "proj", test_math=FAILING)
-    answer, _ = _run(tmp_path, {"path": "tests", "workdir": str(root), "python": PYTHON})
+    failed, answer = _fails(tmp_path, {"path": "tests", "workdir": str(root), "python": PYTHON})
+    assert failed.code == "tests_failed" and failed.detail == "1 of 3 tests failed"
     assert answer["ok"] is False and answer["exit_code"] == 1
     assert (answer["passed"], answer["failed"], answer["errors"]) == (2, 1, 0)
     (failure,) = answer["failures"]
@@ -80,7 +92,10 @@ def test_markers_keyword_and_args_reach_pytest(tmp_path: Path) -> None:
         "keyword": "fine or wrong",
         "pytest_args": ["-W", "ignore::pytest.PytestUnknownMarkWarning"],
     }
-    answer, ctx = _run(tmp_path, args)
+    ctx = context(tmp_path)
+    with pytest.raises(Failed) as raised:  # the selected `wrong` test still fails
+        call_plugin(load_wrapper("pytest_run").pytest_run, args, ctx=ctx)
+    answer = asdict(raised.value.result)
     (call,) = ctx.exec_calls
     assert call.argv[:4] == (PYTHON, "-m", "pytest", "tests")
     assert ("-m", "not slow") == call.argv[call.argv.index("-m", 3) : call.argv.index("-m", 3) + 2]
@@ -93,14 +108,16 @@ def test_failures_are_bounded(tmp_path: Path) -> None:
     many = "".join(f"def test_{i}():\n    assert False\n" for i in range(5))
     root = _suite(tmp_path / "proj", test_many=many)
     args = {"path": "tests", "workdir": str(root), "python": PYTHON, "max_failures": 2}
-    answer, _ = _run(tmp_path, args)
+    failed, answer = _fails(tmp_path, args)
+    assert failed.code == "tests_failed" and failed.detail == "5 of 5 tests failed"
     assert answer["failed"] == 5 and len(answer["failures"]) == 2
     assert answer["failures_omitted"] == 3
 
 
 def test_no_tests_is_not_ok(tmp_path: Path) -> None:
     root = _suite(tmp_path / "proj", test_empty="")
-    answer, _ = _run(tmp_path, {"path": "tests", "workdir": str(root), "python": PYTHON})
+    failed, answer = _fails(tmp_path, {"path": "tests", "workdir": str(root), "python": PYTHON})
+    assert failed.code == "no_tests_collected"
     assert answer["ok"] is False and answer["exit_code"] == 5
     assert "no tests collected" in answer["summary"]
 
@@ -134,11 +151,12 @@ def test_pytest_missing_is_blocked(tmp_path: Path) -> None:
     assert blocked.value.code == "pytest_missing"
 
 
-def test_timeout_is_a_result(tmp_path: Path) -> None:
+def test_timeout_raises_failed_with_the_report(tmp_path: Path) -> None:
     root = _suite(
         tmp_path / "proj", test_sleep="import time\n\ndef test_s():\n    time.sleep(30)\n"
     )
     args = {"path": "tests", "workdir": str(root), "python": PYTHON, "timeout_s": 2}
-    answer, _ = _run(tmp_path, args)
+    failed, answer = _fails(tmp_path, args)
+    assert failed.code == "tests_incomplete" and "timed out" in failed.detail
     assert answer["ok"] is False and answer["exit_code"] is None
     assert answer["error"].startswith("timed out")

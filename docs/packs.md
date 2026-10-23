@@ -79,9 +79,11 @@ Unit-test the wrappers with `trestle.plugin.testing`
 
 Discover schemas with `describe_plugin(plugin_id="docker_stack")`.
 
-**Every answer has a top-level `ok`.** A stack that does not come up, a failing migration and a
-failing test are all `ok: false` results with the failed step and the end of the tool's output;
-the run itself still `succeeded`. A missing tool is `outcome: "blocked"` with the one action that
+**Every result has a top-level `ok`.** A stack that does not come up, a failing migration and a
+failing test raise `Failed`: the run's `answer.outcome` is `failed` (code `plugin.<code>`, such as
+`plugin.tests_failed` or `plugin.stack_failed`), and its result is the same shape with `ok: false`,
+the failed step and the end of the tool's output, so the summary still shows them. A run held
+behind it with `after={..., "when": "succeeded"}` does not start. A missing tool is `outcome: "blocked"` with the one action that
 unblocks it:
 
 | Code | When |

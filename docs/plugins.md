@@ -293,6 +293,34 @@ is done), `"will_not_succeed"` or `"unknown"`. The code is lower-case words join
 the human action is scrubbed of credential values like an error message. An agent reads the
 verdict from `answer.outcome`, reports the human action, and stops.
 
+### When the check fails: `Failed`
+
+A plugin whose job is a check (tests, lint, a stack that must come up, several steps chained in
+one plugin) raises `Failed` when the thing it checked is wrong, instead of returning `ok: false`.
+A normal return always answers `passed`:
+
+```python
+from trestle.plugin import Failed
+
+if report.failed:
+    raise Failed("tests_failed", f"{report.failed} of {report.total} tests failed", result=report)
+```
+
+The run ends normally (`state: succeeded`) and its answer reads `outcome: "failed"`, with
+`primary.code` `plugin.<code>` (the code follows `Blocked`'s rule). The answer carries the code
+only: `detail` is kept in the run's record (`evidence/failed.json`, scrubbed and bounded like an
+error message), and `result=` is recorded exactly as a return value would be, `summary_fields`
+included, so the summary still shows it (a step table, the failing tests). A result too large to
+keep is marked as for a return; one that cannot be encoded is dropped, with a `result` /
+`unencodable` marker in `limits_exceeded`, and the verdict stands.
+
+A `failed` (or `blocked`) run does not pass: a run held behind it with
+`after={..., "when": "succeeded"}` is not started, `await_runs(mode="first_failure")` wakes on it,
+`query(view="recent_failures")` lists it, and `outcome.class` reads `failed`. In a test,
+`pytest.raises(Failed)` around `call_plugin` sees `code`, `detail` and `result`. A complete chain
+of steps is `trestle://guide/examples/chain`. `trestle.workflow.Failed` is a different thing, a
+value a workflow unit returns.
+
 ### The exec plugin
 
 `exec` is a guide example (`trestle://guide/examples/exec`) that `trestle init` seeds into the

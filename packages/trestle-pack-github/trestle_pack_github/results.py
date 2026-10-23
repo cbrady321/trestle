@@ -117,9 +117,10 @@ class Refusal:
 class OpenResult:
     """`github_pr_open`'s answer.
 
-    `action`: `created` or `updated` (ok); `refused` (a guard said no and nothing was changed:
-    `refusal`); `failed` (a command failed: `error`, and `pushed` says whether the push
-    happened)."""
+    `action`: `created` or `updated` (ok); `failed` (a command failed: `error`, and `pushed` says
+    whether the push happened; recorded as the result of the `Failed` the plugin raises). A
+    guard's refusal is a `Blocked` raised before anything changed, carrying `refusal.code`, so
+    `refused` is no longer an answer."""
 
     ok: bool
     action: Literal["created", "updated", "refused", "failed"]

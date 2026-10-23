@@ -18,6 +18,7 @@ from trestle.query import views as view_defs
 from trestle.query.catalog import VIEW_CATALOG_URI
 from trestle.query.conformance import validate_envelope
 from trestle.server import callbacks, idempotency
+from trestle.server.answer import verdict_of
 from trestle.server.ledger import (
     TERMINAL_KINDS,
     RunLedger,
@@ -162,10 +163,17 @@ class FilesystemQueryBackend:
             reader = SessionReader(self.home)
             rows = [_recent_run_row(record, reader) for record in runs]
         elif view == "recent_failures":
-            rows = [
-                _recent_failure_row(record)
+            # the verdict, not only the state: a run that raised `Failed` or `Blocked`, or whose
+            # tree answered so, ended `succeeded` and still did not pass
+            verdicts = (
+                (record, verdict_of(record.run_dir, record.state))
                 for record in runs
-                if record.finalized and record.state in _FAILURE_STATES
+                if record.finalized
+            )
+            rows = [
+                _recent_failure_row(record, verdict)
+                for record, verdict in verdicts
+                if verdict != "passed"
             ]
         elif view == "artifact_refs":
             artifact_id = params.get("artifact_id")
@@ -568,11 +576,12 @@ def _recent_run_row(record: RunRecord, reader: SessionReader) -> dict[str, objec
     }
 
 
-def _recent_failure_row(record: RunRecord) -> dict[str, object]:
+def _recent_failure_row(record: RunRecord, verdict: str) -> dict[str, object]:
     return {
         "run_id": record.run_id,
         "plugin": record.plugin,
         "state": record.state,
+        "outcome": verdict,
         "failed_at": record.failed_at or record.ended_at or record.started_at,
     }
 
