@@ -35,7 +35,7 @@ def test_pack_plugins_valid_when_trestle_packs_installed(
     names = {row["name"] for row in catalog["items"]}
     fields = {
         "docker_stack": "spec",
-        "integration_pipeline": "stack_spec",
+        "stack_pipeline": "stack_spec",
         "pytest_run": "path",
         "migrate_apply": "backend",
     }

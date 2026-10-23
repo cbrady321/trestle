@@ -1,19 +1,24 @@
-"""K-6 (L.NW-1.1): docs/packs.md states each teardown value's removal set, and it equals what the
-runner asks the compose backend to do (WR-OWN-4:docs-equal-code-fake)."""
+"""K-6 (L.NW-1.1): docs/packs.md states each teardown value's removal set, and it equals what
+`docker_stack` asks docker to do (WR-OWN-4:docs-equal-code-fake).
+
+Each row is observed on the fake docker CLI (`trestle_packs.fakes.docker_cli`, Compose's
+semantics): a stack of one service with a named volume comes up in a first wave, the second wave
+fails, and the declared teardown runs; a kind is removed when every object of it is gone."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
-from fake_compose_backend import FakeComposeBackend
-from fake_pack_context import FakePackContext
-
-from trestle_packs.docker.runner import StackRunner
-from trestle_packs.docker.spec import StackSpec
+from pack_wrappers import PACKS, compose, context, fake_docker, load_wrapper
+from trestle.plugin.testing import call_plugin
 
 DOCS = Path(__file__).resolve().parents[4] / "docs" / "packs.md"
 REMOVED = {"containers", "networks", "volumes"}
+COMPOSE = (
+    "services:\n  keeper:\n    image: alpine:3.20\n    volumes:\n      - data:/data\n"
+    "  broken:\n    image: alpine:3.20\nvolumes:\n  data:\n"
+)
 
 
 def _documented_removal_sets() -> dict[str, set[str]]:
@@ -30,45 +35,50 @@ def _documented_removal_sets() -> dict[str, set[str]]:
     return rows
 
 
-def _observed_removal_set(tmp_path: Path, teardown: str, *, reset: bool) -> set[str]:
-    (tmp_path / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
-    backend = FakeComposeBackend()
-    runner = StackRunner(FakePackContext(work=tmp_path), backend=backend)
-    spec = StackSpec.from_dict(
-        {
-            "compose_file": "docker-compose.yml",
+def _observed_removal_set(tmp_path: Path, teardown: str) -> set[str]:
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        work = tmp_path / "work"
+        compose(work, COMPOSE)
+        fake = fake_docker(tmp_path, monkeypatch, fail=["broken"])
+        spec = {
+            "project": "k6",
             "teardown": teardown,
-            "waves": [{"name": "app", "services": ["web"], "wait": "started", "timeout_s": 5}],
+            "waves": [
+                {"name": "keep", "services": ["keeper"], "wait": "started"},
+                {"name": "broken", "services": ["broken"], "wait": "started"},
+            ],
         }
-    )
-    runner.down(spec, cwd=tmp_path, reset_volumes=reset)
-    assert backend.stop_calls == (1 if teardown == "stop" and not reset else 0)
-    if not backend.down_calls:
-        return set()
-    (remove_volumes,) = backend.down_calls
-    return {"containers", "networks"} | ({"volumes"} if remove_volumes else set())
+        answer = call_plugin(
+            load_wrapper("docker_stack").docker_stack,
+            {"spec": spec, "workdir": str(work)},
+            ctx=context(tmp_path),
+        )
+        assert isinstance(answer, dict) and answer["teardown"] == teardown, answer
+        state = fake.state
+    finally:
+        monkeypatch.undo()
+    present = {
+        "containers": [n for n, s in state["containers"].items() if s in ("running", "exited")],
+        "networks": state["networks"],
+        "volumes": list(state["volumes"]),
+    }
+    return {kind for kind, names in present.items() if not names}
 
 
 @pytest.mark.proves("WR-OWN-4", "WR-OWN-4:docs-equal-code-fake", "B", "B", "LOGIC", "CI")
 @pytest.mark.proves("WR-PROOF-10", "WR-PROOF-10:K-6", "B", "B", "LOGIC", "CI")
 def test_documented_removal_sets_match_code(tmp_path: Path) -> None:
     documented = _documented_removal_sets()
-    assert set(documented) == {"down", "stop", "none", "reset_volumes"}
-    assert documented["down"] == _observed_removal_set(tmp_path, "down", reset=False)
-    assert documented["stop"] == _observed_removal_set(tmp_path, "stop", reset=False)
-    assert documented["none"] == _observed_removal_set(tmp_path, "none", reset=False)
-    assert documented["reset_volumes"] == _observed_removal_set(tmp_path, "down", reset=True)
-    # only the explicit reset removes volumes
-    assert [v for v, removed in documented.items() if "volumes" in removed] == ["reset_volumes"]
+    assert set(documented) == {"down", "stop", "none"}
+    for row in documented:
+        assert documented[row] == _observed_removal_set(tmp_path / row, row), row
+    # no teardown removes volumes
+    assert [v for v, removed in documented.items() if "volumes" in removed] == []
 
 
-@pytest.mark.parametrize("policy", ["down", "stop", "none"])
-def test_reset_volumes_is_the_only_volume_removing_path(tmp_path: Path, policy: str) -> None:
-    assert "volumes" not in _observed_removal_set(tmp_path, policy, reset=False)
-    assert "volumes" in _observed_removal_set(tmp_path, policy, reset=True)
-
-
-def test_reset_volumes_not_exposed_by_entry_point_schemas() -> None:
-    root = Path(__file__).resolve().parents[4]
-    for path in (root / "examples" / "packs").glob("*.py"):
-        assert "reset_volumes" not in path.read_text(encoding="utf-8"), path.name
+def test_no_wrapper_removes_volumes() -> None:
+    for path in PACKS.glob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        assert '"--volumes"' not in source and '"-v"' not in source, path.name
+        assert "reset_volumes" not in source, path.name

@@ -1,42 +1,40 @@
 """The K-6 teardown table, read from docs/packs.md and observed on an engine (L.RB-3.4; WR-OWN-4).
 
-Shared by the HOST node (`host/test_k6_docs.py`, real Docker through the legacy python-on-whales
-backend) and its CI twin (`twin/test_k6_docs_twin.py`, `EngineComposeBackend` below), so the two
+Shared by the HOST node (`host/test_k6_docs.py`, the operator's docker) and its CI twin
+(`twin/test_k6_docs_twin.py`, the fake docker CLI `trestle_packs.fakes.docker_cli`), so the two
 parse the SAME rows and derive the removal set the SAME way; only the engine differs.
 
 Each documented row is one teardown case run on a fresh stack of one service, the default network
 and one named volume (every object labelled `trestle.proof.fixture=k6-docs`, CSC-10): bring it up
-with `StackRunner.up`, tear it down the way the row names (`StackRunner.down`, with
-`reset_volumes=True` for the `reset_volumes` row), and read which kinds of object the teardown
-took away. A kind is removed when every object of it that existed before the teardown is gone
-after it; a stopped container is still a container.
+with `docker_stack` (examples/packs, called with `FakeContext`), run the wrapper's own `teardown`
+step with the row's value, and read which kinds of object it took away. A kind is removed when
+every object of it that existed before the teardown is gone after it; a stopped container is still
+a container.
 """
 
 from __future__ import annotations
 
+import importlib.util
+import sys
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from types import ModuleType
+from typing import Protocol
 
-from trestle_packs.docker.runner import StackRunner
-from trestle_packs.docker.spec import StackSpec, WaitMode
+from trestle.plugin.testing import FakeContext, call_plugin
+from trestle_packs.fakes.docker_cli import read_state, write_fake_docker
 
 REPO = Path(__file__).resolve().parents[4]
 DOCS = REPO / "docs" / "packs.md"
+DOCKER_STACK = REPO / "examples" / "packs" / "docker_stack.py"
 KINDS = ("containers", "networks", "volumes")
 FIXTURE_LABEL = "trestle.proof.fixture"
 FIXTURE = "k6-docs"
 SERVICE = "keeper"
 VOLUME = "data"
 
-# row -> (the declared teardown policy, reset_volumes)
-CASES: dict[str, tuple[str, bool]] = {
-    "down": ("down", False),
-    "stop": ("stop", False),
-    "none": ("none", False),
-    "reset_volumes": ("down", True),
-}
+# the documented rows: each is a declared teardown value
+CASES = ("down", "stop", "none")
 
 
 def documented_removal_sets(docs: Path = DOCS) -> dict[str, frozenset[str]]:
@@ -77,33 +75,20 @@ def compose_definition(image: str) -> str:
 
 
 class Engine(Protocol):
-    """What a case needs of an engine: the legacy backend bound to it, and its objects."""
+    """What a case needs of an engine: the docker CLI the wrapper runs, and its objects."""
 
-    def backend(self) -> Any: ...
+    def docker_path(self) -> str: ...
 
     def objects(self, project: str) -> dict[str, frozenset[str]]: ...
 
 
-@dataclass
-class Context:
-    """The minimal pack context `StackRunner` logs through (no artifact is attached here)."""
-
-    work: Path
-    logs: list[str] = field(default_factory=list)
-
-    def log(self, message: str) -> None:
-        self.logs.append(message)
-
-    def progress(self, message: str, *, fraction: float | None = None) -> None:
-        self.logs.append(message)
-
-    def artifact(self, name: str) -> Path:
-        path = self.work / "artifacts" / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return path
-
-    def attach(self, path: Path, *, name: str) -> str:
-        return f"art_{name}"
+def load_docker_stack() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("k6_docs_docker_stack", DOCKER_STACK)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def removal_set(before: dict[str, frozenset[str]], after: dict[str, frozenset[str]]) -> frozenset:
@@ -118,38 +103,35 @@ def observe_case(
     row: str,
     image: str,
     timeout_s: float,
+    monkeypatch: object,
 ) -> tuple[dict[str, frozenset[str]], dict[str, frozenset[str]]]:
     """Up, then the row's teardown; the engine's objects of `project` before and after it."""
-    policy, reset = CASES[row]
     workdir.mkdir(parents=True, exist_ok=True)
     (workdir / "compose.yaml").write_text(compose_definition(image), encoding="utf-8")
-    spec = StackSpec.from_dict(
-        {
-            "project": project,
-            "compose_file": "compose.yaml",
-            "teardown": policy,
-            "waves": [
-                {
-                    "name": "keep",
-                    "services": [SERVICE],
-                    "wait": WaitMode.STARTED.value,
-                    "timeout_s": timeout_s,
-                }
-            ],
-        }
-    )
-    runner = StackRunner(Context(work=workdir), backend=engine.backend())
-    runner.up(spec, cwd=workdir)
+    monkeypatch.setenv("TRESTLE_DOCKER_PATH", engine.docker_path())  # type: ignore[attr-defined]
+    module = load_docker_stack()
+    spec = {
+        "project": project,
+        "compose_file": "compose.yaml",
+        "teardown": row,
+        "waves": [
+            {"name": "keep", "services": [SERVICE], "wait": "started", "timeout_s": timeout_s}
+        ],
+    }
+    ctx = FakeContext(workdir / "ctx")
+    answer = call_plugin(module.docker_stack, {"spec": spec, "workdir": str(workdir)}, ctx=ctx)
+    assert isinstance(answer, dict) and answer["ok"] is True, answer
     before = engine.objects(project)
-    runner.down(spec, cwd=workdir, reset_volumes=reset)
+    stack = module.DockerSpec(project=project, compose_file="compose.yaml", teardown=row)
+    compose = module.compose_command(engine.docker_path(), stack, workdir)
+    assert module.teardown(ctx, compose, row, workdir) == row
     return before, engine.objects(project)
 
 
 def assert_docs_equal_observed(
     observe: Callable[[str], tuple[dict[str, frozenset[str]], dict[str, frozenset[str]]]],
 ) -> None:
-    """Every documented row equals the removal set observed for it, and only the explicit
-    reset removes a volume."""
+    """Every documented row equals the removal set observed for it, and none removes a volume."""
     documented = documented_removal_sets()
     assert set(documented) == set(CASES), documented
     observed = {}
@@ -158,63 +140,33 @@ def assert_docs_equal_observed(
         assert all(before[k] for k in KINDS), (row, before)  # the stack really had each kind
         observed[row] = removal_set(before, after)
     assert observed == documented, (observed, documented)
-    assert [row for row, kinds in observed.items() if "volumes" in kinds] == ["reset_volumes"]
+    assert [row for row, kinds in observed.items() if "volumes" in kinds] == []
 
 
 # -- the twin's engine ----------------------------------------------------------------------------
 
 
-class EngineComposeBackend:
-    """A `ComposeBackend` over an in-memory engine that applies Compose's documented semantics:
-    `up` creates the service containers, the project's default network and its named volumes;
-    `down` removes containers and networks (and the volumes only with `remove_volumes`); `stop`
-    stops the containers and removes nothing."""
-
-    def __init__(self) -> None:
-        self.state: dict[str, dict[str, dict[str, str]]] = {}
-        self.calls: list[str] = []
-
-    def is_available(self) -> bool:
-        return True
-
-    def _project(self, spec: StackSpec) -> dict[str, dict[str, str]]:
-        return self.state.setdefault(
-            str(spec.project), {"containers": {}, "networks": {}, "volumes": {}}
-        )
-
-    def up(self, spec: StackSpec, services: list[str], **_: Any) -> None:
-        self.calls.append("up")
-        objs = self._project(spec)
-        for service in services:
-            objs["containers"][f"{spec.project}-{service}-1"] = "running"
-        objs["networks"][f"{spec.project}_default"] = "present"
-        objs["volumes"][f"{spec.project}_{VOLUME}"] = "present"
-
-    def down(self, spec: StackSpec, *, cwd: Path, remove_volumes: bool = False) -> None:
-        self.calls.append(f"down(volumes={remove_volumes})")
-        objs = self._project(spec)
-        objs["containers"].clear()
-        objs["networks"].clear()
-        if remove_volumes:
-            objs["volumes"].clear()
-
-    def stop(self, spec: StackSpec, *, cwd: Path) -> None:
-        self.calls.append("stop")
-        objs = self._project(spec)
-        for name in objs["containers"]:
-            objs["containers"][name] = "exited"
-
-    def service_logs(self, spec: StackSpec, services: list[str], *, cwd: Path) -> dict[str, str]:
-        return {service: "" for service in services}
-
-
 class FakeEngine:
-    def __init__(self) -> None:
-        self._backend = EngineComposeBackend()
+    """The fake docker CLI over a JSON state file: Compose's documented semantics (`up` creates
+    the service containers, the project's default network and its named volumes; `down` removes
+    containers and networks, never volumes without `--volumes`; `stop` removes nothing)."""
 
-    def backend(self) -> EngineComposeBackend:
-        return self._backend
+    def __init__(self, base: Path) -> None:
+        self.state = base / "engine.json"
+        self._docker = write_fake_docker(base / "bin", self.state)
+
+    def docker_path(self) -> str:
+        return str(self._docker)
+
+    def calls(self) -> list[str]:
+        return [
+            c for c in read_state(self.state)["calls"] if c.split()[0] in ("up", "stop", "down")
+        ]
 
     def objects(self, project: str) -> dict[str, frozenset[str]]:
-        objs = self._backend.state.get(project, {})
-        return {k: frozenset(objs.get(k, {})) for k in KINDS}
+        state = read_state(self.state)
+        return {
+            "containers": frozenset(n for n in state["containers"] if n.startswith(f"{project}-")),
+            "networks": frozenset(n for n in state["networks"] if n.startswith(f"{project}_")),
+            "volumes": frozenset(n for n in state["volumes"] if n.startswith(f"{project}_")),
+        }

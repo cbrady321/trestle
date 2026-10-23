@@ -4,6 +4,7 @@ not list in `packages=`. The shipped examples declare `trestle_packs`; as they w
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -40,9 +41,9 @@ def test_the_rule() -> None:
 @pytest.mark.parametrize("example", EXAMPLES, ids=lambda p: p.name)
 def test_examples_declare_their_package_and_warned_before(example: Path) -> None:
     fixed = example.read_text(encoding="utf-8")
-    assert '@trestle(packages=["trestle_packs"])' in fixed
+    assert '@trestle(packages=["trestle_packs"]' in fixed
     assert undeclared_import_warning(fixed, ("trestle_packs",)) is None
-    old = fixed.replace('@trestle(packages=["trestle_packs"])', "@trestle")
+    old = re.sub(r'packages=\["trestle_packs"\],?\s*', "", fixed)
     warning = undeclared_import_warning(old, ())
     assert warning is not None and "'trestle_packs'" in warning
 

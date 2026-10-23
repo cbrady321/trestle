@@ -1,8 +1,8 @@
 """No entry-point schema lets an agent reach the volume reset (L.RB-3.4; K-6, WR-OWN-4).
 
-`reset_volumes=True` is a Python-only argument of `StackRunner.down` (docs/packs.md, Teardown).
-Every plugin a kernel registers from the shipped plugin directories (the legacy packs in
-examples/packs and the reference plugin) is described the way an agent reads it,
+No plugin removes a volume (docs/packs.md, Teardown): none passes `--volumes`. Every plugin a
+kernel registers from the shipped plugin directories (the tool plugins in examples/packs and the
+reference plugin) is described the way an agent reads it,
 `describe_plugin`, and no published input schema carries a field that names a reset, at any depth.
 
 The agent-published reset itself is not decided: `WR-OWN-4:agent-published-reset` is declared
@@ -57,8 +57,8 @@ def reset_fields(node: Any, where: str = "") -> list[str]:
 @pytest.mark.proves("WR-OWN-4", "WR-OWN-4:reset-not-agent-reachable", "B", "B", "MCP", "CI")
 def test_no_entry_point_schema_exposes_reset_volumes(kernel: Kernel) -> None:
     names = sorted(row["name"] for row in kernel.registry.catalog().to_dict()["items"])
-    # the teardown-selecting legacy entry points and the reference plugin are all registered
-    assert {"docker_stack", "integration_pipeline", "reference_env"} <= set(names), names
+    # the teardown-selecting entry points and the reference plugin are all registered
+    assert {"docker_stack", "stack_pipeline", "reference_env"} <= set(names), names
     for name in names:
         described = kernel.control.describe_plugin(name)
         assert isinstance(described, dict), (name, described)
