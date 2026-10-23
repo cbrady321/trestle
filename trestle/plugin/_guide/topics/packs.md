@@ -14,7 +14,7 @@ optionally the library they call:
 
 The tool plugins are bundled packs: `docker_stack`, `pytest_run`, `migrate_apply` and
 `stack_pipeline`, installed with `trestle pack install stack`. `describe_plugin` gives a pack
-plugin's `source_path`, under `$TRESTLE_HOME/packs/<owner>/<pack>/`.
+plugin's `source_path`: the pack's installed copy, which you may read.
 
 A pack's source, its wrappers and its library, is open: when a pack does not fit, read it with
 your file tools and adapt it rather than falling back to the shell. Trestle's own source and home
