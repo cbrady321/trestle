@@ -3,7 +3,9 @@
 **Status:** design, revision 2. The owner agreed Q-1 to Q-5 as recommended (2026-10-23).
 Revision 2 folds in every Blocking, Should-fix and Nit item of the
 [review](2026-10-23-one-call-chains-review.md); the "Review items" table at the end maps each one.
-Nothing here is built.
+The owner approved revision 2 on 2026-10-23: section 1e as written (with `outcome.class`
+following `answer.outcome`), `Blocked` included, code only in the answer (B2), and the name
+`when: "succeeded"` kept.
 **Date:** 2026-10-23
 **Release:** its own change after 0.6.0.
 **Read at:** master `8ab91e51`, and the guide served by the running service (`fc4999d0`).
