@@ -88,7 +88,11 @@ def test_list_plugins_includes_search_paths_and_hint_when_empty(tmp_path: Path) 
     kernel = create_kernel(home=home, plugin_dirs=[plugin_dir], skip_recovery=True)
     catalog = kernel.registry.catalog().to_dict()
     assert catalog["items"] == []
-    assert catalog["plugin_search_paths"] == [str(plugin_dir.resolve())]
+    # the operator's folders, then installed packs (none), then the runtime publish folder
+    assert catalog["plugin_search_paths"] == [
+        str(plugin_dir.resolve()),
+        str(home / "plugins" / "runtime"),
+    ]
     assert catalog["catalog_hint"] == CATALOG_HINT_EMPTY
 
 

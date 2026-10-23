@@ -61,6 +61,9 @@ PUBLICATION_DECLARATION_INVALID = "publication.declaration_invalid"
 PUBLICATION_ENV_ARG_MISSING = "publication.env_arg_missing"
 # v0.3.1 (Problem A): another server published the same plugin name at once and its source won.
 PUBLICATION_REGISTRY_CONFLICT = "publication.registry_conflict"
+# P-10: a publish under a name a pack plugin (or the operator's own file) serves: one agent's file
+# must not replace a vetted plugin for every agent. The message names the source and a new name.
+PUBLICATION_NAME_TAKEN = "publication.name_taken"
 
 # MC-CORE-04: the execution-code vocabulary, additive only (DM-16). A run that started and ended
 # without an answer carries exactly one of these in its `error_record` (MC-15).

@@ -504,7 +504,12 @@ class Project:
         if self.allowlist is not None:
             allowed = set(self.allowlist)
             catalog.items = [
-                dataclasses.replace(item, allowlisted=item.name in allowed)
+                dataclasses.replace(
+                    item,
+                    allowlisted=item.name in allowed,
+                    # P-14: an allowlisted name now served by an override is flagged
+                    override_flagged=item.name in allowed and item.overrides is not None,
+                )
                 for item in catalog.items
             ]
         return catalog

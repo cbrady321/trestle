@@ -352,6 +352,7 @@ DECLARED_KEYWORDS = (
     "credentials",
     "repeatable",
     "stop_grace",
+    "adapted_from",
 )
 _TIMEDELTA_UNITS = {
     "weeks": 604800.0,
@@ -422,7 +423,20 @@ def declared_from_function(fn: _FnDef) -> DeclaredMetadata:
         if "repeatable" in values
         else False,
         stop_grace_s=_declared_stop_grace(values["stop_grace"]) if "stop_grace" in values else None,
+        adapted_from=_declared_adapted_from(values["adapted_from"])
+        if "adapted_from" in values
+        else None,
     )
+
+
+def _declared_adapted_from(node: ast.expr) -> str:
+    """P-10: `adapted_from`, the name of the plugin this one adapts (a string literal naming a
+    plugin), recorded as lineage and shown by describe_plugin."""
+    if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
+        raise DeclarationError("@trestle: adapted_from must be a plugin-name string literal")
+    if not node.value.isidentifier():
+        raise DeclarationError(f"@trestle: adapted_from {node.value!r} is not a plugin name")
+    return node.value
 
 
 def _declared_credentials(node: ast.expr | None) -> tuple[str, ...]:

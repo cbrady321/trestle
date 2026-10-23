@@ -249,7 +249,8 @@ def open_pr(ctx: Context, repo: str) -> dict[str, str]:
 - **A grant is pinned to the code.** It records the plugin's `source_sha256` and its declared
   packages' digests at the time of the grant. Republishing the plugin with a changed entry file
   or a changed declared package leaves the grant stale until the operator grants it again, and a
-  plugin an agent published (`publish_plugin`) is never granted.
+  plugin an agent published (`publish_plugin`) is granted only after the operator reviews it
+  (`--reviewed`, P-12).
 - **`ctx.credential_env(name)`** returns `{ENV_NAME: value}` (the variable name is the one the
   operator gave the identity). It is not put into the plugin's environment: pass it to
   `ctx.exec(env=...)` for the one command that needs it. A command's environment is readable by

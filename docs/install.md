@@ -297,8 +297,8 @@ trestle credentials remove gh            # delete the identity and its stored va
   digests as published when you ran `grant`. Republish the plugin with a change to either and the
   grant goes stale (`list` and `trestle doctor` say so, and its runs are refused
   `admission.credential_not_granted`) until you run `grant` again. A plugin an agent published
-  with `publish_plugin` cannot be granted; review it, and save it into a watched folder as your
-  own edit first.
+  with `publish_plugin` is granted only after you review it: `grant NAME PLUGIN --reviewed` pins
+  the reviewed digests (P-12), and any republish drops the grant.
 - **When a change applies.** `credentials.toml` is read once at start, like `config.toml`: every
   command that changes an identity or a grant says so and names `trestle service restart`, or
   restarts for you with `--restart`. A value rotated with `add --replace` applies to the next run

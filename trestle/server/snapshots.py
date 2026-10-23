@@ -168,6 +168,7 @@ def materialize_snapshot(
     version: str = "0.1.0",
     summary_budget: int = 4096,
     timeout_s: int = 300,
+    pack: dict[str, object] | None = None,
 ) -> PluginSnapshot:
     # One read: the bytes hashed into the snapshot id are the bytes the snapshot keeps, whatever
     # happens to the source file meanwhile. The text is decoded as `read_text` would.
@@ -237,6 +238,8 @@ def materialize_snapshot(
     }
     if tree is not None:
         manifest["declaration_digest"] = tree.digest
+    if pack is not None:
+        manifest["pack"] = pack  # P-1: the pack identity at publication, from packs.lock
     manifest_sha256 = hashlib.sha256(
         json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()

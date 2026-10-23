@@ -110,6 +110,7 @@ def trestle(
     credentials: Sequence[str] = (),
     repeatable: bool = False,
     stop_grace: float | None = None,
+    adapted_from: str | None = None,
 ) -> Callable[[F], F]: ...
 
 
@@ -124,17 +125,19 @@ def trestle(  # noqa: UP047
     credentials: Sequence[str] = (),
     repeatable: bool = False,
     stop_grace: float | None = None,
+    adapted_from: str | None = None,
 ) -> F | Callable[[F], F]:
     """Mark a callable as a Trestle plugin entry point.
 
     Bare (`@trestle`) or call form (`@trestle(deadline=..., summary_fields=..., packages=...,
-    env_arg=..., credentials=..., repeatable=..., stop_grace=...)`). The metadata is
+    env_arg=..., credentials=..., repeatable=..., stop_grace=..., adapted_from=...)`). The
+    metadata is
     read statically from the source at publication (literals only), never from this call; at run
     time the call form marks the callable exactly as the bare form does.
 
     `credentials` names the identities the plugin uses (`ctx.credential_env`,
     `ctx.credential_file`); the operator configures and grants each, and no value is ever an
-    argument.
+    argument. `adapted_from` names the plugin this one was adapted from (lineage only).
     """
 
     def mark(target: F) -> F:

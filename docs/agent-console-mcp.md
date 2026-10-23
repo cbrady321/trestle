@@ -99,6 +99,7 @@ Publish or update a plugin without restarting the server. Writes source to the p
 | `publication.name_mismatch` | `name` param ≠ entry point |
 | `publication.source_too_large` | Source &gt; 512 KB |
 | `publication.validation_failed` | Snapshot failed; previous version kept if any |
+| `publication.name_taken` | A pack plugin or the operator's file serves the name (P-10): adapt it under the suggested name |
 
 After publish: `list_plugins` → optional `describe_plugin` → `run(plugin=…)`.
 

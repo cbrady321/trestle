@@ -11,6 +11,7 @@ published):
 | `publication.source_too_large` | the source is over 512 KiB |
 | `publication.validation_failed` | a hint, keyword, import or the import itself failed; the message says which |
 | `publication.registry_conflict` | another server published the same name at once: retry |
+| `publication.name_taken` | a pack plugin or the operator's own file has that name: read its source (the message gives the path) and publish your version under the suggested new name, with `adapted_from` |
 | `publication.env_arg_missing` | declare `env_arg` (and match the root's `env_key_field`) |
 | `publication.declaration_invalid` | the `WorkflowEntry` could not be read |
 | `publication.unit_unresolved` | a child, `needs` or `gates` entry names an undeclared unit |

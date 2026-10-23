@@ -32,3 +32,4 @@ literal. An unknown keyword or a non-literal value is refused with
 | `credentials` | Names of the credential identities the plugin uses (`["gh"]`). The operator stores and grants each; read one with `ctx.credential_env` or `ctx.credential_file`. See `trestle://guide/plugins/credentials`. |
 | `repeatable` | `True` when a half-done run is safe to run again: after an `interrupted` run, resending the same idempotency key starts a fresh run. |
 | `stop_grace` | Seconds (plain plugins only, capped by the operator) between a stop and the kill. When a run is cancelled, or nears its deadline, `ctx.cancelled` turns true, and you have this long to write a last status and return. A workflow that declares it is refused. |
+| `adapted_from` | The name of the plugin this one adapts, such as a pack plugin you copied under a new name. Lineage only: `describe_plugin` shows it. |

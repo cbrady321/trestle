@@ -90,7 +90,8 @@ to plugins with `trestle credentials` ([`install.md`](install.md#credentials)).
   answer.
 - **Grants are pinned to code.** A grant records the plugin's entry-file digest and its declared
   packages' digests. A republish that changes either loses the grant until the operator grants it
-  again, and a plugin published by an agent (`publish_plugin`) is never granted. An agent that can
+  again, and a plugin published by an agent (`publish_plugin`) is never granted without the
+  operator's review (`trestle credentials grant NAME PLUGIN --reviewed`, P-12). An agent that can
   publish can still run code as you; it gets no credential from Trestle.
 - **The tables are the operator's.** `credentials.toml` is read once at start; nothing an agent
   sends changes it.
