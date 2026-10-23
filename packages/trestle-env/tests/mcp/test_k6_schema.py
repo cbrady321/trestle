@@ -1,7 +1,7 @@
 """No entry-point schema lets an agent reach the volume reset (L.RB-3.4; K-6, WR-OWN-4).
 
 No plugin removes a volume (docs/packs.md, Teardown): none passes `--volumes`. Every plugin a
-kernel registers from the shipped plugin directories (the tool plugins in examples/packs and the
+kernel registers from the shipped plugin directories (the tool plugins of the bundled packs and the
 reference plugin) is described the way an agent reads it,
 `describe_plugin`, and no published input schema carries a field that names a reset, at any depth.
 
@@ -21,7 +21,11 @@ from trestle.server.main import Kernel, create_kernel
 from trestle_env.plugins import reference_env
 
 REPO = Path(__file__).resolve().parents[4]
-LEGACY = REPO / "examples" / "packs"
+# the tool plugins of the bundled packs docker, pytest, migrate and stack
+LEGACY = [
+    REPO / "packages" / f"trestle-pack-{name}" / "plugins"
+    for name in ("docker", "pytest", "migrate", "stack")
+]
 REFERENCE = Path(reference_env.__file__).resolve().parent
 
 
@@ -30,7 +34,7 @@ def kernel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Kernel:
     monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
     legacy = tmp_path / "packs"
     legacy.mkdir()
-    for path in LEGACY.glob("*.py"):
+    for path in (path for folder in LEGACY for path in folder.glob("*.py")):
         shutil.copy(path, legacy / path.name)
     built = create_kernel(
         home=tmp_path / "home", plugin_dirs=[legacy, REFERENCE], skip_recovery=True

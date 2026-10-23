@@ -1,6 +1,6 @@
 """L.RB-11.1: K-15 on real Docker (DOCKER · HOST; run only by the host-docker gate).
 
-`stack_pipeline` (examples/packs, was `integration_pipeline`, unedited), published and driven
+`stack_pipeline` (the stack pack, was `integration_pipeline`, unedited), published and driven
 through `run` on the MC-12 MCP host over the operator's docker CLI, stops its Compose stack
 exactly once on success, on a failing pytest stage and on a failed `up`: after the answer no
 container of the run's Compose project remains, and the run's events hold exactly one "teardown:

@@ -1,4 +1,4 @@
-"""`migrate_apply` (examples/packs), called with `FakeContext`: Alembic and Yoyo run out of
+"""`migrate_apply` (the migrate pack), called with `FakeContext`: Alembic and Yoyo run out of
 process on the interpreter given as the project's `python` (here this test interpreter), against
 SQLite.
 
@@ -11,7 +11,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from pack_wrappers import PYTHON, context, load_wrapper
+from migrate_pack_testing import PYTHON, context, load_wrapper
+
 from trestle.plugin import Blocked
 from trestle.plugin.testing import call_plugin
 

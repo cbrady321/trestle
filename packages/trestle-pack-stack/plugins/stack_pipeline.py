@@ -23,11 +23,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from trestle_packs.docker import CycleError, locate_docker, plan_waves, resolve_under, tail
-from trestle_packs.docker.results import StackResult  # where they are defined: the schema
-from trestle_packs.migrate import MigrateResult  # reads the result types from there
-from trestle_packs.pytest import find_project_python, read_junit_report
-from trestle_packs.pytest.junit import PytestReport
+from trestle_pack_docker import CycleError, locate_docker, plan_waves, resolve_under, tail
+from trestle_pack_docker.results import StackResult  # where they are defined: the schema
+from trestle_pack_migrate import MigrateResult  # reads the result types from there
+from trestle_pack_pytest import find_project_python, read_junit_report
+from trestle_pack_pytest.junit import PytestReport
 
 from trestle.plugin import Blocked, Context, trestle
 
@@ -152,7 +152,10 @@ def up(ctx: Context, compose: list[str], stack: PipelineStack, workdir: Path) ->
     return result
 
 
-@trestle(packages=["trestle_packs"], summary_fields=["ok", "failed_stage"])
+@trestle(
+    packages=["trestle_pack_docker", "trestle_pack_migrate", "trestle_pack_pytest"],
+    summary_fields=["ok", "failed_stage"],
+)
 def stack_pipeline(
     ctx: Context,
     stack_spec: PipelineStack,

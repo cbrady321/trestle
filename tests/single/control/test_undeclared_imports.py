@@ -13,7 +13,13 @@ from trestle.common.importscan import undeclared_import_warning, undeclared_impo
 from trestle.common.types import PublishView
 from trestle.server.main import create_kernel
 
-EXAMPLES = sorted((Path(__file__).resolve().parents[3] / "examples" / "packs").glob("*.py"))
+PACKAGES = Path(__file__).resolve().parents[3] / "packages"
+# the tool plugins of the bundled packs
+EXAMPLES = sorted(
+    path
+    for pack in ("docker", "pytest", "migrate", "stack")
+    for path in (PACKAGES / f"trestle-pack-{pack}" / "plugins").glob("*.py")
+)
 
 
 def test_the_rule() -> None:
@@ -41,11 +47,14 @@ def test_the_rule() -> None:
 @pytest.mark.parametrize("example", EXAMPLES, ids=lambda p: p.name)
 def test_examples_declare_their_package_and_warned_before(example: Path) -> None:
     fixed = example.read_text(encoding="utf-8")
-    assert '@trestle(packages=["trestle_packs"]' in fixed
-    assert undeclared_import_warning(fixed, ("trestle_packs",)) is None
-    old = re.sub(r'packages=\["trestle_packs"\],?\s*', "", fixed)
+    found = re.search(r"packages=\[([^\]]*)\]", fixed)
+    assert found is not None, "the wrapper declares its pack libraries"
+    declared = tuple(re.findall(r'"([a-z_]+)"', found.group(1)))
+    assert declared and all(name.startswith("trestle_pack_") for name in declared)
+    assert undeclared_import_warning(fixed, declared) is None
+    old = re.sub(r"packages=\[[^\]]*\],?\s*", "", fixed)
     warning = undeclared_import_warning(old, ())
-    assert warning is not None and "'trestle_packs'" in warning
+    assert warning is not None and all(f"'{name}'" in warning for name in declared)
 
 
 # an installed non-stdlib module the plugin does not declare

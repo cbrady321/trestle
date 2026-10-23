@@ -6,8 +6,8 @@ report. Counts come from the XML, never from console text. Everything an adapted
 on is in `__all__`.
 """
 
-from trestle_packs.core.interpreter import VENV_PYTHONS, find_project_python
-from trestle_packs.pytest.junit import (
+from trestle_pack_pytest.interpreter import VENV_PYTHONS, find_project_python
+from trestle_pack_pytest.junit import (
     EXIT_MEANINGS,
     Failure,
     PytestReport,

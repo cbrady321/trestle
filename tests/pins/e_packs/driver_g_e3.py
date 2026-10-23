@@ -32,7 +32,8 @@ COMPOSE = "services:\n  web:\n    image: alpine:3.20\n"
 
 def _wrapper(name: str) -> ModuleType:
     spec = importlib.util.spec_from_file_location(
-        f"{name}_under_test", ROOT / "examples" / "packs" / f"{name}.py"
+        f"{name}_under_test",
+        ROOT / "packages" / f"trestle-pack-{name.split('_')[0]}" / "plugins" / f"{name}.py",
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -54,7 +55,7 @@ def _run_pytest_setup_error(work: Path) -> dict:
 
 
 def _pipeline(work: Path, *, fail_up: bool) -> dict:
-    from trestle_packs.fakes.docker_cli import FakeDocker, write_fake_docker
+    from trestle_pack_docker.fake_cli import FakeDocker, write_fake_docker
 
     from trestle.plugin.testing import FakeContext, call_plugin
 

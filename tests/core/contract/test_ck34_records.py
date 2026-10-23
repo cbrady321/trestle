@@ -210,7 +210,7 @@ def test_dataclass_return_switch_cleared_is_refused(
 
 
 def _load_pipeline() -> ModuleType:
-    path = REPO / "examples" / "packs" / "stack_pipeline.py"
+    path = REPO / "packages" / "trestle-pack-stack" / "plugins" / "stack_pipeline.py"
     spec = importlib.util.spec_from_file_location("stack_pipeline_under_test", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -230,7 +230,7 @@ def _k_block(text: str, k: str) -> str:
 def test_pipeline_receives_typed_stack_spec(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from trestle_packs.fakes.docker_cli import FakeDocker, write_fake_docker
+    from trestle_pack_docker.fake_cli import FakeDocker, write_fake_docker
 
     from trestle.plugin.testing import FakeContext
 
@@ -270,7 +270,9 @@ def test_pipeline_receives_typed_stack_spec(
     for needle in ("dataclass", "JSON", "execution.result_unencodable"):
         assert needle in k4, needle
     # the workaround the typed arrival replaces is gone
-    source = (REPO / "examples" / "packs" / "stack_pipeline.py").read_text(encoding="utf-8")
+    source = (REPO / "packages" / "trestle-pack-stack" / "plugins" / "stack_pipeline.py").read_text(
+        encoding="utf-8"
+    )
     assert "isinstance(stack_spec, dict)" not in source
 
 

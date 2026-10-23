@@ -1,12 +1,12 @@
 """The K-6 teardown table, read from docs/packs.md and observed on an engine (L.RB-3.4; WR-OWN-4).
 
 Shared by the HOST node (`host/test_k6_docs.py`, the operator's docker) and its CI twin
-(`twin/test_k6_docs_twin.py`, the fake docker CLI `trestle_packs.fakes.docker_cli`), so the two
+(`twin/test_k6_docs_twin.py`, the fake docker CLI `trestle_pack_docker.fake_cli`), so the two
 parse the SAME rows and derive the removal set the SAME way; only the engine differs.
 
 Each documented row is one teardown case run on a fresh stack of one service, the default network
 and one named volume (every object labelled `trestle.proof.fixture=k6-docs`, CSC-10): bring it up
-with `docker_stack` (examples/packs, called with `FakeContext`), run the wrapper's own `teardown`
+with `docker_stack` (the docker pack, called with `FakeContext`), run the wrapper's own `teardown`
 step with the row's value, and read which kinds of object it took away. A kind is removed when
 every object of it that existed before the teardown is gone after it; a stopped container is still
 a container.
@@ -22,11 +22,11 @@ from types import ModuleType
 from typing import Protocol
 
 from trestle.plugin.testing import FakeContext, call_plugin
-from trestle_packs.fakes.docker_cli import read_state, write_fake_docker
+from trestle_pack_docker.fake_cli import read_state, write_fake_docker
 
 REPO = Path(__file__).resolve().parents[4]
 DOCS = REPO / "docs" / "packs.md"
-DOCKER_STACK = REPO / "examples" / "packs" / "docker_stack.py"
+DOCKER_STACK = REPO / "packages" / "trestle-pack-docker" / "plugins" / "docker_stack.py"
 KINDS = ("containers", "networks", "volumes")
 FIXTURE_LABEL = "trestle.proof.fixture"
 FIXTURE = "k6-docs"

@@ -5,7 +5,7 @@ wider reading), shared by the HOST node `host/test_k6_entry_points.py` and its t
 Each case is one call through `run` on the MC-12 MCP host, and afterwards the seeded named volume
 must still be there:
 
-* `docker_stack-<teardown>`: the `docker_stack` plugin (examples/packs, unedited) over the K-6
+* `docker_stack-<teardown>`: the `docker_stack` plugin (the docker pack, unedited) over the K-6
   fixture's own Compose project. Its first wave starts `keeper`, which writes a seed file into the
   named volume `k6data`; its second wave names `broken`, whose image is a digest that is never
   cached (`pull_policy: never`), so `up` fails (`ok: false`) and the plugin tears the stack down
@@ -22,7 +22,7 @@ carries `trestle.proof.fixture=k6`, so the gate's record counts them as attribut
 own objects afterwards.
 
 Both nodes publish the plugins unedited. The HOST node's plugins run the operator's docker; the
-twin's find the fake docker CLI (`trestle_packs.fakes.docker_cli`, Compose's semantics over a JSON
+twin's find the fake docker CLI (`trestle_pack_docker.fake_cli`, Compose's semantics over a JSON
 state file) through `TRESTLE_DOCKER_PATH`, and the twin runs the reference plugin on the fake
 binding (`twin.fake_binding`) with the volume seeded in the fake engine's state.
 """
@@ -39,12 +39,15 @@ from pathlib import Path
 from typing import Any
 
 from tests.proof import mcp_host, tolerances
-from trestle_packs.fakes.docker_cli import read_state, write_fake_docker
+from trestle_pack_docker.fake_cli import read_state, write_fake_docker
 
 from twin import harness
 
 REPO = Path(__file__).resolve().parents[4]
-PACKS = REPO / "examples" / "packs"
+PACKS = {
+    "docker_stack": REPO / "packages" / "trestle-pack-docker" / "plugins",
+    "stack_pipeline": REPO / "packages" / "trestle-pack-stack" / "plugins",
+}
 COMPOSE = Path(__file__).resolve().parents[1] / "fixtures" / "k6-compose" / "compose.yaml"
 FIXTURE_LABEL = "trestle.proof.fixture"
 FIXTURE = "k6"
@@ -95,7 +98,7 @@ def twin_docker(base: Path) -> tuple[Path, dict[str, str]]:
 def legacy_host(
     home: Path, plugin: str, *, environ: Mapping[str, str | None] | None = None
 ) -> Iterator[mcp_host.McpHost]:
-    """The MCP host with one plugin published from examples/packs, unedited; `environ` is set for
+    """The MCP host with one plugin published from its bundled pack, unedited; `environ` is set for
     the host and its processes, then restored."""
     changes: dict[str, str | None] = {
         "PYTHONPATH": harness.plugin_pythonpath(),
@@ -110,7 +113,7 @@ def legacy_host(
             else:
                 os.environ[name] = value
         (home / "plugins").mkdir(parents=True, exist_ok=True)
-        shutil.copy(PACKS / f"{plugin}.py", home / "plugins" / f"{plugin}.py")
+        shutil.copy(PACKS[plugin] / f"{plugin}.py", home / "plugins" / f"{plugin}.py")
         with mcp_host.McpHost(home=home, timeout_s=HOST_TIMEOUT_S) as host:
             yield host
     finally:

@@ -5,15 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "trestle-packs"
 version = "0.5.2"
-description = "Libraries behind Trestle's tool plugins — Docker Compose, pytest, migrations"
+description = "The workflow foundation behind Trestle's composite plugins: ports, fakes, helpers"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = ["trestle"]
 
 [project.optional-dependencies]
-# The plugins run docker, pytest, Alembic and Yoyo out of process (the docker CLI, and the
-# project's own interpreter), so the library itself needs none of them. The extras stay for the
-# pack's own tests, which run pytest, Alembic and Yoyo on the test interpreter.
+# The library needs none of these. The extras stay for the tests (here and in the bundled packs
+# under packages/trestle-pack-*), which run pytest, Alembic and Yoyo on the test interpreter.
 docker = []
 pytest = ["pytest>=8.0"]
 migrate = ["alembic>=1.13", "yoyo-migrations>=9.0"]

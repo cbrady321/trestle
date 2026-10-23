@@ -1,4 +1,4 @@
-"""`pytest_run` (examples/packs), called with `FakeContext`: pytest runs out of process on the
+"""`pytest_run` (the pytest pack), called with `FakeContext`: pytest runs out of process on the
 interpreter given as the project's `python` (here this test interpreter).
 
 Copy this file beside an adapted wrapper to test it the same way."""
@@ -10,7 +10,8 @@ import os
 from pathlib import Path
 
 import pytest
-from pack_wrappers import PYTHON, context, load_wrapper
+from pytest_pack_testing import PYTHON, context, load_wrapper
+
 from trestle.plugin import Blocked
 from trestle.plugin.testing import call_plugin
 

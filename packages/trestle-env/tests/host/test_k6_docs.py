@@ -1,7 +1,7 @@
 """HOST: the documented teardown removal sets equal what real Docker removes (L.RB-3.4; K-6).
 
 docs/packs.md's `### Teardown` table (landed at NW-1, read only here) is parsed and each row is run
-on a fresh one-service stack through `docker_stack` (examples/packs) and its `teardown` step, over
+on a fresh one-service stack through `docker_stack` (the docker pack) and its `teardown` step, over
 the operator's docker CLI at the gate's endpoint (`TRESTLE_DOCKER_ENDPOINT`, image
 `TRESTLE_IMAGE_ALPINE`, both exported by `docker_gate run`); the objects are read with plain docker
 calls, never through the plugin under test. Every object carries the fixture label, and each case

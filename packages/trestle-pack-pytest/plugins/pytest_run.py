@@ -19,13 +19,13 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from trestle_packs.pytest import find_project_python, read_junit_report
-from trestle_packs.pytest.junit import PytestReport  # where it is defined: the schema reads it
+from trestle_pack_pytest import find_project_python, read_junit_report
+from trestle_pack_pytest.junit import PytestReport  # where it is defined: the schema reads it
 
 from trestle.plugin import Blocked, Context, trestle
 
 
-@trestle(packages=["trestle_packs"], summary_fields=["ok", "summary", "failures"])
+@trestle(packages=["trestle_pack_pytest"], summary_fields=["ok", "summary", "failures"])
 def pytest_run(
     ctx: Context,
     path: str = ".",

@@ -37,8 +37,8 @@ from trestle.packs.sources import (
 from trestle.server.config import load_config
 from trestle.server.plugin_paths import (
     CATALOG_HINT_EMPTY,
-    CATALOG_HINT_PACKS_MISSING,
     log_plugin_warning,
+    packs_missing_hint,
 )
 from trestle.server.plugin_schema import (
     EntryError,
@@ -369,12 +369,12 @@ class Registry:
     def catalog(self) -> CatalogView:
         self.maybe_refresh()
         items: list[PluginCatalogRow] = []
-        packs_missing = False
+        packs_missing: str | None = None
         for snap in sorted(self.snapshots.values(), key=lambda s: s.plugin):
             import_error = validate_plugin_imports(Path(snap.source_path))
             valid = import_error is None
-            if import_error is not None and "trestle_packs" in import_error:
-                packs_missing = True
+            if import_error is not None and packs_missing is None:
+                packs_missing = packs_missing_hint(import_error)
             source = self.sources.get(snap.plugin)
             items.append(
                 PluginCatalogRow(
@@ -401,8 +401,8 @@ class Registry:
         ]
         if not items:
             hint = CATALOG_HINT_EMPTY
-        elif packs_missing:
-            hint = CATALOG_HINT_PACKS_MISSING
+        elif packs_missing is not None:
+            hint = packs_missing
         return CatalogView(
             registry_version=self.registry_version,
             items=items,

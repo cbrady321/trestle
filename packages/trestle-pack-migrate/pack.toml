@@ -1,0 +1,4 @@
+[pack]
+name = "migrate"
+summary = "Apply Alembic or Yoyo migrations out of process on the project's interpreter"
+library = "."

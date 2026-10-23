@@ -48,11 +48,19 @@ _PATHS: dict[str, list[str]] = {
 }
 
 
-def package_testpaths(pyproject: Path = ROOT / "pyproject.toml") -> dict[str, str]:
+def package_testpaths(pyproject: Path = ROOT / "pyproject.toml") -> dict[str, list[str]]:
     """`packages/<name>/tests` entries of pyproject `testpaths`, keyed by shard name
-    (`trestle-packs` -> `packs`)."""
+    (`trestle-packs` -> `packs`). The bundled packs (`trestle-pack-<name>`) share one shard,
+    `bundled`: each is small, and a new one joins it without a new matrix job."""
     paths = tomllib.loads(pyproject.read_text())["tool"]["pytest"]["ini_options"]["testpaths"]
-    return {p.split("/")[1].removeprefix("trestle-"): p for p in paths if p.startswith("packages/")}
+    out: dict[str, list[str]] = {}
+    for p in paths:
+        if not p.startswith("packages/"):
+            continue
+        name = p.split("/")[1]
+        shard = "bundled" if name.startswith("trestle-pack-") else name.removeprefix("trestle-")
+        out.setdefault(shard, []).append(p)
+    return out
 
 
 _PACKAGES = package_testpaths()
@@ -70,7 +78,7 @@ SHARDS: dict[str, list[str]] = {
         "tests",
         *(f"--ignore=tests/{d}" for d in ("proof", "pins", "core", "single", "tree")),
     ],
-    **{name: ["-c", "pyproject.toml", "--rootdir", ".", p] for name, p in _PACKAGES.items()},
+    **{name: ["-c", "pyproject.toml", "--rootdir", ".", *ps] for name, ps in _PACKAGES.items()},
 }
 
 

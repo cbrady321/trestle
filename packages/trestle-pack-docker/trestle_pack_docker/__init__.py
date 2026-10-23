@@ -5,16 +5,16 @@ this library finds the docker CLI, plans the start-up waves, waits within the ru
 holds the result shape. Everything an adapted wrapper may rely on is in `__all__`.
 """
 
-from trestle_packs.core.dag import CycleError, WavePlan, plan_waves
-from trestle_packs.core.paths import resolve_under
-from trestle_packs.core.text import tail
-from trestle_packs.docker.cli import (
+from trestle_pack_docker.cli import (
     DOCKER_PATH_ENV,
     WELL_KNOWN_DOCKER,
     locate_docker,
     wait_until,
 )
-from trestle_packs.docker.results import StackResult
+from trestle_pack_docker.dag import CycleError, WavePlan, plan_waves
+from trestle_pack_docker.paths import resolve_under
+from trestle_pack_docker.results import StackResult
+from trestle_pack_docker.text import tail
 
 __all__ = [
     "DOCKER_PATH_ENV",

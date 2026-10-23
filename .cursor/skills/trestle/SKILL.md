@@ -89,9 +89,9 @@ recorded, not snapshotted: editing one after admission stops the run with
 
 ## Workflow packs
 
-Pre-built plugins for Docker stacks, pytest, and migrations. The operator installs them into the service's Python and lists `examples/packs` in the service's `[plugins] paths`. Guide: [`docs/packs.md`](../../../docs/packs.md).
+Pre-built plugins for Docker stacks, pytest, and migrations. They are bundled packs: the operator runs `trestle pack install stack` (no restart). Guide: [`docs/packs.md`](../../../docs/packs.md).
 
 | Symptom | Next step |
 |---------|-----------|
 | Pack plugins `valid: false` | Check `catalog_hint` on `list_plugins`; report it: the operator installs the packs |
-| `admission.import_failed` | Missing `trestle_packs`: report the `catalog_hint` to the operator |
+| `admission.import_failed` | A pack's library is missing: report the `catalog_hint` (the operator's `trestle pack install <pack>`) |

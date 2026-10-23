@@ -1,7 +1,7 @@
 """K-6 (L.NW-1.1): docs/packs.md states each teardown value's removal set, and it equals what
 `docker_stack` asks docker to do (WR-OWN-4:docs-equal-code-fake).
 
-Each row is observed on the fake docker CLI (`trestle_packs.fakes.docker_cli`, Compose's
+Each row is observed on the fake docker CLI (`trestle_pack_docker.fake_cli`, Compose's
 semantics): a stack of one service with a named volume comes up in a first wave, the second wave
 fails, and the declared teardown runs; a kind is removed when every object of it is gone."""
 
@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from pack_wrappers import PACKS, compose, context, fake_docker, load_wrapper
+from pack_wrappers import WRAPPERS, compose, context, fake_docker, load_wrapper
 from trestle.plugin.testing import call_plugin
 
 DOCS = Path(__file__).resolve().parents[4] / "docs" / "packs.md"
@@ -78,7 +78,8 @@ def test_documented_removal_sets_match_code(tmp_path: Path) -> None:
 
 
 def test_no_wrapper_removes_volumes() -> None:
-    for path in PACKS.glob("*.py"):
+    for name, folder in WRAPPERS.items():
+        path = folder / f"{name}.py"
         source = path.read_text(encoding="utf-8")
         assert '"--volumes"' not in source and '"-v"' not in source, path.name
         assert "reset_volumes" not in source, path.name

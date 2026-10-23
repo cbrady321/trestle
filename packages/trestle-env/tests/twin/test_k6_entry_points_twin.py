@@ -1,5 +1,5 @@
 """CI twin of `host/test_k6_entry_points.py` (L.RB-3.3; MC-B-03; STUB · CI): the same cases through
-`run`, the tool plugins on the fake docker CLI (`trestle_packs.fakes.docker_cli`) and the reference
+`run`, the tool plugins on the fake docker CLI (`trestle_pack_docker.fake_cli`) and the reference
 plugin on the fake binding; the seeded volume is present after each."""
 
 from __future__ import annotations

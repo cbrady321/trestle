@@ -34,13 +34,18 @@ def echo(ctx: Context, message: str = "hello") -> dict[str, str]:
 '''
 
 
-def _packs_hint() -> str:
-    try:
-        import trestle_packs  # noqa: F401
-    except ImportError:
-        return 'workflow packs: pip install -e ".[packs]" (see docs/packs.md)'
+def _packs_hint(home: Path) -> str | None:
+    """The bundled packs this release offers and the home has not installed (P-16: a fresh
+    install adds none; the operator chooses)."""
+    from trestle.packs.bundled import available_bundled
+    from trestle.packs.lock import read_lock
+
+    available = sorted(set(available_bundled()) - {p.name for p in read_lock(home)})
+    if not available:
+        return None
     return (
-        "workflow packs: add examples/packs to [plugins] paths in config.toml (see docs/packs.md)"
+        f"bundled packs: {', '.join(available)}; install with: trestle pack install <name> "
+        "(stack installs docker, pytest and migrate too; see docs/packs.md)"
     )
 
 
@@ -139,6 +144,10 @@ def run_init(*, home: Path, seed: bool = True, upgrade: bool = False) -> int:
         return 2
     plugins = home / "plugins"
     plugins.mkdir(parents=True, exist_ok=True)
+    if upgrade:
+        from trestle.packs.migrate_home import migrate_home
+
+        migrate_home(home, print)
     if seed:
         # only missing files: an operator's edit (or a deleted echo.py) is theirs until init runs
         echo_path = plugins / "echo.py"
@@ -156,5 +165,7 @@ def run_init(*, home: Path, seed: bool = True, upgrade: bool = False) -> int:
     if seed:
         print("seeded: echo.py, exec.py")
         print(EXEC_ROOTS_NOTE)
-    print(_packs_hint())
+    hint = _packs_hint(home)
+    if hint is not None:
+        print(hint)
     return 0
