@@ -23,9 +23,10 @@ def test_trestle_packs_declares_trestle() -> None:
     project = tomllib.loads((PACKS / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     assert project["name"] == "trestle-packs"
     assert [_requirement_name(r) for r in project["dependencies"]] == ["trestle"]
-    # the optional extras are unchanged: three third-party extras and their union
+    # the optional extras: one per tool and their union; docker needs no Python package, since
+    # `docker_stack` drives the docker CLI through `ctx.exec`
     assert set(project["optional-dependencies"]) == {"docker", "pytest", "migrate", "all"}
-    assert project["optional-dependencies"]["docker"] == ["python-on-whales>=0.76"]
+    assert project["optional-dependencies"]["docker"] == []
 
 
 def test_packs_import_port_types_from_trestle_workflow() -> None:

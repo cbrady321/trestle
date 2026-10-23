@@ -9,7 +9,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 PACKS_DIR = REPO / "examples" / "packs"
-PACK_TEST = REPO / "packages" / "trestle-packs" / "tests" / "test_dag.py"
+SMOKE_TEST = "def test_explicit_waves():\n    assert True\n\n\ndef test_other():\n    pass\n"
 YOYO_MIGRATIONS = (
     REPO / "packages" / "trestle-packs" / "tests" / "fixtures" / "yoyo-sqlite" / "migrations"
 )
@@ -41,17 +41,24 @@ def main() -> int:
 
     catalog = control.list_plugins()
     names = {row["name"] for row in catalog["items"]}
-    for plugin in ("docker_stack", "pytest_run", "migrate_apply", "integration_pipeline"):
+    for plugin in ("docker_stack", "pytest_run", "migrate_apply", "stack_pipeline"):
         assert plugin in names, f"{plugin} missing from catalog: {names}"
 
     invalid = [row for row in catalog["items"] if not row.get("valid", True)]
     assert not invalid, f"invalid pack plugins: {invalid}"
     assert "catalog_hint" not in catalog or "trestle-packs" not in catalog.get("catalog_hint", "")
 
+    # the plugins run pytest and Yoyo on the project's interpreter: here, this one
+    (workdir / "test_smoke.py").write_text(SMOKE_TEST, encoding="utf-8")
     pytest_view = _run_succeeded(
         control,
         "pytest_run",
-        {"path": str(PACK_TEST), "keyword": "test_explicit_waves"},
+        {
+            "path": "test_smoke.py",
+            "keyword": "test_explicit_waves",
+            "workdir": str(workdir),
+            "python": sys.executable,
+        },
     )
     fetched = control.fetch(
         f"{pytest_view.run_id}/result", {"kind": "jsonpath", "expr": "$.passed"}
@@ -71,11 +78,12 @@ def main() -> int:
             "backend": "yoyo",
             "database_url": f"sqlite:///{db_path}",
             "migrations_dir": str(mig_dir),
+            "python": sys.executable,
         },
     )
     mig_result = control.fetch(
         f"{migrate_view.run_id}/result",
-        {"kind": "jsonpath", "expr": "$.applied_count"},
+        {"kind": "jsonpath", "expr": "$.applied"},
     )
     assert isinstance(mig_result, dict), mig_result
     assert mig_result.get("values") == [1], mig_result
