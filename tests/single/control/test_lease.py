@@ -282,7 +282,10 @@ def test_second_run_same_env_waits_fifo_within_deadline() -> None:
             assert [_kinds(d)[-1] for d in (holder_dir, first_dir, second_dir, other_dir)] == [
                 "succeeded"
             ] * 4
-            assert kernel.control.scheduler.running_keys == {}
+            # the scheduler frees the key just after the terminal row, so wait for it
+            assert spine.wait_until(
+                lambda: kernel.control.scheduler.running_keys == {}, tolerances.JOIN_WAIT_S
+            )
 
 
 def test_waiting_run_past_its_deadline_is_finalized_not_started() -> None:
