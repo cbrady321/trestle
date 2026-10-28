@@ -1,0 +1,1012 @@
+# tests/proof/labels.d/core.toml — phase CORE (plans/core.md ## Coverage (a)). Schema CSC-1 (MC-04); read by meta audit-rows,
+# meta open-questions and meta register. No other key or table shape is used.
+
+[[label]]
+id          = "WR-EVID-11:newline-less-tail-terminated"
+row         = "WR-EVID-11"
+step        = "core"
+slice       = "core"
+tier        = "LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CS-1.1"
+
+[[label]]
+id          = "WR-PROOF-10:K-18"
+row         = "WR-PROOF-10"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CS-1.1"
+
+[[label]]
+id          = "WR-CANCEL-5:stdin-not-transport"
+row         = "WR-CANCEL-5"
+step        = "core"
+slice       = "core"
+tier        = "PROC+MCP"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CS-2.1"
+
+[[label]]
+id          = "WR-CANCEL-1:cancel-during-blocking-wait"
+row         = "WR-CANCEL-1"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CS-2.2"
+
+[[label]]
+id          = "WR-CANCEL-1:own-session-descendant-attributable"
+row         = "WR-CANCEL-1"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CS-2.2"
+
+[[label]]
+id          = "WR-CANCEL-5:stub-subprocess-killed"
+row         = "WR-CANCEL-5"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CS-2.2"
+
+[[label]]
+id          = "WR-OWN-6:gone-group-reports-released"
+row         = "WR-OWN-6"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CS-2.6"
+
+[[label]]
+id          = "WR-DEADLINE-2:no-process-survives"
+row         = "WR-DEADLINE-2"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CS-2.3"
+
+[[label]]
+id          = "WR-CANCEL-1:deadline-tree-within-bound"
+row         = "WR-CANCEL-1"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CS-2.3"
+
+[[label]]
+id          = "WR-OWN-3:non-success-no-survivor"
+row         = "WR-OWN-3"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CS-2.3"
+
+[[label]]
+id          = "WR-CANCEL-3:interrupted-never-succeeded"
+row         = "WR-CANCEL-3"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CS-2.4"
+
+[[label]]
+id          = "WR-CANCEL-3:never-nonterminal"
+row         = "WR-CANCEL-3"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CS-2.4"
+
+[[label]]
+id          = "WR-CANCEL-3:unconfirmed-never-clean-restart"
+row         = "WR-CANCEL-3"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CS-2.4"
+
+[[label]]
+id          = "WR-CANCEL-3:signals-only-recorded-identity"
+row         = "WR-CANCEL-3"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CS-2.4"
+
+[[label]]
+id          = "WR-CANCEL-3:process-alive-after-recovery"
+row         = "WR-CANCEL-3"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CS-2.4"
+
+[[label]]
+id          = "WR-OWN-1:recovery-ends-run-created-process"
+row         = "WR-OWN-1"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CS-2.4"
+
+[[label]]
+id          = "WR-CANCEL-2:no-bytes-after-finalization-stop-paths"
+row         = "WR-CANCEL-2"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CS-2.5"
+
+[[label]]
+id          = "WR-CON-6:containment-both-kernels"
+row         = "WR-CON-6"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CS-2.5"
+
+[[label]]
+id          = "WR-PROOF-10:K-7"
+row         = "WR-PROOF-10"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CS-2.5"
+
+[[label]]
+id          = "WR-PROOF-10:K-9-enforcement"
+row         = "WR-PROOF-10"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CS-2.5"
+
+[[label]]
+id          = "WR-OWN-3:success-no-survivor"
+row         = "WR-OWN-3"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CK-8.1"
+
+[[label]]
+id          = "WR-CANCEL-2:success-no-bytes-after-finalization"
+row         = "WR-CANCEL-2"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CK-8.1"
+
+[[label]]
+id          = "WR-PROOF-10:K-8"
+row         = "WR-PROOF-10"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CK-8.1"
+
+[[label]]
+id          = "WR-EVID-1:distinct-codes-import-bind-unencodable"
+row         = "WR-EVID-1"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CS-3.1"
+
+[[label]]
+id          = "WR-EVID-2:execution-code-in-vocabulary"
+row         = "WR-EVID-2"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CS-3.1"
+
+[[label]]
+id          = "WR-EVID-1:error-survives-restart"
+row         = "WR-EVID-1"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CS-3.2"
+
+[[label]]
+id          = "WR-EVID-1:sentinel-in-error-field-and-last-error"
+row         = "WR-EVID-1"
+step        = "core"
+slice       = "core"
+tier        = "MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CS-3.3"
+
+[[label]]
+id          = "WR-PROOF-10:K-10"
+row         = "WR-PROOF-10"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CS-3.3"
+
+[[label]]
+id          = "WR-TERM-2:response-after-terminal-row"
+row         = "WR-TERM-2"
+step        = "core"
+slice       = "core"
+tier        = "MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CS-4.1"
+
+[[label]]
+id          = "WR-TERM-2:within-deadline-plus-margin"
+row         = "WR-TERM-2"
+step        = "core"
+slice       = "core"
+tier        = "MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CS-4.1"
+
+[[label]]
+id          = "WR-COMPAT-3:bounded-default-unchanged"
+row         = "WR-COMPAT-3"
+step        = "core"
+slice       = "compat"
+tier        = "MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CS-4.1"
+
+[[label]]
+id          = "WR-TERM-7:held-wait-cancel-query-bound"
+row         = "WR-TERM-7"
+step        = "core"
+slice       = "core"
+tier        = "MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CS-4.2"
+
+[[label]]
+id          = "WR-TERM-3:six-plain-conditions-one-class"
+row         = "WR-TERM-3"
+step        = "core"
+slice       = "core"
+tier        = "MCP+PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CS-4.3"
+
+[[label]]
+id          = "WR-TERM-3:required-fields-decidable-alone"
+row         = "WR-TERM-3"
+step        = "core"
+slice       = "core"
+tier        = "MCP+PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CS-4.3"
+
+[[label]]
+id          = "WR-COMPAT-1:ten-tools-within-budget"
+row         = "WR-COMPAT-1"
+step        = "core"
+slice       = "compat"
+tier        = "MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CS-4.4"
+
+[[label]]
+id          = "WR-PROOF-8:mypy-zero-3.12"
+row         = "WR-PROOF-8"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CK-14.1"
+
+[[label]]
+id          = "WR-PROOF-10:K-14"
+row         = "WR-PROOF-10"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CK-14.1"
+
+[[label]]
+id          = "WR-EVID-9:documented-states-produced-or-reserved"
+row         = "WR-EVID-9"
+step        = "core"
+slice       = "core"
+tier        = "PROC+INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-D1.1"
+
+[[label]]
+id          = "WR-PROOF-10:K-13"
+row         = "WR-PROOF-10"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-D1.1"
+
+[[label]]
+id          = "WR-CANCEL-6:boundary-disclosed-no-universal-claim"
+row         = "WR-CANCEL-6"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-D1.2"
+
+[[label]]
+id          = "WR-PROOF-10:K-19"
+row         = "WR-PROOF-10"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-D1.2"
+
+[[label]]
+id          = "WR-IDEM-2:concurrent-single-run"
+row         = "WR-IDEM-2"
+step        = "core"
+slice       = "core"
+tier        = "MCP+PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-A1.1"
+
+[[label]]
+id          = "WR-IDEM-2:different-intent-refused-no-run-id"
+row         = "WR-IDEM-2"
+step        = "core"
+slice       = "core"
+tier        = "MCP+PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-A1.1"
+
+[[label]]
+id          = "WR-TERM-7:over-capacity-queued-or-refused"
+row         = "WR-TERM-7"
+step        = "core"
+slice       = "core"
+tier        = "MCP+PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-A1.2"
+
+[[label]]
+id          = "WR-DEADLINE-2:queued-no-extra-time"
+row         = "WR-DEADLINE-2"
+step        = "core"
+slice       = "core"
+tier        = "MCP+PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-A1.2"
+
+[[label]]
+id          = "WR-OWN-8:dispatch-wait-within-deadline-or-refuse"
+row         = "WR-OWN-8"
+step        = "core"
+slice       = "core"
+tier        = "MCP+PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-A1.2"
+
+[[label]]
+id          = "WR-PLAN-4:call-form-honoured"
+row         = "WR-PLAN-4"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C1.1"
+
+[[label]]
+id          = "WR-OWN-8:env-arg-declaration-carried"
+row         = "WR-OWN-8"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C1.1"
+
+[[label]]
+id          = "WR-PLAN-4:async-refused-at-publication"
+row         = "WR-PLAN-4"
+step        = "core"
+slice       = "core"
+tier        = "PROC+MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C1.2"
+
+[[label]]
+id          = "WR-PLAN-6:server-cwd-shadow-ignored"
+row         = "WR-PLAN-6"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C1.3"
+
+[[label]]
+id          = "WR-PLAN-5:edit-after-admission-no-change"
+row         = "WR-PLAN-5"
+step        = "core"
+slice       = "core"
+tier        = "PROC+LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C1.4"
+
+[[label]]
+id          = "WR-PLAN-5:provenance-lists-imported-code"
+row         = "WR-PLAN-5"
+step        = "core"
+slice       = "core"
+tier        = "PROC+LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C1.4"
+
+[[label]]
+id          = "WR-PLAN-5:deadline-change-moves-identity"
+row         = "WR-PLAN-5"
+step        = "core"
+slice       = "core"
+tier        = "PROC+LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C1.4"
+
+[[label]]
+id          = "WR-DEADLINE-1:declared-over-300-not-killed"
+row         = "WR-DEADLINE-1"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C1.5"
+
+[[label]]
+id          = "WR-DEADLINE-1:undeclared-default-300"
+row         = "WR-DEADLINE-1"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C1.5"
+
+[[label]]
+id          = "WR-DEADLINE-1:visible-describe-provenance"
+row         = "WR-DEADLINE-1"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C1.5"
+
+[[label]]
+id          = "WR-PROOF-10:K-2"
+row         = "WR-PROOF-10"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C1.6"
+
+[[label]]
+id          = "WR-PROOF-10:K-9-declared"
+row         = "WR-PROOF-10"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C1.6"
+
+[[label]]
+id          = "WR-PLAN-5:packages-recorded-not-snapshotted-disclosed"
+row         = "WR-PLAN-5"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C1.6"
+
+[[label]]
+id          = "WR-IDEM-1:window-covers-run-life"
+row         = "WR-IDEM-1"
+step        = "core"
+slice       = "core"
+tier        = "MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CK-1.1"
+
+[[label]]
+id          = "WR-IDEM-1:answer-names-identity"
+row         = "WR-IDEM-1"
+step        = "core"
+slice       = "core"
+tier        = "MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CK-1.2"
+
+[[label]]
+id          = "WR-PROOF-10:K-1"
+row         = "WR-PROOF-10"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CK-1.2"
+
+[[label]]
+id          = "WR-PLAN-8:naive-or-malformed-no-run-id"
+row         = "WR-PLAN-8"
+step        = "core"
+slice       = "core"
+tier        = "MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C2.1"
+
+[[label]]
+id          = "WR-PLAN-7:admitted-values-same-meaning"
+row         = "WR-PLAN-7"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C2.2"
+
+[[label]]
+id          = "WR-PLAN-7:dict-annotated-gets-dict"
+row         = "WR-PLAN-7"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C2.2"
+
+[[label]]
+id          = "WR-PROOF-10:K-12"
+row         = "WR-PROOF-10"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C2.3"
+
+[[label]]
+id          = "WR-PROOF-10:K-5"
+row         = "WR-PROOF-10"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C2.3"
+
+[[label]]
+id          = "WR-EVID-5:non-json-never-complete"
+row         = "WR-EVID-5"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C2.4"
+
+[[label]]
+id          = "WR-EVID-5:set-order-deterministic"
+row         = "WR-EVID-5"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C2.4"
+
+[[label]]
+id          = "WR-EVID-5:no-tmp-remains"
+row         = "WR-EVID-5"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-C2.4"
+
+[[label]]
+id          = "WR-PLAN-9:dataclass-return-succeeds"
+row         = "WR-PLAN-9"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CK-3/4.2"
+
+[[label]]
+id          = "WR-PLAN-9:variant-refuse-written"
+row         = "WR-PLAN-9"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "shape"
+declared_by = "L.CK-3/4.3"
+
+[[label]]
+id          = "WR-PROOF-10:K-3"
+row         = "WR-PROOF-10"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CK-3/4.3"
+
+[[label]]
+id          = "WR-PROOF-10:K-4"
+row         = "WR-PROOF-10"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CK-3/4.3"
+
+[[label]]
+id          = "WR-EVID-8:secret-absent-spec-ledger-store"
+row         = "WR-EVID-8"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-B2.1"
+
+[[label]]
+id          = "WR-EVID-8:secret-absent-everywhere"
+row         = "WR-EVID-8"
+step        = "core"
+slice       = "core"
+tier        = "PROC+MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-B2.2"
+
+[[label]]
+id          = "WR-EVID-8:no-host-path-in-answer"
+row         = "WR-EVID-8"
+step        = "core"
+slice       = "core"
+tier        = "MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-B2.3"
+
+[[label]]
+id          = "WR-TERM-5:declared-cannot-fit-says-so"
+row         = "WR-TERM-5"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-B1.1"
+
+[[label]]
+id          = "WR-TERM-5:early-sorted-large-result-no-hide"
+row         = "WR-TERM-5"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-B1.1"
+
+[[label]]
+id          = "WR-TERM-5:hundred-service-decisive-in-budget"
+row         = "WR-TERM-5"
+step        = "core"
+slice       = "core"
+tier        = "MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-B1.2"
+
+[[label]]
+id          = "WR-TERM-5:every-handle-fetches"
+row         = "WR-TERM-5"
+step        = "core"
+slice       = "core"
+tier        = "MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-B1.2"
+
+[[label]]
+id          = "WR-EVID-6:count-byte-cap-marked"
+row         = "WR-EVID-6"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-B1.3"
+
+[[label]]
+id          = "WR-EVID-6:staged-promoted-or-refused"
+row         = "WR-EVID-6"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-B1.3"
+
+[[label]]
+id          = "WR-EVID-4:attach-bounded"
+row         = "WR-EVID-4"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-B1.3"
+
+[[label]]
+id          = "WR-EVID-7:dropped-event-marker"
+row         = "WR-EVID-7"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-B1.3"
+
+[[label]]
+id          = "WR-PROOF-10:K-17"
+row         = "WR-PROOF-10"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-B1.3"
+
+[[label]]
+id          = "WR-EVID-7:window-hidden-run-marked"
+row         = "WR-EVID-7"
+step        = "core"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-PX2.1"
+
+[[label]]
+id          = "WR-OWN-6:cleanup-failure-beside-primary"
+row         = "WR-OWN-6"
+step        = "core"
+slice       = "core"
+tier        = "LOGIC+PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CL-B3.1"
+
+[[label]]
+id          = "WR-OWN-6:disposition-matches-process-table"
+row         = "WR-OWN-6"
+step        = "core"
+slice       = "core"
+tier        = "LOGIC+PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CL-B3.1"
+
+[[label]]
+id          = "WR-CANCEL-3:unconfirmed-never-clean-cancel-deadline"
+row         = "WR-CANCEL-3"
+step        = "core"
+slice       = "core"
+tier        = "LOGIC+PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.CL-B3.1"
+
+[[label]]
+id          = "WR-OWN-5:keep-processes-refused"
+row         = "WR-OWN-5"
+step        = "core"
+slice       = "core"
+tier        = "MCP+LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-B3.2"
+
+[[label]]
+id          = "WR-OWN-5:keep-containers-refused"
+row         = "WR-OWN-5"
+step        = "core"
+slice       = "core"
+tier        = "MCP+LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-B3.2"
+
+[[label]]
+id          = "WR-AUTH-4:cleanup-closed-set"
+row         = "WR-AUTH-4"
+step        = "core"
+slice       = "core"
+tier        = "MCP+LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-B3.2"
+
+[[label]]
+id          = "WR-AUTH-1:restricted-list-no-publication"
+row         = "WR-AUTH-1"
+step        = "core"
+slice       = "core"
+tier        = "MCP+PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-A2.1"
+
+[[label]]
+id          = "WR-AUTH-1:publication-through-profile-fails"
+row         = "WR-AUTH-1"
+step        = "core"
+slice       = "core"
+tier        = "MCP+PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-A2.1"
+
+[[label]]
+id          = "WR-AUTH-2:non-allowlisted-no-run-id-no-process"
+row         = "WR-AUTH-2"
+step        = "core"
+slice       = "core"
+tier        = "MCP+PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-A2.1"
+
+[[label]]
+id          = "WR-AUTH-2:intent-cannot-modify-allowlist"
+row         = "WR-AUTH-2"
+step        = "core"
+slice       = "core"
+tier        = "MCP+PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-A2.1"
+
+[[label]]
+id          = "WR-AUTH-1:cancel-only-own-session-runs"
+row         = "WR-AUTH-1"
+step        = "core"
+slice       = "core"
+tier        = "MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-A2.2"
+
+[[label]]
+id          = "WR-AUTH-4:closed-sets-no-destructive"
+row         = "WR-AUTH-4"
+step        = "core"
+slice       = "core"
+tier        = "LOGIC+MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-A2.3"
+
+[[label]]
+id          = "WR-AUTH-5:full-profile-ten-tools"
+row         = "WR-AUTH-5"
+step        = "core"
+slice       = "core"
+tier        = "LOGIC+MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-A2.3"
+
+[[label]]
+id          = "WR-AUTH-5:no-sandbox-claim"
+row         = "WR-AUTH-5"
+step        = "core"
+slice       = "core"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.CL-A2.3"

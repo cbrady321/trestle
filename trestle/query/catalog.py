@@ -1,0 +1,136 @@
+"""R-MCP-9 view catalog — when to pick each named view (not a schema dump)."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from trestle.query.views import (
+    CELL_TRUNCATION_BYTES,
+    DEFAULT_PAGE_BYTES,
+    DEFAULT_PAGE_ITEMS,
+    FETCH_WINDOW_KINDS,
+    VIEW_NAME_VALUES,
+)
+
+VIEW_CATALOG_URI = "trestle://views"
+
+_PAGE_KB = DEFAULT_PAGE_BYTES // 1024
+
+_VIEW_WHEN: dict[str, dict[str, str]] = {
+    "run": {
+        "use_when": (
+            "Status and timing for one run (plugin, state, started_at, ended_at), and its latest "
+            "progress while it runs. session_ended: true once the session that sent a live run "
+            "has ended (false while it is open; null for an ended run or one sent outside MCP)."
+        ),
+        "params": "run_id",
+    },
+    "last_error": {
+        "use_when": (
+            "Why a run failed — the run's recorded explanation (error code, phase, message), "
+            "or the last error event the plugin logged. Empty items if the run succeeded."
+        ),
+        "params": "run_id",
+    },
+    "run_tail": {
+        "use_when": (
+            "Wrapper stdout/stderr lines from print. Empty when the plugin only used ctx.log "
+            "(use run_events) or returned a value (fetch {run_id}/result). Not TTY-class "
+            "console — that is fetch art_…."
+        ),
+        "params": "run_id",
+    },
+    "run_events": {
+        "use_when": (
+            "Structured events from ctx.log, also while the run is in flight (live: true). "
+            f"Pager of {DEFAULT_PAGE_ITEMS} rows / "
+            f"{_PAGE_KB} KB with {CELL_TRUNCATION_BYTES}-byte cells — not event grep. "
+            "For a pattern in result or artifact text, fetch with kind=grep."
+        ),
+        "params": "run_id",
+    },
+    "recent_runs": {
+        "use_when": (
+            "Browse recent runs, newest first. Follow next_cursor when it is set. "
+            "truncated with next_cursor null: older runs lie past the window (reach past "
+            "it is out); a run_id view of one answers projection.outside_window. A live run's "
+            "session_ended is true once the session that sent it has ended (null once it ends)."
+        ),
+        "params": "",
+    },
+    "recent_failures": {
+        "use_when": (
+            "Browse recent runs whose verdict (answer.outcome) is not passed, newest first: "
+            "failed, blocked, cancelled, timed out or an execution error."
+        ),
+        "params": "",
+    },
+    "run_provenance": {
+        "use_when": (
+            "Snapshot id and hashes for one run; for a pack plugin also its pack and the "
+            "digests of the pack's configuration files."
+        ),
+        "params": "run_id",
+    },
+    "run_artifacts": {
+        "use_when": (
+            "Artifact ids for one run, one per name (the newest), also while it runs; then fetch "
+            "the art_… handle."
+        ),
+        "params": "run_id",
+    },
+    "artifact_refs": {
+        "use_when": "Producer and referrer runs for one artifact_id.",
+        "params": "artifact_id",
+    },
+    "run_by_key": {
+        "use_when": (
+            "The runs that used one idempotency key, newest first, each with its state, outcome "
+            "and summary; the first row is the run a re-send would join (joinable). Empty for an "
+            "unknown key. Not limited to the recent runs."
+        ),
+        "params": "idempotency_key",
+    },
+    "status": {
+        "use_when": (
+            "What this service allows and how busy it is: version, profile, limits (deadline "
+            "ceiling, longest key ttl), free slots, live runs, the environments in use and who "
+            "holds them. One row; no params."
+        ),
+        "params": "",
+    },
+}
+
+_FETCH_TARGETS: dict[str, str] = {
+    "{run_id}/result": ("Plugin return value. kinds: jsonpath, range, head, tail, grep."),
+    "art_…": (
+        "Artifact bytes (including TTY-class console). kinds: range, head, tail, grep. "
+        "Not run_tail."
+    ),
+    "summary.handle": "Array continuation from a truncated RunView. kinds: jsonpath, range.",
+}
+
+
+def view_catalog() -> dict[str, Any]:
+    """Read-only catalog of frozen views and fetch targets (R-MCP-9)."""
+    missing = [name for name in VIEW_NAME_VALUES if name not in _VIEW_WHEN]
+    if missing:
+        raise RuntimeError(f"view catalog missing entries: {missing}")
+    return {
+        "views": [{"name": name, **_VIEW_WHEN[name]} for name in VIEW_NAME_VALUES],
+        "fetch": {
+            "use_when": "Bytes of one opaque handle — not a named view, not a filesystem path.",
+            "targets": _FETCH_TARGETS,
+            "kinds": list(FETCH_WINDOW_KINDS),
+        },
+        "mouths": {
+            "print": "query view=run_tail",
+            "ctx.log": "query view=run_events (pager, not grep)",
+            "return_value": "fetch {run_id}/result",
+            "artifact": "fetch art_…",
+        },
+        "invalid_view": (
+            "Unknown names and SQL strings are projection.invalid_view. "
+            "Do not invent views; do not send SQL on MCP."
+        ),
+    }

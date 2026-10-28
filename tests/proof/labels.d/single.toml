@@ -1,0 +1,544 @@
+# tests/proof/labels.d/single.toml -- phase SINGLE (plans/a1-single-level.md, "labels.d/single.toml"). Schema CSC-1 (MC-04);
+# read by meta audit-rows, meta open-questions and meta register. No other key or table shape is used.
+# 53 labels; `tier` is the requirements row's own tier (A1c2-7; a Slice A label of a slice-split row carries
+# the Slice A component); `slice = "core"` only on the two deferred core clauses (DM-19/DM-41).
+
+[[label]]
+id          = "WR-TERM-1:k11-docs"
+row         = "WR-TERM-1"
+step        = "single"
+slice       = "A"
+tier        = "MCP"
+venue       = "CI"
+posture     = "shape"
+declared_by = "L.SV-0.1"
+
+[[label]]
+id          = "WR-PROOF-10:K-11"
+row         = "WR-PROOF-10"
+step        = "single"
+slice       = "A"
+tier        = "INSPECT"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SV-0.1"
+
+[[label]]
+id          = "WR-EVID-1:lane-unavailable-stops-before-effect"
+row         = "WR-EVID-1"
+step        = "single"
+slice       = "A"
+tier        = "PROC+MCP"
+venue       = "CI"
+posture     = "shape"
+declared_by = "L.SV-1.2"
+
+[[label]]
+id          = "WR-EVID-1:lane-step-folded-to-error-record"
+row         = "WR-EVID-1"
+step        = "single"
+slice       = "A"
+tier        = "PROC+MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SV-1.3"
+
+[[label]]
+id          = "WR-CANCEL-3:fold-before-interrupted"
+row         = "WR-CANCEL-3"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "CI"
+posture     = "shape"
+declared_by = "L.SV-1.3"
+
+[[label]]
+id          = "WR-PLAN-5:declared-tree-in-identity"
+row         = "WR-PLAN-5"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SV-2.3"
+
+[[label]]
+id          = "WR-OWN-8:port-importer-declares-env"
+row         = "WR-OWN-8"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SV-2.4"
+
+[[label]]
+id          = "WR-PLAN-5:plan-digest-in-identity"
+row         = "WR-PLAN-5"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SV-3.4"
+
+[[label]]
+id          = "WR-PLAN-2:schema-refusal-names-identifier"
+row         = "WR-PLAN-2"
+step        = "single"
+slice       = "A"
+tier        = "MCP+LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SV-3.5"
+
+[[label]]
+id          = "WR-DEADLINE-3:root-slice-misfit-no-run-id"
+row         = "WR-DEADLINE-3"
+step        = "single"
+slice       = "A"
+tier        = "LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SV-3.5"
+
+[[label]]
+id          = "WR-CANCEL-1:u2-sole-signaller"
+row         = "WR-CANCEL-1"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.SV-3.6"
+
+[[label]]
+id          = "WR-DEADLINE-2:release-point-stop-row"
+row         = "WR-DEADLINE-2"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.SV-3.6"
+
+[[label]]
+id          = "WR-CANCEL-4:A-sweep-in-plan-rank"
+row         = "WR-CANCEL-4"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "CI"
+posture     = "shape"
+declared_by = "L.SV-3.7"
+
+[[label]]
+id          = "WR-CANCEL-4:A-stop-command-outside-allowlist-unknown"
+row         = "WR-CANCEL-4"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "CI"
+posture     = "shape"
+declared_by = "L.SV-3.7"
+
+[[label]]
+id          = "WR-CANCEL-4:A-stop-command-populated-allowlist"
+row         = "WR-CANCEL-4"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "CI"
+posture     = "gated_on"
+oq          = "F-11(b)"
+declared_by = "L.SV-3.7"
+
+[[label]]
+id          = "WR-OWN-6:A-unknown-never-clean"
+row         = "WR-OWN-6"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SV-3.7"
+
+[[label]]
+id          = "WR-OWN-6:A-success-with-unknown-acceptable"
+row         = "WR-OWN-6"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "CI"
+posture     = "gated_on"
+oq          = "OQ-30"
+declared_by = "L.SV-3.7"
+
+[[label]]
+id          = "WR-CANCEL-3:unknown-plan-format"
+row         = "WR-CANCEL-3"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.SV-3.8"
+
+[[label]]
+id          = "WR-TERM-3:stop-row-cause-decides-class"
+row         = "WR-TERM-3"
+step        = "single"
+slice       = "A"
+tier        = "MCP+PROC+STUB"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SV-4.2"
+
+[[label]]
+id          = "WR-EVID-1:lane-unavailable-class-blocked"
+row         = "WR-EVID-1"
+step        = "single"
+slice       = "A"
+tier        = "PROC+MCP"
+venue       = "CI"
+posture     = "gated_on"
+oq          = "F-11(a)"
+declared_by = "L.SV-4.2"
+
+[[label]]
+id          = "WR-EVID-1:lane-unavailable-class-failed"
+row         = "WR-EVID-1"
+step        = "single"
+slice       = "A"
+tier        = "PROC+MCP"
+venue       = "CI"
+posture     = "gated_on"
+oq          = "F-11(a)"
+declared_by = "L.SV-4.2"
+
+[[label]]
+id          = "WR-CANCEL-4:A-descriptor-before-effect"
+row         = "WR-CANCEL-4"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "CI"
+posture     = "shape"
+declared_by = "L.SV-5.6"
+
+[[label]]
+id          = "WR-DEADLINE-2:dispatch-recheck-stops-before-effect"
+row         = "WR-DEADLINE-2"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.SV-5.7"
+
+[[label]]
+id          = "WR-PLAN-3:identity-before-first-effect"
+row         = "WR-PLAN-3"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SV-5.9"
+
+[[label]]
+id          = "WR-DEADLINE-4:A-wait-ends-on-stop"
+row         = "WR-DEADLINE-4"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SV-5.9"
+
+[[label]]
+id          = "WR-OWN-2:A-found-unreachable-from-release-set"
+row         = "WR-OWN-2"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SV-5.11"
+
+[[label]]
+id          = "WR-CANCEL-1:A-no-applied-effect-past-stop-offset"
+row         = "WR-CANCEL-1"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.SV-5.12"
+
+[[label]]
+id          = "WR-PLAN-12:registration-six-elements"
+row         = "WR-PLAN-12"
+step        = "single"
+slice       = "A"
+tier        = "LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SL-7.1"
+
+[[label]]
+id          = "WR-PLAN-12:precondition-single-vertex"
+row         = "WR-PLAN-12"
+composes    = "A2.4"
+step        = "single"
+slice       = "A"
+tier        = "LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SL-7.2"
+
+[[label]]
+id          = "WR-IDEM-3:once-never-reissued"
+row         = "WR-IDEM-3"
+composes    = "A3.2"
+step        = "single"
+slice       = "A"
+tier        = "LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SL-4.1"
+
+[[label]]
+id          = "WR-DEADLINE-3:single-vertex"
+row         = "WR-DEADLINE-3"
+step        = "single"
+slice       = "A"
+tier        = "LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SL-2.1"
+
+[[label]]
+id          = "WR-TERM-8:describe-duration-codes"
+row         = "WR-TERM-8"
+step        = "single"
+slice       = "A"
+tier        = "MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SL-2.2"
+
+[[label]]
+id          = "WR-TERM-9:progress-never-completes"
+row         = "WR-TERM-9"
+step        = "single"
+slice       = "A"
+tier        = "MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SL-2.3"
+
+[[label]]
+id          = "WR-CANCEL-5:A-bound-command-never-detached"
+row         = "WR-CANCEL-5"
+step        = "single"
+slice       = "A"
+tier        = "STUB+MCP"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.SL-3.2"
+
+[[label]]
+id          = "WR-PROOF-4:A-command-runner"
+row         = "WR-PROOF-4"
+step        = "single"
+slice       = "A"
+tier        = "STUB"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.SL-3.3"
+
+[[label]]
+id          = "WR-CANCEL-4:A-PROC"
+row         = "WR-CANCEL-4"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.SL-3.4"
+
+[[label]]
+id          = "WR-OWN-7:foreign-listener-blocked"
+row         = "WR-OWN-7"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "BOTH"
+posture     = "claim"
+declared_by = "L.SL-3.5"
+
+[[label]]
+id          = "WR-VERIFY-1:postcondition-after-last-action"
+row         = "WR-VERIFY-1"
+step        = "single"
+slice       = "A"
+tier        = "LOGIC+PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SL-5.1"
+
+[[label]]
+id          = "WR-IDEM-5:A-lagging-read-no-resubmit"
+row         = "WR-IDEM-5"
+step        = "single"
+slice       = "A"
+tier        = "LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SL-5.3"
+
+[[label]]
+id          = "WR-REMEDY-1:declared-pair-only"
+row         = "WR-REMEDY-1"
+step        = "single"
+slice       = "A"
+tier        = "LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SL-6.1"
+
+[[label]]
+id          = "WR-REMEDY-5:coded-exhaustion"
+row         = "WR-REMEDY-5"
+step        = "single"
+slice       = "A"
+tier        = "LOGIC+MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SL-6.2"
+
+[[label]]
+id          = "WR-TERM-1:one-leaf-one-call"
+row         = "WR-TERM-1"
+step        = "single"
+slice       = "A"
+tier        = "MCP"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SL-6.2"
+
+[[label]]
+id          = "WR-TERM-4:repaired-not-clean"
+row         = "WR-TERM-4"
+step        = "single"
+slice       = "A"
+tier        = "LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SL-6.2"
+
+[[label]]
+id          = "WR-EVID-3:step-facts-structured"
+row         = "WR-EVID-3"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SL-10.1"
+
+[[label]]
+id          = "WR-CANCEL-3:later-run-admitted-after-answer"
+row         = "WR-CANCEL-3"
+step        = "single"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SL-8.2"
+
+[[label]]
+id          = "WR-OWN-8:environment-lease"
+row         = "WR-OWN-8"
+step        = "single"
+slice       = "core"
+tier        = "PROC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SL-8.3"
+
+[[label]]
+id          = "WR-OWN-8:undeclared-env-excluded-variant"
+row         = "WR-OWN-8"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "CI"
+posture     = "gated_on"
+oq          = "OQ-29"
+declared_by = "L.SL-8.3"
+
+[[label]]
+id          = "WR-OWN-8:undeclared-env-not-covered-variant"
+row         = "WR-OWN-8"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "CI"
+posture     = "gated_on"
+oq          = "OQ-29"
+declared_by = "L.SL-8.3"
+
+[[label]]
+id          = "WR-OWN-8:host-wide-serialization"
+row         = "WR-OWN-8"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "CI"
+posture     = "gated_on"
+oq          = "OQ-26"
+declared_by = "L.SL-8.3"
+
+[[label]]
+id          = "WR-OWN-8:unconfirmed-path"
+row         = "WR-OWN-8"
+step        = "single"
+slice       = "A"
+tier        = "PROC"
+venue       = "CI"
+posture     = "na"
+reason      = "OQ-34 answered 2026-09-26: exclusion not claimed on the unconfirmed-stop path (row text)"
+declared_by = "L.SL-8.3"
+
+[[label]]
+id          = "WR-TERM-4:blocked-names-action"
+row         = "WR-TERM-4"
+step        = "single"
+slice       = "A"
+tier        = "LOGIC"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SL-9.1"
+
+[[label]]
+id          = "WR-TERM-3:no-progress-one-class-never-passed"
+row         = "WR-TERM-3"
+step        = "single"
+slice       = "A"
+tier        = "MCP+PROC+STUB"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SL-9.1"
+
+[[label]]
+id          = "WR-TERM-3:no-progress-class-blocked"
+row         = "WR-TERM-3"
+step        = "single"
+slice       = "A"
+tier        = "MCP+PROC+STUB"
+venue       = "CI"
+posture     = "claim"
+declared_by = "L.SL-9.1"

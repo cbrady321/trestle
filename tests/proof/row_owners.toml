@@ -1,0 +1,1302 @@
+# row_owners.toml (L.P0-0c.2): all 129 rows, generated from
+# decomposition-workflow-runtime.md section 7 ("Row ownership -- all 129
+# rows", L161-297) -- 117 WR-* rows plus 12 WR-COMPAT-* rows, which that
+# same table carries natively (no fallback to requirements' Brownfield
+# Part 1 table was needed).
+# Schema: [[row]] {id, owner_node, disposition, contributing, join_cids,
+#   slice_tag, nesting_part, source}
+# slice_tag: this table names accountable nodes and join C-ids, not a
+#   Slice A/B assignment (that is the matrix's axis, MC-03) -- so every row
+#   defaults slice_tag = "core" except the 12 WR-COMPAT-* rows, which take
+#   the "compat" sentinel the leaf spec names. Recorded as a plan-gap:
+#   decomposition-workflow-runtime.md's §7 table carries no per-row A/B axis.
+
+[[row]]
+id = "WR-TERM-1"
+owner_node = "wr-answer"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ANSWER-BOUNDED"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-TERM-2"
+owner_node = "wr-answer"
+disposition = "join"
+contributing = ["wr-run-control"]
+join_cids = ["C-ANSWER-BOUNDED", "C-CONTAIN-AND-CLOCK"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-TERM-3"
+owner_node = "wr-answer"
+disposition = "join"
+contributing = ["wr-run-record"]
+join_cids = ["C-ANSWER-BOUNDED", "C-RECORD-INTEGRITY"]
+slice_tag = "core"
+nesting_part = "Tree roll-up to one class"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-TERM-4"
+owner_node = "wr-workflow-runtime"
+disposition = "join"
+contributing = ["wr-answer"]
+join_cids = ["C-RUNTIME-NEUTRAL", "C-ANSWER-BOUNDED"]
+slice_tag = "core"
+nesting_part = "Depth-invariance and primary path naming"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-TERM-5"
+owner_node = "wr-answer"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ANSWER-BOUNDED"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-TERM-6"
+owner_node = "wr-answer"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ANSWER-BOUNDED"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-TERM-7"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-answer"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-ANSWER-BOUNDED"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-TERM-8"
+owner_node = "wr-contract"
+disposition = "join"
+contributing = ["wr-answer", "wr-run-control"]
+join_cids = ["C-CONTRACT-PARITY", "C-ANSWER-BOUNDED", "C-CONTAIN-AND-CLOCK"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-TERM-9"
+owner_node = "wr-answer"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ANSWER-BOUNDED"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PLAN-1"
+owner_node = "wr-workflow-runtime"
+disposition = "owned"
+contributing = []
+join_cids = ["C-RUNTIME-NEUTRAL"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PLAN-2"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-environment"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-ENV-REFERENCE"]
+slice_tag = "core"
+nesting_part = "Whole declared graph validated before run id"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PLAN-3"
+owner_node = "wr-workflow-runtime"
+disposition = "owned"
+contributing = []
+join_cids = ["C-RUNTIME-NEUTRAL"]
+slice_tag = "core"
+nesting_part = "Selection record over declared realization space before first effect"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PLAN-4"
+owner_node = "wr-contract"
+disposition = "owned"
+contributing = []
+join_cids = ["C-CONTRACT-PARITY"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PLAN-5"
+owner_node = "wr-contract"
+disposition = "owned"
+contributing = []
+join_cids = ["C-CONTRACT-PARITY"]
+slice_tag = "core"
+nesting_part = "Descendant declaration digest in identity + descendant code pinning"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PLAN-6"
+owner_node = "wr-contract"
+disposition = "owned"
+contributing = []
+join_cids = ["C-CONTRACT-PARITY"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PLAN-7"
+owner_node = "wr-contract"
+disposition = "join"
+contributing = ["wr-run-control"]
+join_cids = ["C-CONTRACT-PARITY", "C-CONTAIN-AND-CLOCK"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PLAN-8"
+owner_node = "wr-contract"
+disposition = "join"
+contributing = ["wr-run-control"]
+join_cids = ["C-CONTRACT-PARITY", "C-CONTAIN-AND-CLOCK"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PLAN-9"
+owner_node = "wr-contract"
+disposition = "owned"
+contributing = []
+join_cids = ["C-CONTRACT-PARITY"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PLAN-10"
+owner_node = "wr-workflow-runtime"
+disposition = "owned"
+contributing = []
+join_cids = ["C-RUNTIME-NEUTRAL"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PLAN-11"
+owner_node = "wr-workflow-runtime"
+disposition = "owned"
+contributing = []
+join_cids = ["C-RUNTIME-NEUTRAL"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PLAN-12"
+owner_node = "wr-workflow-runtime"
+disposition = "join"
+contributing = ["wr-contract"]
+join_cids = ["C-RUNTIME-NEUTRAL", "C-CONTRACT-PARITY"]
+slice_tag = "core"
+nesting_part = "Cross-node precondition coverage at publication"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-IDEM-1"
+owner_node = "wr-run-control"
+disposition = "owned"
+contributing = []
+join_cids = ["C-CONTAIN-AND-CLOCK"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-IDEM-2"
+owner_node = "wr-run-control"
+disposition = "owned"
+contributing = []
+join_cids = ["C-CONTAIN-AND-CLOCK"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-IDEM-3"
+owner_node = "wr-workflow-runtime"
+disposition = "owned"
+contributing = []
+join_cids = ["C-RUNTIME-NEUTRAL"]
+slice_tag = "core"
+nesting_part = "A child's attempts are its root run's attempts"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-IDEM-4"
+owner_node = "wr-workflow-runtime"
+disposition = "owned"
+contributing = []
+join_cids = ["C-RUNTIME-NEUTRAL"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-IDEM-5"
+owner_node = "wr-workflow-runtime"
+disposition = "owned"
+contributing = []
+join_cids = ["C-RUNTIME-NEUTRAL"]
+slice_tag = "core"
+nesting_part = "in this run means in this root run for a child"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-VERIFY-1"
+owner_node = "wr-workflow-runtime"
+disposition = "owned"
+contributing = []
+join_cids = ["C-RUNTIME-NEUTRAL"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-VERIFY-2"
+owner_node = "wr-workflow-runtime"
+disposition = "owned"
+contributing = []
+join_cids = ["C-RUNTIME-NEUTRAL"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-VERIFY-3"
+owner_node = "wr-adapters"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PORT-CONFORMANCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-VERIFY-4"
+owner_node = "wr-adapters"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PORT-CONFORMANCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-VERIFY-5"
+owner_node = "wr-adapters"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PORT-CONFORMANCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-VERIFY-6"
+owner_node = "wr-environment"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ENV-REFERENCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-VERIFY-7"
+owner_node = "wr-workflow-runtime"
+disposition = "owned"
+contributing = []
+join_cids = ["C-RUNTIME-NEUTRAL"]
+slice_tag = "core"
+nesting_part = "in this run means in this root run"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-VERIFY-8"
+owner_node = "wr-workflow-runtime"
+disposition = "join"
+contributing = ["wr-adapters", "wr-proof"]
+join_cids = ["C-RUNTIME-NEUTRAL", "C-PORT-CONFORMANCE", "C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-DEADLINE-1"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-contract"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-CONTRACT-PARITY"]
+slice_tag = "core"
+nesting_part = "called directly a unit is its own root"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-DEADLINE-2"
+owner_node = "wr-run-control"
+disposition = "owned"
+contributing = []
+join_cids = ["C-CONTAIN-AND-CLOCK"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-DEADLINE-3"
+owner_node = "wr-workflow-runtime"
+disposition = "join"
+contributing = ["wr-run-control"]
+join_cids = ["C-RUNTIME-NEUTRAL", "C-CONTAIN-AND-CLOCK"]
+slice_tag = "core"
+nesting_part = "Slice misfit refused before run id"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-DEADLINE-4"
+owner_node = "wr-workflow-runtime"
+disposition = "join"
+contributing = ["wr-run-control"]
+join_cids = ["C-RUNTIME-NEUTRAL", "C-CONTAIN-AND-CLOCK"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-CANCEL-1"
+owner_node = "wr-run-control"
+disposition = "owned"
+contributing = []
+join_cids = ["C-CONTAIN-AND-CLOCK"]
+slice_tag = "core"
+nesting_part = "Whole-tree clause"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-CANCEL-2"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-run-record"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-RECORD-INTEGRITY"]
+slice_tag = "core"
+nesting_part = "child record changes no byte after root finalized"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-CANCEL-3"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-run-record"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-RECORD-INTEGRITY"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-CANCEL-4"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-run-record", "wr-workflow-runtime", "wr-adapters"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-RECORD-INTEGRITY", "C-RUNTIME-NEUTRAL", "C-PORT-CONFORMANCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-CANCEL-5"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-adapters"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-PORT-CONFORMANCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-CANCEL-6"
+owner_node = "wr-proof"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-CANCEL-7"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-adapters", "wr-proof"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-PORT-CONFORMANCE", "C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-REMEDY-1"
+owner_node = "wr-workflow-runtime"
+disposition = "owned"
+contributing = []
+join_cids = ["C-RUNTIME-NEUTRAL"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-REMEDY-2"
+owner_node = "wr-workflow-runtime"
+disposition = "owned"
+contributing = []
+join_cids = ["C-RUNTIME-NEUTRAL"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-REMEDY-3"
+owner_node = "wr-workflow-runtime"
+disposition = "owned"
+contributing = []
+join_cids = ["C-RUNTIME-NEUTRAL"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-REMEDY-4"
+owner_node = "wr-workflow-runtime"
+disposition = "join"
+contributing = ["wr-run-record", "wr-run-control", "wr-adapters"]
+join_cids = ["C-RUNTIME-NEUTRAL", "C-RECORD-INTEGRITY", "C-CONTAIN-AND-CLOCK", "C-PORT-CONFORMANCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-REMEDY-5"
+owner_node = "wr-workflow-runtime"
+disposition = "owned"
+contributing = []
+join_cids = ["C-RUNTIME-NEUTRAL"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-OWN-1"
+owner_node = "wr-run-record"
+disposition = "join"
+contributing = ["wr-run-control", "wr-workflow-runtime"]
+join_cids = ["C-RECORD-INTEGRITY", "C-CONTAIN-AND-CLOCK", "C-RUNTIME-NEUTRAL"]
+slice_tag = "core"
+nesting_part = "resource one child created is created by this run for every node under the root"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-OWN-2"
+owner_node = "wr-workflow-runtime"
+disposition = "join"
+contributing = ["wr-run-control"]
+join_cids = ["C-RUNTIME-NEUTRAL", "C-CONTAIN-AND-CLOCK"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-OWN-3"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-run-record", "wr-workflow-runtime"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-RECORD-INTEGRITY", "C-RUNTIME-NEUTRAL"]
+slice_tag = "core"
+nesting_part = "a child's created resources are released by its root"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-OWN-4"
+owner_node = "wr-adapters"
+disposition = "join"
+contributing = ["wr-proof"]
+join_cids = ["C-PORT-CONFORMANCE", "C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-OWN-5"
+owner_node = "wr-run-control"
+disposition = "owned"
+contributing = []
+join_cids = ["C-CONTAIN-AND-CLOCK"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-OWN-6"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-answer"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-ANSWER-BOUNDED"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-OWN-7"
+owner_node = "wr-workflow-runtime"
+disposition = "join"
+contributing = ["wr-environment"]
+join_cids = ["C-RUNTIME-NEUTRAL", "C-ENV-REFERENCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-OWN-8"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-contract", "wr-environment", "wr-proof"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-CONTRACT-PARITY", "C-ENV-REFERENCE", "C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-OWN-9"
+owner_node = "wr-environment"
+disposition = "join"
+contributing = ["wr-workflow-runtime", "wr-adapters"]
+join_cids = ["C-ENV-REFERENCE", "C-RUNTIME-NEUTRAL", "C-PORT-CONFORMANCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-OWN-10"
+owner_node = "wr-workflow-runtime"
+disposition = "join"
+contributing = ["wr-run-record", "wr-run-control", "wr-adapters"]
+join_cids = ["C-RUNTIME-NEUTRAL", "C-RECORD-INTEGRITY", "C-CONTAIN-AND-CLOCK", "C-PORT-CONFORMANCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-EVID-1"
+owner_node = "wr-run-record"
+disposition = "join"
+contributing = ["wr-run-control", "wr-answer", "wr-contract"]
+join_cids = ["C-RECORD-INTEGRITY", "C-CONTAIN-AND-CLOCK", "C-ANSWER-BOUNDED", "C-CONTRACT-PARITY"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-EVID-2"
+owner_node = "wr-answer"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ANSWER-BOUNDED"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-EVID-3"
+owner_node = "wr-answer"
+disposition = "join"
+contributing = ["wr-workflow-runtime", "wr-run-record"]
+join_cids = ["C-ANSWER-BOUNDED", "C-RUNTIME-NEUTRAL", "C-RECORD-INTEGRITY"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-EVID-4"
+owner_node = "wr-run-record"
+disposition = "owned"
+contributing = []
+join_cids = ["C-RECORD-INTEGRITY"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-EVID-5"
+owner_node = "wr-contract"
+disposition = "join"
+contributing = ["wr-run-record"]
+join_cids = ["C-CONTRACT-PARITY", "C-RECORD-INTEGRITY"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-EVID-6"
+owner_node = "wr-run-record"
+disposition = "join"
+contributing = ["wr-run-control"]
+join_cids = ["C-RECORD-INTEGRITY", "C-CONTAIN-AND-CLOCK"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-EVID-7"
+owner_node = "wr-run-record"
+disposition = "join"
+contributing = ["wr-answer"]
+join_cids = ["C-RECORD-INTEGRITY", "C-ANSWER-BOUNDED"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-EVID-8"
+owner_node = "wr-run-record"
+disposition = "join"
+contributing = ["wr-answer", "wr-contract"]
+join_cids = ["C-RECORD-INTEGRITY", "C-ANSWER-BOUNDED", "C-CONTRACT-PARITY"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-EVID-9"
+owner_node = "wr-proof"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-EVID-10"
+owner_node = "wr-adapters"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PORT-CONFORMANCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-EVID-11"
+owner_node = "wr-run-record"
+disposition = "owned"
+contributing = []
+join_cids = ["C-RECORD-INTEGRITY"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-EVID-12"
+owner_node = "wr-run-record"
+disposition = "join"
+contributing = ["wr-environment"]
+join_cids = ["C-RECORD-INTEGRITY", "C-ENV-REFERENCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-AUTH-1"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-contract", "wr-answer"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-CONTRACT-PARITY", "C-ANSWER-BOUNDED"]
+slice_tag = "core"
+nesting_part = "A root's owning caller reads its child views"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-AUTH-2"
+owner_node = "wr-run-control"
+disposition = "owned"
+contributing = []
+join_cids = ["C-CONTAIN-AND-CLOCK"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-AUTH-3"
+owner_node = "wr-environment"
+disposition = "join"
+contributing = ["wr-workflow-runtime"]
+join_cids = ["C-ENV-REFERENCE", "C-RUNTIME-NEUTRAL"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-AUTH-4"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-workflow-runtime"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-RUNTIME-NEUTRAL"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-AUTH-5"
+owner_node = "wr-answer"
+disposition = "join"
+contributing = ["wr-proof"]
+join_cids = ["C-ANSWER-BOUNDED", "C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-ENV-1"
+owner_node = "wr-environment"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ENV-REFERENCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-ENV-2"
+owner_node = "wr-environment"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ENV-REFERENCE"]
+slice_tag = "core"
+nesting_part = "Override as declared realization in logical node's realization space"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-ENV-3"
+owner_node = "wr-adapters"
+disposition = "join"
+contributing = ["wr-environment"]
+join_cids = ["C-PORT-CONFORMANCE", "C-ENV-REFERENCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-ENV-4"
+owner_node = "wr-environment"
+disposition = "join"
+contributing = ["wr-adapters"]
+join_cids = ["C-ENV-REFERENCE", "C-PORT-CONFORMANCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-ENV-5"
+owner_node = "wr-environment"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ENV-REFERENCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-ENV-6"
+owner_node = "wr-adapters"
+disposition = "join"
+contributing = ["wr-environment"]
+join_cids = ["C-PORT-CONFORMANCE", "C-ENV-REFERENCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-ENV-7"
+owner_node = "wr-environment"
+disposition = "join"
+contributing = ["wr-adapters"]
+join_cids = ["C-ENV-REFERENCE", "C-PORT-CONFORMANCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-ENV-8"
+owner_node = "wr-environment"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ENV-REFERENCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-ENV-9"
+owner_node = "wr-environment"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ENV-REFERENCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-ENV-10"
+owner_node = "wr-environment"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ENV-REFERENCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-ENV-11"
+owner_node = "wr-environment"
+disposition = "join"
+contributing = ["wr-adapters"]
+join_cids = ["C-ENV-REFERENCE", "C-PORT-CONFORMANCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-ENV-12"
+owner_node = "wr-environment"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ENV-REFERENCE"]
+slice_tag = "core"
+nesting_part = "Argument-filtered admitted plan must fit validator/admission budgets"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-ENV-13"
+owner_node = "wr-environment"
+disposition = "join"
+contributing = ["wr-adapters"]
+join_cids = ["C-ENV-REFERENCE", "C-PORT-CONFORMANCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-ENV-14"
+owner_node = "wr-environment"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ENV-REFERENCE"]
+slice_tag = "core"
+nesting_part = "Check made for any node against root's admitted deadline plus margin"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-ENV-15"
+owner_node = "wr-adapters"
+disposition = "join"
+contributing = ["wr-environment"]
+join_cids = ["C-PORT-CONFORMANCE", "C-ENV-REFERENCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-ENV-16"
+owner_node = "wr-adapters"
+disposition = "join"
+contributing = ["wr-environment"]
+join_cids = ["C-PORT-CONFORMANCE", "C-ENV-REFERENCE"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-UNIT-1"
+owner_node = "wr-workflow-runtime"
+disposition = "join"
+contributing = ["wr-contract", "wr-run-record", "wr-proof"]
+join_cids = ["C-RUNTIME-NEUTRAL", "C-CONTRACT-PARITY", "C-RECORD-INTEGRITY", "C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = "Whole row except direct-call clauses"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-UNIT-2"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-run-record", "wr-answer", "wr-workflow-runtime", "wr-proof"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-RECORD-INTEGRITY", "C-ANSWER-BOUNDED", "C-RUNTIME-NEUTRAL", "C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = "Whole row (only single-level clause: called directly, unit is its own root)"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-UNIT-3"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-workflow-runtime", "wr-proof"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-RUNTIME-NEUTRAL", "C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = "Slice clauses; root-deadline clause reduces to WR-DEADLINE-2/WR-CANCEL-1"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-UNIT-4"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-contract", "wr-proof"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-CONTRACT-PARITY", "C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = "Whole row except called-directly clause (takes its own lease under WR-OWN-8)"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-UNIT-5"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-workflow-runtime", "wr-run-record", "wr-adapters", "wr-proof"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-RUNTIME-NEUTRAL", "C-RECORD-INTEGRITY", "C-PORT-CONFORMANCE", "C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = "Child/sibling/level clauses; recovery-time fold + plan-rank sweep needed regardless"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-UNIT-6"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-workflow-runtime", "wr-run-record", "wr-answer", "wr-proof"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-RUNTIME-NEUTRAL", "C-RECORD-INTEGRITY", "C-ANSWER-BOUNDED", "C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = "Tree/sibling/child-view clauses plus exception fail-fast default"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-UNIT-7"
+owner_node = "wr-answer"
+disposition = "join"
+contributing = ["wr-workflow-runtime", "wr-run-record", "wr-proof"]
+join_cids = ["C-ANSWER-BOUNDED", "C-RUNTIME-NEUTRAL", "C-RECORD-INTEGRITY", "C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = "Whole row; single-level analogues are WR-TERM-3/WR-TERM-4"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-UNIT-8"
+owner_node = "wr-run-control"
+disposition = "join"
+contributing = ["wr-contract", "wr-workflow-runtime", "wr-environment", "wr-proof"]
+join_cids = ["C-CONTAIN-AND-CLOCK", "C-CONTRACT-PARITY", "C-RUNTIME-NEUTRAL", "C-ENV-REFERENCE", "C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = "Whole row; WR-PLAN-2/WR-ENV-2 cover single-level validation"
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PROOF-1"
+owner_node = "wr-proof"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PROOF-2"
+owner_node = "wr-proof"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PROOF-3"
+owner_node = "wr-proof"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PROOF-4"
+owner_node = "wr-proof"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PROOF-5"
+owner_node = "wr-proof"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PROOF-6"
+owner_node = "wr-proof"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PROOF-7"
+owner_node = "wr-proof"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PROOF-8"
+owner_node = "wr-proof"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PROOF-9"
+owner_node = "wr-proof"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-PROOF-10"
+owner_node = "wr-proof"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-CON-1"
+owner_node = "wr-proof"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-CON-2"
+owner_node = "wr-proof"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-CON-3"
+owner_node = "wr-proof"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-CON-4"
+owner_node = "wr-answer"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ANSWER-BOUNDED"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-CON-5"
+owner_node = "wr-proof"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-CON-6"
+owner_node = "wr-proof"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PROOF-HONEST"]
+slice_tag = "core"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-COMPAT-1"
+owner_node = "wr-answer"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ANSWER-BOUNDED"]
+slice_tag = "compat"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-COMPAT-2"
+owner_node = "wr-answer"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ANSWER-BOUNDED"]
+slice_tag = "compat"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-COMPAT-3"
+owner_node = "wr-answer"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ANSWER-BOUNDED"]
+slice_tag = "compat"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-COMPAT-4"
+owner_node = "wr-contract"
+disposition = "owned"
+contributing = []
+join_cids = ["C-CONTRACT-PARITY"]
+slice_tag = "compat"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-COMPAT-5"
+owner_node = "wr-contract"
+disposition = "owned"
+contributing = []
+join_cids = ["C-CONTRACT-PARITY"]
+slice_tag = "compat"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-COMPAT-6"
+owner_node = "wr-answer"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ANSWER-BOUNDED"]
+slice_tag = "compat"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-COMPAT-7"
+owner_node = "wr-answer"
+disposition = "owned"
+contributing = []
+join_cids = ["C-ANSWER-BOUNDED"]
+slice_tag = "compat"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-COMPAT-8"
+owner_node = "wr-run-record"
+disposition = "owned"
+contributing = []
+join_cids = ["C-RECORD-INTEGRITY"]
+slice_tag = "compat"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-COMPAT-9"
+owner_node = "wr-answer"
+disposition = "join"
+contributing = ["wr-contract"]
+join_cids = ["C-ANSWER-BOUNDED", "C-CONTRACT-PARITY"]
+slice_tag = "compat"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-COMPAT-10"
+owner_node = "wr-contract"
+disposition = "join"
+contributing = ["wr-environment"]
+join_cids = ["C-CONTRACT-PARITY", "C-ENV-REFERENCE"]
+slice_tag = "compat"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-COMPAT-11"
+owner_node = "wr-answer"
+disposition = "join"
+contributing = ["wr-proof"]
+join_cids = ["C-ANSWER-BOUNDED", "C-PROOF-HONEST"]
+slice_tag = "compat"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"
+
+[[row]]
+id = "WR-COMPAT-12"
+owner_node = "wr-proof"
+disposition = "owned"
+contributing = []
+join_cids = ["C-PROOF-HONEST"]
+slice_tag = "compat"
+nesting_part = ""
+source = "decomposition-workflow-runtime.md §7 L161-297"

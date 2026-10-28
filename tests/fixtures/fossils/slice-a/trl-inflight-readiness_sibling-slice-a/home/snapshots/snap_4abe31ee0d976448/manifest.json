@@ -1,0 +1,16 @@
+{
+  "plugin": "readiness_sibling",
+  "version": "0.1.0",
+  "source_sha256": "f75f2bfebced93307b5b97168f6c1558ecbb72a3a59b44f54f6d37df01fece06",
+  "schema_sha256": "d4f993f01a5e9c4307d64e543088026d7084e42fe289126339165050ef2695c1",
+  "declared": {
+    "deadline_s": 70,
+    "summary_fields": [],
+    "packages": [],
+    "env_arg": "env",
+    "secrets": [],
+    "package_digests": {}
+  },
+  "entry": "readiness_sibling",
+  "declaration_digest": "6da314410776ccadf7daf9a30be20862800cc7cab33ab64f78648c795db013f2"
+}

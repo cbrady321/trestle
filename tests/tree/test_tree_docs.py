@@ -1,0 +1,263 @@
+"""L.TR-L.12: the docs say what the tree band ships (WR-PROOF-10 docs check, MC-05, MC-B3-08).
+
+`docs/agents.md` names every tree code and states the two open questions the band ships neutral
+answers to (OQ-27, OQ-31); `docs/plugins.md` carries a composite example that publishes through the
+validator and runs to a terminal answer as it stands, and so does every served example
+(`trestle://guide/examples/{name}`)."""
+
+from __future__ import annotations
+
+import ast
+import re
+import shutil
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from tests.tree import hostpath
+from trestle.common import codes
+from trestle.common.plan import vocabulary
+from trestle.common.types import PublishView, RunView
+from trestle.server import authoring
+from trestle.server.main import Kernel
+from trestle.workflow import codes as workflow_codes
+
+REPO = Path(__file__).resolve().parents[2]
+AGENTS = REPO / "docs" / "agents.md"
+PLUGINS = REPO / "docs" / "plugins.md"
+TRESTLE = REPO / "trestle"
+
+# Every wire code the tree band adds (a2 L.TR-L.12's closed list): what publication refuses on the
+# declaration alone, what admission refuses over the compiled tree, the one stop a started run can
+# give for a declaration that is no longer the admitted one, and the root-only cancel refusal.
+TREE_CODES = (
+    "publication.unit_unresolved",
+    "publication.dependency_cycle",
+    "publication.declaration_conflict",
+    "publication.plan_precondition_uncovered",
+    "admission.unit_unresolved",
+    "admission.dependency_cycle",
+    "admission.declaration_conflict",
+    "admission.lease_set_undecidable",
+    "admission.unknown_identifier",
+    "execution.declaration_stale",
+    "projection.cancel_not_root",
+    # what a tree agent also meets: the carve and bound refusals, the routing refusal, the lease
+    # refusal, and the node codes of a started tree (docs/agents.md § Composite workflows)
+    "admission.bound_exceeded",
+    "admission.budget_does_not_fit",
+    "admission.route_unsupported",
+    "admission.environment_busy",
+    "execution.carve_exceeded",
+    "execution.unit_raised",
+    "execution.postcondition_timeout",
+    "execution.remedy_exhausted",
+    "execution.plan_precondition_uncovered",
+)
+
+# the modules that define a wire code's spelling; a producer is a reference to it elsewhere
+DEFINITIONS = (
+    REPO / "trestle" / "common" / "codes.py",
+    REPO / "trestle" / "common" / "plan" / "vocabulary.py",
+    REPO / "trestle" / "workflow" / "codes.py",
+)
+
+
+def _defined_names(code: str) -> set[str]:
+    """Every name under which `code` is bound in the code modules (a code is reached by its
+    constant, so the constant's name is what a producer refers to)."""
+    names: set[str] = set()
+    for module in (codes, vocabulary, workflow_codes):
+        names |= {
+            name
+            for name, value in vars(module).items()
+            if isinstance(value, str) and value == code and name.isupper()
+        }
+    return names
+
+
+def producers(code: str) -> list[str]:
+    """Files under `trestle/` (outside the modules that define the spelling) that name the code:
+    by a constant that holds it, or by its literal."""
+    names = _defined_names(code)
+    found: list[str] = []
+    for path in sorted(TRESTLE.rglob("*.py")):
+        if path in DEFINITIONS:
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (
+                (isinstance(node, ast.Name) and node.id in names)
+                or (isinstance(node, ast.Attribute) and node.attr in names)
+                or (isinstance(node, ast.Constant) and node.value == code)
+            ):
+                found.append(str(path.relative_to(REPO)))
+                break
+    return found
+
+
+def test_tree_codes_documented_and_produced() -> None:
+    """Each tree code is defined in `codes.py` (by re-export or its own spelling), appears in
+    `docs/agents.md`, and has a producer in `trestle/`."""
+    agents = AGENTS.read_text(encoding="utf-8")
+    for code in TREE_CODES:
+        assert _defined_names(code), f"{code}: no constant holds it in the code modules"
+        assert f"`{code}`" in agents, f"{code}: not in docs/agents.md"
+        assert producers(code), f"{code}: nothing in trestle/ produces it"
+
+
+def test_the_producer_check_rejects_a_code_nothing_names() -> None:
+    """The check is not vacuous: a spelling no constant holds and no source names has neither."""
+    invented = "publication.tree_code_nobody_raises"
+    assert not _defined_names(invented) and producers(invented) == []
+
+
+def test_open_questions_disclosed() -> None:
+    """`docs/agents.md` states OQ-27 and OQ-31 as open, says what is shipped for each, and names
+    `admit_and_stop` as the pre-existing in-node stop, not a decision (hld-wr-contract item 4)."""
+    text = AGENTS.read_text(encoding="utf-8")
+    section = text[text.index("## Composite workflows (trees)") :]
+    section = section[: section.index("\n---\n")]
+    flat = " ".join(section.split())
+
+    oq27 = re.search(r"open question OQ-27\*\*", flat)
+    assert oq27, "OQ-27 is not stated as open"
+    assert "projection.cancel_not_root" in flat and "assumed answer" in flat
+
+    assert re.search(r"\*\*Root-entry eligibility is open \(OQ-31\)", flat), "OQ-31 not open"
+    assert "`admit_and_stop`" in flat
+    assert "pre-existing in-node stop, not a decision" in flat
+
+
+def test_choice_root_admitted_and_code_retired_is_documented() -> None:
+    """The docs say a `ChoiceNode` root is admitted (L.TR-5.3) and that
+    `admission.plan_multi_vertex_unsupported` is retired: still a defined code, no producer."""
+    for doc in (AGENTS, PLUGINS):
+        flat = " ".join(doc.read_text(encoding="utf-8").split())
+        assert "ChoiceNode" in flat, doc.name
+        assert "admission.plan_multi_vertex_unsupported" in flat and "retired" in flat, doc.name
+        assert "still refused" not in flat and "until its selection" not in flat, doc.name
+    assert (
+        codes.ADMISSION_PLAN_MULTI_VERTEX_UNSUPPORTED == "admission.plan_multi_vertex_unsupported"
+    )
+
+
+def _example() -> str:
+    text = PLUGINS.read_text(encoding="utf-8")
+    pattern = r"<!-- tree-example -->\n```python\n(.*?)\n```\n<!-- /tree-example -->"
+    block = re.search(pattern, text, re.S)
+    assert block, "docs/plugins.md has no marked composite example"
+    return block.group(1) + "\n"
+
+
+def test_plugins_example_publishes_through_the_validator_and_runs(tree_kernel: Kernel) -> None:
+    """The example in `docs/plugins.md` publishes as written and, run through the host, reaches a
+    terminal `succeeded` answer for its three steps (an example that does not work is not one)."""
+    published = hostpath.publish_tree_via_host(tree_kernel, _example())
+    assert isinstance(published, PublishView), published
+    assert published.name == "release"
+
+    view = hostpath.run_tree_via_host(tree_kernel, published.name, {"env": "dev"})
+    assert isinstance(view, RunView), view
+    assert view.state == "succeeded", view
+
+
+# Each served example (`trestle://guide/examples/{name}`), the request that exercises it and the
+# answer it must reach: every example the build ships is listed, so a new one cannot go untested.
+EXAMPLE_RUNS: dict[str, list[tuple[dict[str, Any], str]]] = {
+    "echo": [({"message": "hi"}, "succeeded")],
+    "exec_with_blocked": [
+        ({"tool": "git"}, "succeeded"),
+        ({"tool": "trestle-no-such-tool"}, "blocked"),
+    ],
+    # no TRESTLE_EXEC_ROOTS here: the run answers blocked (the MCP tests run it with roots)
+    "exec": [({"argv": ["true"], "cwd": "/"}, "blocked")],
+    "artifact_status": [({"rounds": 3}, "succeeded")],
+    "composite_workflow": [({"env": "dev"}, "succeeded")],
+    "pack_wrapper": [
+        ({"services": ["api", "db"], "depends_on": {"api": ["db"]}}, "succeeded"),
+        ({"services": ["a", "b"], "depends_on": {"a": ["b"], "b": ["a"]}}, "blocked"),
+    ],
+    # needs a repo and real tools: `test_chain_example_runs_on_a_repo` below
+    "chain": [],
+}
+
+
+TYPED_EXAMPLES = frozenset({"chain"})
+
+
+def test_every_served_example_has_a_run() -> None:
+    assert set(EXAMPLE_RUNS) == set(authoring.example_names())
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        # `chain` returns dataclass records (K-3/K-4): skipped when they are declined
+        pytest.param(n, marks=pytest.mark.typed_records) if n in TYPED_EXAMPLES else n
+        for n in sorted(EXAMPLE_RUNS)
+    ],
+)
+def test_served_example_publishes_through_the_validator_and_runs(
+    tree_kernel: Kernel, name: str
+) -> None:
+    """Each served example publishes as it stands, with no warning, and each of its requests
+    reaches a terminal answer: `succeeded`, a `blocked` outcome with a human action, or a `failed`
+    outcome (`failed:<code>`, the answer's code)."""
+    published = hostpath.publish_tree_via_host(tree_kernel, authoring.plugin_example(name))
+    assert isinstance(published, PublishView), published
+    assert published.name == name
+    described = tree_kernel.control.describe_plugin(name)
+    assert isinstance(described, dict) and not described.get("warnings"), described
+    for args, expected in EXAMPLE_RUNS[name]:
+        view = hostpath.run_tree_via_host(tree_kernel, name, args)
+        assert isinstance(view, RunView), view
+        assert view.state == "succeeded", view
+        answer = view.answer or {}
+        _assert_answer(answer, expected)
+
+
+def _assert_answer(answer: dict[str, Any], expected: str) -> None:
+    outcome, _, code = expected.partition(":")
+    assert answer.get("outcome") == ("passed" if outcome == "succeeded" else outcome), answer
+    if outcome == "blocked":
+        assert answer["primary"]["human_action"], answer
+    if code:
+        assert answer["primary"]["code"] == code, answer
+
+
+CHAIN_TOOLS = ("ruff", "mypy", "pytest")
+
+
+def _chain_repo(root: Path, *, lint_clean: bool) -> Path:
+    """A repo every step of `chain` can run on: one typed module and one passing test (mypy needs
+    a file, pytest needs a test); an unused import makes the lint step fail."""
+    root.mkdir()
+    head = "" if lint_clean else "import os\n\n\n"
+    (root / "mod.py").write_text(f"{head}def add(a: int, b: int) -> int:\n    return a + b\n")
+    (root / "test_mod.py").write_text(
+        "from mod import add\n\n\ndef test_add() -> None:\n    assert add(1, 2) == 3\n"
+    )
+    return root
+
+
+@pytest.mark.typed_records
+def test_chain_example_runs_on_a_repo(tree_kernel: Kernel, tmp_path: Path) -> None:
+    """`chain` on a repo where every step passes answers `passed` with three steps; with a lint
+    finding it answers `failed`, `plugin.lint_failed`, and the tests never run."""
+    missing = [tool for tool in CHAIN_TOOLS if shutil.which(tool) is None]
+    if missing:
+        pytest.skip(f"chain's tools are not on PATH: {missing}")
+    published = hostpath.publish_tree_via_host(tree_kernel, authoring.plugin_example("chain"))
+    assert isinstance(published, PublishView), published
+    clean = _chain_repo(tmp_path / "clean", lint_clean=True)
+    view = hostpath.run_tree_via_host(tree_kernel, "chain", {"repo": str(clean)})
+    assert isinstance(view, RunView) and view.state == "succeeded", view
+    _assert_answer(view.answer or {}, "succeeded")
+    assert view.summary is not None and len(view.summary["steps"]) == 3, view.summary
+    dirty = _chain_repo(tmp_path / "dirty", lint_clean=False)
+    view = hostpath.run_tree_via_host(tree_kernel, "chain", {"repo": str(dirty)})
+    assert isinstance(view, RunView) and view.state == "succeeded", view
+    _assert_answer(view.answer or {}, "failed:plugin.lint_failed")
+    assert view.summary is not None
+    assert [s["name"] for s in view.summary["steps"]] == ["lint", "types"], view.summary

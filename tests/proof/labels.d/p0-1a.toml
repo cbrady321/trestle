@@ -1,0 +1,56 @@
+# CSC-1 labels registry fragment for lane P0-1A (MC-04). Schema: see
+# labels.d/p0.toml. Each label is declared exactly once, by the leaf named
+# in `declared_by`.
+
+[[label]]
+id = "WR-CANCEL-1:cancel-tree-within-bound"
+row = "WR-CANCEL-1"
+composes = "A6.1:core"
+step = "core"
+slice = "core"
+tier = "PROC"
+venue = "BOTH"
+posture = "claim"
+declared_by = "L.P0-1A.1"
+
+
+[[label]]
+id = "WR-DEADLINE-2:ends-in-deadline-window"
+row = "WR-DEADLINE-2"
+step = "core"
+slice = "core"
+tier = "PROC"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-1A.2"
+
+[[label]]
+id = "WR-CANCEL-3:recovery-stops-recorded-group"
+row = "WR-CANCEL-3"
+composes = "A6.2:core"
+step = "core"
+slice = "core"
+tier = "PROC"
+venue = "BOTH"
+posture = "claim"
+declared_by = "L.P0-1A.3"
+
+[[label]]
+id = "WR-TERM-7:status-during-slow-admission"
+row = "WR-TERM-7"
+step = "core"
+slice = "core"
+tier = "MCP+PROC"
+venue = "CI"
+posture = "claim"
+declared_by = "L.P0-1A.4"
+
+[[label]]
+id = "WR-CANCEL-3:s0-straddle-stop-unconfirmed-never-clean"
+row = "WR-CANCEL-3"
+step = "core"
+slice = "core"
+tier = "PROC"
+venue = "BOTH"
+posture = "claim"
+declared_by = "L.P0-1A.6"

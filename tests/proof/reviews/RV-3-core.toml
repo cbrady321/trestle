@@ -1,0 +1,22 @@
+# RV-3 at J-CORE (L.J-CORE.1, CM-5 role 1): stage-critic review of WR-AUTH-5 ("not a
+# sandbox") and L.CL-A2's closed policy sets, paired with
+# tests/core/admission/test_cl_a2_profile.py (::test_no_doc_claims_sandbox). Reviewer:
+# stage critic, read-only. Round 1 at 174ba22 (WR-Merge: CL-PX2): pass. Delta re-check at
+# 6cef746 (WR-Fix: CS-1, doc fix c07ee28 made for RV-1/RV-4): every changed sentence
+# narrows a claim or adds operator guidance, none adds an isolation claim; the new
+# `unpin` note resolves round 1's observation. Pass, no required fix.
+# Follow-up (not gating): extend _enum_members in test_cl_a2_profile.py to anyOf/items
+# when a union-typed MCP argument appears. Out of core scope: pack teardown args (WR-ENV).
+# Verdict: _tmp/delivery/RV-3-core-review.md.
+id = "RV-3"
+mode = "stage-critic review"
+outcome = "pass"
+sha = "6cef746e6a540870eb9eecd6a376ddbe74cbc8bc"
+paired_check_log = "pytest -q tests/core/admission/test_cl_a2_profile.py at 6cef746: 8 passed."
+
+[criteria]
+no_sandbox_claim = "pass"            # C1 WR-AUTH-5:no-sandbox-claim
+full_profile_ten_tools = "pass"      # C2 WR-AUTH-5:full-profile-ten-tools
+closed_sets_no_destructive = "pass"  # C3 WR-AUTH-4:closed-sets-no-destructive
+no_foreign_cleanup = "pass"          # C4 no agent-selected cleanup of what it did not create
+profile_operator_only = "pass"       # C5 WR-AUTH-2 operator-only, fails closed

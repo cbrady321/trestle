@@ -1,0 +1,88 @@
+"""The stage vocabulary of the reference workflow (L.RB-2.2; hld-wr-environment Provisioning &
+System Test, WR-ENV-9): a failure at any stage names the stage AND the service, so a caller never
+has to guess which step of a multi-stage setup failed, or on what.
+
+Five stages, each reported where it happens:
+
+* `catalog`: an identifier the request names is not in the catalog. Refused by admission before
+  a run id, naming the identifier and `valid_listed_at` (`identifier_sets.<set>`).
+* `closure`: the Compose closure of the selection could not be derived
+  (`plugins/_bind.derive_closure`; the resolver's V-11 code unchanged).
+* `readiness`, `provisioning`, `test`: a work node of the tree failed. A node's canonical path
+  is `<stage prefix>.<service>`, so the answer's `primary.path` IS the stage and the service:
+  `postgres` (a service child, named by catalog id) is the readiness stage of the postgres
+  service, `provision.<service>` the provisioning stage, `test.<name>` the system test.
+  `failure_at` reads it back.
+
+The stage a node belongs to is its path's prefix (or, for a service child, its being one) and
+nothing else: no code decides a stage, so a
+V-11 code is never redefined here (no environment code is involved).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import Final
+
+
+class Stage(StrEnum):
+    CATALOG = "catalog"
+    CLOSURE = "closure"
+    READINESS = "readiness"
+    PROVISIONING = "provisioning"
+    TEST = "test"
+
+
+NODE_PREFIXES: Final[dict[str, Stage]] = {
+    "backend": Stage.READINESS,
+    "provision": Stage.PROVISIONING,
+    "test": Stage.TEST,
+}
+"""The unit-name prefix of each node stage; `<prefix>.<service>` is a node's canonical path."""
+
+SERVICE_CHILDREN: Final = frozenset({"http_support", "postgres"})
+"""The reference tree's service children (`tree.HTTP_SUPPORT_SERVICE`, `tree.POSTGRES_SERVICE`):
+each is pathed by its catalog id and is a readiness node."""
+
+PATH_SEPARATOR: Final = "/"  # a node below the root is one segment; nesting joins with `/`
+
+
+@dataclass(frozen=True)
+class StageFailure:
+    stage: Stage
+    service: str
+    code: str
+
+    def text(self) -> str:
+        """One bounded line naming both: `<stage> stage failed for <service> (<code>)`."""
+        return f"{self.stage.value} stage failed for {self.service} ({self.code})"[:200]
+
+
+def failure_at(path: str, code: str) -> StageFailure | None:
+    """The stage and service a node path names, or None when the path is no stage node (the
+    root, or a node whose prefix is not one of `NODE_PREFIXES`). A segment that is a service id
+    decides first (a service child, or its CHOICE and any alternative below it: its readiness);
+    else the last segment's prefix."""
+    segments = path.split(PATH_SEPARATOR)
+    leaf = segments[-1]
+    # a service's CHOICE keeps the service id as its path; any alternative below it (Docker or a
+    # local override, whatever its unit is named) is that service's readiness
+    service = next((s for s in segments if s in SERVICE_CHILDREN), None)
+    if service is not None:
+        return StageFailure(Stage.READINESS, service, code)
+    prefix, dot, service = leaf.partition(".")
+    stage = NODE_PREFIXES.get(prefix)
+    if not dot or not service or stage is None:
+        return None
+    return StageFailure(stage, service, code)
+
+
+def catalog_failure(code: str, identifier: str) -> StageFailure:
+    """An identifier refused before a run id (admission's UNKNOWN_IDENTIFIER)."""
+    return StageFailure(Stage.CATALOG, identifier, code)
+
+
+def closure_failure(code: str, identifier: str) -> StageFailure:
+    """A closure the resolver refused, or one naming a service the catalog does not hold."""
+    return StageFailure(Stage.CLOSURE, identifier, code)

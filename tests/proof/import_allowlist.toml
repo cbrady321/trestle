@@ -1,0 +1,4 @@
+# Import-boundary allowlist (DM-17; L.P0-0d.5). Permanent test
+# infrastructure — not registered (CM-7). It is empty: the one entry, the
+# brownfield T-4 probe (`import trestle_packs` in init_cmd.py::_packs_hint),
+# went when the tool plugins became bundled packs (the hint now lists them).

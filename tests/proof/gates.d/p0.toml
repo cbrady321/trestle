@@ -1,0 +1,7 @@
+# CSC-13: a leaf that adds a CI job adds its gate fragment in the same
+# commit. P0-0a declares no new gate beyond meta_config.toml's base set
+# (L.P0-0a.6 wires ci-test/ci-compat into CI); this fragment exists so the
+# "declared in a gates.d fragment" path (as opposed to meta_config.toml
+# itself) is exercised, per L.P0-0a.3's test_gate_declared_in_gates_d_fragment_counts.
+[gates]
+names = []

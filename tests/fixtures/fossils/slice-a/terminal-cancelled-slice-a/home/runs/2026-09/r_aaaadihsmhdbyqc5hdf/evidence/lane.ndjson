@@ -1,0 +1,7 @@
+{"class":"plan","seq":1,"lane_format":1,"declaration_digest":"df1c29c802b30eeb7a6869107b3f55690eb3192d19e937193c45279a2210efda","args_hash":"3b3801b1a24c2f16569c1e55a1896828e1501dc8e1a26b24df45f649bfd1f080","selection":{},"observations_digest":"4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}
+{"class":"issue","seq":2,"path":"","effect":"up","attempt":1,"facet":"create","repeat":"safe","lifetime":"run","release":{"form":"in_run_group","helpers_disclosed":false},"remedy":null,"issued_at":"2026-09-30T12:54:49.219021Z"}
+{"class":"confirmation","seq":3,"path":"","effect":"up","attempt":1,"status":"applied","code":null,"identity":"fake-c647b78ed73432e8"}
+{"class":"end","seq":4,"path":"","at":"2026-09-30T12:54:49.502763Z","condition":"converging","code":null,"human_action":null,"resend":null,"provenance":"created","cut":"stopped"}
+{"class":"issue","seq":5,"path":"","effect":"stop","attempt":1,"facet":"owned","repeat":"safe","lifetime":"run","release":{"form":"in_run_group","helpers_disclosed":false},"remedy":null,"issued_at":"2026-09-30T12:54:49.503129Z"}
+{"class":"confirmation","seq":6,"path":"","effect":"stop","attempt":1,"status":"applied","code":null,"identity":"fake-c647b78ed73432e8"}
+{"class":"released","seq":7,"path":"","effect":"up","attempt":1,"released_at":"2026-09-30T12:54:49.719726Z","outcome":null}

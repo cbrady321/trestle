@@ -1,0 +1,7 @@
+{"seq":1,"kind":"created","at":"2026-10-01T17:23:53Z","run_id":"r_fossil_interrupted","spec_hash":"test","plugin":"echo","version":"0.1.0"}
+{"seq":2,"kind":"admitted","at":"2026-10-01T17:23:53Z","run_id":"r_fossil_interrupted","snapshot_id":"snap_test"}
+{"seq":3,"kind":"started","at":"2026-10-01T17:23:53Z","run_id":"r_fossil_interrupted"}
+{"seq":4,"kind":"group_stop","at":"2026-10-01T17:23:53Z","run_id":"r_fossil_interrupted","confirmed_gone":false,"method":"no_identity"}
+{"seq":5,"kind":"error_record","at":"2026-10-01T17:23:53Z","run_id":"r_fossil_interrupted","code":"execution.interrupted","phase":"recovery","message":"the service restarted while the run was in flight"}
+{"seq":6,"kind":"evidence_finalized","at":"2026-10-01T17:23:53Z","run_id":"r_fossil_interrupted","completeness":"partial","result_state":"absent"}
+{"seq":7,"kind":"interrupted","at":"2026-10-01T17:23:53Z","run_id":"r_fossil_interrupted"}

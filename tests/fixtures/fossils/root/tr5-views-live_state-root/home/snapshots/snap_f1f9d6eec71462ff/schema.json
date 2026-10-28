@@ -1,0 +1,1 @@
+{"additionalProperties":false,"properties":{"case":{"type":"string"},"env":{"type":"string"}},"type":"object"}

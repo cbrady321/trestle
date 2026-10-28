@@ -1,0 +1,35 @@
+# Slice B fossil-state manifest (L.RB-12.7; MC-11, MC-B3-05, CM-5, DM-50). Schema as tree-tr5/MANIFEST.toml: [[state]]
+# {id, producer = "module:function", absent = bool, s0_projection = {state, kinds, meta_keys}}. Producers are
+# `tests.proof.b.fossil_states:<fn>`, so `python -m tests.proof.fossils generate --checkpoint slice-b --states all`
+# (L.J-SLICE-B.1) runs them into `tests/fixtures/fossils/slice-b/<state>/home`, beside this file. The band is
+# named for its checkpoint (`slice-b`, not `b`): `differ d2` skips a band's states with no directory until
+# `J-<BAND>` has succeeded (`band_awaits_checkpoint`), and a band `b` would be checked, and fail, at once.
+# State ids are prefixed `b-` and unique across every band's MANIFEST (MC-11).
+#
+# The runs are roots of the REFERENCE workflow (trestle_env's `reference_env` plugin, unmodified) on the twins' fake
+# binding, written by head through the host's own admission (`ControlSurface.run`): each spec carries a `plan` naming
+# the declared reference tree (two backends, an environment key, identifier sets), which no reader before B has seen.
+# Three kinds, as the tree bands: `b-inflight-<case>` (a non-terminal root: the supporting service ready, Postgres
+# polling a readiness that never holds), `b-terminal-<case>` (a finalized root; expectation = the root projection only)
+# and `b-views-<case>` (its own real run of the same plugin; expectation = its child views only, which no reader before
+# TR-2 serves, E-TR-1). `s0_projection.state` is the state the writer's own reader projects after recovery (`differ
+# d2` compares an older reader's projection with it; a divergence is excused only by a named CM-9 exception in
+# tests/proof/d2_exceptions.toml). `kinds` are the distinct ledger row kinds in first-occurrence order.
+
+[[state]]
+id = "b-inflight-reference_env_postgres_wait"
+producer = "tests.proof.b.fossil_states:produce_b_inflight_reference_env_postgres_wait"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "error_record", "evidence_finalized", "interrupted"], meta_keys = [] }
+
+[[state]]
+id = "b-terminal-reference_env"
+producer = "tests.proof.b.fossil_states:produce_b_terminal_reference_env"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "sweep_disposition", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = [] }
+
+[[state]]
+id = "b-views-reference_env"
+producer = "tests.proof.b.fossil_states:produce_b_views_reference_env"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "sweep_disposition", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = [] }

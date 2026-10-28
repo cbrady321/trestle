@@ -1,0 +1,22 @@
+# RV-4 at J-CORE (L.J-CORE.1, CM-5 role 1): stage-critic review of the R-J disclosure
+# (packages recorded, not snapshotted) and the K-2 / K-5 / K-9 docs, paired with
+# tests/core/contract/test_cl_c1_docs.py (::test_kdocs_and_rj_disclosure_present).
+# Reviewer: stage critic, read-only. Round 1 at 174ba22 (WR-Merge: CL-PX2) FAILED with
+# three required doc edits: plugins.md digest scope (.py files only), the interpreter /
+# installed distributions / a declared package's own imports outside identity, and the
+# agents.md K-2 "ran equal code" sentence. Fixed in c07ee28 (L.CL-D1.fix2), landed in
+# 6cef746 (WR-Fix: CS-1). Round 2 at 6cef746: pass, no required fix.
+# Recommendations (not blocking): plugins.md:52 "Republish to accept the edit" vs
+# --plugin-dir refresh keyed on the plugin file; agent-console-mcp.md run_provenance row
+# could name `packages`. Verdict: _tmp/delivery/RV-4-core-review.md.
+id = "RV-4"
+mode = "stage-critic review"
+outcome = "pass"
+sha = "6cef746e6a540870eb9eecd6a376ddbe74cbc8bc"
+paired_check_log = "pytest -q tests/core/contract/test_cl_c1_docs.py at 6cef746: 1 passed."
+
+[criteria]
+rj_statement_present = "pass"   # 1 R-J beside `packages` in docs/plugins.md:44-45
+rj_matches_code = "pass"        # 2 every R-J sentence matches the code
+k2_k5_k9_docs_accurate = "pass" # 3 K-2, K-5, K-9 doc text accurate
+captured_vs_not_stated = "pass" # 4 adequacy: what is and is not captured, stated plainly

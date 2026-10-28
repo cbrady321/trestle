@@ -1,0 +1,29 @@
+{
+  "child_context_rows": {
+    "artifact_available": [
+      "{\"artifact_id\": \"str\", \"at\": \"str\", \"kind\": \"str\", \"name\": \"str\"}"
+    ],
+    "log": [
+      "{\"at\": \"str\", \"kind\": \"str\", \"payload\": {\"message\": \"str\"}}"
+    ],
+    "progress": [
+      "{\"at\": \"str\", \"kind\": \"str\", \"payload\": {\"fraction\": \"float\", \"message\": \"str\"}}",
+      "{\"at\": \"str\", \"kind\": \"str\", \"payload\": {\"message\": \"str\"}}"
+    ]
+  },
+  "fossil_succeeded_rows": [
+    {
+      "at": "str",
+      "kind": "str",
+      "payload": {
+        "message": "str"
+      }
+    }
+  ],
+  "view_row_fields": [
+    "event_seq",
+    "kind",
+    "payload",
+    "run_id"
+  ]
+}

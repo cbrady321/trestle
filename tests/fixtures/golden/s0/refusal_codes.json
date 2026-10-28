@@ -1,0 +1,52 @@
+{
+  "codes": {
+    "CANCEL_ACCEPTED": "projection.cancel_accepted",
+    "CURSOR_EXPIRED": "projection.cursor_expired",
+    "EXPIRED": "projection.expired",
+    "IDEMPOTENCY_KEY_CONFLICT": "admission.idempotency_key_conflict",
+    "IMPORT_FAILED": "admission.import_failed",
+    "INVALID_ARGS": "admission.invalid_args",
+    "INVALID_HANDLE": "projection.invalid_handle",
+    "INVALID_VIEW": "projection.invalid_view",
+    "MISSING": "projection.missing",
+    "NOT_FINALIZED": "projection.not_finalized",
+    "NOT_FOUND": "projection.not_found",
+    "NOT_IMPLEMENTED": "projection.not_implemented",
+    "PIN_ACCEPTED": "projection.pin_accepted",
+    "PLUGIN_NOT_FOUND": "admission.plugin_not_found",
+    "PROJECTION_INVALID_ARGS": "projection.invalid_args",
+    "PUBLICATION_INVALID_SOURCE": "publication.invalid_source",
+    "PUBLICATION_NAME_MISMATCH": "publication.name_mismatch",
+    "PUBLICATION_NO_ENTRYPOINT": "publication.no_entrypoint",
+    "PUBLICATION_SOURCE_TOO_LARGE": "publication.source_too_large",
+    "PUBLICATION_VALIDATION_FAILED": "publication.validation_failed",
+    "QUEUE_FULL": "admission.queue_full",
+    "SERVICE_DRAINING": "admission.service_draining",
+    "UNPIN_ACCEPTED": "projection.unpin_accepted"
+  },
+  "outcome_fields": [
+    [
+      "code",
+      "str"
+    ],
+    [
+      "message",
+      "str"
+    ],
+    [
+      "retryable",
+      "bool"
+    ],
+    [
+      "origin",
+      "Literal['admission', 'projection', 'publication']"
+    ]
+  ],
+  "refusal_code": "admission.plugin_not_found",
+  "refusal_frame": {
+    "code": "str",
+    "message": "str",
+    "origin": "str",
+    "retryable": "bool"
+  }
+}

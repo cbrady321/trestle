@@ -1,0 +1,110 @@
+# Deferrals (CM-8; MC-28). Created empty by `L.P0-0d.4`; written **once**,
+# by `L.CL-D1.3`. No later leaf edits it. Schema (CM-8; the withdrawn
+# `register_id` is absent, CM-12):
+#
+# [[deferral]]
+# label       = "WR-OWN-8:environment-lease"   # a CSC-1 label id or an MC-03 clause/part id
+# from_step   = "core"                          # the band that defers it
+# closes_at   = "SL-8"                          # the merge whose leaf claims it
+# until       = "PX-n"                          # optional: an open PX precondition (CSC-15)
+# citation    = "design §8.2 …; HYBRID §4.3"
+# declared_by = "L.CL-D1.3"
+
+# Core deferrals: written once by L.CL-D1.3 (plans/core.md ## Coverage (c)). No later leaf edits or deletes an
+# entry; each closing leaf claims its label. None carries `until` (no upstream precondition is open, CSC-15).
+
+[[deferral]]
+label       = "WR-OWN-8:environment-lease"
+from_step   = "core"
+closes_at   = "SL-8"
+citation    = "design-workflow-runtime.md §8.2 'Capacity and dispatch before the lease'; HYBRID §4.3"
+declared_by = "L.CL-D1.3"
+
+[[deferral]]
+label       = "A1.3:single"
+from_step   = "core"
+closes_at   = "SL-9"
+citation    = "root MC-03 A1.3 single part; HYBRID §4.3"
+declared_by = "L.CL-D1.3"
+
+[[deferral]]
+label       = "WR-OWN-1:created-container-released"
+from_step   = "core"
+closes_at   = "RB-12"
+citation    = "requirements WR-OWN-1 tag 'core+B … runtime workflows for other resources'"
+declared_by = "L.CL-D1.3"
+
+[[deferral]]
+label       = "WR-OWN-3:created-container-stopped-on-success"
+from_step   = "core"
+closes_at   = "RB-12"
+citation    = "requirements WR-OWN-3 tag 'core+B'; K-8"
+declared_by = "L.CL-D1.3"
+
+[[deferral]]
+label       = "WR-TERM-5:tree-size"
+from_step   = "core"
+closes_at   = "TR-6"
+citation    = "root MC-03 A1.6 (tree)"
+declared_by = "L.CL-D1.3"
+
+[[deferral]]
+label       = "WR-PROOF-10:slice-row-doc-syncs"
+from_step   = "core"
+closes_at   = "CZ"
+citation    = "root Stage 0 B5 'K-doc sync'"
+declared_by = "L.CL-D1.3"
+
+[[deferral]]
+label       = "WR-CANCEL-3:later-run-admitted-after-answer"
+from_step   = "core"
+closes_at   = "SL-8"
+citation    = "root DM-19; design §8.2 rule 2; hld-wr-run-control Constraint (f)"
+declared_by = "L.CL-D1.3"
+
+[[deferral]]
+label       = "WR-CANCEL-5:adapter-contract-suite"
+from_step   = "core"
+closes_at   = "NW-2"
+citation    = "root DM-19; root MC-25"
+declared_by = "L.CL-D1.3"
+
+[[deferral]]
+label       = "WR-OWN-6:docker-inventory"
+from_step   = "core"
+closes_at   = "RB-12"
+citation    = "root DM-19; WR-PROOF-6 inventory diff"
+declared_by = "L.CL-D1.3"
+
+# L.P0-0d.27 (J-CORE failure exit; a deviation from "written once", recorded in
+# CKPT-CARRIER-FIX-RETURN.md): four P0 target labels declared `step = "core"` whose strict-xfail
+# targets are un-xfailed only in slice B, by the remover of their TM-P0-2 entry. J-CORE (c) needs
+# every core label PROVEN or deferred with a citation; each stays P0's declared claim.
+
+[[deferral]]
+label       = "WR-ENV-1:legacy-explicit-waves-refuse-unknown-duplicate"
+from_step   = "core"
+closes_at   = "NW-1"
+citation    = "temporary.d/p0.toml TM-P0-2:G-E1 removed_by L.NW-1.3; plans/b-slice-b.md NW-1 (legacy labels)"
+declared_by = "L.P0-0d.27"
+
+[[deferral]]
+label       = "WR-VERIFY-4:legacy-run_pytest-errors"
+from_step   = "core"
+closes_at   = "NW-1"
+citation    = "temporary.d/p0.toml TM-P0-2:G-E3 removed_by L.NW-1.5; plans/b-slice-b.md NW-1 (legacy labels)"
+declared_by = "L.P0-0d.27"
+
+[[deferral]]
+label       = "WR-ENV-11:pipeline-one-teardown@fake"
+from_step   = "core"
+closes_at   = "NW-1"
+citation    = "temporary.d/p0.toml TM-P0-2:G-E3 removed_by L.NW-1.5; plans/b-slice-b.md NW-1 (legacy labels)"
+declared_by = "L.P0-0d.27"
+
+[[deferral]]
+label       = "WR-PROOF-2:pack-docker-live"
+from_step   = "core"
+closes_at   = "NW-2"
+citation    = "temporary.d/p0.toml TM-P0-2:G-E2 removed_by L.NW-2.8 (on a PASSED host-docker record); plans/b-slice-b.md NW-2"
+declared_by = "L.P0-0d.27"

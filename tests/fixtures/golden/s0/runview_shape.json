@@ -1,0 +1,94 @@
+{
+  "fields": [
+    [
+      "run_id",
+      "Handle"
+    ],
+    [
+      "state",
+      "str"
+    ],
+    [
+      "status_frame_version",
+      "int"
+    ],
+    [
+      "duration_ms",
+      "int | None"
+    ],
+    [
+      "event_count",
+      "int"
+    ],
+    [
+      "artifact_count",
+      "int"
+    ],
+    [
+      "result_bytes",
+      "int | None"
+    ],
+    [
+      "truncated",
+      "bool"
+    ],
+    [
+      "omitted",
+      "list[str] | None"
+    ],
+    [
+      "summary",
+      "Any"
+    ],
+    [
+      "error",
+      "dict[str, Any] | None"
+    ],
+    [
+      "next",
+      "Handle | None"
+    ],
+    [
+      "limits_exceeded",
+      "list[dict[str, Any]] | None"
+    ]
+  ],
+  "frames": {
+    "succeeded": {
+      "artifact_count": "int",
+      "duration_ms": "int",
+      "event_count": "int",
+      "result_bytes": "int",
+      "run_id": "str",
+      "state": "str",
+      "status_frame_version": "int",
+      "summary": "dict",
+      "truncated": "bool"
+    },
+    "truncated_array": {
+      "artifact_count": "int",
+      "duration_ms": "int",
+      "event_count": "int",
+      "result_bytes": "int",
+      "run_id": "str",
+      "state": "str",
+      "status_frame_version": "int",
+      "summary": "dict",
+      "truncated": "bool"
+    },
+    "truncated_object": {
+      "artifact_count": "int",
+      "duration_ms": "int",
+      "event_count": "int",
+      "next": "str",
+      "omitted": "list",
+      "result_bytes": "int",
+      "run_id": "str",
+      "state": "str",
+      "status_frame_version": "int",
+      "summary": "dict",
+      "truncated": "bool"
+    }
+  },
+  "status_frame_version": 1
+}

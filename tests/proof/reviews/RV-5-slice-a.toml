@@ -1,0 +1,28 @@
+# RV-5 at J-SLICE-A (CM-5 role 1, L.J-SLICE-A.1): stage-critic transcription review paired with
+# `python -m tests.proof.transcribe --check all`. Reviewer: stage critic (independent), read-only.
+# Scope (plans/a2-tree.md L.J-SLICE-A.1, S12): matrix map, row-owner map and labels.d/tree.toml vs
+# requirements L454-461, L493-505 and decomposition s7; plus the tree deltas in fence.d/tree.toml,
+# d2_exceptions.toml, rollback.toml and divergence.toml as read-through.
+# Round history:
+# - Round 1, pass, at 4a94b9e (PR #43 head, A-2 tree bundle; verdict _tmp/delivery/RV-5-slice-a-verdict.md).
+#   The previous RV-5 (RV-5-single.toml) reviewed 15e22cf; matrix_map, row_owners, k_doc_map,
+#   open_questions, deferrals, transcribe.py, labels.d/{core,single}, fence.d/{core,single} and
+#   temporary.d/* are byte-identical 15e22cf..4a94b9e. #43's later fixes (up to 1512c5e: tests/tree,
+#   tests/fixtures/trees/depth2_conditions.py, differ_modes/d6_direct_child.py) touch no transcribed
+#   file, so the review stands at the carrier head.
+# Departure recorded (declared, not a transcription defect): fence.d/tree.toml uses CM-2's bundle form
+# (8 product gates on wr/tree-bundle/tree, a third lane tree-bundle with 7 TR-0 + 3 fix1 extra globs).
+# Observations, no action: WR-TERM-7 labels carry the row's PROC component tier (plan L1877, core
+# precedent); C-CONTAIN-AND-CLOCK:trl-rollback-class-recorded LOGIC = its T6 registrant; divergence.toml
+# +6 entries each authorized_by an a2 leaf; P0-0d.33 labels.d/p0.toml +5 labels, fence.toml cz prefix.
+id = "RV-5"
+mode = "stage-critic review"
+outcome = "pass"
+sha = "4a94b9ec4bda1e5527a9c965513ac64a8485b9e1"
+transcribe_log = "J-SLICE-A round 1 at 4a94b9e (reviewer, scratch git-archive extraction): transcribe --check all --requirements requirements-workflow-runtime.md --decomposition decomposition-workflow-runtime.md: exit 0, empty output; TRESTLE_REQUIREMENTS/TRESTLE_DECOMPOSITION pytest tests/proof/drift -k 'SA-06 or SA-02 or SA-07 or SA-08 or SA-15': 23 passed; pytest tests/tree/test_labels.py tests/proof/drift/tree: 9 passed; meta check-map: exit 0; meta audit-rows: exit 0 (129 rows, 29 unregistered, none tree); meta register, kdoc, open-questions: exit 0. Reviewer: matrix_map, row_owners, k_doc_map, open_questions, deferrals, transcribe.py, labels.d/{core,single}, fence.d/{core,single}, temporary.d/* byte-identical 15e22cf..4a94b9e; 12 step-tree clauses (A1.5, A1.6, A2.5, A2.6, A3.4, A4.2, A5.3, A5.4, A6.3, A6.4, A8.4, A8.5) verbatim in requirements L497-504 = plan Coverage (b); labels.d/tree.toml 110 labels = plan Coverage (a) (id, row, composes, declared_by = first leaf, posture, oq, venue: 0 diffs; WR-UNIT-6:child-addressed-cancel gated_on OQ-27, WR-UNIT-1:eligibility-oq31 both_variant, WR-TERM-5:tree-size claim declared_by L.TR-6.4 with the core deferral closes_at TR-6 kept); tier = requirements tier on 30 of 31 rows (WR-UNIT-5/WR-OWN-1/WR-OWN-3 collapsed to the Slice A PROC component, I22), WR-TERM-7 labels PROC = plan L1877 and their proves markers (row cell MCP+PROC, core precedent held-wait-cancel-query-bound MCP; observation); join C-id label tiers = first leaf verifier (trl-rollback-class-recorded LOGIC = its T6 registrant; observation vs L.TR-L.11 whole-leaf LOGIC+PROC); fence.d/tree.toml lanes tree (+trestle/server/main.py) and tree-ckpt verbatim, 9 gates merges/requires_merge = plan, bundle-form branch and tree-bundle lane (7 TR-0 + 3 fix1 globs) a declared deviation (file header; A2-TR0-RETURN, A2-ASSEMBLY-RETURN); d2_exceptions E-TR-1 = plan (reader wr-ckpt/single, */trl-views-*, */tr5-views-*), no drain exceptions = rollback.toml TR-L/TR-5 transparent = d2_outcomes.toml; divergence.toml +6 entries each authorized_by an a2 leaf, codes present in trestle/**; WR-UNIT-1..8 owner_node, disposition, contributing, join_cids = decomposition s7 L260-267; no K-item due in TR-0..TR-6 (merge table L37, k_doc_map, requirements L532-550). Verdict: _tmp/delivery/RV-5-slice-a-verdict.md."
+
+[criteria]
+verbatim_fragments = "pass"
+row_set = "pass"
+owner = "pass"
+k_docs = "pass"

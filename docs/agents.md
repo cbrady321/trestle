@@ -1,0 +1,767 @@
+# Trestle — Agent Guide
+
+**Audience:** coding agents (Cursor, Claude Desktop, other MCP hosts)  
+**Install:** [`docs/install.md`](install.md) · **Overview:** [`docs/overview.md`](overview.md) · **Security:** [`docs/security.md`](security.md)  
+**Agent skills:** [`skills/trestle/SKILL.md`](../skills/trestle/SKILL.md) (one call per objective) · [`skills/trestle-pack/SKILL.md`](../skills/trestle-pack/SKILL.md) (write the plugin that chains the steps)  
+**Full reference:** [`docs/agent-console-mcp.md`](agent-console-mcp.md)  
+**Plugins:** [`docs/plugins.md`](plugins.md) · **Packs:** [`docs/packs.md`](packs.md)
+
+---
+
+## What Trestle is
+
+Trestle is a **local execution kernel** with a **fixed MCP surface** (ten tools). You run Python **plugins** via `run`, then pull **bounded evidence** via `query` and `fetch`. Evidence stays on disk; your context window gets small, honest slices.
+
+You do **not** call plugin names as MCP tools. You do **not** use filesystem paths in `fetch`. Admission refusals never include a `run_id` — they are not failed runs.
+
+---
+
+## Before your first `run`
+
+### 1. The service
+
+Trestle runs as the operator's per-user service ([`install.md`](install.md)); you reach it over
+MCP and nothing else. **Nothing you do as an agent runs `trestle` itself**: not `serve`, not
+`service`, not `init`, not `doctor`. Starting, stopping, upgrading and configuring Trestle is the
+operator's job.
+
+**If the Trestle tools are missing, or the service does not answer** (connection refused, HTTP 401,
+every call failing the same way): say so plainly, name what you saw, and stop. Do not run the
+command in your own shell instead, and do not try to start the service. The operator fixes it
+([`install.md`](install.md#troubleshooting)).
+
+A refusal or hint that says what "the operator runs" is for the operator: relay it, do not run
+it, in your shell, through `exec` or any other way.
+
+`query(view="status")` answers what this service allows: version, profile, limits, slots, live
+runs and the environments in use.
+
+An empty catalog means every `run` returns `admission.plugin_not_found`; `list_plugins` then
+carries a `catalog_hint`. Report it to the operator rather than working around it.
+
+### 2. Attach MCP
+
+The operator wires each host once ([`install.md`](install.md#2-wire-every-agent-host)): the URL
+`http://127.0.0.1:18732/mcp` with the agent token as `Authorization: Bearer <token>`. This repo's
+[`.cursor/mcp.json`](../.cursor/mcp.json) is a project override:
+
+```json
+{
+  "mcpServers": {
+    "trestle": {
+      "url": "http://127.0.0.1:18732/mcp",
+      "headers": { "Authorization": "Bearer ${env:TRESTLE_AGENT_TOKEN}" }
+    }
+  }
+}
+```
+
+**Plugin folders** the service watches are the operator's `[plugins].paths` in
+`$TRESTLE_HOME/config.toml` (packs: [`packs.md`](packs.md)). An agent with the full profile can
+also add a plugin at runtime with `publish_plugin`.
+
+### 3. Verify
+
+- Host shows **ten** tools (see table below).
+- `query(view="status")` answers, with `draining: false`.
+- `list_plugins` returns at least `echo`.
+
+---
+
+## Golden workflow (≤5 turns)
+
+| Step | Tool | What to pass |
+|------|------|--------------|
+| 1 | `list_plugins` | — discover plugin `name` values |
+| 2 | `describe_plugin` | `plugin_id` = plugin name (optional; pull `input_schema` / `return_schema`) |
+| 2b | `publish_plugin` | `source` (optional; create/update plugin at runtime) |
+| 3 | `run` | `plugin`, `args`, `wait_ms`, optional `completion` (`"bounded"` default, or `"terminal"`), optional `deadline_s` |
+| 4a | `fetch` | `{run_id}/result` + window (success path) |
+| 4b | `query` | `view: last_error`, `params: {run_id}` (failure path) |
+
+**Example — success:**
+
+```json
+// run
+{ "plugin": "echo", "args": { "message": "hello" }, "wait_ms": 5000 }
+
+// fetch — use run_id from RunView
+{
+  "target": "r_abc123/result",
+  "window": { "kind": "jsonpath", "expr": "$.message" }
+}
+```
+
+**Param naming:** `run` uses `plugin`; `describe_plugin` uses `plugin_id` — same string value.
+
+**Dates in `args`:** a datetime must carry a timezone (`2026-01-01T00:00:00Z`); a naive or malformed date or datetime is refused with `admission.invalid_args` and no run id. Supported argument types: [`plugins.md`](plugins.md#supported-types).
+
+---
+
+## Ten tools (frozen — do not invent more)
+
+| Tool | Use when |
+|------|----------|
+| `run` | Create work (or get admission refusal) |
+| `await_runs` | Join handles already admitted |
+| `cancel` | Request stop of a run |
+| `query` | Named view over run history (bounded rows) |
+| `fetch` | Bytes of one handle (result, artifact, summary continuation) |
+| `pin` / `unpin` | Retention policy |
+| `list_plugins` | Catalog names only — no schemas |
+| `describe_plugin` | One plugin's schema and metadata |
+| `publish_plugin` | Create or update a plugin from Python source |
+
+**Always** `run(plugin="…")`. **Never** call a plugin name as an MCP tool.
+
+---
+
+## Restricted profile
+
+An operator may run Trestle with `[profile] mode = "restricted"` ([`security.md`](security.md)). Then the host lists **nine** tools (no `publish_plugin`), `run` accepts only the allowlisted plugins, and cancel works on runs this MCP session started, and on any run whose session has ended (session_ended: true in recent_runs and run). list_plugins marks each plugin allowlisted: true or false.
+
+| Refusal | Meaning | Fix |
+|---------|---------|-----|
+| `admission.not_allowlisted` | Plugin is not on the operator's allowlist (no `run_id`, nothing spawned) | Run an allowlisted plugin (ask the operator which); arguments cannot widen the list |
+| `projection.not_owner` | cancel for a run another session started while that session is still open | Leave it; the run continues. Once its session has ended you may cancel it if it blocks you. |
+
+The full profile (default) is unchanged: ten tools, any published plugin, any run cancellable.
+
+---
+
+## Critical rules
+
+1. **Refusals are not runs.** `admission.*` and `publication.*` outcomes have no `run_id`. Do not treat them as failed runs.
+2. **Handles, not paths.** `fetch("/tmp/foo")` → `projection.invalid_handle`. Use handles from `RunView` or `query`.
+3. **Final-state evidence is post-finalize; progress is live.** `query(run_tail|last_error|run_provenance, …)` on a running run → `projection.not_finalized` (`retryable: true`): wait for terminal state or use `await_runs`. A running run's frame carries `progress` (its latest `ctx.progress`), and `run_events` and `run_artifacts` answer while it runs, marked `live: true`; `fetch` of a listed `art_…` returns the newest file. There is no live stdout tail.
+4. **A run that did not succeed explains itself (K-10).** `RunView.error` is `{code, phase, message}`: `code` is one of the stable `execution.*` codes (`import_failed`, `bind_failed`, `plugin_raised`, `result_unencodable`, `provenance_mismatch`, `cancelled`, `deadline_exceeded`, `worker_exit`, `interrupted`), `phase` says where it happened, and `message` is bounded (512 bytes) with host paths replaced by `<home>`, `<run>`, `<cwd>` and `<user-home>`. `query(last_error)` returns the same message; before this it said only `failed`, and `RunView.error` was never set. Both read one ledger record, `error_record`, so they agree, and they keep agreeing after a restart. Older runs, recorded before the record existed, keep the old `last_error` text and no `error`.
+5. **Check `limits_exceeded`.** When output exceeds caps, `RunView` marks suppressed streams — evidence is honestly incomplete. There is one marker per (stream, limit), however many events or artifacts it dropped; its `bytes_suppressed` is the total. Artifact caps (`stream: "artifacts"`, `max_artifact_count`, `max_artifact_bytes`) mark artifacts that were not stored.
+6. **Fetch truncation is success.** `truncated: true` with `scan_bytes` means narrow the window and continue — not an error. On `query`, `truncated: true` with `next_cursor` set means follow the cursor. With `next_cursor` null the recency window (500 runs) or the scan budget left runs out: reaching past it is not offered, and a run-scoped view of such a run by id answers `projection.outside_window` (an id with no run stays `projection.invalid_handle`).
+7. **Small MCP surface.** Plugin JSON schemas are **not** on `tools/list`. Pull one schema via `describe_plugin` when needed. When-to-pick for `query`/`fetch` lives on MCP resource `trestle://views` (not a second schema dump).
+8. **Pack source is open; Trestle's core is closed** (packs decision record, P-6). Read a pack's wrappers and library with your own file tools and adapt them when a pack does not fit, rather than falling back to the shell. Do not read or modify Trestle's own source or `$TRESTLE_HOME` beyond its packs. Running still goes through Trestle.
+
+---
+
+## Retrieval — pick the smallest answer
+
+Live catalog: MCP resource **`trestle://views`** (when to pick each named view vs fetch). Plugin schemas stay off that resource.
+
+| Question | Tool | View / target |
+|----------|------|---------------|
+| What did the plugin return? | `fetch` | `{run_id}/result` + `jsonpath` or `range` |
+| What did a workflow decide? | `RunView.answer`, then `fetch` | `answer.outcome` / `answer.primary`; the rest at `{run_id}/answer` + `head` |
+| Why did it fail? | `RunView.error`, or `query` | `last_error` + `{run_id}` |
+| Wrapper stdout lines? | `query` | `run_tail` + `{run_id}` (post-finalize) |
+| Run metadata? | `query` | `run` + `{run_id}` |
+| How far is a running run? | `RunView.progress` | from `run` / `await_runs` |
+| Event timeline? | `query` | `run_events` + `{run_id}` (live while running) |
+| Large array in summary? | `fetch` | `RunView.summary.handle` + `jsonpath` / `range` |
+| Artifact bytes? | `query` → `fetch` | `run_artifacts` → `art_…` + `head` / `tail` / `grep` |
+| Recent failures? | `query` | `recent_failures` |
+| Browse runs? | `query` | `recent_runs` (+ `cursor` if `next_cursor`) |
+| What does this service allow / how busy is it? | `query` | `status` (no params) |
+
+### `run_tail` vs `fetch`
+
+| Evidence | Access |
+|----------|--------|
+| Wrapper **stdout/stderr** (console pipes) | `query(run_tail)` |
+| Plugin **return value** | `fetch({run_id}/result, …)` |
+| **Artifact** files | `fetch(art_…, …)` |
+| Filesystem paths | **Forbidden** |
+
+Plugins that only use `ctx.log()` may produce **empty** `run_tail` — use `run_events` or the return value instead.
+
+### Named views (`query`)
+
+`run`, `last_error`, `run_tail`, `run_events`, `recent_runs`, `recent_failures`, `run_provenance`, `run_artifacts`, `artifact_refs`, `run_by_key`, `status`
+
+Every `BoundedView` includes `backend`, `as_of`, `items`, `truncated`, `next_cursor`.
+
+### Fetch windows
+
+| Handle | Permitted `window.kind` |
+|--------|-------------------------|
+| `{run_id}/result` | `jsonpath`, `range`, `head`, `tail`, `grep` |
+| `{run_id}/answer` (the full terminal answer, `answer.detail`) | `range`, `head`, `tail`, `grep` (not `jsonpath`) |
+| `summary.handle` (array continuation) | `jsonpath`, `range` |
+| `art_…` (text artifact) | `range`, `head`, `tail`, `grep` |
+
+The full answer is stored as one JSON line, so `{"kind": "head", "count": 1}` returns all of it and
+`grep` returns at most its first 512 characters. `trestle://views` does not list `{run_id}/answer`
+in this release; the handle works all the same.
+
+---
+
+## Run states
+
+A run is always in exactly one of these states. The same vocabulary is in
+[`agent-console-mcp.md`](agent-console-mcp.md) §3. Each state names the code
+that produces it; a state with no producer is **reserved** and is never written.
+
+<!-- K-13 -->
+| State | Kind | Producer |
+|-------|------|----------|
+| `queued` | projected | Admission writes the `created` and `admitted` ledger rows; the run is `queued` until the `started` row exists. |
+| `held` | projected | Admission, for a run sent with `after`: a `held` row follows `created`, and the run is `held` (no slot, none of its deadline spent) until a `released` row or a terminal row. |
+| `running` | projected | The conductor writes `started` when the worker begins; the run is `running` until evidence is finalized. |
+| `succeeded` | terminal | The conductor, when the worker exits 0. |
+| `failed` | terminal | The conductor, when the worker exits 1 (the plugin raised) or reports nothing usable. |
+| `cancelled` | terminal | The conductor, when it observes the run's cancel request. |
+| `timed_out` | terminal | The wrapper and conductor, when the run outlives its deadline. |
+| `worker_exit` | terminal | The wrapper, when the worker exits with a code other than 0 or 1 (for example 3). |
+| `interrupted` | terminal | Recovery, at the next start, for a run whose ledger has no terminal row. |
+| `crashed` | terminal | **Reserved.** It stays in the ledger's terminal-kind set so old readers keep working, but no code path writes it. |
+<!-- /K-13 -->
+
+`crashed` is reserved (K-13), not a state a run can reach. A run whose worker dies
+abnormally is `worker_exit`; a run whose server died is `interrupted`.
+
+---
+
+## Wait and long jobs
+
+`run` admits work, starts execution on a background thread, then waits up to `wait_ms`:
+
+- `wait_ms=0` → immediate status frame (may be `queued` or `running`).
+- `wait_ms>0` on a slow plugin → returns a **`running` frame** when the deadline elapses; join with `await_runs`. The frame carries the run's latest `progress`.
+- Terminal within `wait_ms` → terminal `RunView` in one call.
+- While any of these waits, a request that carried an MCP progress token receives each new progress line as a progress notification, and a heartbeat after 15 s of silence, so a long wait over HTTP stays open (see `docs/agent-console-mcp.md`, Evidence finalization and live runs).
+
+**Long jobs:** call `run(plugin="…", args={…}, wait_ms=<above zero>, completion="terminal")`. One call returns the finished run, bounded by the run's own deadline plus a published margin, and no follow-up call is needed. Polling is for bounded mode only: with the default `completion="bounded"`, a run that outlives `wait_ms` returns a `running` frame and `await_runs` joins it.
+
+**`completion` (optional, default `"bounded"`, which is everything above unchanged).** Pass `completion="terminal"` to make one `run` call return only a finished run: the response follows the run's finalized terminal row (evidence finalized, then `succeeded`, `failed`, `cancelled`, `timed_out` or `interrupted`), never a `running` frame. The call is bounded by the run's own deadline plus a published finalization margin, not by `wait_ms`: a `wait_ms` above zero is accepted and ignored, and `wait_ms=0` (or below) is refused `admission.invalid_args` because a terminal call has to wait; so is any `completion` value other than `bounded` or `terminal`. If the run is somehow not terminal by that bound, the call answers `projection.terminal_wait_exceeded` (a refusal, not a run state; the run itself is unaffected and `await_runs` still joins it). While a `terminal` call is held, other calls (`cancel`, `query`, `await_runs`) are still answered.
+
+**One class per finished run.** A finished run carries one `answer` (the terminal answer: outcome, the deciding node as `primary`, `cleanup`, and the rest of the nodes in `listed`, bounded by the run's summary budget with the remainder behind `answer.detail`); see `docs/agent-console-mcp.md`. `answer.outcome` is the run's class, one of `passed`, `failed`, `blocked`, `cancelled`, `timed_out`, `execution_error`. A finished `RunView` also carries `outcome: {class, code, identity, recovered}`. Its `class` is the run's verdict, the same as `answer.outcome`: for a run whose `state` is `succeeded` it is taken from the answer, so a plugin that raised `Failed` or `Blocked`, or whose tree answered `failed` or `blocked`, reads `failed` or `blocked` there too, with the answer's code (`plugin.<code>`, or the tree node's). For every other state it is classified from how the plugin process ended (`cancelled`, `timed_out`, `execution_error`), and `code` is the `execution.*` code for an `execution_error` and `null` for the others. `state` keeps its meaning underneath: how the plugin process ended. A plain plugin raises `Failed(code, detail, result=...)` when the thing it checked is wrong (tests failed, a step found problems) and `Blocked(code, human_action)` when a person must act; both end `succeeded` with that verdict (`plugins.md`). Always read `answer.outcome` (see [Large tasks: the tree](#large-tasks-the-tree)); for `blocked`, report the human action and stop.
+
+<!-- K-8 -->
+### A succeeded run leaves no attributable process or run-created container behind (K-8)
+
+When a run ends, Trestle stops the processes it can attribute to the run (its recorded descendants, see the containment boundaries in `docs/security.md`), and that includes a run that **succeeded**: a plugin that returns normally while a child, or a grandchild in its own session, is still running has that process stopped (SIGTERM first, SIGKILL after the grace period) before the run's evidence is finalized. Nothing the run started writes into `evidence/` or changes `result.json` after the terminal answer. The run's class and summary are unchanged (a succeeded run stays `succeeded`), and `cleanup.processes` reads `released` once the stop is confirmed, `unknown` when it could not be.
+
+The same holds for run-created containers. Under the default policy, every container a workflow run created through the container effect facet (`trestle_packs.container`) is stopped and removed when the run ends, and a passed run is no exception. This covers a container that a child step created, because the root run's release covers everything its children created. The release runs in reverse order of creation, after the last step, as part of the run's ordinary release on every terminal path. It stops the container gracefully and then removes it. Its volumes are never removed. A container counts as released only when a final look finds its name absent, so it is certainly not running. `answer.cleanup` counts it under `released` when that look confirms it gone. When the look cannot confirm it, the container counts as `unknown` and `clean` is `false`, never a clean claim. Only containers named with the run's own selector (`trwr-<root run id>-<step path>`) are ever stopped or removed. A container the run found already running is never touched. That guarantee covers the shipped facet: the host runs each recorded release command as written, and the operator's allowlist bounds which executables it may run, not what their arguments address, so a release written by any other adapter is trusted as written (see `docs/environment.md`). A resource declared durable is outside this rule and is reported as `left_durable`. Asking to keep a container running past the run is refused in this delivery.
+
+This is a knowing change (K-8): before it, a process a plugin forgot outlived a succeeded run, and a passing pipeline left its stack running. The process half is on by default (`REAP_ON_SUCCESS` in `trestle/server/conductor.py`), the same kill every other way a run can end has always received. The container half has no switch of its own: it is the run's ordinary release on success, the same release a failed, cancelled or timed-out run gets.
+<!-- /K-8 -->
+
+---
+
+## Snapshot identity
+
+<!-- K-2 -->
+A plugin's snapshot id (`snap_` plus 16 hex digits) no longer hashes `plugin.py` alone. It covers the
+source, the digests of the packages the plugin declares (`@trestle(packages=[...])`), the input and
+return schemas, the declared metadata (deadline, summary fields, packages, env arg, credential names and the
+summary budget) and the Trestle runtime version. Two publications with equal ids share source, declared-package digests, schemas and
+declarations (not undeclared imports, non-`.py` package content or the environment); an edit to a declared package or a declared value gives a new id. Anyone who
+compared snapshot ids to detect a change in `plugin.py` bytes should compare `source_sha256`, which
+is still the hash of that file. A schema file is never rewritten under an existing id. A run keeps
+the id it was admitted under, and stops with `execution.provenance_mismatch` if a declared package
+changed after admission (the packages are recorded, not snapshotted; see `docs/plugins.md`).
+<!-- /K-2 -->
+
+## Cancel, deadlines and cleanup
+
+A run has one deadline, fixed when it is admitted: the plugin's declared deadline (300 s when it
+declares none), counted from admission, so time spent queued or held counts against it.
+<!-- K-9 -->
+A plugin may declare a longer deadline in its `@trestle(deadline=...)` call form (one that declares
+none keeps 300 s); `describe_plugin` reports it as `deadline_s` with `deadline_source` (`declared` or `default`), and it is enforced, not
+advisory. A declared deadline above the ceiling (3600 s) is refused before any run id with
+`admission.budget_does_not_fit`.
+<!-- /K-9 -->
+A call may set its own with `run(deadline_s=...)` (seconds): the call's value, else the declared one,
+else 300 s, so a call may go above or below the declaration but never above the ceiling, and one too
+short to hold the release slice is refused the same way. The ceiling is the operator's
+`[operator] deadline_ceiling_s` in `config.toml` (default 3600, at most 86400; no environment
+override; read at each admission, so a change needs no restart). The run view shows `deadline_s` and
+`deadline_source` (`call`, `declared` or `default`); `describe_plugin` adds `finalization_margin_s`
+and `deadline_ceiling_s`, so size a client's timeout for any call as `deadline_s +
+finalization_margin_s`. A key's identity includes the call's own `deadline_s` argument (not the
+effective deadline). For runs of hours, send with the default bounded `wait_ms` and wait in bounded
+calls instead of one `completion="terminal"` call.
+ `cancel` and the deadline are the two ways a run is stopped, and
+both stop the **whole process tree**, not just the plugin's own process. The supervisor sends
+SIGTERM to every process attributable to the run at once, waits at most `grace`, sends SIGKILL,
+and waits at most `kill` for confirmation. Attributable means the run's process group, and every
+descendant by parent id of a process already attributable, whatever session or group it has moved
+to (a plugin's `setsid` child is still the run's). The run's class comes from whichever came first,
+the cancel or the deadline; if both hold at the first look, cancel. Only the supervisor signals:
+a cancel request writes a flag, and the supervisor records the stop (cause and the lane's committed
+length) before it stops anything. The release slice and the finalization reserve (10 s each) are
+plan defaults disclosed for the maintainer to set, not requirements.
+
+| Published bound (`trestle.common.clock`) | Default | Meaning |
+|---|---|---|
+| `grace` (10 s) | `TRESTLE_CANCEL_GRACE_S` | SIGTERM to SIGKILL |
+| `kill` (5 s) | `TRESTLE_CANCEL_KILL_S` | SIGKILL to confirmed gone |
+| `release_slice` (10 s) | `TRESTLE_RELEASE_SLICE_S` | a workflow run's cooperative release, before the kill (0 for a plain plugin) |
+| `stop_bound` (25 s, `release_slice` + `grace` + `kill`) | derived | from the stop decision to the tree gone |
+| `finalization_margin` (35 s, `stop_bound` + 10 s reserve) | `TRESTLE_FINALIZATION_MARGIN_S` | how long after the deadline a call may still be answered |
+| `poll_interval` (0.05 s) | fixed | how often the supervisor looks for a cancel |
+
+A cancel is seen within one `poll_interval`, so a stop completes within `stop_bound` plus
+`poll_interval` of the request. By the terminal row every process attributable to the run (the recorded
+leader, its recorded group, and the descendants observed by parent id, each with an identity row)
+is gone, or the answer says it could not be confirmed: `cleanup.processes` on the run frame is
+`released` only when the supervisor confirmed those processes gone, otherwise `unknown` (never a
+clean claim without confirmation, and never `nothing_created` for a run that spawned a process). A
+descendant that double-forked out of attribution is not counted: the answer can read `released`
+while it lives (see [What stopping a run does not cover](security.md#what-stopping-a-run-does-not-cover)). The evidence and the
+result are written only after that confirmation, so nothing changes them after the terminal row on
+a stop path.
+
+After a server crash, recovery reads the run's recorded process identities before it marks the run
+`interrupted`: it stops the run's processes when the recorded leader is still alive, and it never
+signals a pid that now belongs to another process. A run started before identities were recorded
+gets no signal at all; its answer reports the stop as unconfirmed.
+
+Several servers may share one `TRESTLE_HOME` (v0.3.1). Each run is owned by the server that admitted
+it, through a lock the kernel drops when that server exits, even on SIGKILL; only runs whose owner
+is gone are recovered, by the reaper every running server runs (at start, then every 10 s, and at
+once when an `await_runs` or `completion="terminal"` waiter sees its run's owner gone). Starting a
+server never touches another live server's runs. A reaped run that was given no credential value a
+value keeps what it left in `work/outputs/` (and staged artifacts) as artifacts:
+`query(view="run_artifacts")` lists them; a run with a credential value keeps none.
+
+---
+
+## When your session ends
+
+Runs belong to the service, not to your session. Closing the chat, a reconnect or a host
+restart never stops one. A session ends when your host deletes it, or after 30 minutes with no
+request in flight (the host has gone). A dropped connection is not an end. Find a run again by
+its key (`query(view="run_by_key")`, or `await_runs(run_ids=[], keys=[...])`). A live run whose
+session has ended shows `session_ended: true` in `query(view="recent_runs")` and
+`query(view="run")` (false while its session is open, null once the run has ended or for a run
+sent outside MCP). Cancel a run you did not send only when it blocks you (it is the `held_by` of
+your refusal) and its `session_ended` is true. Never cancel one as cleanup.
+
+---
+
+## Run capacity
+
+A home runs at most `max_running_runs` runs at once, shared by every server on it (one pool, not
+one per server). Each server queues the runs it admitted in its own FIFO, its deadline running
+from admission; a server whose running and waiting runs reach `max_running_runs + queue_depth`
+refuses `admission.queue_full` before a run id exists, and a full queue on one server never
+refuses another server's runs. Free slots go to the server holding the fewest, then the one
+granted longest ago; a server with nothing running and nothing waiting keeps one slot free
+until its first run (while it was seen in the last 30 s), and `[operator] max_share` caps one
+server's slots (unset by default). Runs that name one environment start one at a time across all
+servers, in admission order. A stopped server's turn passes on within about 1.5 s; a dead
+server's running runs keep their slots until another server's reaper ends them. `max_running_runs`
+and `max_share` are read from `config.toml` at each admission and grant (no restart needed;
+`TRESTLE_MAX_RUNNING_RUNS` is ignored and the operator's trestle doctor warns when it is set); `queue_depth`
+(`TRESTLE_QUEUE_DEPTH` still overrides it) and `[operator] max_held_runs` (256) are per server, read
+at start; held runs (`run(after=...)`) are outside `queue_depth`, and a server holding `max_held_runs` of them refuses another with `admission.queue_full`. The shared state is `home/sched.json`, rebuilt from `home/live/` when missing.
+`query(view="status")` shows slots in use and free, home wide.
+
+<!-- capacity -->
+Defaults: `max_running_runs` = 31 (measured), `queue_depth` = 256 (not measured); ratio bound = 2.0.
+<!-- /capacity -->
+
+`max_running_runs` is the value the measurement chose (`tests/tree/capacity_slice_a.json`): the
+Slice A workload (every registered workflow, the tree workflows included) was run at 1, 2, ...
+concurrent runs on a darwin Python 3.12 host, and the largest number of concurrent runs at which
+every run ended `passed` within its deadline, no process of a run outlived its answer, and the p95
+run time stayed within the ratio bound times the p95 at one run. The **ratio bound (2.0)** is the
+measurement's own degradation bound, a plan default disclosed for the maintainer to set; it is a
+ratio of run times, not the append-cost ratio of the record and not a stop bound. `queue_depth`
+was not measured: it keeps its provisional value, now final, because a queued run is bounded by
+its deadline (it is finalized `timed_out` if still waiting when it passes), not by the depth. The
+number is for the recorded machine; a service on other hardware should re-run
+`python -m tests.tree.capacity measure` or set its own value.
+
+---
+
+## One-off commands: exec
+
+When no plugin owns the work and you need one command (a `git status`, a version check), run it
+through the `exec` plugin, never your shell:
+
+```
+run(plugin="exec", args={"argv": ["git", "status", "--short"], "cwd": "<absolute dir>"},
+    wait_ms=1000, completion="terminal")
+```
+
+- `argv` is a list and no shell is added: no pipes, globs or `&&`.
+- `cwd` must be under a directory the operator lists; outside it, `error` says
+  `cwd_outside_roots` and names them. Until the operator lists one, the run answers `blocked`
+  with `plugin.exec_roots_unset`: report it and stop.
+- Read `summary.ok`, `exit_code`, `stderr_tail` and `stdout_tail` (the last 1,500 bytes of
+  each). `output` is the whole kept output: `fetch` it with `tail` or `grep`.
+- Give it a deadline that fits: `run(..., deadline_s=600)`. The run's deadline is the command's
+  timeout; a command that outlives it answers `timed_out: true`.
+- If `exec` is not in `list_plugins`, or is `allowlisted: false`, Trestle does not run one-off
+  commands on this service. Say so. Whether you may run it yourself is your host's rule, not
+  Trestle's.
+- A command you run again and again should be a plugin: propose one.
+
+exec is seeded by the operator's trestle init; under the restricted profile it runs only if the
+operator lists it.
+
+| Field | Value |
+|---|---|
+| `ok` | the command exited 0 and there is no `error` |
+| `exit_code` | its exit status (null on a timeout, a stop or an error) |
+| `timed_out` | it outlived the run's deadline less a 5 s margin, and was killed |
+| `duration_s` | how long it ran |
+| `stdout_tail`, `stderr_tail` | the last 1,500 bytes of what was kept of each stream, cut on a UTF-8 boundary and at a line start |
+| `truncated` | a stream passed 16 MiB: the tail is the end of what was kept, not of the stream |
+| `output` | the `art_…` handle of the kept output, or `""` |
+| `error` | null, or `<code>: <detail>`: `cwd_not_absolute`, `cwd_not_a_directory`, `cwd_outside_roots`, `program_not_found` (the service's `PATH` is not your shell's), `not_executable`, `argv_invalid`, `no_time_left`, `operator_command` (`argv[0]` is the operator's CLI) |
+
+An `error` is returned, not raised: the run ends `succeeded` and `answer.outcome` reads `passed`;
+read `summary.ok`.
+
+---
+
+## Composite workflows (trees)
+
+A workflow plugin may declare a **tree**: a root that runs several children, each child a leaf or a
+group with its own children, ordered by `needs` (a child starts only after the children it needs
+are done). The root is an `AllDeclaration` (every child must succeed) or a `ChoiceNode` (one alternative is selected and run); `plugins.md` has a worked
+example ([Composite workflows](plugins.md#composite-workflows)). You run a tree exactly like any
+other plugin: `run(plugin="…", args={…}, wait_ms=<above zero>, completion="terminal")` admits the
+whole tree as **one run** with **one run id**, and returns one answer for all of it.
+
+### Large tasks: the tree
+
+When a job has many parts (bring up several services, then migrate, then test; a build matrix;
+checks that depend on each other), use a registered tree plugin instead of driving the parts one
+`run` at a time. The plugin's author declared the parts, their order (`needs`), how many run at
+once (`concurrency`) and each part's time budget. Trestle checks the whole declaration and every
+budget at admission, before a run id exists, runs independent parts in parallel inside the one
+run, and returns one answer for all of them. A request cannot add or reshape nodes. It can only
+select among the declared ones when the plugin offers a selector argument (for example
+`services: ["postgres"]`); a value outside the declared set is refused
+`admission.unknown_identifier`, with no run id. A selection runs the named parts together with
+everything they depend on (`reference_env`'s `services: ["postgres"]` also brings up
+`http_support`, which postgres depends on); parts outside that closure are not in the run.
+A part with more than one realization is a choice: `reference_env`'s `http_support` runs in
+Docker unless `overrides: ["http_support_local"]` names its local realization. The choice keeps
+the part's path (`http_support`) and the realization that ran sits one level below it
+(`http_support/backend.http_support` or `http_support/http_support_local`); the answer lists the
+choice and that one realization, never the one not chosen.
+
+1. **Discover.** `describe_plugin(plugin_id="…")`. The selector arguments and the environment
+   argument are in `input_schema`; `deadline_s` is the deadline the whole tree runs under. Give
+   the environment argument a value even when the schema shows a default: admission does not read
+   the default and refuses `admission.lease_set_undecidable` without it.
+2. **Run once.** `run(plugin="release", args={"env": "dev"}, wait_ms=1000, completion="terminal")`
+   returns when the whole tree has finished, bounded by the plugin's deadline plus the
+   finalization margin.
+3. **Read `answer`, not `state`.**
+
+   > For any plugin that calls `run_tree` (a single leaf or a tree), the verdict is `answer.outcome`.
+   > `state` describes the plugin process: it reads `succeeded` whenever the plugin returned
+   > normally, even when `answer.outcome` is `failed` or `blocked`. `outcome.class` follows
+   > `answer.outcome`. Everything in Trestle that orders, waits on or lists runs by success reads
+   > the verdict: `after` with `when: "succeeded"`, `await_runs(mode="first_failure")` and
+   > `query(view="recent_failures")`.
+
+   `answer.outcome` is one of `passed`, `failed`, `blocked`, `timed_out`, `cancelled`,
+   `execution_error`. `answer.primary` is the node that decided it: `path` lists the node names
+   from the root (`[]` is the root itself), and `code`, `human_action` and `resend`
+   (`succeeds_after_action`, `will_not_succeed` or `unknown`) say what to do next. Node classes rank
+   `execution_error`, `unencodable_result`, `failed`, `timed_out`, `exhausted` (reported as
+   `blocked`), `blocked`, `repaired` (reported as `passed`), `passed`; the deciding node is the
+   highest-ranked one, ties broken by the plan's fixed order, so the order in which nodes finished
+   never changes it. `answer.root_stop` is set (`cancel`, `release_point` for the deadline,
+   `restart`) when the whole tree was stopped from outside. `answer.cleanup` says whether what the
+   run created was released (`clean`).
+4. **Read the other nodes.** `answer.listed` holds every other node, each with a `listing`:
+   `candidate` (it ended on its own), `rolled_up` (a composite, classed from its children),
+   `stopped`, `not_started` (it never ran: something it needs did not pass, or the tree stopped
+   first) or `unended`. When `listed_count` is larger than `listed`, the rest is behind
+   `answer.detail`, the handle `<run_id>/answer`:
+   `fetch("<run_id>/answer", {"kind": "head", "count": 1})` returns the full answer as one JSON
+   line (window kinds `range`, `head`, `tail`, `grep`; not `jsonpath`).
+5. **Fix, then run again.** Do what `primary.human_action` says; do not re-send unchanged when
+   `resend` is `will_not_succeed`. Then `run` again with the same arguments. Each leaf observes
+   before it acts, so a leaf whose postcondition already holds does not act again; a resource with
+   run lifetime (like the markers in the example below) is released at the end of every run, so
+   its leaf acts again.
+6. **Stop.** `cancel("<root run_id>")` stops every node and releases everything the run created;
+   the answer reads `cancelled` with `root_stop: "cancel"`. A cancel addressed to a child is
+   refused (see below).
+
+**Worked example.** The `release` tree in [plugins.md](plugins.md#composite-workflows) runs `build`
+and `lint` in parallel, and `package` needs both. Here `lint` returns
+`Failed("demo.lint_failed", …)` (abridged):
+
+```text
+run → {"run_id": "r_…", "state": "succeeded",
+       "outcome": {"class": "passed", "code": null, …},     # the plugin process: not the verdict
+       "answer": {"outcome": "failed", "root_stop": null,
+         "primary": {"path": ["lint"], "listing": "candidate", "node_class": "failed",
+                     "condition": "failed", "code": "demo.lint_failed", "human_action": null, …},
+         "cleanup": {"clean": true, "released": 2, "unknown": 0, …},
+         "detail": "r_…/answer", "listed_count": 3,
+         "listed": [
+           {"path": ["build"],   "listing": "candidate",   "node_class": "passed", "disposition": "started", …},
+           {"path": [],          "listing": "rolled_up",   "node_class": "failed", "code": "demo.lint_failed", …},
+           {"path": ["package"], "listing": "not_started", "node_class": null, …}], …}}
+```
+
+`state` says the plugin returned normally; `answer.outcome` (and `outcome.class` with it) says the tree
+failed. `lint` decided it, `build` passed and what it created was released, and `package` never
+started because it needs `lint`. Had `lint` returned `Blocked(code, human_action, resend)`, the
+answer would read `blocked`, with that `human_action` and `resend` on `primary`. Had `lint` raised
+an exception, the answer would read `execution_error` with `execution.unit_raised`, and every
+other node would be listed `not_started` or `stopped`; `state` would still read `succeeded`.
+
+**Failure handling.** A node that fails or blocks stops only the nodes that need it; independent
+siblings finish. An exception in any node (`execution.unit_raised`), a `cancel` of the root, or the
+root's deadline stops the whole tree. A crash of the worker process ends every node at once
+(`execution.worker_exit`).
+
+**Limits and budgets.**
+- At most 1024 nodes in the selected scope (`admission.bound_exceeded`).
+- The deadline the tree runs under is the plugin's `@trestle(deadline=)` (`deadline_s`, at most
+  3600 s). `WorkflowEntry.deadline` in the plugin source is not read in this release.
+- Budgets are checked on every run, at admission: a tree whose budgets do not fit its deadline is
+  refused `admission.budget_does_not_fit`, naming the node, before a run id. Publication does not
+  check budgets, so such a plugin publishes and is then refused on every run; the fix is the
+  author's. A started tree can also stop `blocked` with the same code when time spent queued left
+  it less than its worst case.
+- A carved node still working when its slice ends stops `timed_out` with
+  `execution.carve_exceeded`; the nodes below a timed-out composite only release. The slice is
+  checked between a unit's calls, so a unit stuck inside one call runs on until the root deadline.
+  The root is carved nothing: its slice ends at the release point, which stops the whole run. A
+  single-vertex run that reaches it answers `timed_out` with `root_stop` `release_point`, its
+  primary `stopped` and carrying the last verdict's code, never `execution.carve_exceeded`.
+- Two runs that give the same environment value never run at once: the second waits in the queue,
+  or is refused `admission.environment_busy` (retryable, no run id) when the holder's deadline
+  leaves it too little time. A plugin that declares no environment is not excluded.
+- A composite may declare `gates`: children that only read, checked once before anything in the
+  tree acts. A gate that is not satisfied stops its composite with the code it observed, or
+  `execution.declaration_stale`.
+
+**Child handles.** No response carries a child handle in this release, so an agent cannot address
+a child view. Everything a child view holds (its `path`, `node_class`, `code`, `human_action`,
+`resend`) is in `answer.primary` and `answer.listed`, and the full list is behind
+`fetch("<run_id>/answer")` (window kinds `range`, `head`, `tail`, `grep`; not `jsonpath`). A handle
+per node may be added to the answer later as an additive field.
+
+**Ad-hoc large work: fan out registered plugins.** For work that no registered tree covers, start
+independent runs with `run(plugin="…", args={…}, wait_ms=0)` (each returns its `run_id` at once,
+`queued` or `running`) and join them with `await_runs(run_ids=[…], mode=…, timeout_ms=…)`:
+- `mode="all"` returns when every run is terminal;
+- `mode="any"` returns when at least one is;
+- `mode="first_failure"` returns when any run has ended with a verdict (`answer.outcome`) other
+  than `passed`, or when all are terminal. A plugin that raised `Failed` or `Blocked`, and a
+  workflow that answered `failed` or `blocked`, wake it.
+
+When `timeout_ms` passes first, the call returns the views as they are (some still running): call
+it again. An unknown id fails the whole call. Cancel runs one `run_id` at a time. The service runs
+at most `max_running_runs` at once per home and each server queues up to `queue_depth` more (see
+[Run capacity](#run-capacity)); past both, `run` is refused `admission.queue_full`.
+
+Do not author a tree with `publish_plugin` for a one-off task. A tree is a registered workflow:
+its author declares what each node may touch, its budgets and its environment, and that
+declaration is what admission checks. For ad-hoc work, start independent runs of registered
+plugins with `wait_ms=0` and join them with `await_runs`; if the same decomposition recurs, ask
+for it to be registered as a tree plugin (`plugins.md`). `publish_plugin` is absent under the
+restricted profile (`security.md`). Whatever you publish runs as your user with no sandbox, so a
+tree written moments before it runs has had no review of what it touches.
+
+### How a tree run behaves
+
+- **One answer.** The answer has one `outcome` class for the whole tree and one `primary` node
+  (its `path` names where in the tree the deciding condition arose). The order in which the
+  children finished never changes it, and a shared node starts once. A child that failed only
+  stops the nodes that need it; an exception raised in any node, a `cancel` of the root, or the
+  root's deadline stops the whole tree.
+- **One process, one blast radius.** Every node of a tree runs inside the plugin's one worker
+  process (each leaf on its own thread), so an interpreter-level crash in any node (the process
+  dies, not a Python exception the loop catches) ends every sibling at once, with no per-node
+  stop. The run then ends `worker_exit` and its answer is `execution_error` with
+  `execution.worker_exit`; the host releases what the run record names from the record alone, with
+  no plugin code. A failure in one backend system's unit is felt by every unit of the tree.
+- **Child views.** Every node below the root has a view of its own, which `await_runs` resolves by
+  its child handle: the view names its `root_run_id` and its `path`, its `state` is the root's
+  state, and its `answer` is that node's account, the same one the root's answer holds. No response
+  carries a child handle in this release, so an agent cannot address a child view; read the node
+  accounts in `answer.primary`, `answer.listed` and `fetch("<run_id>/answer")` instead. Under the
+  restricted profile a child view is read only by the session that admitted its root
+  (`projection.not_owner` otherwise).
+- **Cancel is addressed to the root.** `cancel` on a child handle is refused with
+  `projection.cancel_not_root`; nothing is written and the root runs on. Cancel the root's run id
+  instead. This is **open question OQ-27** (what a cancel addressed to a child view should do while
+  its root is live: refuse, or act on that child); Trestle ships the assumed answer, the refusal,
+  and a maintainer answer of "act on the child" would change it.
+- **Root-entry eligibility is open (OQ-31).** Whether a unit whose preconditions only a sibling
+  could satisfy may be published as a root is undecided. What is shipped is `admit_and_stop`: such
+  a root is admitted and stopped by the loop's own in-node refusal before any effect. That is the
+  pre-existing in-node stop, not a decision on the question. Such a run is admitted, takes a run
+  id, and ends `failed` with `execution.plan_precondition_uncovered` before any effect.
+- **`ChoiceNode` roots select one alternative.** A root (or any node) may be a `ChoiceNode`: the
+  loop observes every eligible alternative before the first effect, picks the first one that is
+  present (else the declared `fallback`), and records the choice and the plan identity before any
+  effect record. The same inputs pick the same alternative; an alternative the choice left out is
+  `not_started` in the answer and in its child view. A condition seen at selection (a drifted
+  gate, a dependent whose route the chosen alternative cannot reach) or in a node (an absent
+  instance, a missing toolchain) stops that node with one class and a code that names the
+  identifier. `admission.plan_multi_vertex_unsupported` is retired: no path produces it any more.
+
+The refusal and stop codes a tree run can give (none has a `run_id` unless it is a node's code in a
+started run's answer: every `execution.*` code, and `admission.budget_does_not_fit` or
+`admission.route_unsupported` when a started tree stops a node with it):
+
+| Code | Meaning | Fix |
+|------|---------|-----|
+| `publication.unit_unresolved` | A child names a unit the plugin does not declare | Declare it, or fix the name |
+| `publication.dependency_cycle` | The `needs` graph, or the containment, loops | Break the cycle |
+| `publication.declaration_conflict` | One name is bound to two different nodes, or two references to one node carry different parameters | Use one binding per node |
+| `publication.plan_precondition_uncovered` | A leaf's precondition is covered by no node before it | Add the covering node to its `needs`, or drop the precondition |
+| `admission.unit_unresolved` | The admitted declaration names a unit that does not resolve | Republish the plugin |
+| `admission.dependency_cycle` | The admitted declaration has a cycle | Republish the plugin |
+| `admission.declaration_conflict` | The admitted declaration binds one node twice | Republish the plugin |
+| `admission.lease_set_undecidable` | The request gives no value for the root's environment field, or a node declares an environment that does not match the root's | Pass the environment argument; declare one environment |
+| `admission.unknown_identifier` | A request value names no identifier in the declared set (the refusal lists the valid ones) | Use a listed value |
+| `admission.bound_exceeded` | The selected part of the tree has more than 1024 nodes | Select fewer nodes with the selector arguments |
+| `admission.budget_does_not_fit` | The tree's budgets do not fit: a child's budget is over its parent's less the 10 s reserve, a composite's budget is under its longest `needs` chain or under ceil(children / `concurrency`) × its largest child, or the root's budget plus the release slice is over the deadline (the message names the node). On a started tree, a `blocked` stop when time spent queued left it less than its worst case | Ask the plugin's author to fix the budgets or the deadline; for the started-tree stop, run again when the environment is free |
+| `admission.route_unsupported` | A `ChoiceNode` has no eligible alternative, or a node that needs a choice cannot reach the alternative it would get | Change the selection argument; otherwise ask the author |
+| `admission.environment_busy` | Another run holds the environment and its deadline leaves this request too little time (retryable, no run id; `held_by`, `free_at`, `retry_after_s`) | Send with after={"run": held_by, "when": "ended"}, or resend after retry_after_s |
+| `execution.carve_exceeded` | A carved node's time slice ended before it reached its condition; class `timed_out`, and the nodes below a timed-out composite only release. Never the root's: the root's slice ends at the release point, a whole-run stop (`root_stop` `release_point`) | Ask the author for a larger budget, or find why the node is slow |
+| `execution.unit_raised` | A unit raised an exception, or broke its contract (for example `Acted` with no effect issued); class `execution_error`, and the whole tree stops | A plugin defect: report it to the author |
+| `execution.postcondition_timeout` | A node acted but its postcondition did not hold within its wait; class `exhausted`, reported as `blocked` | Find from the node's evidence why it did not become ready |
+| `execution.remedy_exhausted` | A node's declared repair was spent without success; class `blocked` | Find from the node's evidence why the repair did not work |
+| `execution.plan_precondition_uncovered` | A root entry needs a precondition only a sibling could cover (the shipped OQ-31 stop); class `failed`, nothing ran | Ask the author to publish the unit inside a composite that covers the precondition |
+| `execution.declaration_stale` | The declaration the run was admitted with no longer matches what the plugin declares (or the admitted plan does not verify); nothing ran | Run again; republish if it repeats |
+| `projection.cancel_not_root` | `cancel` was addressed to a child | Cancel the root's run id |
+
+---
+
+## Publishing plugins
+
+See [`plugins.md`](plugins.md) for authoring, filesystem drop-in, and `publish_plugin`.
+
+---
+
+## Common mistakes
+
+| Mistake | Result | Fix |
+|---------|--------|-----|
+| Plugin name as MCP tool | unknown-tool | `run(plugin=…)` |
+| `fetch("/tmp/…")` | `projection.invalid_handle` | Use handle from `RunView` / `query` |
+| `query` before finalize | `projection.not_finalized` | `await_runs` or wait for terminal |
+| Run-scoped `query` for an older run | `projection.outside_window` | The run exists but lies past the recency window; it cannot be reached by `query` |
+| `await_runs(keys=[…])` for a key no run used | `projection.unknown_key` (names the key) | `query(view="run_by_key")` shows what a key has; send the run first |
+| `idempotency_ttl_s` negative, not whole seconds or above `[keys] max_ttl_s` | `admission.ttl_out_of_range` (no run id) | Send 0 to the maximum |
+| Unknown view name | `projection.invalid_view` | Read `trestle://views`; do not invent names or send SQL |
+| Empty catalog | `admission.plugin_not_found` | Report it to the operator, or publish_plugin (full profile) |
+| Bad plugin args (including a naive or malformed date/datetime) | `admission.invalid_args` | `describe_plugin` then retry `run` |
+| Pack plugin `valid: false` | `admission.import_failed` | Report it: the operator installs the packs; catalog_hint says how |
+| Reused idempotency key, different args | `admission.idempotency_key_conflict` | New key or same args |
+| Admission while another process holds the home's admission lock over 2 s | `admission.home_busy` (retryable, no run id) | Retry after retry_after_s (2 s) |
+| Two servers publish the same plugin name at once | `publication.registry_conflict` (names the winner) | `describe_plugin`, then republish if needed |
+| `after` malformed (not exactly one of `run` and `key`, bad `when`, `match` with `when: "ended"`) | `admission.invalid_args` | See "Run after another run" |
+| `after` names a run or key no run used | `admission.after_unknown` (no run id) | Send the earlier run first |
+| The plugin declares a credential identity the operator has not configured | `admission.credential_unknown` (no run id; names the identity) | Report it and stop: only the operator adds identities |
+| The identity is not granted to this plugin as now published (new, or republished since) | `admission.credential_not_granted` (no run id; names the operator's command) | Report it and stop: only the operator grants |
+| The operator's credential store could not give the value | `admission.credential_unavailable` (no run id) | Report it and stop |
+| `callback` not an absolute http(s) URL, over 2,048 bytes, or with a user/password or `#fragment` | `admission.invalid_args` (no run id) | See "Get a callback when a run ends" |
+| `callback` host neither loopback nor in `[callbacks] allow`, or one of Trestle's own ports | `admission.callback_not_allowed` (no run id, not retryable) | Use a loopback listener, or ask the operator to allow the URL |
+| A held run's `after` is not met | the held run ends `cancelled`, `error.code` `execution.after_unmet` (the message names the earlier run and why) | Read the earlier run; send a new run when it is fixed |
+
+### Find a run by its key, wait on keys, keep an answer longer
+
+- `query(view="run_by_key", params={"idempotency_key": "…"})` lists the runs that used a key, newest first: `state`, `started_at`, `ended_at`, `deadline_s`, `outcome_class`, `error_code`, `summary` (`summary_truncated`), `artifact_count` and `artifacts_available` (artifacts GC has not collected), `retry_of`, and `joinable` with `key_expires_at` (whether re-sending the key now joins that run). The first row is the run a re-send would join. An unknown key is an empty page. It reads one key file, never the recent-runs window, so an old run is found as long as its metadata lives, and it changes nothing.
+- `await_runs(run_ids=[…], keys=[…], mode=…, timeout_ms=…)` also takes keys: each resolves to its newest run before the wait, and the answer lists the run ids, then the keys, each in the order given. A view reached through a key carries `idempotency_key`; the others are unchanged. `run_ids` stays a required argument of the tool, so send `run_ids: []` with `keys`; neither given is `projection.invalid_args`, and an unknown key refuses the call with `projection.unknown_key`.
+- `run(idempotency_ttl_s=…)` sets how long after the run's deadline plus margin the key stays joinable, in whole seconds from 0 to `[keys] max_ttl_s` in `config.toml` (default 604800, at most `metadata_days`; read at each admission). Omitted: the server's `TRESTLE_IDEMPOTENCY_TTL_S` (3600). It is fixed at admission and recorded as `key_expires_at`; a later join never changes it. The answer lives `metadata_days`, but artifacts only `artifact_days` unless pinned (`artifacts_available`). 0 joins only while the run lives.
+
+### Run after another run
+
+`run(..., after={"key": "gate:M5:4c091dca", "when": "succeeded", "match": {"ok": true}})` admits the run at once into the state `held`: it takes no slot and spends none of its deadline. When the earlier run ends, the held run joins its server's queue if the condition holds, or ends `cancelled` with `error.code` `execution.after_unmet` (its message names the earlier run and the reason) if not.
+
+- `after` takes exactly one of `run` (a run id) or `key` (an idempotency key, resolved to its newest run; no such run is `admission.after_unknown`), `when` (`succeeded`, the default: the earlier run ended `succeeded` **and** its verdict `answer.outcome` is `passed`, so a run that raised `Failed` or `Blocked` does not release it; or `ended`: any terminal state) and `match` (equality on top-level fields of the earlier run's `result.json`; refused `admission.invalid_args` with `when: "ended"`). A `result.json` that is absent, too large or not an object is unmet, each with its own reason.
+- A held run shows `state: "held"` and `after_run_id`; `cancel` accepts it. `run(completion="terminal")` waits through the hold and the run. A hold never outlives the earlier run's deadline plus its margin and 20 s (`hold_expired`). If the earlier run's server dies it ends `interrupted`, so `when: "succeeded"` is unmet; a re-sent repeatable key starts a new run and does not revive the held one.
+- Chains work (C after B after A). `after` is part of a key's identity beside the arguments: re-sending a key with another `after` is `admission.idempotency_key_conflict`. Held runs count against the server's `[operator] max_held_runs` (256), not `queue_depth`.
+
+<!-- K-1 -->
+### Get a callback when a run ends
+
+`run(plugin="repo_tests", args={…}, callback="http://127.0.0.1:8765/trestle/abc123")` sends one HTTP `POST` to that URL once the run has ended, however it ended. Trestle does not provide the listener: whatever listens there (an agent host's callback endpoint, a script) is someone else's. `completion="terminal"` and `await_runs` work as before, and a run with a callback can still be waited on.
+
+- **Which URLs.** An absolute `http` or `https` URL of at most 2,048 bytes, with no user/password part and no `#fragment` (else `admission.invalid_args`). The host must be loopback (`127.0.0.1`, `[::1]` or `localhost`) or match a prefix in the operator's `[callbacks] allow` in `config.toml`, and the port must not be Trestle's own MCP or ops port; else `admission.callback_not_allowed` (not retryable). Both refusals come before anything exists: no run id. `localhost` is never looked up: Trestle connects to `127.0.0.1`, then `::1`.
+- **Fixed at admission.** The URL is recorded on the run and is not part of a key's identity: a re-send that joins an existing run keeps that run's original callback and ignores the new one.
+- **When.** After the run's evidence is finalized and its terminal row is written, so a listener that calls `query` or `fetch` on receipt finds the run finished. A run interrupted because the service died still gets its callback, sent by the next start.
+- **The request** (version 1): `Content-Type: application/json`, `Trestle-Event: run.ended`, `Trestle-Delivery: <delivery_id>`, and this body (at most 2 KiB; no args, result or paths):
+
+  ```json
+  {"type": "trestle.run.ended", "version": 1, "delivery_id": "r_7f3c…:ended", "attempt": 1,
+   "sent_at": "2026-10-23T10:00:03Z",
+   "run": {"run_id": "r_7f3c…", "plugin": "repo_tests", "idempotency_key": "tests:abc",
+           "state": "succeeded", "outcome_class": "failed", "answer_outcome": "failed",
+           "error": null,
+           "started_at": "2026-10-23T09:20:00Z", "ended_at": "2026-10-23T10:00:02Z"}}
+  ```
+
+  `answer_outcome` is the verdict to act on. `error`, `idempotency_key` and `started_at` are `null` when absent (`started_at` for a run that never started, such as a held run whose `after` was unmet). Every field is always present; fields may be added within version 1, so ignore ones you do not know.
+- **Delivery is at-least-once.** Any `2xx` delivers. A refused connection, a timeout, `408`, `429` or `5xx` is retried: attempts at 0 s, 2 s, 10 s, 30 s and 2 min, each with a 5 s timeout. Any other answer stops at once; redirects are never followed. A listener may see the same event twice (a retry after a lost `2xx`, or a restart): `delivery_id` is the same on every attempt, so drop repeats by it. A callback still pending 24 hours after its run ended is `abandoned` unsent. The run itself is never affected by its callback.
+- **Its status** is on the run: `RunView` and `query(view="run")` carry `callback: {origin, status, attempts, last_http_status, last_error, delivered_at}` with `status` one of `pending`, `delivered`, `failed`, `abandoned` (absent from `RunView`, `null` in the row, for a run sent without one). Views show only the URL's origin, never its path or query, so a listener can put an unguessable token in its own path to know a request is genuine.
+
+### The same idempotency key joins its run after a republish (K-1)
+
+Re-issuing a key with the same plugin and the same arguments returns the run that key named, even when the plugin was republished in between: no second run starts, and the answer is that run's own. The answer says which code ran: `outcome.identity.snapshot_id` is the snapshot the run was admitted against, not the plugin's current one, so a retry after a republish still shows the original id. A different plugin or different arguments under the same key is still `admission.idempotency_key_conflict`.
+
+The key also stays valid for as long as the run can: it expires the `TRESTLE_IDEMPOTENCY_TTL_S` window (default one hour) after the run's own deadline (the plugin's declared `deadline`, else 300 s) plus the finalization margin, not after admission, so a retry that arrives while a long run is still going joins it.
+
+This is a knowing change (K-1): before it, any code change made the same key a conflict, and the key could lapse while its run was still going. It is permanent: v0.3.1 removed the `JOIN_ACROSS_REPUBLISH` switch, and the identity a join names stays `outcome.identity.snapshot_id`.
+<!-- /K-1 -->
+
+Since v0.3.1 a key's expiry is fixed once, at admission, and recorded with the run (`key_expires_at` in its `created` row); a server restart never revives an expired key. A key whose run no longer exists (removed by retention) is free: re-sending it starts a new run instead of answering a conflict. A plugin that declares `@trestle(repeatable=True)` frees its key when its run ends `interrupted` (its server died): the identical re-send starts a fresh run, whose view carries `retry_of` naming the interrupted one. Every other ending, and every plugin that does not declare it, still returns the recorded answer.
+
+---
+
+## Operator vs agent
+
+| Role | Surface | Notes |
+|------|---------|-------|
+| **Agent** | MCP ten tools (the service's endpoint) | Retrieval-first; bounded slices |
+| **Operator (CLI)** | `trestle doctor`, `pin`, `unpin`, `recover`, `cancel` | Retention, diagnostics and the unscoped cancel |
+| **Operator (HTTP)** | `trestle ops serve` + console UI | Read-only sessions/telemetry — [`operator-sessions-telemetry.md`](operator-sessions-telemetry.md) |
+
+Agents reach evidence **only** through MCP. Operator HTTP does not expose `run`.
+
+---
+
+## Stopping a run: what is not covered
+
+Cancel and deadline stop the processes Trestle can attribute to the run. Two
+boundaries are outside that guarantee (full statement in
+[`security.md`](security.md)):
+
+- A descendant that **double-forks** out of attribution between two ancestry
+  snapshots is outside the containment and evidence-integrity guarantee.
+- A run started by a version that **recorded no process identity** (K-19) is
+  finalized `interrupted` after a restart, its stop is reported **unconfirmed**,
+  never clean, and no signal is sent. Before first starting a version that
+  records identity, stop the server with no run live, or check
+  `ps -ax -o pid,command | grep trestle.child.main` and stop any such process.
+
+---
+
+## Out of scope
+
+- Per-plugin MCP tools
+- Path-based file access
+- Live tail / websocket log stream
+- Sandbox / remote execution
+
+---
+
+## Further reading
+
+| Doc | Contents |
+|-----|----------|
+| [`install.md`](install.md) | System-wide install and host wiring |
+| [`security.md`](security.md) | Local-only lockdown |
+| [`plugins.md`](plugins.md) | Write and publish plugins |
+| [`agent-console-mcp.md`](agent-console-mcp.md) | Full playbook — mis-invocation table, smoke checks |
+| [`skills/trestle/SKILL.md`](../skills/trestle/SKILL.md), [`skills/trestle-pack/SKILL.md`](../skills/trestle-pack/SKILL.md) | Agent skills: using Trestle in one call; writing plugins and packs |
+| [`packs.md`](packs.md) | Workflow packs |
+| [`overview.md`](overview.md) | Product overview |

@@ -1,0 +1,6 @@
+{"seq":1,"kind":"created","at":"2026-09-29T07:04:54Z","run_id":"r_aaaadihl7miuib7qb25","spec_hash":"beacc936dfd9e3a96be259dfb5863d57cc5f63343f35ea10a3fba8c1cb463867","service_epoch":"epoch_z2urgrecu5iva","plugin":"slow","version":"0.1.0","snapshot_id":"snap_1943c5595720a27b","args_hash":"66b948298f6c63eedade536bd1d0d14eace91aec245521464ecf4ab04aa38ea0"}
+{"seq":2,"kind":"admitted","at":"2026-09-29T07:04:54Z","run_id":"r_aaaadihl7miuib7qb25","snapshot_id":"snap_1943c5595720a27b"}
+{"seq":3,"kind":"started","at":"2026-09-29T07:04:54Z","run_id":"r_aaaadihl7miuib7qb25"}
+{"seq":4,"kind":"execution_ended","at":"2026-09-29T07:04:55Z","run_id":"r_aaaadihl7miuib7qb25","classification":"cancelled","exit_code":-15,"duration_ms":169}
+{"seq":5,"kind":"evidence_finalized","at":"2026-09-29T07:04:55Z","run_id":"r_aaaadihl7miuib7qb25","completeness":"complete","result_state":"absent"}
+{"seq":6,"kind":"cancelled","at":"2026-09-29T07:04:55Z","run_id":"r_aaaadihl7miuib7qb25"}

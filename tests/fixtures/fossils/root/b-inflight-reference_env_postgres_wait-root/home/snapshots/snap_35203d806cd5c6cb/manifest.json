@@ -1,0 +1,22 @@
+{
+  "plugin": "reference_env",
+  "version": "0.1.0",
+  "source_sha256": "137f031ca374f9c9b02cff9f3d37685327e07885a98268e672a4b9a7b1eb72fd",
+  "schema_sha256": "ec2d45b160831e9e595fad60d6a0dbab371f41c210b41f6c5cd4f736cef33206",
+  "declared": {
+    "deadline_s": 160,
+    "summary_fields": [],
+    "packages": [
+      "trestle_env",
+      "trestle_packs"
+    ],
+    "env_arg": "env",
+    "secrets": [],
+    "package_digests": {
+      "trestle_env": "42485cfb8b9a3a710be1e52c6fc1aba375729f7b7abc19693f8a4e2cc6338517",
+      "trestle_packs": "2313502b33d813d1c4293d9a6d963afad69f502a41d6cd95019af1846b380d6d"
+    }
+  },
+  "entry": "reference_env",
+  "declaration_digest": "3f11fe7c9220adc0250691ff811a2b48e35a542c77ef7e656d4938ee1a003ff3"
+}

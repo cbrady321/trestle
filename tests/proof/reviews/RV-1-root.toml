@@ -1,0 +1,19 @@
+# RV-1 at J-ROOT (L.J-ROOT.1, CM-5 role 1): stage-critic review of the WR-CANCEL-6 attribution boundaries and
+# the K-19 disclosure (docs/agents.md, docs/plugins.md double fork, docs/security.md pre-identity run, no
+# universal claim), paired with tests/core/docs/test_cl_d1_disclosures.py. Reviewer: stage critic
+# (independent, fable-high), read-only. Round 1, pass, at 5f20c3f (origin/wr/cz/cz, the CZ head; contains
+# master af15004 = WR-Merge: RB-12). Previous RV-1: RV-1-core.toml. The later CZ commit 762ef52 (L.CZ.rv-fix1)
+# adds the R-N/R-O passages that RV-4 judges; it changes no sentence this review judged.
+# Non-gating notes: F-R1/F-R2 doc-precision wording in docs/environment.md (catalog tasks cannot declare
+# helper_disclosure). Packet _tmp/delivery/RV-1-root-packet.md; verdict _tmp/delivery/RV-1-root-verdict.md.
+id = "RV-1"
+mode = "stage-critic review"
+outcome = "pass"
+sha = "5f20c3fc63ace1726d0a661f91493123aaf65963"
+paired_check_log = "locked.sh+py.sh at 5f20c3fc63ace1726d0a661f91493123aaf65963 (git-archive extraction): tests/core/docs/test_cl_d1_disclosures.py -> 2 passed in 0.04s, exit 0; tests/proof/b/test_stub_labels.py -k build_daemon_boundary -> 1 passed, 19 deselected in 0.03s, exit 0; packages/trestle-env/tests/proc/test_build_daemon.py::test_escaping_helper_named_in_docs -> 1 passed, 4 warnings (PytestUnknownMarkWarning: proves, repo-root session) in 0.31s, exit 0; independent scanner (same regexes) over 13 delivered doc files incl. README.md, packages/*/README.md, SKILL.md -> 0 universal claims"
+
+[criteria]
+agents_md_attributable_scope = "pass"
+plugins_md_double_fork = "pass"
+security_md_pre_identity_run = "pass"
+no_universal_claim = "pass"

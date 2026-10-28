@@ -1,0 +1,11 @@
+[pack]
+name = "github"
+summary = "Status, required checks and review comments of many GitHub pull requests in one run, and opening one behind push guards"
+library = "."
+
+[requires]
+tools = ["gh", "git"]
+
+[config]
+# the policy file a company tunes the pack with (README.md); its digest is in each run's provenance
+files = ["TRESTLE_GITHUB_POLICY"]

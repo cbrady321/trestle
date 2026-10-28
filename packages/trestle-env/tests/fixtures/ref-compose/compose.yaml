@@ -1,0 +1,41 @@
+# The reference environment's Compose definition (L.RB-0.3; MC-B-10, CSC-10, SA-14).
+#
+# A definition only: nothing here is started by a test session, and the run-scoped containers the
+# workflow creates are named by the adapter (`trwr-<root run_id>-<path>`), not by this file. It
+# gives the ComposeResolver the services and their `depends_on` edges the closure is derived from.
+# Images are named by role only (`${TRESTLE_IMAGE_<ROLE>}` is exported as `<repo>@sha256:<hex>` by
+# `docker_gate run` from images.toml), never pulled, and every service, network and volume carries
+# the fixture label so nothing a fixture starts is unattributable.
+name: reference
+
+services:
+  # the supporting service: ready when GET /health answers 200 "ok" (the reference tree's declared
+  # HTTP readiness contract); the backend needs it
+  http_support:
+    image: ${TRESTLE_IMAGE_HTTP_SUPPORT}
+    pull_policy: never
+    command:
+      - sh
+      - -c
+      - echo -n ok > /usr/share/nginx/html/health && exec nginx -g "daemon off;"
+    labels:
+      trestle.proof.fixture: ref-compose
+
+  postgres:
+    image: ${TRESTLE_IMAGE_POSTGRES}
+    pull_policy: never
+    depends_on:
+      - http_support
+    environment:
+      POSTGRES_USER: trestle
+      POSTGRES_DB: trestle
+      POSTGRES_PASSWORD: trestle-fixture-password
+    tmpfs:
+      - /var/lib/postgresql/data
+    labels:
+      trestle.proof.fixture: ref-compose
+
+networks:
+  default:
+    labels:
+      trestle.proof.fixture: ref-compose

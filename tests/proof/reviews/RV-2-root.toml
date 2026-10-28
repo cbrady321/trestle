@@ -1,0 +1,19 @@
+# RV-2 at J-ROOT (L.J-ROOT.1, CM-5 role 1; the L.RB-12.4 packet): stage-critic review of WR-PROOF-3's "real tool
+# unverified" wording on every STUB-PROVEN row (tests/proof/b/stub_labels.toml, MC-B-05) and its disclosure in
+# docs/environment.md, paired with tests/proof/b/test_rv2_packet.py and test_stub_labels.py. Reviewer: stage critic
+# (independent, fable-high), read-only. Round 1 at 5f20c3f FAILED every_stub_row_states_real_tool_unverified (the
+# WR-ENV-16:jvm-wrapper-fetch-disabled-or-blocked row lacked MC-B-05's GradleWrapperMain / TOOLCHAIN_MISSING / JDK
+# auto-provisioning wording). Fix 762ef52 (L.CZ.rv-fix1). Round 2 (a fresh reviewer), pass, at c02b5c8
+# (origin/wr/cz/cz). Packet _tmp/delivery/RV-2-root-r2-packet.md; verdicts RV-2-root-verdict.md (r1),
+# RV-2-root-r2-verdict.md (transcribed as written, no heading normalisation).
+id = "RV-2"
+mode = "stage-critic review"
+outcome = "pass"
+sha = "c02b5c865ed409063835be8ec1905676b8b7f705"
+paired_check_log = "J-ROOT RV-2 round 2 at c02b5c8 (reviewer, scratch git-archive extraction x-rv2b, reviewed files shasum-equal to git show c02b5c8): locked.sh py.sh -m pytest -q -p no:cacheprovider tests/proof/b/test_rv2_packet.py tests/proof/b/test_stub_labels.py (WT=<X>, TRESTLE_RV2_PACKET_OUT=<X>/rv2-packet.md), queued 16:37:50 behind port lock pid 87126, ran 16:49:36: 21 passed in 0.14s, pytest exit=0; regenerated packet 74 labels = 24 stub + 50 twin, 45 twins with no doc line; diff of the regenerated packet (sed 1,3d) vs cz/rv2-packet-slice-b-1877308.md: exit=1, 30 hunks = the WR-ENV-16:jvm-wrapper-fetch-disabled-or-blocked text (new vs old) + 29 doc lines identical in text and exactly +7 in line number (environment.md gained L38-44 in the fix: CI 85/86/124/125/151-155/173/174 -> 92/93/131/132/158-162/180/181); with docs/environment.md:<n>: normalised the diff is exactly the one WR-ENV-16 text hunk. By hand at the sha: labels.d 496 labels, 74 stub_proven all in slice-b.toml = 24 non-twin + 50 @stub-twin, every non-twin has exactly one stub_labels.toml row, no row without a label, twin_suffix '@stub-twin', no label composes B4.5/B9.1, all 50 twin origins DOCKER-tier venue HOST (45 claim, 5 stub_proven D-9); groups D-1x5 B8.4x2 B4.6x1 D-19x4 D-8x2 D-9x10, deferrals OPEN-MISE-HOSTx8 D-19x4 D-8x2 D-9x10. git diff 5f20c3f..c02b5c8 on docs + tests/proof/b = agents.md, environment.md, stub_labels.toml only; af15004 is an ancestor (14 commits); carrier diff adds labels.d/cz.toml (no stub_proven); origin/wr/cz/cz in this checkout = 5f20c3f, c02b5c8 is the local wr/cz/cz head. Criteria: every_stub_row_states_real_tool_unverified pass (24/24; WR-ENV-16 row L62 verified clause by clause against test_task_run.py L300-361, stub_tool.py L8-16, reference.json L44-48), stub_rows_disclosed_in_docs pass (environment.md L89-95, L129-133, L156-162, L179-181), twin_rows_defer_to_host_record pass (TWIN_TEXT rv2_packet.py L35-38), no_real_tool_claim pass (environment.md incl. new L38-44, agents.md K-8 L228-236 incl. new L233 and L340-345, packs.md, trestle-env README, 24 row texts). Verdict: _tmp/delivery/RV-2-root-r2-verdict.md."
+
+[criteria]
+every_stub_row_states_real_tool_unverified = "pass"
+stub_rows_disclosed_in_docs = "pass"
+twin_rows_defer_to_host_record = "pass"
+no_real_tool_claim = "pass"

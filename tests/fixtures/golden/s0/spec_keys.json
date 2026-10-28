@@ -1,0 +1,92 @@
+{
+  "runspec_fields": [
+    [
+      "plugin",
+      "str"
+    ],
+    [
+      "version",
+      "str"
+    ],
+    [
+      "snapshot_id",
+      "str"
+    ],
+    [
+      "args",
+      "dict[str, Any]"
+    ],
+    [
+      "args_hash",
+      "str"
+    ],
+    [
+      "source_sha256",
+      "str"
+    ],
+    [
+      "schema_sha256",
+      "str"
+    ],
+    [
+      "manifest_sha256",
+      "str"
+    ],
+    [
+      "python_version",
+      "str"
+    ],
+    [
+      "platform",
+      "str"
+    ],
+    [
+      "summary_budget",
+      "int"
+    ],
+    [
+      "timeout_s",
+      "int"
+    ],
+    [
+      "resolved_artifacts",
+      "dict[str, str]"
+    ],
+    [
+      "deadline",
+      "str | None"
+    ]
+  ],
+  "spec_json_keys": [
+    "args",
+    "args_hash",
+    "deadline",
+    "manifest_sha256",
+    "platform",
+    "plugin",
+    "python_version",
+    "resolved_artifacts",
+    "schema_sha256",
+    "snapshot_id",
+    "source_sha256",
+    "summary_budget",
+    "timeout_s",
+    "version"
+  ],
+  "spec_json_types": {
+    "args": "dict",
+    "args_hash": "str",
+    "deadline": "str",
+    "manifest_sha256": "str",
+    "platform": "str",
+    "plugin": "str",
+    "python_version": "str",
+    "resolved_artifacts": "dict",
+    "schema_sha256": "str",
+    "snapshot_id": "str",
+    "source_sha256": "str",
+    "summary_budget": "int",
+    "timeout_s": "int",
+    "version": "str"
+  }
+}

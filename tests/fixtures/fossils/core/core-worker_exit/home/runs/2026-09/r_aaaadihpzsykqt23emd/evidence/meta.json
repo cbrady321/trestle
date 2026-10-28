@@ -1,0 +1,1 @@
+{"run_id":"r_aaaadihpzsykqt23emd","classification":"worker_exit","duration_ms":123,"result_state":"absent","artifact_count":0,"limits_exceeded":null,"error":{"code":"execution.worker_exit","phase":"exit","message":"the child exited with status 2 and wrote no error record"}}

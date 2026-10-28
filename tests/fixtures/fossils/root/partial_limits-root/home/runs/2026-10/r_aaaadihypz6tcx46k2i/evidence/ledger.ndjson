@@ -1,0 +1,10 @@
+{"seq":1,"kind":"created","at":"2026-10-01T17:23:54Z","run_id":"r_aaaadihypz6tcx46k2i","spec_hash":"b6d040e8fe2eed31ea56375bef34cc7c96302589e9b6ddd2a97e9d67c2e7b207","service_epoch":"epoch_wubji4feonvjk","plugin":"noisy","version":"0.1.0","snapshot_id":"snap_8693af8b76dc880b","args_hash":"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","caller_session":null}
+{"seq":2,"kind":"admitted","at":"2026-10-01T17:23:54Z","run_id":"r_aaaadihypz6tcx46k2i","snapshot_id":"snap_8693af8b76dc880b"}
+{"seq":3,"kind":"started","at":"2026-10-01T17:23:54Z","run_id":"r_aaaadihypz6tcx46k2i"}
+{"seq":4,"kind":"process_identity","at":"2026-10-01T17:23:54Z","run_id":"r_aaaadihypz6tcx46k2i","pid":38341,"boot":"18B0BDCC-FF28-4ADE-B1F7-AE3DDCF65D2D","start":"1790875434291624","group":38341,"leader":true}
+{"seq":5,"kind":"process_identity","at":"2026-10-01T17:23:54Z","run_id":"r_aaaadihypz6tcx46k2i","pid":38343,"boot":"18B0BDCC-FF28-4ADE-B1F7-AE3DDCF65D2D","start":"1790875434324148","group":38341,"leader":false}
+{"seq":6,"kind":"group_stop","at":"2026-10-01T17:23:54Z","run_id":"r_aaaadihypz6tcx46k2i","confirmed_gone":true,"method":"exit"}
+{"seq":7,"kind":"limit_exceeded","at":"2026-10-01T17:23:54Z","run_id":"r_aaaadihypz6tcx46k2i","markers":[{"stream":"stdout","limit":"max_console_bytes","bytes_recorded":4096,"bytes_suppressed":19504}]}
+{"seq":8,"kind":"execution_ended","at":"2026-10-01T17:23:54Z","run_id":"r_aaaadihypz6tcx46k2i","classification":"succeeded","exit_code":0,"duration_ms":226}
+{"seq":9,"kind":"evidence_finalized","at":"2026-10-01T17:23:54Z","run_id":"r_aaaadihypz6tcx46k2i","completeness":"partial","result_state":"complete","event_count":0}
+{"seq":10,"kind":"succeeded","at":"2026-10-01T17:23:54Z","run_id":"r_aaaadihypz6tcx46k2i"}

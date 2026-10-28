@@ -1,0 +1,15 @@
+{
+  "plugin": "hostile",
+  "version": "0.1.0",
+  "source_sha256": "3a229f6ee39c1cf4270a0a808887091b712879f0e6a649b6c723a8a5904b6824",
+  "schema_sha256": "b4d0ce9851e45e4af86d6978bbcbc7775830ae216cb4cbc8a3990ab61783aeaf",
+  "declared": {
+    "deadline_s": null,
+    "summary_fields": [],
+    "packages": [],
+    "env_arg": null,
+    "secrets": [],
+    "package_digests": {}
+  },
+  "entry": "hostile"
+}

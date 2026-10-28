@@ -1,0 +1,166 @@
+"""The one-vertex spine fixture (L.SV-5.9; TM-B2-3 `one-vertex-spine-fixture`): a published
+workflow plugin whose declared tree is one leaf, driven through the fakes of `trestle_packs.fakes`.
+
+The plugin writes its own work unit against the public unit-author surface (`trestle.workflow`:
+`declarations`, `units`, `values`, `ports`) and makes the one call `run_tree` (B1-C9). `mode` picks
+what the fake marker does: `advance` creates it and it turns ready after two polls, `skip` plants
+an instance that is already ready (found), `hang` never turns ready (a cancel or the deadline ends
+the wait), `stall` is `hang` whose first observation takes STALL_S first, so the wait starts late
+enough for the deadline to end it before its own max_wait does (a leaf's wait, remedies and release
+timeout must fit its budget, L.SL-2.1, and its budget plus the release slice must fit the
+deadline, so only a late start lets the deadline arrive mid-wait). `env` is the environment
+argument (`env_arg`, WR-OWN-8). The unit emits one evidence
+event per observation (`spine_observed`), the polls a test counts."""
+
+from __future__ import annotations
+
+import time
+from datetime import timedelta
+from typing import Any
+
+from trestle_packs.fakes import FakeMarker
+
+from trestle.plugin import Context, trestle
+from trestle.workflow import (
+    CompletionSource,
+    Compose,
+    EffectDeclaration,
+    EffectFacetClass,
+    LeafDeclaration,
+    Lifetime,
+    LoopFlags,
+    RealizationKind,
+    Repeat,
+    WaitPolicy,
+    WorkflowEntry,
+)
+from trestle.workflow.loop import run_tree
+from trestle.workflow.ports import (
+    ResourceCreate,
+    ResourceOwned,
+    ResourceReads,
+    ResourceSpec,
+)
+from trestle.workflow.units import (
+    ActContext,
+    Acted,
+    EffectFacets,
+    ObserveContext,
+    ReadFacets,
+    Step,
+)
+from trestle.workflow.values import (
+    CheckResult,
+    CreatedHandle,
+    FoundRef,
+    Observation,
+    Verdict,
+)
+
+UNIT = "spine_leaf"
+CREATE_EFFECT = "up"
+STOP_EFFECT = "stop"
+SPEC = ResourceSpec("marker", RealizationKind.AGENT_LAUNCHED_PROJECT, "marker-entry", None)
+
+# Seconds the first observation of a `stall` run takes; the deadline variant's slice ends after it
+# (deadline 20 s, release slice 10 s) and before the wait's own end (STALL_S + max_wait 6 s).
+STALL_S = 6.0
+_stalled = False
+
+# One CREATE + RUN target: at the published defaults B2-C2 (5) covers a release timeout of at most
+# 4 s (finalization margin 35 s; see the SV-3.4 return), so the fixture keeps it small.
+DECLARATION = LeafDeclaration(
+    unit=UNIT,
+    flags=LoopFlags(Compose.LEAF, CompletionSource.OBSERVED, Repeat.SAFE),
+    preconditions=(),
+    postcondition="ready",
+    wait=WaitPolicy(timedelta(seconds=0.2), 1.0, timedelta(seconds=6)),
+    resource_kind="marker",
+    may_touch=frozenset({"marker"}),
+    effects=(
+        EffectDeclaration(
+            effect=CREATE_EFFECT,
+            facet=EffectFacetClass.CREATE,
+            verb="",
+            lifetime=Lifetime.RUN,
+            host_sections=frozenset(),
+            release_timeout=timedelta(seconds=2),
+        ),
+        EffectDeclaration(
+            effect=STOP_EFFECT,
+            facet=EffectFacetClass.OWNED,
+            verb="",
+            lifetime=Lifetime.RUN,
+            host_sections=frozenset(),
+            release_timeout=timedelta(seconds=2),
+            is_release=True,
+        ),
+    ),
+    retryable=frozenset(),
+    remedies=(),
+    budget=timedelta(seconds=8),
+    max_attempts=2,
+    env_key_field="env",
+)
+
+
+class SpineLeaf:
+    """One resource: observe the marker, create it once, release it on the way out."""
+
+    def declare(self) -> LeafDeclaration:
+        return DECLARATION
+
+    def observe(self, params: Any, reads: ReadFacets, ctx: ObserveContext) -> Observation:
+        global _stalled
+        if params.get("mode") == "stall" and not _stalled:
+            _stalled = True
+            time.sleep(STALL_S)
+        resource = reads.read(ResourceReads)
+        seen = resource.observe(SPEC, ctx.lineage, CREATE_EFFECT)
+        target = seen.selector_ref if seen.selector_ref is not None else (seen.found or (None,))[0]
+        checked = resource.check("ready", target) if target is not None else None
+        satisfied = checked is not None and checked.satisfied
+        ctx.evidence.event(
+            "spine_observed", {"selector_present": seen.selector_present, "ready": satisfied}
+        )
+        return Observation(
+            present=seen.selector_present or bool(seen.found),
+            selector_present=seen.selector_present,
+            identity_proven=seen.identity_proven,
+            configuration_compatible=seen.configuration_compatible,
+            postcondition=CheckResult(
+                satisfied,
+                None if checked is None else checked.code,
+                "" if checked is None else checked.detail,
+            ),
+            preconditions=(),
+            currency=(),
+            found=tuple(FoundRef(f.resource_kind, f.selector, f.observed_at) for f in seen.found),
+            code=seen.code,
+            payload=None,
+        )
+
+    def advance(self, params: Any, state: Verdict, effects: EffectFacets, ctx: ActContext) -> Step:
+        effects.create(ResourceCreate).create(SPEC, CREATE_EFFECT)
+        return Acted()
+
+    def release(self, params: Any, handle: CreatedHandle, effects: Any, ctx: ActContext) -> Step:
+        effects.owned(ResourceOwned).stop(handle, STOP_EFFECT)
+        return Acted()
+
+
+ENTRY = WorkflowEntry(root=UNIT, units={UNIT: SpineLeaf()}, deadline=timedelta(seconds=120))
+
+
+@trestle(deadline=120, env_arg="env")
+def spine_leaf(ctx: Context, env: str = "dev", mode: str = "advance") -> dict[str, str]:
+    lag = 0 if mode == "skip" else 2
+    marker = FakeMarker(
+        ctx.tmp / "markers", "run", lag_polls=lag, never_ready=mode in ("hang", "stall")
+    )
+    if mode == "skip":
+        marker.plant_found("marker")
+    # the fake marker is the one implementation of all three resource port families
+    ports = {ResourceReads: marker, ResourceCreate: marker, ResourceOwned: marker}
+    run_tree(ctx, ENTRY, {"env": env, "mode": mode}, ports=ports)
+    return {"env": env, "mode": mode}

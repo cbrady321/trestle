@@ -1,0 +1,16 @@
+{
+  "plugin": "choice_long_running",
+  "version": "0.1.0",
+  "source_sha256": "455281665e85ee363a5dfd95a554ae1d65c926f7028f239b44509a8f30abf41f",
+  "schema_sha256": "d4f993f01a5e9c4307d64e543088026d7084e42fe289126339165050ef2695c1",
+  "declared": {
+    "deadline_s": 70,
+    "summary_fields": [],
+    "packages": [],
+    "env_arg": "env",
+    "secrets": [],
+    "package_digests": {}
+  },
+  "entry": "choice_long_running",
+  "declaration_digest": "e5afa491e8698ecba8764e2125ddc92729bcf63a507965b2e4e6dc8ecf793470"
+}

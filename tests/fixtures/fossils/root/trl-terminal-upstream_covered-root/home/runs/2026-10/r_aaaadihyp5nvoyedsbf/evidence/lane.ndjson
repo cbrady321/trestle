@@ -1,0 +1,14 @@
+{"class":"plan","seq":1,"lane_format":1,"declaration_digest":"a210bcefef8a4ae0476c494de5178a76119c4c71ea2bc37992640e52368b9597","args_hash":"3da29e1d6a85d50486f5253771aa792367dae07e272b81210118647774c00a25","selection":{},"observations_digest":"4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"}
+{"class":"issue","seq":2,"path":"producer","effect":"up","attempt":1,"facet":"create","repeat":"safe","lifetime":"run","release":{"form":"in_run_group","helpers_disclosed":false},"remedy":null,"issued_at":"2026-10-01T17:24:52.298173Z"}
+{"class":"confirmation","seq":3,"path":"producer","effect":"up","attempt":1,"status":"applied","code":null,"identity":"fake-bddb3ccb52a8440e"}
+{"class":"end","seq":4,"path":"producer","at":"2026-10-01T17:24:53.341190Z","condition":"satisfied","code":null,"human_action":null,"resend":null,"provenance":"created","cut":null}
+{"class":"issue","seq":5,"path":"consumer","effect":"up","attempt":1,"facet":"create","repeat":"safe","lifetime":"run","release":{"form":"in_run_group","helpers_disclosed":false},"remedy":null,"issued_at":"2026-10-01T17:24:53.350497Z"}
+{"class":"confirmation","seq":6,"path":"consumer","effect":"up","attempt":1,"status":"applied","code":null,"identity":"fake-034a83f3cff283c7"}
+{"class":"end","seq":7,"path":"consumer","at":"2026-10-01T17:24:54.389743Z","condition":"satisfied","code":null,"human_action":null,"resend":null,"provenance":"created","cut":null}
+{"class":"end","seq":8,"path":"","at":"2026-10-01T17:24:54.390058Z","condition":null,"code":null,"human_action":null,"resend":null,"provenance":null,"cut":null}
+{"class":"issue","seq":9,"path":"consumer","effect":"stop","attempt":1,"facet":"owned","repeat":"safe","lifetime":"run","release":{"form":"in_run_group","helpers_disclosed":false},"remedy":null,"issued_at":"2026-10-01T17:24:54.390502Z"}
+{"class":"confirmation","seq":10,"path":"consumer","effect":"stop","attempt":1,"status":"applied","code":null,"identity":"fake-034a83f3cff283c7"}
+{"class":"released","seq":11,"path":"consumer","effect":"up","attempt":1,"released_at":"2026-10-01T17:24:55.415332Z","outcome":null}
+{"class":"issue","seq":12,"path":"producer","effect":"stop","attempt":1,"facet":"owned","repeat":"safe","lifetime":"run","release":{"form":"in_run_group","helpers_disclosed":false},"remedy":null,"issued_at":"2026-10-01T17:24:55.420455Z"}
+{"class":"confirmation","seq":13,"path":"producer","effect":"stop","attempt":1,"status":"applied","code":null,"identity":"fake-bddb3ccb52a8440e"}
+{"class":"released","seq":14,"path":"producer","effect":"up","attempt":1,"released_at":"2026-10-01T17:24:56.438155Z","outcome":null}

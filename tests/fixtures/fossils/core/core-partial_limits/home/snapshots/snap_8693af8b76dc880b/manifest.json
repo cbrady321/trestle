@@ -1,0 +1,15 @@
+{
+  "plugin": "noisy",
+  "version": "0.1.0",
+  "source_sha256": "8e86a5fce7e416d05891a1b35a0221131c833a9e8068d16768567da2f583012b",
+  "schema_sha256": "2d196e48221568a473f6fe0810febb6842172d31810b83d0d96b1b0e4e5d0ce6",
+  "declared": {
+    "deadline_s": null,
+    "summary_fields": [],
+    "packages": [],
+    "env_arg": null,
+    "secrets": [],
+    "package_digests": {}
+  },
+  "entry": "noisy"
+}

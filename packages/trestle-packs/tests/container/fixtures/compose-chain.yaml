@@ -1,0 +1,33 @@
+{
+  "name": "compose-chain",
+  "services": {
+    "web": {
+      "image": "${TRESTLE_IMAGE_HTTP_SUPPORT}",
+      "pull_policy": "never",
+      "depends_on": ["api"],
+      "labels": {"trestle.proof.fixture": "compose-chain"}
+    },
+    "api": {
+      "image": "${TRESTLE_IMAGE_HTTP_SUPPORT}",
+      "pull_policy": "never",
+      "depends_on": {"db": {"condition": "service_started"}},
+      "labels": {"trestle.proof.fixture": "compose-chain"}
+    },
+    "db": {
+      "image": "${TRESTLE_IMAGE_POSTGRES}",
+      "pull_policy": "never",
+      "labels": {"trestle.proof.fixture": "compose-chain"}
+    },
+    "worker": {
+      "image": "${TRESTLE_IMAGE_ALPINE}",
+      "pull_policy": "never",
+      "depends_on": ["db"],
+      "labels": {"trestle.proof.fixture": "compose-chain"}
+    },
+    "cache": {
+      "image": "${TRESTLE_IMAGE_ALPINE}",
+      "pull_policy": "never",
+      "labels": {"trestle.proof.fixture": "compose-chain"}
+    }
+  }
+}

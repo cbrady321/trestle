@@ -1,0 +1,31 @@
+# ChoiceNode fossil-state manifest (L.TR-5.4; MC-11, MC-B3-05, CM-5). Schema as tree-trl/MANIFEST.toml: [[state]]
+# {id, producer = "module:function", absent = bool, s0_projection = {state, kinds, meta_keys}}. Producers are
+# `tests.tree.gen_fossils:<fn>`, so `python -m tests.proof.fossils generate --checkpoint slice-a --states <ids>`
+# regenerates these states under `slice-a/` with the same ids (L.J-SLICE-A.1). State ids are unique across bands.
+#
+# The runs are ChoiceNode-bearing roots (V-14) whose selection is recorded in the plan entry, written by head through
+# the host's own admission (`ControlSurface.run`; L.TR-5.3 removed the ChoiceNode refusal). Three kinds, as tree-trl:
+# `tr5-inflight-<fixture>` (a non-terminal root), `tr5-terminal-<fixture>` (a finalized root; expectation = the root
+# projection only) and `tr5-views-<fixture>` (a finalized root of the same fixture; expectation = its child views
+# only, which no reader before TR-2 serves, E-TR-1). `s0_projection.state` is the state the writer's own reader
+# projects after recovery (`differ d2` compares an older reader's projection with it; a divergence is excused only by
+# a named CM-9 exception in tests/proof/d2_exceptions.toml). `kinds` are the distinct ledger row kinds in
+# first-occurrence order.
+
+[[state]]
+id = "tr5-inflight-choice_long_running"
+producer = "tests.tree.gen_fossils:produce_tr5_inflight_choice_long_running"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "error_record", "evidence_finalized", "interrupted"], meta_keys = [] }
+
+[[state]]
+id = "tr5-terminal-live_state"
+producer = "tests.tree.gen_fossils:produce_tr5_terminal_live_state"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = [] }
+
+[[state]]
+id = "tr5-views-live_state"
+producer = "tests.tree.gen_fossils:produce_tr5_views_live_state"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = [] }

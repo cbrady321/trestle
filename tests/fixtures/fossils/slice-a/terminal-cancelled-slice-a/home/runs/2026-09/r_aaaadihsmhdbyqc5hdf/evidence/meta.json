@@ -1,0 +1,1 @@
+{"run_id":"r_aaaadihsmhdbyqc5hdf","classification":"cancelled","duration_ms":666,"result_state":"complete","artifact_count":0,"limits_exceeded":null,"error":{"code":"execution.cancelled","phase":"stop","message":"the run was cancelled"}}

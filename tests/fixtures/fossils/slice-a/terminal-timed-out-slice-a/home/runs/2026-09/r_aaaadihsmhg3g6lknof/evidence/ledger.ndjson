@@ -1,0 +1,12 @@
+{"seq":1,"kind":"created","at":"2026-09-30T12:54:51Z","run_id":"r_aaaadihsmhg3g6lknof","spec_hash":"7b39bce9e7926689c0f25ad189b83bced0b9f997530cf5fd7ebb140f01e2f4e4","service_epoch":"epoch_zfgznqnhnwswg","plugin":"hold_leaf","version":"0.1.0","snapshot_id":"snap_8103d2ce4834df90","args_hash":"3da29e1d6a85d50486f5253771aa792367dae07e272b81210118647774c00a25","caller_session":null,"lease_key":"\"dev\""}
+{"seq":2,"kind":"admitted","at":"2026-09-30T12:54:51Z","run_id":"r_aaaadihsmhg3g6lknof","snapshot_id":"snap_8103d2ce4834df90"}
+{"seq":3,"kind":"started","at":"2026-09-30T12:54:51Z","run_id":"r_aaaadihsmhg3g6lknof"}
+{"seq":4,"kind":"process_identity","at":"2026-09-30T12:54:51Z","run_id":"r_aaaadihsmhg3g6lknof","pid":40745,"boot":"9B3D490F-D3E6-460F-9A85-D5CA520BDA5A","start":"1790772891061339","group":40745,"leader":true}
+{"seq":5,"kind":"process_identity","at":"2026-09-30T12:54:51Z","run_id":"r_aaaadihsmhg3g6lknof","pid":40746,"boot":"9B3D490F-D3E6-460F-9A85-D5CA520BDA5A","start":"1790772891090261","group":40745,"leader":false}
+{"seq":6,"kind":"stop_row","at":"2026-09-30T12:55:15Z","run_id":"r_aaaadihsmhg3g6lknof","cause":"release_point","lane_committed_length":312}
+{"seq":7,"kind":"group_stop","at":"2026-09-30T12:55:15Z","run_id":"r_aaaadihsmhg3g6lknof","confirmed_gone":true,"method":"signal"}
+{"seq":8,"kind":"lane_folded","at":"2026-09-30T12:55:15Z","run_id":"r_aaaadihsmhg3g6lknof","lane_seq":1,"path":null,"entry_class":"plan","descriptor":null}
+{"seq":9,"kind":"error_record","at":"2026-09-30T12:55:15Z","run_id":"r_aaaadihsmhg3g6lknof","code":"execution.deadline_exceeded","phase":"stop","message":"the run reached its deadline and was stopped"}
+{"seq":10,"kind":"execution_ended","at":"2026-09-30T12:55:15Z","run_id":"r_aaaadihsmhg3g6lknof","classification":"timed_out","exit_code":143,"duration_ms":24177}
+{"seq":11,"kind":"evidence_finalized","at":"2026-09-30T12:55:15Z","run_id":"r_aaaadihsmhg3g6lknof","completeness":"complete","result_state":"absent","event_count":1}
+{"seq":12,"kind":"timed_out","at":"2026-09-30T12:55:15Z","run_id":"r_aaaadihsmhg3g6lknof"}

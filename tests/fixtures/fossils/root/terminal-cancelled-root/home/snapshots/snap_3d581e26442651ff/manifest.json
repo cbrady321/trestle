@@ -1,0 +1,16 @@
+{
+  "plugin": "spine_leaf",
+  "version": "0.1.0",
+  "source_sha256": "aedf482aed38988379a12060a929d9aaf93c6c88d14beb7efb705ae1d0d5e823",
+  "schema_sha256": "24fd155691819f5a24789110e9ae3535b080da8f3671a403b10aa04884a34989",
+  "declared": {
+    "deadline_s": 120,
+    "summary_fields": [],
+    "packages": [],
+    "env_arg": "env",
+    "secrets": [],
+    "package_digests": {}
+  },
+  "entry": "spine_leaf",
+  "declaration_digest": "df1c29c802b30eeb7a6869107b3f55690eb3192d19e937193c45279a2210efda"
+}

@@ -1,0 +1,661 @@
+# MC-03 clause ids (L.P0-0c.1). Verbatim fragments transcribed from
+# plan-workflow-runtime.md's frozen MC-03 clause table (the requirements'
+# matrix text L497-505, split at clause boundaries; plan-workflow-runtime.md
+# ~L710-780, itself the single frozen source every block registers against).
+# Schema: [[clause]] {id, cell, fragment, rows, rows_source, step?, parts?,
+#   stub_label_required, adversary_stub}
+# cell = '<guarantee_token>:<A|B>' (9 guarantees x 2 slices = 18 cells).
+# rows: WR-row ids credited only through this clause (plan-workflow-runtime.md:1078,
+#   the row audit's nine matrix-credited rows); empty for every other clause -- an
+#   ordinary clause is claimed by a direct <row>:<label> proves marker, not by
+#   matrix_map.toml's own rows field.
+
+[[clause]]
+id = "A1.1"
+cell = "one_terminal_answer:A"
+fragment = "one call"
+rows = []
+rows_source = ""
+parts = [{ name = "core", step = "core (plain plugin)" }, { name = "single", step = "single (one-vertex workflow)" }]
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A1.2"
+cell = "one_terminal_answer:A"
+fragment = "sever/rejoin"
+rows = ["WR-TERM-6"]
+rows_source = "plan-workflow-runtime.md:1078"
+step = "single"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A1.3"
+cell = "one_terminal_answer:A"
+fragment = "ten-condition table"
+rows = []
+rows_source = ""
+parts = [{ name = "core", step = "core (six plain-plugin conditions)" }, { name = "single", step = "single (four workflow-result conditions)" }]
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A1.4"
+cell = "one_terminal_answer:A"
+fragment = "100-service answer"
+rows = []
+rows_source = ""
+step = "core"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A1.5"
+cell = "one_terminal_answer:A"
+fragment = "tree: one class rolled up from any tree; where at most one node can move the whole root to release, unchanged by completion order or by moving a node one level deeper"
+rows = []
+rows_source = ""
+step = "tree"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A1.6"
+cell = "one_terminal_answer:A"
+fragment = "and a 100-node answer within budget (WR-UNIT-7)"
+rows = []
+rows_source = ""
+step = "tree"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A2.1"
+cell = "admitted_plan:A"
+fragment = "deterministic plan"
+rows = []
+rows_source = ""
+step = "single"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A2.2"
+cell = "admitted_plan:A"
+fragment = "edit-after-admission"
+rows = []
+rows_source = ""
+step = "core"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A2.3"
+cell = "admitted_plan:A"
+fragment = "second workflow"
+rows = ["WR-PLAN-11"]
+rows_source = "plan-workflow-runtime.md:1078"
+step = "single"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A2.4"
+cell = "admitted_plan:A"
+fragment = "an action with no declared contract, or a plan with an uncovered precondition, refused before any mutation"
+rows = []
+rows_source = ""
+step = "single"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A2.5"
+cell = "admitted_plan:A"
+fragment = "tree: the whole declared tree validated before a run id"
+rows = []
+rows_source = ""
+step = "tree"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A2.6"
+cell = "admitted_plan:A"
+fragment = "and lineage assigned at admission and never forgeable (WR-UNIT-2, WR-UNIT-8)"
+rows = []
+rows_source = ""
+step = "tree"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A3.1"
+cell = "no_repeat_work:A"
+fragment = "join across republish"
+rows = []
+rows_source = ""
+step = "core"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A3.2"
+cell = "no_repeat_work:A"
+fragment = "retry on declared codes"
+rows = []
+rows_source = ""
+step = "single"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A3.3"
+cell = "no_repeat_work:A"
+fragment = "skip"
+rows = ["WR-IDEM-4"]
+rows_source = "plan-workflow-runtime.md:1078"
+step = "single"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A3.4"
+cell = "no_repeat_work:A"
+fragment = "tree: the same unit converges identically called directly and as a child (WR-UNIT-1)"
+rows = []
+rows_source = ""
+step = "tree"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A4.1"
+cell = "checked_before_done:A"
+fragment = "converge-then-verify"
+rows = []
+rows_source = ""
+step = "single"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A4.2"
+cell = "checked_before_done:A"
+fragment = "barrier ordering"
+rows = []
+rows_source = ""
+step = "tree"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A4.3"
+cell = "checked_before_done:A"
+fragment = "postcondition polled on its declared wait policy, never re-triggered to wait"
+rows = []
+rows_source = ""
+step = "single"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A4.4"
+cell = "checked_before_done:A"
+fragment = "every check proven read-only by a shared contract suite"
+rows = []
+rows_source = ""
+step = "single"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A5.1"
+cell = "deadlines_enforced:A"
+fragment = "short deadline stops the tree"
+rows = []
+rows_source = ""
+step = "core"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A5.2"
+cell = "deadlines_enforced:A"
+fragment = ">300 s not killed"
+rows = []
+rows_source = ""
+step = "core"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A5.3"
+cell = "deadlines_enforced:A"
+fragment = "tree: a child slice that cannot fit refused before a run id"
+rows = []
+rows_source = ""
+step = "tree"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A5.4"
+cell = "deadlines_enforced:A"
+fragment = "and a cooperating child stopped at its slice (WR-UNIT-3)"
+rows = []
+rows_source = ""
+step = "tree"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A6.1"
+cell = "cancellation_stops_work:A"
+fragment = "detached tree ignoring cancel"
+rows = []
+rows_source = ""
+parts = [{ name = "core", step = "core (plugin process tree)" }, { name = "single", step = "single (runtime command runner)" }]
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A6.2"
+cell = "cancellation_stops_work:A"
+fragment = "server killed mid-run"
+rows = []
+rows_source = ""
+parts = [{ name = "core", step = "core (recorded group)" }, { name = "single", step = "single (plan-rank sweep after restart)" }]
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A6.3"
+cell = "cancellation_stops_work:A"
+fragment = "tree: a root cancel, the root deadline or an uncaught exception stops the whole tree"
+rows = []
+rows_source = ""
+step = "tree"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A6.4"
+cell = "cancellation_stops_work:A"
+fragment = "and an ordinary failure stops only its dependents (WR-UNIT-6)"
+rows = []
+rows_source = ""
+step = "tree"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A7.1"
+cell = "errors_repaired_within_budgets:A"
+fragment = "exhausted"
+rows = ["WR-REMEDY-2"]
+rows_source = "plan-workflow-runtime.md:1078"
+step = "single"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A7.2"
+cell = "errors_repaired_within_budgets:A"
+fragment = "no-progress"
+rows = ["WR-REMEDY-3"]
+rows_source = "plan-workflow-runtime.md:1078"
+step = "single"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A7.3"
+cell = "errors_repaired_within_budgets:A"
+fragment = "a remediation refused for reaching a resource it doesn't own, unless the action is a safe start/refresh/install"
+rows = []
+rows_source = ""
+step = "single"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A8.1"
+cell = "cleanup_scoped:A"
+fragment = "found process survives every path"
+rows = []
+rows_source = ""
+step = "single"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A8.2"
+cell = "cleanup_scoped:A"
+fragment = "success reaps"
+rows = []
+rows_source = ""
+step = "core"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A8.3"
+cell = "cleanup_scoped:A"
+fragment = "an unhealthy found resource reported blocked, never adopted, unless adoption is explicitly enabled"
+rows = []
+rows_source = ""
+step = "single"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A8.4"
+cell = "cleanup_scoped:A"
+fragment = "tree: a child's created resources released by its root on every path"
+rows = []
+rows_source = ""
+step = "tree"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A8.5"
+cell = "cleanup_scoped:A"
+fragment = "and a child sharing its root's lease (WR-UNIT-4, WR-UNIT-5)"
+rows = []
+rows_source = ""
+step = "tree"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A9.1"
+cell = "evidence_honest:A"
+fragment = "sentinel failure explained"
+rows = []
+rows_source = ""
+step = "core"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A9.2"
+cell = "evidence_honest:A"
+fragment = "flat append"
+rows = []
+rows_source = ""
+step = "core"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A9.3"
+cell = "evidence_honest:A"
+fragment = "strict JSON"
+rows = []
+rows_source = ""
+step = "core"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "A9.4"
+cell = "evidence_honest:A"
+fragment = "a newline-less tail no longer drops later rows"
+rows = []
+rows_source = ""
+step = "core"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B1.1"
+cell = "one_terminal_answer:B"
+fragment = "one call to passed on a healthy machine"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B2.1"
+cell = "admitted_plan:B"
+fragment = "500/100 synthetic plan identity"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B2.2"
+cell = "admitted_plan:B"
+fragment = "unknown names refused"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B3.1"
+cell = "no_repeat_work:B"
+fragment = "provisioning submitted once"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B3.2"
+cell = "no_repeat_work:B"
+fragment = "second run reuses"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B3.3"
+cell = "no_repeat_work:B"
+fragment = "a lagging (eventual-consistency) read never triggers a duplicate submission of a non-resubmittable step (WR-IDEM-5)"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B4.1"
+cell = "checked_before_done:B"
+fragment = "readiness before test"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B4.2"
+cell = "checked_before_done:B"
+fragment = "engine vs CLI"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B4.3"
+cell = "checked_before_done:B"
+fragment = "test error counts"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B4.4"
+cell = "checked_before_done:B"
+fragment = "in-container authenticated call confirms credential currency"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B4.5"
+cell = "checked_before_done:B"
+fragment = "an adapter's exit/result/artifact mismatch is classified as a contract violation, not silently pass/fail (WR-VERIFY-5)"
+rows = ["WR-VERIFY-5"]
+rows_source = "plan-workflow-runtime.md:1078"
+step = "B"
+stub_label_required = false
+adversary_stub = true
+
+[[clause]]
+id = "B4.6"
+cell = "checked_before_done:B"
+fragment = "a declared toolchain pin is satisfied exactly or the step blocks, never a silent fall-through to the first similarly-named tool on the search path (WR-ENV-15)"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = true
+adversary_stub = false
+
+[[clause]]
+id = "B5.1"
+cell = "deadlines_enforced:B"
+fragment = "readiness wait ends at stage budget, stage named"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B6.1"
+cell = "cancellation_stops_work:B"
+fragment = "cancel during readiness: owned process and created container gone, found untouched"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B6.2"
+cell = "cancellation_stops_work:B"
+fragment = "a build daemon a task started is ended, prevented, or disclosed as a boundary (WR-CANCEL-7, STUB-PROVEN pending D-19)"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = true
+adversary_stub = false
+
+[[clause]]
+id = "B6.3"
+cell = "cancellation_stops_work:B"
+fragment = "WR-UNIT-6's Docker tier: after a root cancel, no child-created container remains"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B7.1"
+cell = "errors_repaired_within_budgets:B"
+fragment = "owned-process restart reported repaired"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B7.2"
+cell = "errors_repaired_within_budgets:B"
+fragment = "engine loop bounded"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B8.1"
+cell = "cleanup_scoped:B"
+fragment = "pre-started Postgres with seeded volume survives"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B8.2"
+cell = "cleanup_scoped:B"
+fragment = "created container stopped"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B8.3"
+cell = "cleanup_scoped:B"
+fragment = "a stale-credentialed owned container recreated, not reused"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B8.4"
+cell = "cleanup_scoped:B"
+fragment = "no toolchain is installed, downloaded or upgraded as a side effect of running a task (WR-ENV-16)"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = true
+adversary_stub = false
+
+[[clause]]
+id = "B8.5"
+cell = "cleanup_scoped:B"
+fragment = "WR-UNIT-5's Docker tier: a child-created container released by its root"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false
+
+[[clause]]
+id = "B9.1"
+cell = "evidence_honest:B"
+fragment = "contract-violating stub classified"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = true
+
+[[clause]]
+id = "B9.2"
+cell = "evidence_honest:B"
+fragment = "full output behind a handle"
+rows = []
+rows_source = ""
+step = "B"
+stub_label_required = false
+adversary_stub = false

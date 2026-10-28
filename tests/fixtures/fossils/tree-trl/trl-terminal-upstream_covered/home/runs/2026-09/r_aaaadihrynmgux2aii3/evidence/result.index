@@ -1,0 +1,1 @@
+{"root_type":"object","byte_length":42,"index_truncated":false,"fields":[{"name":"env","start":7,"end":12,"type":"str","bytes":5},{"name":"fixture","start":23,"end":41,"type":"str","bytes":18}],"field_count":2}

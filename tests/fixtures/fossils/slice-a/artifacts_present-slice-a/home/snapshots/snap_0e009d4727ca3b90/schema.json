@@ -1,0 +1,1 @@
+{"additionalProperties":false,"properties":{"body":{"type":"string"},"name":{"type":"string"}},"type":"object"}

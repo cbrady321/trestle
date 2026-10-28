@@ -1,0 +1,16 @@
+{
+  "plugin": "live_state",
+  "version": "0.1.0",
+  "source_sha256": "4c84622fe423ed82d10495f7e1b98ec1552140375f41c172ec6c4952b2ef8283",
+  "schema_sha256": "c889cf380a2222723aa98442e27cef9e88310506fd4b655cccf04a77e1427e42",
+  "declared": {
+    "deadline_s": 150,
+    "summary_fields": [],
+    "packages": [],
+    "env_arg": "env",
+    "secrets": [],
+    "package_digests": {}
+  },
+  "entry": "live_state",
+  "declaration_digest": "6c742af65124b33b57888cb5026c3afe23fcaebca1634cbad7b3eb4c8f181c74"
+}

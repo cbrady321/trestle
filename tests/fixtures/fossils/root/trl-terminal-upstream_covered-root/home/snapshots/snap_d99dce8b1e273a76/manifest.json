@@ -1,0 +1,16 @@
+{
+  "plugin": "upstream_covered",
+  "version": "0.1.0",
+  "source_sha256": "daf5175b8a890a36722ff218718b8ece8b581d18f72c72b16cc20a01aa026beb",
+  "schema_sha256": "d4f993f01a5e9c4307d64e543088026d7084e42fe289126339165050ef2695c1",
+  "declared": {
+    "deadline_s": 60,
+    "summary_fields": [],
+    "packages": [],
+    "env_arg": "env",
+    "secrets": [],
+    "package_digests": {}
+  },
+  "entry": "upstream_covered",
+  "declaration_digest": "a210bcefef8a4ae0476c494de5178a76119c4c71ea2bc37992640e52368b9597"
+}

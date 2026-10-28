@@ -1,0 +1,4 @@
+[pack]
+name = "pytest"
+summary = "Run pytest out of process on the project's interpreter; failing tests are a result"
+library = "."

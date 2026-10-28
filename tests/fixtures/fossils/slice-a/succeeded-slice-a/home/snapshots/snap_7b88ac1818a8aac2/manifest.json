@@ -1,0 +1,15 @@
+{
+  "plugin": "drop_in",
+  "version": "0.1.0",
+  "source_sha256": "d3428dcd467b8436504de0f4a7edaa39e7929928f4d9ad6bfc81a8404a302b2d",
+  "schema_sha256": "670a1e80f5fbc27041a0d8c43ab32938d273e1e95683f60b0068f19a84d0227c",
+  "declared": {
+    "deadline_s": null,
+    "summary_fields": [],
+    "packages": [],
+    "env_arg": null,
+    "secrets": [],
+    "package_digests": {}
+  },
+  "entry": "drop_in"
+}

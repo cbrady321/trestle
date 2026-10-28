@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "gate": "host-proc",
+  "sha": "318b31f2f82b2c68e2c476f7448146950bc0e768",
+  "mode": "run",
+  "python": "3.12.8",
+  "platform": "darwin",
+  "results": [
+    {
+      "nodeid": "tests/pins/a_lifecycle/test_g_a1.py::test_target_no_attributable_survivor_after_terminal_row",
+      "outcome": "XFAIL",
+      "labels": [
+        "WR-CANCEL-1:cancel-tree-within-bound",
+        "A6.1:core"
+      ]
+    },
+    {
+      "nodeid": "tests/pins/a_lifecycle/test_g_a3.py::test_target_restart_leaves_no_attributable_survivor",
+      "outcome": "XFAIL",
+      "labels": [
+        "WR-CANCEL-3:recovery-stops-recorded-group",
+        "A6.2:core"
+      ]
+    },
+    {
+      "nodeid": "tests/pins/a_lifecycle/test_straddle.py::test_target_s0_straddle_branch_i_unconfirmed_never_clean",
+      "outcome": "XFAIL",
+      "labels": [
+        "WR-CANCEL-3:s0-straddle-stop-unconfirmed-never-clean"
+      ]
+    },
+    {
+      "nodeid": "tests/pins/a_lifecycle/test_straddle.py::test_target_s0_orphan_not_signalled_branch_i_unconfirmed_never_clean",
+      "outcome": "XFAIL",
+      "labels": [
+        "WR-CANCEL-3:s0-straddle-stop-unconfirmed-never-clean"
+      ]
+    }
+  ],
+  "status": "PASSED"
+}

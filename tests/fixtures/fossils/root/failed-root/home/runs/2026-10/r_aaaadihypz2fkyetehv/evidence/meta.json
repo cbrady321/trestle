@@ -1,0 +1,1 @@
+{"run_id":"r_aaaadihypz2fkyetehv","classification":"failed","duration_ms":170,"result_state":"absent","artifact_count":0,"limits_exceeded":null,"error":{"code":"execution.plugin_raised","phase":"call","message":"boom: this plugin always fails (proof-court fossil fixture)"}}

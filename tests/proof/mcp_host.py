@@ -1,0 +1,491 @@
+"""Minimal MCP streamable-HTTP test host (L.P0-0b.2, L.P0-0b.3; MC-12).
+
+Speaks the wire protocol directly: JSON-RPC 2.0 messages POSTed to one `trestle serve --port 0`
+subprocess's `/mcp` endpoint (its own `TRESTLE_HOME`, the home's agent token as the bearer), each
+answer read from the response's SSE stream, deliberately independent of the `mcp`/`fastmcp`
+client libraries so this host's view of `tools/list` (raw bytes: the answer's `data:` payload) can
+be checked against the fastmcp client's parsed view (SA-12) rather than assumed identical.
+
+Counts every JSON-RPC request this host sends (`request_count`), including the `initialize`
+handshake but not the `notifications/initialized` notice (a notification carries no "id" and gets
+no response).
+
+Each request is its own HTTP exchange on a thread of its own, and answers land in a queue by "id",
+so requests can be pipelined: `hold()` sends one and returns its id without waiting, other calls
+can flow on the same session meanwhile, and `join()` collects the held response whenever it lands
+(Assumption 2: count, hold, sever, rejoin). `sever()` breaks the session four ways (a JSON-RPC
+cancellation notice, ending the MCP session with DELETE while the server stays up, closing one
+request's socket with no DELETE and no notification, or SIGKILL); `peer()` is a second client of
+the same server, with a session of its own;
+`rejoin()` brings up a fresh server on the same `TRESTLE_HOME`; `kill_server()`/`restart()` take the
+whole server down and bring a new one up on that same home (recovery runs on start, same as any
+`trestle serve` boot).
+"""
+
+from __future__ import annotations
+
+import http.client
+import json
+import os
+import queue
+import signal
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from tests.proof import tolerances
+
+REPO = Path(__file__).resolve().parents[2]
+MCP_PATH = "/mcp"
+
+
+@dataclass(frozen=True)
+class Joined:
+    """A held request's answer as a value: the tool's result, or the JSON-RPC error."""
+
+    result: Any = None
+    error: dict[str, Any] | None = None
+
+
+PROTOCOL_VERSION = "2025-06-18"
+
+
+def agent_token(home: Path) -> str:
+    """The home's bearer token (the server creates `agent.token` on its first start)."""
+    from trestle.server.agent_token import read_token
+
+    return read_token(home)
+
+
+class McpHost:
+    def __init__(self, home: Path | None = None, *, timeout_s: float = 15.0) -> None:
+        self.home = home if home is not None else Path(tempfile.mkdtemp(prefix="trestle-mcp-host-"))
+        self.home.mkdir(parents=True, exist_ok=True)
+        (self.home / "plugins").mkdir(exist_ok=True)
+        self._seed_fixture_plugins()
+
+        self._init_state(timeout_s)
+        self._start_process()
+        self._initialize()
+
+    def _init_state(self, timeout_s: float) -> None:
+        self.timeout_s = timeout_s
+        self._next_id = 1
+        self._request_count = 0
+        self._responses: dict[int, queue.Queue[bytes]] = {}
+        self._delivered: set[int] = set()
+        self._responses_lock = threading.Lock()
+        self._closed = False
+        # a peer shares its parent's server process and never stops it
+        self._peer = False
+        # each in-flight request's connection, by request id (`sever("connection_drop")`)
+        self._conns: dict[int, socket.socket] = {}
+
+    def peer(self) -> McpHost:
+        """A second client of this same server process: the same `proc`, `port`, `token` and
+        `home`, with its own `initialize`, session id, request ids and queues. Its `close()` sends
+        DELETE for its session and never stops the process."""
+        other = McpHost.__new__(McpHost)
+        other.home = self.home
+        other._init_state(self.timeout_s)
+        other._peer = True
+        other.proc, other.port, other.token = self.proc, self.port, self.token
+        other.session_id = None
+        other._initialize()
+        return other
+
+    def _seed_fixture_plugins(self) -> None:
+        src = REPO / "tests" / "fixtures" / "plugins"
+        for path in src.glob("*.py"):
+            dest = self.home / "plugins" / path.name
+            if not dest.exists():
+                dest.write_bytes(path.read_bytes())
+
+    # -- process lifecycle ------------------------------------------------
+
+    def _start_process(self) -> None:
+        self.proc, self.port = serve_http(self.home)
+        self.token = agent_token(self.home)
+        self.session_id: str | None = None
+        with self._responses_lock:
+            self._responses.clear()
+            self._delivered.clear()
+
+    # -- wire -----------------------------------------------------------
+
+    def _call_id(self) -> int:
+        value = self._next_id
+        self._next_id += 1
+        return value
+
+    def _headers(self) -> dict[str, str]:
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            "MCP-Protocol-Version": PROTOCOL_VERSION,
+        }
+        if self.session_id is not None:
+            headers["Mcp-Session-Id"] = self.session_id
+        return headers
+
+    def _exchange(self, method: str, body: bytes | None) -> None:
+        """One HTTP exchange; every JSON-RPC message in its answer goes to `_dispatch`. A broken
+        exchange (the server killed, the session ended) answers the request it carried with a
+        JSON-RPC error, so a joiner never waits out its timeout on a dead connection."""
+        request = json.loads(body) if body else {}
+        req_id = request.get("id")
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=None)
+        try:
+            conn.connect()
+            if req_id is not None and conn.sock is not None:
+                with self._responses_lock:
+                    self._conns[req_id] = conn.sock
+            conn.request(method, MCP_PATH, body=body, headers=self._headers())
+            response = conn.getresponse()
+            session = response.getheader("mcp-session-id")
+            if session and self.session_id is None:
+                self.session_id = session
+            if response.status >= 400:
+                raw = response.read()
+                if req_id is not None:
+                    self._fail(req_id, f"HTTP {response.status}: {raw.decode(errors='replace')}")
+                return
+            ctype = response.getheader("content-type", "")
+            if "text/event-stream" in ctype:
+                self._read_events(response)
+            else:
+                raw = response.read()
+                if raw.strip():
+                    self._dispatch(raw)
+            if req_id is not None:
+                # the exchange ended; a request it never answered is answered with an error now
+                # (a no-op when the answer landed: the queue holds one message)
+                self._fail(req_id, "the response ended without an answer")
+        except (OSError, http.client.HTTPException) as exc:
+            if req_id is not None:
+                self._fail(req_id, f"connection lost: {exc!r}")
+        finally:
+            if req_id is not None:
+                with self._responses_lock:
+                    self._conns.pop(req_id, None)
+            conn.close()
+
+    def _read_events(self, response: http.client.HTTPResponse) -> None:
+        """Dispatch each SSE event as it arrives (a held call's stream stays open until its
+        answer, and notifications on it must be seen while it is open)."""
+        data: list[bytes] = []
+        while True:
+            line = response.readline()
+            if not line:
+                break
+            stripped = line.rstrip(b"\r\n")
+            if stripped.startswith(b"data:"):
+                data.append(stripped[5:].lstrip())
+            elif not stripped and data:
+                self._dispatch(b"\n".join(data))
+                data = []
+        if data:
+            self._dispatch(b"\n".join(data))
+
+    def _fail(self, req_id: int, message: str) -> None:
+        payload = {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": message}}
+        self._deliver(req_id, json.dumps(payload).encode("utf-8"))
+
+    def _deliver(self, msg_id: int, raw: bytes) -> None:
+        """The first message for a request id is its answer; a later one (the error a broken or
+        finished exchange sends) is dropped."""
+        with self._responses_lock:
+            if msg_id in self._delivered:
+                return
+            self._delivered.add(msg_id)
+            q = self._responses.setdefault(msg_id, queue.Queue(maxsize=1))
+        q.put_nowait(raw)
+
+    def _dispatch(self, raw: bytes) -> None:
+        """One message from the server. A response goes to its request's queue; a message the
+        server originates (it carries a `method`) is dropped here (subclasses keep them)."""
+        try:
+            message = json.loads(raw)
+        except json.JSONDecodeError:
+            return
+        if "method" in message:
+            return
+        msg_id = message.get("id")
+        if msg_id is None:
+            return
+        self._deliver(msg_id, raw)
+
+    def _send(self, payload: dict[str, Any]) -> bytes:
+        body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        if "id" in payload:  # a notification (no "id") is not a request
+            self._request_count += 1
+            with self._responses_lock:
+                self._responses.setdefault(payload["id"], queue.Queue(maxsize=1))
+            threading.Thread(target=self._exchange, args=("POST", body), daemon=True).start()
+        else:
+            self._exchange("POST", body)
+        return body
+
+    def _await_response(self, req_id: int, *, timeout: float | None = None) -> bytes:
+        with self._responses_lock:
+            q = self._responses.setdefault(req_id, queue.Queue(maxsize=1))
+        try:
+            line = q.get(timeout=timeout if timeout is not None else self.timeout_s)
+        finally:
+            with self._responses_lock:
+                self._responses.pop(req_id, None)
+        return line
+
+    def _initialize(self) -> None:
+        req_id = self._call_id()
+        body = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": PROTOCOL_VERSION,
+                    "capabilities": {},
+                    "clientInfo": {"name": "tests.proof.mcp_host", "version": "0"},
+                },
+            },
+            separators=(",", ":"),
+        ).encode("utf-8")
+        # the handshake is synchronous: every later request carries the session id it returns
+        self._request_count += 1
+        self._exchange("POST", body)
+        self._await_response(req_id)
+        self._send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+
+    @staticmethod
+    def _parse_call_result(raw: bytes, name: str) -> Any:
+        message = json.loads(raw)
+        if "error" in message:
+            raise RuntimeError(f"{name}: {message['error']}")
+        result = message["result"]
+        structured = result.get("structuredContent")
+        if structured is not None:
+            return structured
+        for block in result.get("content", []):
+            if block.get("type") == "text":
+                try:
+                    return json.loads(block["text"])
+                except json.JSONDecodeError:
+                    return block["text"]
+        return result
+
+    # -- public surface ---------------------------------------------------
+
+    def request_count(self) -> int:
+        return self._request_count
+
+    def tools_list_raw(self) -> bytes:
+        """The exact bytes of the `tools/list` response line."""
+        req_id = self._call_id()
+        self._send({"jsonrpc": "2.0", "id": req_id, "method": "tools/list", "params": {}})
+        return self._await_response(req_id)
+
+    def hold(self, name: str, args: dict[str, Any] | None = None) -> int:
+        """Send a `tools/call` request and return its id without waiting
+        for a response — the response is withheld on this host's side
+        until a caller `join()`s that id, while other requests keep
+        flowing on the same connection meanwhile."""
+        req_id = self._call_id()
+        self._send(
+            {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "method": "tools/call",
+                "params": {"name": name, "arguments": args or {}},
+            }
+        )
+        return req_id
+
+    def join(self, req_id: int, *, timeout: float | None = None) -> Any:
+        """Collect the response to a request started by `hold()` (or by
+        `call()`'s own internal id, though `call()` already does this)."""
+        raw = self._await_response(req_id, timeout=timeout)
+        return self._parse_call_result(raw, name=f"request {req_id}")
+
+    def join_outcome(self, req_id: int, *, timeout: float | None = None) -> Joined:
+        """`join` as a value: the result, or the JSON-RPC error, never a raise (a test then
+        never synchronises on an error)."""
+        raw = self._await_response(req_id, timeout=timeout)
+        message = json.loads(raw)
+        if "error" in message:
+            return Joined(error=message["error"])
+        return Joined(result=self._parse_call_result(raw, name=f"request {req_id}"))
+
+    def call(self, name: str, args: dict[str, Any] | None = None) -> Any:
+        req_id = self.hold(name, args)
+        return self.join(req_id)
+
+    def sever(self, mode: str, *, req_id: int | None = None) -> None:
+        """Break this session.
+
+        - "cancel_notification": send a JSON-RPC `notifications/cancelled`
+          for `req_id` (the server may or may not stop the underlying
+          work; the run is expected to reach a terminal state on its own
+          either way).
+        - "session_close": end the MCP session (HTTP DELETE with its id);
+          the server stays up, as a service does when its client goes.
+        - "connection_drop": shut down and close the socket carrying `req_id`, with no DELETE
+          and no notification (what a killed host does); the held request is answered with this
+          host's "connection lost" error. The session stays open on the server.
+        - "sigkill": kill the subprocess outright.
+        """
+        if mode == "cancel_notification":
+            if req_id is None:
+                raise ValueError("cancel_notification requires req_id")
+            self._send(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "notifications/cancelled",
+                    "params": {"requestId": req_id},
+                }
+            )
+        elif mode == "session_close":
+            self._exchange("DELETE", None)
+        elif mode == "connection_drop":
+            if req_id is None:
+                raise ValueError("connection_drop requires req_id")
+            with self._responses_lock:
+                sock = self._conns.get(req_id)
+            if sock is None:
+                raise RuntimeError(f"request {req_id} has no open connection")
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            sock.close()
+            self._fail(req_id, "connection lost: dropped by the host")
+        elif mode == "sigkill":
+            self.proc.kill()
+        else:
+            raise ValueError(f"unknown sever mode: {mode!r}")
+
+    def new_session(self) -> None:
+        """A fresh MCP session on the same server (a new client of the service): a new
+        `initialize`, and a new session id on every later request."""
+        self.session_id = None
+        self._initialize()
+
+    def kill_server(self) -> None:
+        """Kill the subprocess outright (no graceful shutdown)."""
+        if self.proc.poll() is None:
+            self.proc.kill()
+        self.proc.wait(timeout=tolerances.PROC_WAIT_S)
+
+    def restart(self) -> None:
+        """Spawn a new `trestle serve` subprocess on the same
+        `TRESTLE_HOME` (recovery runs on start, same as any `trestle
+        serve` boot) and redo the handshake."""
+        if self.proc.poll() is None:
+            self.proc.kill()
+            self.proc.wait(timeout=tolerances.PROC_WAIT_S)
+        self._next_id = 1
+        self._request_count = 0
+        self._closed = False
+        self._start_process()
+        self._initialize()
+
+    def close(self) -> None:
+        """Terminate the subprocess this host started. Every caller that
+        constructs an `McpHost` must reach this (directly or via the `with`
+        form) so no server process outlives its test."""
+        if self._closed:
+            return
+        self._closed = True
+        if self._peer:
+            if self.proc.poll() is None and self.session_id is not None:
+                self._exchange("DELETE", None)
+            return
+        if self.proc.poll() is None:
+            try:
+                # SIGINT is the server's graceful stop (SIGTERM would drain instead)
+                self.proc.send_signal(signal.SIGINT)
+                self.proc.wait(timeout=tolerances.PROC_WAIT_S)
+            except Exception:
+                self.proc.kill()
+                self.proc.wait(timeout=tolerances.PROC_WAIT_S)
+
+    def __enter__(self) -> McpHost:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+
+def rejoin(old: McpHost) -> McpHost:
+    """A new server and session on `old`'s `TRESTLE_HOME`. `old` is left
+    exactly as it is — sever it first if the point is testing a session
+    against a server that is already gone."""
+    return McpHost(home=old.home)
+
+
+def serve_http(
+    home: Path, *, env: dict[str, str] | None = None
+) -> tuple[subprocess.Popen[bytes], int]:
+    """`trestle serve --port 0` on `home`: the server process and the
+    port it reports on stderr (`trestle: listening 127.0.0.1:<port>`, RACES-REPORT L-18), read
+    within `tolerances.JOIN_WAIT_S`. The rest of stderr is drained in the background so the
+    server never blocks on a full pipe. Raises if the server exits or never reports."""
+    from trestle.server.main import LISTENING_PREFIX
+
+    environ = dict(env if env is not None else os.environ)
+    environ["TRESTLE_HOME"] = str(home)
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "trestle.cli", "serve", "--port", "0"],
+        env=environ,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    lines: queue.Queue[bytes] = queue.Queue()
+
+    def drain() -> None:
+        assert proc.stderr is not None
+        for line in proc.stderr:
+            lines.put(line)
+        lines.put(b"")  # end of stream: the server exited
+
+    threading.Thread(target=drain, daemon=True).start()
+    seen: list[str] = []
+    try:
+        while True:
+            line = lines.get(timeout=tolerances.JOIN_WAIT_S).decode(errors="replace")
+            if not line:
+                raise RuntimeError(f"the server exited before it listened: {''.join(seen)}")
+            if line.startswith(LISTENING_PREFIX):
+                return proc, int(line.strip().rsplit(":", 1)[1])
+            seen.append(line)
+    except BaseException:
+        proc.kill()
+        proc.wait()
+        raise
+
+
+def http_transport(home: Path, port: int) -> Any:
+    """A fastmcp streamable-HTTP client transport to a server on `port`, carrying `home`'s token."""
+    from fastmcp.client.transports import StreamableHttpTransport
+
+    return StreamableHttpTransport(
+        url=f"http://127.0.0.1:{port}{MCP_PATH}",
+        headers={"Authorization": f"Bearer {agent_token(home)}"},
+    )
+
+
+def stop_http(proc: subprocess.Popen[bytes]) -> None:
+    """Stop a `serve_http` server gracefully (SIGINT), killing it if it does not exit in time."""
+    if proc.poll() is None:
+        proc.send_signal(signal.SIGINT)
+        try:
+            proc.wait(timeout=tolerances.PROC_WAIT_S)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()

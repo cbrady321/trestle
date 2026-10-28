@@ -1,0 +1,5 @@
+{"seq":1,"kind":"created","at":"2026-09-29T07:04:58Z","run_id":"r_fossil_interrupted","spec_hash":"test","plugin":"echo","version":"0.1.0"}
+{"seq":2,"kind":"admitted","at":"2026-09-29T07:04:58Z","run_id":"r_fossil_interrupted","snapshot_id":"snap_test"}
+{"seq":3,"kind":"started","at":"2026-09-29T07:04:58Z","run_id":"r_fossil_interrupted"}
+{"seq":4,"kind":"evidence_finalized","at":"2026-09-29T07:04:58Z","run_id":"r_fossil_interrupted","completeness":"partial","result_state":"absent"}
+{"seq":5,"kind":"interrupted","at":"2026-09-29T07:04:58Z","run_id":"r_fossil_interrupted"}

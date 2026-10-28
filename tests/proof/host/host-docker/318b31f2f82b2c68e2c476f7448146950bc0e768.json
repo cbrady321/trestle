@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "gate": "host-docker",
+  "sha": "318b31f2f82b2c68e2c476f7448146950bc0e768",
+  "mode": "preflight",
+  "python": "3.12.8",
+  "platform": "darwin",
+  "results": [],
+  "status": "PRECONDITION_UNMET",
+  "engine": "reachable",
+  "images": [
+    "alpine: unpinned (no digest cached)"
+  ]
+}

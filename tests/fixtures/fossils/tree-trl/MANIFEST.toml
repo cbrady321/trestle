@@ -1,0 +1,43 @@
+# Tree-lift fossil-state manifest (L.TR-L.11; MC-11, MC-B3-05, CM-5). Schema as single/MANIFEST.toml: [[state]]
+# {id, producer = "module:function", absent = bool, s0_projection = {state, kinds, meta_keys}}. Producers are
+# `tests.tree.gen_fossils:<fn>`, so `python -m tests.proof.fossils generate --checkpoint slice-a --states all`
+# regenerates these states under `slice-a/` with the same ids (L.J-SLICE-A.1). State ids are unique across bands.
+#
+# The runs are AllDeclaration (V-14) roots of more than one vertex, written by head through the host's own
+# admission (`ControlSurface.run`). `s0_projection.state` is the state the writer's own reader projects after
+# recovery (`differ d2` compares an older reader's projection with it; a divergence is excused only by a named
+# CM-9 exception in tests/proof/d2_exceptions.toml). Three kinds: `trl-inflight-<fixture>` (non-terminal roots),
+# `trl-terminal-<fixture>` (finalized roots; expectation = the root projection only) and `trl-views-<fixture>`
+# (finalized roots of the same fixtures; expectation = their child views only, which no reader before TR-2
+# serves, E-TR-1). `kinds` are the distinct ledger row kinds in first-occurrence order; how many rows a live run
+# wrote is timing, not shape.
+
+[[state]]
+id = "trl-inflight-readiness_sibling"
+producer = "tests.tree.gen_fossils:produce_trl_inflight_readiness_sibling"
+absent = false
+s0_projection = { state = "interrupted", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "error_record", "evidence_finalized", "interrupted"], meta_keys = [] }
+
+[[state]]
+id = "trl-terminal-exception_branch"
+producer = "tests.tree.gen_fossils:produce_trl_terminal_exception_branch"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = [] }
+
+[[state]]
+id = "trl-terminal-upstream_covered"
+producer = "tests.tree.gen_fossils:produce_trl_terminal_upstream_covered"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = [] }
+
+[[state]]
+id = "trl-views-exception_branch"
+producer = "tests.tree.gen_fossils:produce_trl_views_exception_branch"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = [] }
+
+[[state]]
+id = "trl-views-upstream_covered"
+producer = "tests.tree.gen_fossils:produce_trl_views_upstream_covered"
+absent = false
+s0_projection = { state = "succeeded", kinds = ["created", "admitted", "started", "process_identity", "group_stop", "lane_folded", "execution_ended", "evidence_finalized", "succeeded"], meta_keys = [] }

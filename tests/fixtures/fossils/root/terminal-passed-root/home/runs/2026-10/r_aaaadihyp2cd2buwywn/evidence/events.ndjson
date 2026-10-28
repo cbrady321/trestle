@@ -1,0 +1,16 @@
+{"kind":"plan.identity","payload":{"plan_digest":"42a169023695b40fd2e9b89ac1309d398dad4b1f06f1b79d4943fd21f8e2d1ac","declaration_digest":"df1c29c802b30eeb7a6869107b3f55690eb3192d19e937193c45279a2210efda","args_hash":"d39ab6c225d39296ae912c45987a110dba306ffa7b3c3aae0a0bda74632549da","selection":[],"observations_digest":"4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"},"at":"2026-10-01T17:23:56Z"}
+{"kind":"spine_observed","payload":{"selector_present":false,"ready":false},"at":"2026-10-01T17:23:56Z"}
+{"kind":"step.observed","payload":{"path":"(root)","present":false,"selector_present":false,"identity_proven":false,"configuration_compatible":true,"code":null,"found":[],"currency":[]},"at":"2026-10-01T17:23:56Z"}
+{"kind":"step.postcondition","payload":{"path":"(root)","postcondition":{"satisfied":false,"code":null,"detail":""},"preconditions":[],"condition":"unsatisfied","code":null,"provenance":"absent","attempts":0},"at":"2026-10-01T17:23:56Z"}
+{"kind":"step.action","payload":{"path":"(root)","returned":"Acted","code":null,"remedy":null,"tickets":[{"effect":"up","facet":"create","attempt":1,"remedy":null,"status":"applied","code":null,"identity":"fake-da59cb85605bd193","result":null}]},"at":"2026-10-01T17:23:56Z"}
+{"kind":"spine_observed","payload":{"selector_present":true,"ready":false},"at":"2026-10-01T17:23:56Z"}
+{"kind":"step.observed","payload":{"path":"(root)","present":true,"selector_present":true,"identity_proven":true,"configuration_compatible":true,"code":null,"found":[],"currency":[]},"at":"2026-10-01T17:23:56Z"}
+{"kind":"step.postcondition","payload":{"path":"(root)","postcondition":{"satisfied":false,"code":null,"detail":"ready not yet"},"preconditions":[],"condition":"converging","code":null,"provenance":"created","attempts":1},"at":"2026-10-01T17:23:56Z"}
+{"kind":"spine_observed","payload":{"selector_present":true,"ready":false},"at":"2026-10-01T17:23:56Z"}
+{"kind":"step.observed","payload":{"path":"(root)","present":true,"selector_present":true,"identity_proven":true,"configuration_compatible":true,"code":null,"found":[],"currency":[]},"at":"2026-10-01T17:23:56Z"}
+{"kind":"step.postcondition","payload":{"path":"(root)","postcondition":{"satisfied":false,"code":null,"detail":"ready not yet"},"preconditions":[],"condition":"converging","code":null,"provenance":"created","attempts":1},"at":"2026-10-01T17:23:56Z"}
+{"kind":"spine_observed","payload":{"selector_present":true,"ready":true},"at":"2026-10-01T17:23:56Z"}
+{"kind":"step.observed","payload":{"path":"(root)","present":true,"selector_present":true,"identity_proven":true,"configuration_compatible":true,"code":null,"found":[],"currency":[]},"at":"2026-10-01T17:23:56Z"}
+{"kind":"step.postcondition","payload":{"path":"(root)","postcondition":{"satisfied":true,"code":null,"detail":"ready holds"},"preconditions":[],"condition":"satisfied","code":null,"provenance":"created","attempts":1},"at":"2026-10-01T17:23:56Z"}
+{"kind":"spine_observed","payload":{"selector_present":false,"ready":false},"at":"2026-10-01T17:23:57Z"}
+{"kind":"step.cleanup","payload":{"path":"(root)","effect":"up","selector":"fake-da59cb85605bd193","released":true,"tickets":[{"effect":"stop","facet":"owned","attempt":1,"remedy":null,"status":"applied","code":null,"identity":"fake-da59cb85605bd193","result":null}]},"at":"2026-10-01T17:23:57Z"}
