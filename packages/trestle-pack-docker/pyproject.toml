@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "trestle-pack-docker"
 # lockstep with Trestle (P-18)
-version = "0.7.0"
+version = "0.7.1"
 description = "The docker bundled pack's library: the mechanism behind its Trestle plugin"
 readme = "README.md"
 requires-python = ">=3.12"
